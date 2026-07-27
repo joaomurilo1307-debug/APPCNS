@@ -9,5 +9,5 @@ if [ "$RUN_SEED" = "true" ]; then
   npx tsx prisma/seed.ts || true
 fi
 
-echo "Iniciando aplicação..."
+echo "Iniciando aplicacao..."
 exec npx next start -p 3000
