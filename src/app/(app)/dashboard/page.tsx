@@ -6,8 +6,8 @@ import { visibleTeamFilter, getUserTeamIds } from "@/lib/permissions";
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   const userId = (session!.user as any).id;
-  const systemRole = (session!.user as any).systemRole;
-  const teamFilter = await visibleTeamFilter(userId, systemRole);
+  const role = (session!.user as any).role;
+  const teamFilter = await visibleTeamFilter(userId, role);
   const teamIds = await getUserTeamIds(userId);
 
   const [projectCount, taskCounts, myTaskCount] = await Promise.all([
@@ -16,7 +16,7 @@ export default async function DashboardPage() {
       by: ["status"],
       _count: true,
       where:
-        systemRole === "ADMIN"
+        role === "ADMIN"
           ? {}
           : { OR: [{ project: { teamId: { in: teamIds } } }, { projectId: null, assigneeId: userId }] },
     }),

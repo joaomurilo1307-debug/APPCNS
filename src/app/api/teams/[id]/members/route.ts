@@ -15,8 +15,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const userId = (session.user as any).id;
-  const systemRole = (session.user as any).systemRole;
-  const allowed = await canManageTeam(userId, systemRole, params.id);
+  const role = (session.user as any).role;
+  const allowed = await canManageTeam(userId, role, params.id);
   if (!allowed) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 
   const body = await req.json();

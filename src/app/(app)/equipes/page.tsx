@@ -13,7 +13,7 @@ type Team = {
 
 export default function EquipesPage() {
   const { data: session } = useSession();
-  const isAdmin = (session?.user as any)?.systemRole === "ADMIN";
+  const isAdmin = (session?.user as any)?.role === "ADMIN";
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [name, setName] = useState("");

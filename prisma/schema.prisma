@@ -8,9 +8,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum SystemRole {
+enum UserRole {
   ADMIN
-  MEMBRO
+  GESTOR_PROJETO
+  APROVADOR
+  COLABORADOR
+  CLIENTE
+  VISUALIZADOR
+}
+
+enum ApprovalStatus {
+  NAO_REQUER
+  PENDENTE
+  APROVADO
+  REJEITADO
 }
 
 enum TeamRole {
@@ -50,14 +61,17 @@ model User {
   name         String
   email        String    @unique
   passwordHash String
-  systemRole   SystemRole @default(MEMBRO)
+  role         UserRole  @default(COLABORADOR)
+  active       Boolean   @default(true)
   createdAt    DateTime  @default(now())
 
-  teams          UserTeam[]
-  ownedProjects  Project[]      @relation("ProjectOwner")
-  assignedTasks  Task[]         @relation("TaskAssignee")
-  attachments    Attachment[]
-  taskComments   TaskComment[]
+  teams           UserTeam[]
+  ownedProjects   Project[]      @relation("ProjectOwner")
+  approvingProjects Project[]    @relation("ProjectApprover")
+  clientProjects  ProjectClient[]
+  assignedTasks   Task[]         @relation("TaskAssignee")
+  attachments     Attachment[]
+  taskComments    TaskComment[]
 }
 
 model Team {
@@ -83,18 +97,35 @@ model UserTeam {
 }
 
 model Project {
-  id          String        @id @default(cuid())
-  name        String
-  description String?
-  status      ProjectStatus @default(PLANEJADO)
-  teamId      String
-  ownerId     String
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id             String         @id @default(cuid())
+  name           String
+  description    String?
+  status         ProjectStatus  @default(PLANEJADO)
+  teamId         String
+  ownerId        String
+  approverId     String?
+  approvalStatus ApprovalStatus @default(NAO_REQUER)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  team  Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  owner User   @relation("ProjectOwner", fields: [ownerId], references: [id])
-  tasks Task[]
+  team     Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  owner    User             @relation("ProjectOwner", fields: [ownerId], references: [id])
+  approver User?            @relation("ProjectApprover", fields: [approverId], references: [id])
+  clients  ProjectClient[]
+  tasks    Task[]
+}
+
+model ProjectClient {
+  id        String @id @default(cuid())
+  projectId String
+  userId    String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
 }
 
 model Task {
@@ -103,16 +134,21 @@ model Task {
   description       String?
   status            TaskStatus        @default(A_FAZER)
   priority          TaskPriority      @default(MEDIA)
+  startDate         DateTime?
   dueDate           DateTime?
   isRotina          Boolean           @default(false)
   rotinaFrequencia  RotinaFrequencia?
   projectId         String?
   assigneeId        String?
+  parentTaskId      String?
+  locked            Boolean           @default(false)
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
   project     Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   assignee    User?         @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  parentTask  Task?         @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks    Task[]        @relation("Subtasks")
   attachments Attachment[]
   comments    TaskComment[]
 }

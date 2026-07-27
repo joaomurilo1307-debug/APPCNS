@@ -2,17 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import SignOutButton from "./SignOutButton";
 
-const links = [
-  { href: "/dashboard", label: "Início" },
-  { href: "/projetos", label: "Projetos" },
-  { href: "/tarefas", label: "Tarefas / Rotinas" },
-  { href: "/equipes", label: "Equipes" },
+const baseLinks = [
+  { href: "/dashboard", label: "Início", roles: ["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/projetos", label: "Projetos", roles: ["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/tarefas", label: "Tarefas / Rotinas", roles: ["ADMIN", "GESTOR_PROJETO", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/gantt", label: "Gantt", roles: ["ADMIN", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"] },
+  { href: "/calendario", label: "Calendário", roles: ["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/equipes", label: "Equipes", roles: ["ADMIN", "GESTOR_PROJETO"] },
+  { href: "/aprovacoes", label: "Aprovações", roles: ["ADMIN", "APROVADOR"] },
+  { href: "/usuarios", label: "Usuários", roles: ["ADMIN"] },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const role = (session?.user as any)?.role;
+  const links = baseLinks.filter((l) => !role || l.roles.includes(role));
 
   return (
     <aside className="flex h-screen w-56 flex-col justify-between border-r border-gray-200 bg-white p-4">
@@ -34,12 +42,7 @@ export default function Sidebar() {
           ))}
         </nav>
       </div>
-      <button
-        onClick={() => signOut({ callbackUrl: "/login" })}
-        className="rounded-md px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-100"
-      >
-        Sair
-      </button>
+      <SignOutButton />
     </aside>
   );
 }

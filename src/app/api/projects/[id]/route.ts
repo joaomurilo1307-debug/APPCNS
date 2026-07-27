@@ -36,8 +36,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
   const userId = (session.user as any).id;
-  const systemRole = (session.user as any).systemRole;
-  const allowed = await canManageTeam(userId, systemRole, project.teamId);
+  const role = (session.user as any).role;
+  const allowed = await canManageTeam(userId, role, project.teamId);
   if (!allowed) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 
   const body = await req.json();
@@ -56,8 +56,8 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
   const userId = (session.user as any).id;
-  const systemRole = (session.user as any).systemRole;
-  const allowed = await canManageTeam(userId, systemRole, project.teamId);
+  const role = (session.user as any).role;
+  const allowed = await canManageTeam(userId, role, project.teamId);
   if (!allowed) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 
   await prisma.project.delete({ where: { id: params.id } });

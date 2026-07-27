@@ -15,16 +15,44 @@ export async function isTeamManager(userId: string, teamId: string): Promise<boo
   return membership?.role === "GESTOR";
 }
 
-/**
- * Admin sees everything. Everyone else only sees teams they belong to.
- */
-export async function visibleTeamFilter(userId: string, systemRole: string) {
-  if (systemRole === "ADMIN") return {};
+/** Admin sees everything. Gestor/Aprovador/Colaborador only see teams they belong to. Cliente/Visualizador handled separately (scoped por projeto). */
+export async function visibleTeamFilter(userId: string, role: string) {
+  if (role === "ADMIN") return {};
   const teamIds = await getUserTeamIds(userId);
   return { teamId: { in: teamIds } };
 }
 
-export async function canManageTeam(userId: string, systemRole: string, teamId: string) {
-  if (systemRole === "ADMIN") return true;
+export async function canManageTeam(userId: string, role: string, teamId: string) {
+  if (role === "ADMIN") return true;
   return isTeamManager(userId, teamId);
+}
+
+/** Quem pode excluir/mover uma tarefa: Admin e Gestor de Projeto sempre (se não travada); Colaborador só se não travada e for responsável; Cliente/Visualizador/Aprovador nunca. */
+export function canModifyTask(role: string, isAssignee: boolean, locked: boolean) {
+  if (locked) return role === "ADMIN" || role === "GESTOR_PROJETO";
+  if (role === "ADMIN" || role === "GESTOR_PROJETO") return true;
+  if (role === "COLABORADOR") return isAssignee;
+  return false;
+}
+
+export function canDeleteTask(role: string) {
+  return role === "ADMIN" || role === "GESTOR_PROJETO";
+}
+
+export function isReadOnlyRole(role: string) {
+  return role === "CLIENTE" || role === "VISUALIZADOR";
+}
+
+/** Rota inicial recomendada por papel, após login. */
+export function landingPathForRole(role: string) {
+  switch (role) {
+    case "APROVADOR":
+      return "/aprovacoes";
+    case "CLIENTE":
+      return "/portal-cliente";
+    case "VISUALIZADOR":
+      return "/dashboard";
+    default:
+      return "/dashboard";
+  }
 }

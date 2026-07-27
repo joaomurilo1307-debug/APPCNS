@@ -9,11 +9,11 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const userId = (session.user as any).id;
-  const systemRole = (session.user as any).systemRole;
+  const role = (session.user as any).role;
 
   const teams = await prisma.team.findMany({
     where:
-      systemRole === "ADMIN"
+      role === "ADMIN"
         ? {}
         : { members: { some: { userId } } },
     include: {
@@ -34,7 +34,7 @@ const createTeamSchema = z.object({
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if ((session.user as any).systemRole !== "ADMIN") {
+  if ((session.user as any).role !== "ADMIN") {
     return NextResponse.json({ error: "Só administradores podem criar equipes" }, { status: 403 });
   }
 

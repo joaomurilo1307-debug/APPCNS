@@ -1,6 +1,13 @@
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const session = await getServerSession(authOptions);
+  if (!session) redirect("/login");
+  if ((session.user as any).role === "CLIENTE") redirect("/portal-cliente");
+
   return (
     <div className="flex">
       <Sidebar />
