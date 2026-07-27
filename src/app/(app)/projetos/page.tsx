@@ -11,6 +11,7 @@ type Project = {
   team: { id: string; name: string };
   owner: { name: string };
   _count: { tasks: number };
+  percentComplete: number;
 };
 
 type Team = { id: string; name: string };
@@ -109,7 +110,13 @@ export default function ProjetosPage() {
               </span>
             </div>
             <p className="text-xs text-gray-400">{p.team.name}</p>
-            <p className="mt-3 text-sm text-gray-500">{p._count.tasks} tarefa(s)</p>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                <div className="h-full bg-brand" style={{ width: `${p.percentComplete}%` }} />
+              </div>
+              <span className="text-xs font-medium text-gray-500">{p.percentComplete}%</span>
+            </div>
+            <p className="mt-2 text-sm text-gray-500">{p._count.tasks} tarefa(s)</p>
           </Link>
         ))}
         {projects.length === 0 && <p className="text-sm text-gray-400">Nenhum projeto ainda.</p>}

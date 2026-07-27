@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam } from "@/lib/permissions";
+import { computePercentComplete } from "@/lib/progress";
 import { z } from "zod";
 
 export async function GET() {
@@ -33,12 +34,18 @@ export async function GET() {
       team: { select: { id: true, name: true } },
       owner: { select: { id: true, name: true } },
       approver: { select: { id: true, name: true } },
+      tasks: { select: { status: true } },
       _count: { select: { tasks: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(projects);
+  const result = projects.map(({ tasks, ...p }) => ({
+    ...p,
+    percentComplete: computePercentComplete(tasks),
+  }));
+
+  return NextResponse.json(result);
 }
 
 const createProjectSchema = z.object({

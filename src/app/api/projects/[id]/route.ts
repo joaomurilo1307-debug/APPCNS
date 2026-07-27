@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam } from "@/lib/permissions";
+import { computePercentComplete } from "@/lib/progress";
 import { z } from "zod";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
@@ -21,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   });
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
-  return NextResponse.json(project);
+  return NextResponse.json({ ...project, percentComplete: computePercentComplete(project.tasks) });
 }
 
 const updateSchema = z.object({
@@ -55,6 +56,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (parsed.data.endDate !== undefined) data.endDate = parsed.data.endDate ? new Date(parsed.data.endDate) : null;
   if (parsed.data.approverId !== undefined && parsed.data.approverId !== project.approverId) {
     data.approvalStatus = parsed.data.approverId ? "PENDENTE" : "NAO_REQUER";
+  }
+  if (parsed.data.status !== undefined && parsed.data.status !== project.status) {
+    if (parsed.data.status === "EM_ANDAMENTO" && !project.actualStartedAt) {
+      data.actualStartedAt = new Date();
+    }
+    if (parsed.data.status === "CONCLUIDO" && !project.actualEndedAt) {
+      data.actualEndedAt = new Date();
+    }
   }
 
   const updated = await prisma.project.update({ where: { id: params.id }, data });

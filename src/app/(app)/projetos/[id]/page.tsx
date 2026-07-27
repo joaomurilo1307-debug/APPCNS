@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import KanbanBoard from "@/components/KanbanBoard";
 import Whiteboard from "@/components/Whiteboard";
+import GoalsPanel from "@/components/GoalsPanel";
 
 type ProjectDetail = {
   id: string;
@@ -16,7 +17,22 @@ type ProjectDetail = {
   approvalStatus: string;
   startDate: string | null;
   endDate: string | null;
+  actualStartedAt: string | null;
+  actualEndedAt: string | null;
+  percentComplete: number;
 };
+
+function daysBetween(a: Date, b: Date) {
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
+}
+
+function timelineSummary(p: ProjectDetail) {
+  const planned = p.startDate && p.endDate ? daysBetween(new Date(p.startDate), new Date(p.endDate)) : null;
+  if (!p.actualStartedAt) return planned !== null ? `Previsto: ${planned} dia(s)` : null;
+  const elapsed = daysBetween(new Date(p.actualStartedAt), p.actualEndedAt ? new Date(p.actualEndedAt) : new Date());
+  const status = p.actualEndedAt ? "Executado em" : "Em execução há";
+  return planned !== null ? `${status} ${elapsed} dia(s) (previsto: ${planned} dia(s))` : `${status} ${elapsed} dia(s)`;
+}
 
 const statusLabel: Record<string, string> = {
   PLANEJADO: "Planejado",
@@ -38,7 +54,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [tab, setTab] = useState<"kanban" | "board">("kanban");
+  const [tab, setTab] = useState<"kanban" | "board" | "metas">("kanban");
 
   async function load() {
     const res = await fetch(`/api/projects/${params.id}`);
@@ -97,6 +113,17 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             {project.team.name} · Responsável: {project.owner.name}
             {project.approver && ` · Aprovador: ${project.approver.name} (${project.approvalStatus})`}
           </p>
+          <div className="mt-2 flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-32 overflow-hidden rounded-full bg-gray-100">
+                <div className="h-full bg-brand" style={{ width: `${project.percentComplete}%` }} />
+              </div>
+              <span className="text-xs font-medium text-gray-500">{project.percentComplete}% concluído</span>
+            </div>
+            {timelineSummary(project) && (
+              <span className="text-xs text-gray-400">· {timelineSummary(project)}</span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           {canManage && (
@@ -201,12 +228,25 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         >
           Mind Chart
         </button>
+        <button
+          onClick={() => setTab("metas")}
+          className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+            tab === "metas" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
+          }`}
+        >
+          Metas
+        </button>
       </div>
 
-      {tab === "kanban" ? (
-        <KanbanBoard key={refreshKey} projectId={project.id} />
-      ) : (
-        <Whiteboard projectId={project.id} />
+      {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} />}
+      {tab === "board" && <Whiteboard projectId={project.id} />}
+      {tab === "metas" && (
+        <GoalsPanel
+          projectId={project.id}
+          team={project.team}
+          canManage={canManage}
+          currentUserId={(session?.user as any)?.id}
+        />
       )}
     </div>
   );

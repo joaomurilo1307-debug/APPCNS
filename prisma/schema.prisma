@@ -73,6 +73,7 @@ model User {
   assignedTasks   Task[]         @relation("TaskAssignee")
   attachments     Attachment[]
   taskComments    TaskComment[]
+  assignedGoals   Goal[]
 }
 
 model Team {
@@ -83,6 +84,7 @@ model Team {
 
   members  UserTeam[]
   projects Project[]
+  goals    Goal[]
 }
 
 model UserTeam {
@@ -108,6 +110,8 @@ model Project {
   approvalStatus ApprovalStatus @default(NAO_REQUER)
   startDate      DateTime?
   endDate        DateTime?
+  actualStartedAt DateTime?
+  actualEndedAt   DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -117,6 +121,26 @@ model Project {
   clients  ProjectClient[]
   tasks    Task[]
   board    ProjectBoard?
+  goals    Goal[]
+}
+
+model Goal {
+  id            String   @id @default(cuid())
+  projectId     String
+  title         String
+  description   String?
+  targetValue   Float?
+  currentValue  Float    @default(0)
+  unit          String?
+  dueDate       DateTime?
+  assignedUserId String?
+  assignedTeamId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedUser User?   @relation(fields: [assignedUserId], references: [id])
+  assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
 }
 
 model ProjectBoard {
