@@ -10,3 +10,4 @@ next-env.d.ts
 deploy_payload.json
 build_log.txt
 *.log
+build_log*.txt
