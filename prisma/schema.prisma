@@ -116,6 +116,16 @@ model Project {
   approver User?            @relation("ProjectApprover", fields: [approverId], references: [id])
   clients  ProjectClient[]
   tasks    Task[]
+  board    ProjectBoard?
+}
+
+model ProjectBoard {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  content   String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model ProjectClient {

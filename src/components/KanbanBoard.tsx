@@ -47,6 +47,10 @@ function canModify(role: string | undefined, task: Task, userId: string | undefi
   return false;
 }
 
+function canDelete(role: string | undefined, task: Task) {
+  return (role === "ADMIN" || role === "GESTOR_PROJETO") && !task.locked;
+}
+
 export default function KanbanBoard({ projectId }: { projectId?: string }) {
   const { data: session } = useSession();
   const role = (session?.user as any)?.role;
@@ -84,6 +88,12 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
     });
   }
 
+  async function handleQuickDelete(taskId: string) {
+    if (!confirm("Excluir esta tarefa?")) return;
+    await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+    load();
+  }
+
   return (
     <>
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -97,7 +107,9 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
                     key={task.id}
                     task={task}
                     draggable={canModify(role, task, userId)}
+                    showDelete={canDelete(role, task)}
                     onOpen={() => setOpenTaskId(task.id)}
+                    onDelete={() => handleQuickDelete(task.id)}
                   />
                 ))}
             </Column>
@@ -134,11 +146,15 @@ function Column({ id, label, children }: { id: string; label: string; children: 
 function TaskCard({
   task,
   draggable,
+  showDelete,
   onOpen,
+  onDelete,
 }: {
   task: Task;
   draggable: boolean;
+  showDelete: boolean;
   onOpen: () => void;
+  onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: task.id,
@@ -154,10 +170,22 @@ function TaskCard({
       style={{ ...style, borderLeftColor: task.assignee?.avatarColor || "#e5e7eb", borderLeftWidth: 4 }}
       {...(draggable ? { ...listeners, ...attributes } : {})}
       onClick={onOpen}
-      className={`rounded-lg border border-gray-200 bg-white p-3 shadow-sm ${
+      className={`group relative rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md ${
         draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer opacity-90"
       }`}
     >
+      {showDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-red-50 hover:text-red-500 group-hover:flex"
+          title="Excluir tarefa"
+        >
+          ✕
+        </button>
+      )}
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium">
           {task.locked && "🔒 "}

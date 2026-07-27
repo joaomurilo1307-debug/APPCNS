@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import SignOutButton from "./SignOutButton";
+import ConsominasLogo from "./ConsominasLogo";
 
 const baseLinks = [
   { href: "/dashboard", label: "Início", roles: ["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
@@ -24,18 +25,20 @@ export default function Sidebar() {
   const links = baseLinks.filter((l) => !role || l.roles.includes(role));
 
   return (
-    <aside className="flex h-screen w-56 flex-col justify-between border-r border-gray-200 bg-white p-4">
+    <aside className="flex h-screen w-60 flex-col justify-between border-r border-gray-100 bg-white p-4 shadow-sm">
       <div>
-        <h1 className="mb-6 px-2 text-lg font-semibold text-brand">Consominas</h1>
+        <div className="mb-6 border-b border-gray-100 px-2 pb-4">
+          <ConsominasLogo size={30} />
+        </div>
         <nav className="flex flex-col gap-1">
           {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className={`rounded-md px-3 py-2 text-sm font-medium ${
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 pathname?.startsWith(link.href)
-                  ? "bg-brand/10 text-brand"
-                  : "text-gray-600 hover:bg-gray-100"
+                  ? "bg-gradient-to-r from-brand/15 to-transparent text-brand-dark border-l-2 border-brand"
+                  : "text-gray-600 hover:bg-gray-50"
               }`}
             >
               {link.label}

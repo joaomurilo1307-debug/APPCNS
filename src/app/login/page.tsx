@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import ConsominasLogo from "@/components/ConsominasLogo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,12 +31,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-brand/15 blur-3xl" />
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-8 shadow-sm"
+        className="relative w-full max-w-sm rounded-2xl border border-gray-100 bg-white/90 p-8 shadow-xl backdrop-blur"
       >
-        <h1 className="mb-1 text-xl font-semibold text-brand">Consominas</h1>
+        <div className="mb-6">
+          <ConsominasLogo size={40} />
+        </div>
         <p className="mb-6 text-sm text-gray-500">Gestão de Projetos e Rotinas</p>
 
         <label className="mb-1 block text-sm font-medium">E-mail</label>

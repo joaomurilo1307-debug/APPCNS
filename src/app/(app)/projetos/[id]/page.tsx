@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import KanbanBoard from "@/components/KanbanBoard";
+import Whiteboard from "@/components/Whiteboard";
 
 type ProjectDetail = {
   id: string;
@@ -37,6 +38,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [tab, setTab] = useState<"kanban" | "board">("kanban");
 
   async function load() {
     const res = await fetch(`/api/projects/${params.id}`);
@@ -182,9 +184,30 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         </form>
       )}
 
-      <div className="mt-6">
-        <KanbanBoard key={refreshKey} projectId={project.id} />
+      <div className="mb-4 mt-6 flex gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setTab("kanban")}
+          className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+            tab === "kanban" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
+          }`}
+        >
+          Kanban
+        </button>
+        <button
+          onClick={() => setTab("board")}
+          className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+            tab === "board" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
+          }`}
+        >
+          Mind Chart
+        </button>
       </div>
+
+      {tab === "kanban" ? (
+        <KanbanBoard key={refreshKey} projectId={project.id} />
+      ) : (
+        <Whiteboard projectId={project.id} />
+      )}
     </div>
   );
 }
