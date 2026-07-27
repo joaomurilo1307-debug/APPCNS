@@ -1,6 +1,7 @@
 services:
   app:
     image: ghcr.io/joaomurilo1307-debug/appcns:latest
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       - db
