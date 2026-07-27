@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 
 type Comment = { id: string; body: string; createdAt: string; author: { id: string; name: string } };
 type Attachment = { id: string; fileName: string; filePath: string; uploadedAt: string };
-type Subtask = { id: string; title: string; status: string; assignee: { id: string; name: string } | null };
+type Subtask = { id: string; title: string; status: string; locked: boolean; assignee: { id: string; name: string } | null };
 
 type TaskDetail = {
   id: string;
@@ -50,6 +50,7 @@ export default function TaskDetailModal({
   const [newComment, setNewComment] = useState("");
   const [newSubtask, setNewSubtask] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [openSubtaskId, setOpenSubtaskId] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch(`/api/tasks/${taskId}`);
@@ -132,6 +133,13 @@ export default function TaskDetailModal({
     await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
     onChanged();
     onClose();
+  }
+
+  async function handleDeleteSubtask(subtaskId: string) {
+    if (!confirm("Excluir esta subtarefa?")) return;
+    await fetch(`/api/tasks/${subtaskId}`, { method: "DELETE" });
+    load();
+    onChanged();
   }
 
   return (
@@ -225,11 +233,31 @@ export default function TaskDetailModal({
             </p>
             <div className="mb-2 flex flex-col gap-1">
               {task.subtasks.map((s) => (
-                <div key={s.id} className="flex items-center justify-between rounded-md bg-gray-50 px-2 py-1.5 text-sm">
-                  <span>{s.title}</span>
-                  <span className="text-xs text-gray-400">{statusLabel[s.status]}</span>
+                <div
+                  key={s.id}
+                  onClick={() => setOpenSubtaskId(s.id)}
+                  className="group flex items-center justify-between rounded-md bg-gray-50 px-2 py-1.5 text-sm hover:bg-gray-100 cursor-pointer"
+                >
+                  <span>{s.locked && "🔒 "}{s.title}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{statusLabel[s.status]}</span>
+                    {canDelete && !s.locked && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSubtask(s.id);
+                        }}
+                        className="hidden text-xs text-red-400 hover:text-red-700 group-hover:inline"
+                      >
+                        Excluir
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
+              {task.subtasks.length === 0 && (
+                <p className="text-xs text-gray-400">Nenhuma subtarefa ainda.</p>
+              )}
             </div>
             {canModify && (
               <form onSubmit={handleAddSubtask} className="flex gap-2">
@@ -295,6 +323,17 @@ export default function TaskDetailModal({
           )}
         </div>
       </div>
+
+      {openSubtaskId && (
+        <TaskDetailModal
+          taskId={openSubtaskId}
+          onClose={() => setOpenSubtaskId(null)}
+          onChanged={() => {
+            load();
+            onChanged();
+          }}
+        />
+      )}
     </div>
   );
 }
