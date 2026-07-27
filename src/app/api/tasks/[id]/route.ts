@@ -16,6 +16,25 @@ const updateTaskSchema = z.object({
   locked: z.boolean().optional(),
 });
 
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  const task = await prisma.task.findUnique({
+    where: { id: params.id },
+    include: {
+      assignee: { select: { id: true, name: true } },
+      project: { select: { id: true, name: true, teamId: true } },
+      parentTask: { select: { id: true, title: true } },
+      subtasks: { include: { assignee: { select: { id: true, name: true } } } },
+      attachments: true,
+      comments: { include: { author: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } },
+    },
+  });
+  if (!task) return NextResponse.json({ error: "Não encontrada" }, { status: 404 });
+  return NextResponse.json(task);
+}
+
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
