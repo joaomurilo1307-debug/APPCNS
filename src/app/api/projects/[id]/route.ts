@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       owner: { select: { id: true, name: true } },
       approver: { select: { id: true, name: true } },
       clients: { include: { user: { select: { id: true, name: true } } } },
-      tasks: { include: { assignee: { select: { id: true, name: true } } } },
+      tasks: { include: { assignee: { select: { id: true, name: true, avatarColor: true } } } },
     },
   });
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });

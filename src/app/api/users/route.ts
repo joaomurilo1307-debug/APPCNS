@@ -19,6 +19,7 @@ export async function GET() {
       email: true,
       role: true,
       active: true,
+      avatarColor: true,
       createdAt: true,
       teams: { include: { team: { select: { id: true, name: true } } } },
     },
@@ -33,6 +34,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   role: z.enum(["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR"]),
+  avatarColor: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -57,8 +59,9 @@ export async function POST(req: Request) {
       email: parsed.data.email.toLowerCase(),
       passwordHash,
       role: parsed.data.role,
+      avatarColor: parsed.data.avatarColor,
     },
-    select: { id: true, name: true, email: true, role: true, active: true },
+    select: { id: true, name: true, email: true, role: true, active: true, avatarColor: true },
   });
 
   return NextResponse.json(user, { status: 201 });

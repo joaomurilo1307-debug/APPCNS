@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Avatar, { AVATAR_PALETTE } from "@/components/Avatar";
 
 type UserRow = {
   id: string;
@@ -10,6 +11,7 @@ type UserRow = {
   email: string;
   role: string;
   active: boolean;
+  avatarColor: string;
   teams: { team: { id: string; name: string } }[];
 };
 
@@ -39,6 +41,7 @@ export default function UsuariosPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState("COLABORADOR");
+  const [newUserColor, setNewUserColor] = useState(AVATAR_PALETTE[0]);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -56,7 +59,7 @@ export default function UsuariosPage() {
     const res = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password, role: newUserRole }),
+      body: JSON.stringify({ name, email, password, role: newUserRole, avatarColor: newUserColor }),
     });
     if (!res.ok) {
       const data = await res.json();
@@ -66,6 +69,7 @@ export default function UsuariosPage() {
     setName("");
     setEmail("");
     setPassword("");
+    setNewUserColor(AVATAR_PALETTE[0]);
     setShowForm(false);
     load();
   }
@@ -75,6 +79,15 @@ export default function UsuariosPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: newRole }),
+    });
+    load();
+  }
+
+  async function updateColor(id: string, color: string) {
+    await fetch(`/api/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ avatarColor: color }),
     });
     load();
   }
@@ -104,7 +117,7 @@ export default function UsuariosPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="mb-8 flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-white p-4">
+        <form onSubmit={handleCreate} className="mb-8 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-4">
           <input required placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm" />
           <input required type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm" />
           <input required type="password" placeholder="Senha provisória" value={password} onChange={(e) => setPassword(e.target.value)} className="w-48 rounded-md border border-gray-300 px-3 py-2 text-sm" />
@@ -113,6 +126,17 @@ export default function UsuariosPage() {
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
+          <div className="flex items-center gap-1">
+            {AVATAR_PALETTE.map((c) => (
+              <button
+                type="button"
+                key={c}
+                onClick={() => setNewUserColor(c)}
+                className={`h-6 w-6 rounded-full ${newUserColor === c ? "ring-2 ring-offset-1 ring-gray-500" : ""}`}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </div>
           <button className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">Criar</button>
           {error && <p className="w-full text-sm text-red-600">{error}</p>}
         </form>
@@ -125,6 +149,7 @@ export default function UsuariosPage() {
               <th className="px-4 py-3">Nome</th>
               <th className="px-4 py-3">E-mail</th>
               <th className="px-4 py-3">Papel</th>
+              <th className="px-4 py-3">Cor</th>
               <th className="px-4 py-3">Equipes</th>
               <th className="px-4 py-3">Status</th>
             </tr>
@@ -132,7 +157,12 @@ export default function UsuariosPage() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id} className="border-b last:border-0">
-                <td className="px-4 py-3 font-medium">{u.name}</td>
+                <td className="px-4 py-3 font-medium">
+                  <div className="flex items-center gap-2">
+                    <Avatar name={u.name} color={u.avatarColor} />
+                    {u.name}
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-gray-500">{u.email}</td>
                 <td className="px-4 py-3">
                   <select
@@ -144,6 +174,18 @@ export default function UsuariosPage() {
                       <option key={value} value={value}>{label}</option>
                     ))}
                   </select>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1">
+                    {AVATAR_PALETTE.slice(0, 6).map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => updateColor(u.id, c)}
+                        className={`h-4 w-4 rounded-full ${u.avatarColor === c ? "ring-2 ring-offset-1 ring-gray-500" : ""}`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-500">
                   {u.teams.map((t) => t.team.name).join(", ") || "—"}

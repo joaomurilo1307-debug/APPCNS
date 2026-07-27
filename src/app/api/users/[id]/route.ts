@@ -8,23 +8,33 @@ const updateUserSchema = z.object({
   role: z.enum(["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR"]).optional(),
   active: z.boolean().optional(),
   name: z.string().min(2).max(150).optional(),
+  avatarColor: z.string().optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if ((session.user as any).role !== "ADMIN") {
-    return NextResponse.json({ error: "Só administradores podem alterar usuários" }, { status: 403 });
-  }
+
+  const currentUserId = (session.user as any).id;
+  const currentRole = (session.user as any).role;
 
   const body = await req.json();
   const parsed = updateUserSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
+  const onlyAvatarColor = Object.keys(parsed.data).every((k) => k === "avatarColor");
+  const isSelf = currentUserId === params.id;
+  const isAdmin = currentRole === "ADMIN";
+  const isManagerSettingAvatar = currentRole === "GESTOR_PROJETO" && onlyAvatarColor;
+
+  if (!isAdmin && !(isSelf && onlyAvatarColor) && !isManagerSettingAvatar) {
+    return NextResponse.json({ error: "Sem permissão para essa alteração" }, { status: 403 });
+  }
+
   const updated = await prisma.user.update({
     where: { id: params.id },
     data: parsed.data,
-    select: { id: true, name: true, email: true, role: true, active: true },
+    select: { id: true, name: true, email: true, role: true, active: true, avatarColor: true },
   });
 
   return NextResponse.json(updated);

@@ -23,10 +23,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const task = await prisma.task.findUnique({
     where: { id: params.id },
     include: {
-      assignee: { select: { id: true, name: true } },
+      assignee: { select: { id: true, name: true, avatarColor: true } },
       project: { select: { id: true, name: true, teamId: true } },
       parentTask: { select: { id: true, title: true } },
-      subtasks: { include: { assignee: { select: { id: true, name: true } } } },
+      subtasks: { include: { assignee: { select: { id: true, name: true, avatarColor: true } } } },
       attachments: true,
       comments: { include: { author: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } },
     },

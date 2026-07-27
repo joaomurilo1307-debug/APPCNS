@@ -55,10 +55,10 @@ export async function GET(req: Request) {
       ],
     },
     include: {
-      assignee: { select: { id: true, name: true } },
+      assignee: { select: { id: true, name: true, avatarColor: true } },
       project: { select: { id: true, name: true, teamId: true } },
       subtasks: {
-        include: { assignee: { select: { id: true, name: true } } },
+        include: { assignee: { select: { id: true, name: true, avatarColor: true } } },
       },
       _count: { select: { attachments: true, comments: true, subtasks: true } },
     },

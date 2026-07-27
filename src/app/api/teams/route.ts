@@ -17,7 +17,7 @@ export async function GET() {
         ? {}
         : { members: { some: { userId } } },
     include: {
-      members: { include: { user: { select: { id: true, name: true, email: true } } } },
+      members: { include: { user: { select: { id: true, name: true, email: true, avatarColor: true } } } },
       _count: { select: { projects: true } },
     },
     orderBy: { name: "asc" },

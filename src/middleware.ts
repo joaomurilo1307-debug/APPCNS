@@ -6,6 +6,7 @@ export const config = {
     "/equipes/:path*",
     "/projetos/:path*",
     "/tarefas/:path*",
+    "/sprint/:path*",
     "/gantt/:path*",
     "/calendario/:path*",
     "/usuarios/:path*",

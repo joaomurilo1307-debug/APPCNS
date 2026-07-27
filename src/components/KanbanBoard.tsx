@@ -11,6 +11,7 @@ import {
 } from "@dnd-kit/core";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import TaskDetailModal from "./TaskDetailModal";
+import Avatar from "./Avatar";
 
 type Task = {
   id: string;
@@ -19,7 +20,7 @@ type Task = {
   priority: string;
   locked: boolean;
   assigneeId: string | null;
-  assignee: { id: string; name: string } | null;
+  assignee: { id: string; name: string; avatarColor: string } | null;
   project: { id: string; name: string } | null;
   _count?: { subtasks: number };
 };
@@ -150,23 +151,25 @@ function TaskCard({
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{ ...style, borderLeftColor: task.assignee?.avatarColor || "#e5e7eb", borderLeftWidth: 4 }}
       {...(draggable ? { ...listeners, ...attributes } : {})}
       onClick={onOpen}
       className={`rounded-lg border border-gray-200 bg-white p-3 shadow-sm ${
         draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer opacity-90"
       }`}
     >
-      <p className="text-sm font-medium">
-        {task.locked && "🔒 "}
-        {task.title}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium">
+          {task.locked && "🔒 "}
+          {task.title}
+        </p>
+        {task.assignee && <Avatar name={task.assignee.name} color={task.assignee.avatarColor} size={22} />}
+      </div>
       {task.project && <p className="mt-1 text-xs text-gray-400">{task.project.name}</p>}
       <div className="mt-2 flex items-center justify-between">
         <span className={`rounded-full px-2 py-0.5 text-xs ${priorityColor[task.priority]}`}>
           {task.priority}
         </span>
-        {task.assignee && <span className="text-xs text-gray-500">{task.assignee.name}</span>}
       </div>
       {task._count?.subtasks ? (
         <p className="mt-1 text-[11px] text-gray-400">{task._count.subtasks} subtarefa(s)</p>

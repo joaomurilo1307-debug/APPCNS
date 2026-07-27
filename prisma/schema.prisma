@@ -63,6 +63,7 @@ model User {
   passwordHash String
   role         UserRole  @default(COLABORADOR)
   active       Boolean   @default(true)
+  avatarColor  String    @default("#0f766e")
   createdAt    DateTime  @default(now())
 
   teams           UserTeam[]
