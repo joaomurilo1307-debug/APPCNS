@@ -66,7 +66,7 @@ export default function TaskDetailModal({
     fetch("/api/teams")
       .then((r) => r.json())
       .then((teams: any[]) => {
-        const team = teams.find((t) => t.id === task.project!.teamId);
+        const team = teams.find((t) => t.id === task?.project?.teamId);
         setTeamMembers(team ? team.members.map((m: any) => m.user) : []);
       });
   }, [task?.project?.teamId]);
@@ -108,7 +108,7 @@ export default function TaskDetailModal({
     await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: newSubtask, parentTaskId: taskId, projectId: task.project?.id ?? null }),
+      body: JSON.stringify({ title: newSubtask, parentTaskId: taskId, projectId: task?.project?.id ?? null }),
     });
     setNewSubtask("");
     load();
