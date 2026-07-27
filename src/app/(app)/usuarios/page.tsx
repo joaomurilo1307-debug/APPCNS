@@ -25,20 +25,20 @@ const roleLabel: Record<string, string> = {
 export default function UsuariosPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const role = (session?.user as any)?.role;
+  const currentRole = (session?.user as any)?.role;
 
   useEffect(() => {
-    if (status === "authenticated" && role !== "ADMIN") {
+    if (status === "authenticated" && currentRole !== "ADMIN") {
       router.replace("/dashboard");
     }
-  }, [status, role, router]);
+  }, [status, currentRole, router]);
 
   const [users, setUsers] = useState<UserRow[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("COLABORADOR");
+  const [newUserRole, setNewUserRole] = useState("COLABORADOR");
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -56,7 +56,7 @@ export default function UsuariosPage() {
     const res = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password, role }),
+      body: JSON.stringify({ name, email, password, role: newUserRole }),
     });
     if (!res.ok) {
       const data = await res.json();
@@ -108,7 +108,7 @@ export default function UsuariosPage() {
           <input required placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm" />
           <input required type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm" />
           <input required type="password" placeholder="Senha provisória" value={password} onChange={(e) => setPassword(e.target.value)} className="w-48 rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
+          <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
             {Object.entries(roleLabel).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
