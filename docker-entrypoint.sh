@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-echo "Aplicando migrations do banco..."
-npx prisma migrate deploy
+echo "Aplicando schema no banco..."
+npx prisma db push --skip-generate --accept-data-loss
 
 if [ "$RUN_SEED" = "true" ]; then
   echo "Rodando seed..."
