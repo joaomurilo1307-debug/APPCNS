@@ -64,16 +64,19 @@ export default function SprintPage() {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  const isManager = role === "ADMIN" || role === "GESTOR_PROJETO";
+
   async function load() {
     if (!userId) return;
-    const res = await fetch(`/api/tasks?assigneeId=${userId}`);
+    const url = isManager ? "/api/tasks" : `/api/tasks?assigneeId=${userId}`;
+    const res = await fetch(url);
     setTasks(await res.json());
   }
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, isManager]);
 
   const { start: weekStart, end: weekEnd } = mondayToFridayRangeUTC();
 
@@ -116,6 +119,8 @@ export default function SprintPage() {
           <p className="text-sm text-gray-500">
             Segunda a sexta: {weekStart.toLocaleDateString("pt-BR", { timeZone: "UTC" })} a{" "}
             {weekEnd.toLocaleDateString("pt-BR", { timeZone: "UTC" })}
+            {" · "}
+            {isManager ? "tarefas de toda a equipe" : "suas tarefas"}
           </p>
         </div>
         <div className="flex rounded-md border border-gray-300 text-sm">
@@ -135,7 +140,11 @@ export default function SprintPage() {
       </div>
 
       {weekTasks.length === 0 && (
-        <p className="mb-4 text-sm text-gray-400">Nenhuma tarefa sua com início ou prazo nesta semana.</p>
+        <p className="mb-4 text-sm text-gray-400">
+          {isManager
+            ? "Nenhuma tarefa da equipe com início ou prazo nesta semana."
+            : "Nenhuma tarefa sua com início ou prazo nesta semana."}
+        </p>
       )}
 
       {view === "kanban" && weekTasks.length > 0 && (
