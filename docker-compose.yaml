@@ -9,10 +9,14 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       NEXTAUTH_URL: https://${APP_DOMAIN}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      APP_DOMAIN: ${APP_DOMAIN}
       UPLOAD_DIR: /app/uploads
       RUN_SEED: ${RUN_SEED}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
     volumes:
       - uploads:/app/uploads
     labels:

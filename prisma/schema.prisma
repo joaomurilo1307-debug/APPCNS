@@ -56,6 +56,14 @@ enum RotinaFrequencia {
   MENSAL
 }
 
+enum EventType {
+  REUNIAO
+  COMPROMISSO
+  ENTREGA
+  PRAZO
+  OUTRO
+}
+
 model User {
   id           String    @id @default(cuid())
   name         String
@@ -74,6 +82,23 @@ model User {
   attachments     Attachment[]
   taskComments    TaskComment[]
   assignedGoals   Goal[]
+  createdEvents   CalendarEvent[]         @relation("EventCreator")
+  eventInvites    CalendarEventAttendee[]
+  outlookAccount  OutlookAccount?
+}
+
+model OutlookAccount {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
+  expiresAt    DateTime
+  msEmail      String?
+  deltaLink    String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Team {
@@ -122,6 +147,7 @@ model Project {
   tasks    Task[]
   board    ProjectBoard?
   goals    Goal[]
+  events   CalendarEvent[]
 }
 
 model Goal {
@@ -141,6 +167,36 @@ model Goal {
   project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignedUser User?   @relation(fields: [assignedUserId], references: [id])
   assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
+}
+
+model CalendarEvent {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  type           EventType @default(COMPROMISSO)
+  startAt        DateTime
+  endAt          DateTime?
+  allDay         Boolean   @default(false)
+  projectId      String?
+  creatorId      String
+  outlookEventId String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  project   Project?                @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  creator   User                    @relation("EventCreator", fields: [creatorId], references: [id])
+  attendees CalendarEventAttendee[]
+}
+
+model CalendarEventAttendee {
+  id      String @id @default(cuid())
+  eventId String
+  userId  String
+
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
 }
 
 model ProjectBoard {
