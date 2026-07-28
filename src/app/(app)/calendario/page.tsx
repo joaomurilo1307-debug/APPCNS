@@ -12,6 +12,7 @@ import {
   colorFor,
   eventTypeColor,
   eventTypeLabel,
+  meetingTypeLabel,
 } from "@/lib/calendarColors";
 
 type RawTask = {
@@ -29,6 +30,7 @@ type RawEvent = {
   id: string;
   title: string;
   type: string;
+  meetingType: string | null;
   startAt: string;
   endAt: string | null;
   allDay: boolean;
@@ -156,6 +158,7 @@ export default function CalendarioPage() {
       projectId: e.project?.id ?? null,
       projectName: e.project?.name ?? null,
       type: e.type,
+      meetingType: e.meetingType,
       personName: e.creator.name,
       personColor: e.creator.avatarColor,
     }));
@@ -179,6 +182,7 @@ export default function CalendarioPage() {
 
   function chip(item: CalItem, compact = true) {
     const color = colorFor(item, colorBy);
+    const meetingLabel = item.meetingType ? meetingTypeLabel[item.meetingType] : null;
     return (
       <div
         key={item.id}
@@ -188,7 +192,7 @@ export default function CalendarioPage() {
         }}
         className={`flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-[11px] cursor-pointer hover:opacity-80`}
         style={{ backgroundColor: color + "22", borderLeft: `3px solid ${color}` }}
-        title={item.title}
+        title={meetingLabel ? `${meetingLabel} · ${item.title}` : item.title}
       >
         {!item.allDay && (
           <span className="shrink-0 text-[10px] text-gray-500">
@@ -196,6 +200,11 @@ export default function CalendarioPage() {
           </span>
         )}
         {item.locked && <span>🔒</span>}
+        {meetingLabel && (
+          <span className="shrink-0 rounded bg-white/60 px-1 text-[10px] font-medium" style={{ color }}>
+            {meetingLabel}
+          </span>
+        )}
         <span className="truncate">{item.title}</span>
         {!compact && item.personName && (
           <span className="ml-auto flex items-center gap-1 text-gray-500">

@@ -64,6 +64,17 @@ enum EventType {
   OUTRO
 }
 
+enum MeetingType {
+  ALINHAMENTO
+  KICKOFF
+  UM_A_UM
+  DIRETORIA
+  CLIENTE
+  TECNICA
+  TREINAMENTO
+  OUTRA
+}
+
 enum CustomFieldType {
   TEXTO
   NUMERO
@@ -258,6 +269,7 @@ model CalendarEvent {
   title          String
   description    String?
   type           EventType @default(COMPROMISSO)
+  meetingType    MeetingType?
   startAt        DateTime
   endAt          DateTime?
   allDay         Boolean   @default(false)

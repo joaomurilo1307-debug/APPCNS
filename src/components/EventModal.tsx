@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { eventTypeLabel } from "@/lib/calendarColors";
+import { eventTypeLabel, meetingTypeLabel } from "@/lib/calendarColors";
 
 type Project = { id: string; name: string };
 type Member = { id: string; name: string };
@@ -12,6 +12,7 @@ type EventDetail = {
   title: string;
   description: string | null;
   type: string;
+  meetingType: string | null;
   startAt: string;
   endAt: string | null;
   allDay: boolean;
@@ -46,6 +47,7 @@ export default function EventModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState("COMPROMISSO");
+  const [meetingType, setMeetingType] = useState("");
   const [start, setStart] = useState(() => toLocalInput(initialStart ?? new Date()));
   const [end, setEnd] = useState("");
   const [allDay, setAllDay] = useState(false);
@@ -65,6 +67,7 @@ export default function EventModal({
         setTitle(e.title);
         setDescription(e.description ?? "");
         setType(e.type);
+        setMeetingType(e.meetingType ?? "");
         setStart(toLocalInput(new Date(e.startAt)));
         setEnd(e.endAt ? toLocalInput(new Date(e.endAt)) : "");
         setAllDay(e.allDay);
@@ -86,6 +89,7 @@ export default function EventModal({
       title,
       description: description || undefined,
       type,
+      meetingType: type === "REUNIAO" ? meetingType || null : null,
       startAt: new Date(start).toISOString(),
       endAt: end ? new Date(end).toISOString() : null,
       allDay,
@@ -168,6 +172,22 @@ export default function EventModal({
               ))}
             </select>
           </label>
+          {type === "REUNIAO" && (
+            <label className="col-span-2 flex flex-col gap-1 text-xs text-gray-500">
+              Tipo de reunião
+              <select
+                disabled={!canEdit}
+                value={meetingType}
+                onChange={(e) => setMeetingType(e.target.value)}
+                className="rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-50"
+              >
+                <option value="">Selecione...</option>
+                {Object.entries(meetingTypeLabel).map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
         <label className="mb-3 flex items-center gap-2 text-sm text-gray-600">

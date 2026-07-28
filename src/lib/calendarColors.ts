@@ -29,6 +29,17 @@ export const eventTypeLabel: Record<string, string> = {
   OUTRO: "Outro",
 };
 
+export const meetingTypeLabel: Record<string, string> = {
+  ALINHAMENTO: "Alinhamento",
+  KICKOFF: "Kickoff",
+  UM_A_UM: "1:1",
+  DIRETORIA: "Diretoria",
+  CLIENTE: "Cliente",
+  TECNICA: "Técnica",
+  TREINAMENTO: "Treinamento",
+  OUTRA: "Outra",
+};
+
 export type ColorBy = "prioridade" | "responsavel" | "projeto";
 
 export type CalItem = {
@@ -42,6 +53,7 @@ export type CalItem = {
   projectName: string | null;
   priority?: string;
   type?: string;
+  meetingType?: string | null;
   personName: string | null;
   personColor: string | null;
   locked?: boolean;

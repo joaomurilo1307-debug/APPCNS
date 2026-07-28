@@ -36,6 +36,7 @@ const updateEventSchema = z.object({
   title: z.string().min(2).max(200).optional(),
   description: z.string().nullable().optional(),
   type: z.enum(["REUNIAO", "COMPROMISSO", "ENTREGA", "PRAZO", "OUTRO"]).optional(),
+  meetingType: z.enum(["ALINHAMENTO", "KICKOFF", "UM_A_UM", "DIRETORIA", "CLIENTE", "TECNICA", "TREINAMENTO", "OUTRA"]).nullable().optional(),
   startAt: z.string().datetime().optional(),
   endAt: z.string().datetime().nullable().optional(),
   allDay: z.boolean().optional(),
