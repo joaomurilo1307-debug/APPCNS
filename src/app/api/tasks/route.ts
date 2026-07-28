@@ -7,7 +7,7 @@ import { reconcileTaskOutlook } from "@/lib/taskOutlookSync";
 import { z } from "zod";
 
 async function visibilityFilterFor(userId: string, role: string) {
-  if (role === "ADMIN") return {};
+  if (role === "ADMIN" || role === "DIRETOR") return {};
 
   if (role === "CLIENTE") {
     return { OR: [{ project: { clients: { some: { userId } } } }, { assigneeId: userId }] };

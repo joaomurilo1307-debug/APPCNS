@@ -15,9 +15,9 @@ export async function isTeamManager(userId: string, teamId: string): Promise<boo
   return membership?.role === "GESTOR";
 }
 
-/** Admin sees everything. Gestor/Aprovador/Colaborador only see teams they belong to. Cliente/Visualizador handled separately (scoped por projeto). */
+/** Admin e Diretor veem tudo (Diretor tem visão ampla de setor/diretoria, sem direitos de gestão de usuários/sistema). Gestor/Aprovador/Colaborador só veem equipes das quais participam. Cliente/Visualizador tratados à parte (escopo por projeto). */
 export async function visibleTeamFilter(userId: string, role: string) {
-  if (role === "ADMIN") return {};
+  if (role === "ADMIN" || role === "DIRETOR") return {};
   const teamIds = await getUserTeamIds(userId);
   return { teamId: { in: teamIds } };
 }

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam } from "@/lib/permissions";
 import { computePercentComplete } from "@/lib/progress";
+import { sendNotificationEmail } from "@/lib/mailer";
 import { z } from "zod";
 
 export async function GET() {
@@ -86,6 +87,20 @@ export async function POST(req: Request) {
       ownerId: userId,
     },
   });
+
+  if (parsed.data.approverId) {
+    const approver = await prisma.user.findUnique({
+      where: { id: parsed.data.approverId },
+      select: { name: true, email: true },
+    });
+    if (approver) {
+      sendNotificationEmail({
+        to: [{ email: approver.email, name: approver.name }],
+        subject: `Aprovação pendente: ${project.name}`,
+        text: `Olá ${approver.name},\n\nO projeto "${project.name}" está aguardando sua aprovação no consominas-gestao.\n\nAcesse https://${process.env.APP_DOMAIN}/aprovacoes para decidir.`,
+      }).catch(() => {});
+    }
+  }
 
   return NextResponse.json(project, { status: 201 });
 }

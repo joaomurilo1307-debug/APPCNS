@@ -10,11 +10,68 @@ datasource db {
 
 enum UserRole {
   ADMIN
+  DIRETOR
   GESTOR_PROJETO
   APROVADOR
   COLABORADOR
   CLIENTE
   VISUALIZADOR
+}
+
+enum Horizon {
+  H1
+  H2
+  H3
+}
+
+enum RiskLevel {
+  BAIXO
+  MEDIO
+  ALTO
+}
+
+enum RiskStatus {
+  ABERTO
+  MITIGADO
+  ENCERRADO
+}
+
+enum IdeaStatus {
+  NOVA
+  EM_ANALISE
+  APROVADA
+  REJEITADA
+  CONVERTIDA
+}
+
+enum IdeaLevel {
+  BAIXO
+  MEDIO
+  ALTO
+}
+
+enum ScorecardScope {
+  PESSOAL
+  EQUIPE
+  PROJETO
+  CORPORATIVO
+}
+
+enum ScorecardStatusColor {
+  VERDE
+  AMARELO
+  VERMELHO
+}
+
+enum NotificationType {
+  TAREFA_ATRIBUIDA
+  PRAZO_ALTERADO
+  TAREFA_ATRASADA
+  APROVACAO_PENDENTE
+  MENCAO_COMENTARIO
+  REUNIAO_PROXIMA
+  CONVITE_PROJETO
+  OUTRO
 }
 
 enum ApprovalStatus {
@@ -101,7 +158,15 @@ model User {
   active       Boolean   @default(true)
   avatarColor  String    @default("#0f766e")
   lastSeenAt   DateTime?
+  cargo        String?
+  setor        String?
+  diretoria    String?
+  dataInicio   DateTime?
+  gestorImediatoId String?
   createdAt    DateTime  @default(now())
+
+  gestorImediato  User?      @relation("GestorImediato", fields: [gestorImediatoId], references: [id], onDelete: SetNull)
+  subordinados    User[]     @relation("GestorImediato")
 
   teams           UserTeam[]
   ownedProjects   Project[]      @relation("ProjectOwner")
@@ -118,6 +183,13 @@ model User {
   receivedDirectMessages DirectMessage[]   @relation("DMReceiver")
   teamMessages           TeamMessage[]     @relation("TeamMessageSender")
   teamMessageReads       TeamMessageRead[]
+  createdIdeas    Idea[]        @relation("IdeaCreator")
+  assignedIdeas   Idea[]        @relation("IdeaAssignee")
+  ideaComments    IdeaComment[]
+  decisionsMade   Decision[]
+  scorecardItems  ScorecardItem[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
 }
 
 model DirectMessage {
@@ -185,6 +257,7 @@ model Team {
   goals    Goal[]
   messages     TeamMessage[]
   messageReads TeamMessageRead[]
+  scorecardItems ScorecardItem[]
 }
 
 model UserTeam {
@@ -212,6 +285,8 @@ model Project {
   endDate        DateTime?
   actualStartedAt DateTime?
   actualEndedAt   DateTime?
+  horizon        Horizon?
+  orcamento      Float?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -224,6 +299,143 @@ model Project {
   goals    Goal[]
   events   CalendarEvent[]
   customFields CustomField[]
+  milestones Milestone[]
+  risks      Risk[]
+  decisions  Decision[]
+  ideas      Idea[]
+  scorecardItems ScorecardItem[]
+
+  @@index([teamId])
+  @@index([ownerId])
+}
+
+model Milestone {
+  id        String    @id @default(cuid())
+  projectId String
+  title     String
+  dueDate   DateTime?
+  done      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Risk {
+  id             String     @id @default(cuid())
+  projectId      String
+  title          String
+  description    String?    @db.Text
+  impact         RiskLevel  @default(MEDIO)
+  probability    RiskLevel  @default(MEDIO)
+  mitigationPlan String?    @db.Text
+  status         RiskStatus @default(ABERTO)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Decision {
+  id          String   @id @default(cuid())
+  projectId   String
+  title       String
+  description String?  @db.Text
+  decidedById String
+  decidedAt   DateTime @default(now())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  decidedBy User    @relation(fields: [decidedById], references: [id])
+}
+
+model Idea {
+  id              String     @id @default(cuid())
+  projectId       String
+  title           String
+  description     String?    @db.Text
+  category        String?
+  status          IdeaStatus @default(NOVA)
+  impact          IdeaLevel  @default(MEDIO)
+  viability       IdeaLevel  @default(MEDIO)
+  urgency         IdeaLevel  @default(MEDIO)
+  createdById     String
+  assigneeId      String?
+  dueDate         DateTime?
+  convertedTaskId String?    @unique
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User          @relation("IdeaCreator", fields: [createdById], references: [id])
+  assignee  User?         @relation("IdeaAssignee", fields: [assigneeId], references: [id])
+  comments  IdeaComment[]
+
+  @@index([projectId, status])
+}
+
+model IdeaComment {
+  id        String   @id @default(cuid())
+  ideaId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  idea   Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+}
+
+model ScorecardItem {
+  id            String               @id @default(cuid())
+  scope         ScorecardScope
+  teamId        String?
+  projectId     String?
+  userId        String?
+  objective     String
+  indicator     String
+  target        Float?
+  current       Float                @default(0)
+  unit          String?
+  statusColor   ScorecardStatusColor @default(VERDE)
+  trend         String?
+  periodicity   String?
+  justification String?              @db.Text
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  team    Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([scope])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType @default(OUTRO)
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
 }
 
 model CustomField {
@@ -268,6 +480,8 @@ model Goal {
   project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignedUser User?   @relation(fields: [assignedUserId], references: [id])
   assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
+
+  @@index([projectId])
 }
 
 model CalendarEvent {
@@ -291,6 +505,10 @@ model CalendarEvent {
   project   Project?                @relation(fields: [projectId], references: [id], onDelete: SetNull)
   creator   User                    @relation("EventCreator", fields: [creatorId], references: [id])
   attendees CalendarEventAttendee[]
+
+  @@index([projectId])
+  @@index([creatorId])
+  @@index([startAt])
 }
 
 model CalendarEventAttendee {
@@ -338,6 +556,7 @@ model Task {
   projectId         String?
   assigneeId        String?
   parentTaskId      String?
+  dependsOnId       String?
   locked            Boolean           @default(false)
   outlookEventId    String?           @unique
   actualStartedAt   DateTime?
@@ -349,9 +568,15 @@ model Task {
   assignee     User?                  @relation("TaskAssignee", fields: [assigneeId], references: [id])
   parentTask   Task?                  @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
   subtasks     Task[]                 @relation("Subtasks")
+  dependsOn    Task?                  @relation("TaskDependency", fields: [dependsOnId], references: [id], onDelete: SetNull)
+  blocksTasks  Task[]                 @relation("TaskDependency")
   attachments  Attachment[]
   comments     TaskComment[]
   customFieldValues TaskCustomFieldValue[]
+
+  @@index([projectId])
+  @@index([assigneeId])
+  @@index([parentTaskId])
 }
 
 model TaskComment {
@@ -363,6 +588,8 @@ model TaskComment {
 
   task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   author User @relation(fields: [authorId], references: [id])
+
+  @@index([taskId])
 }
 
 model Attachment {
@@ -376,4 +603,6 @@ model Attachment {
 
   task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   uploader User @relation(fields: [uploadedBy], references: [id])
+
+  @@index([taskId])
 }

@@ -12,11 +12,18 @@ type UserRow = {
   role: string;
   active: boolean;
   avatarColor: string;
+  cargo?: string | null;
+  setor?: string | null;
+  diretoria?: string | null;
+  dataInicio?: string | null;
+  gestorImediatoId?: string | null;
+  gestorImediato?: { id: string; name: string } | null;
   teams: { team: { id: string; name: string } }[];
 };
 
 const roleLabel: Record<string, string> = {
   ADMIN: "Admin",
+  DIRETOR: "Diretor",
   GESTOR_PROJETO: "Gestor de Projeto",
   APROVADOR: "Aprovador",
   COLABORADOR: "Colaborador",
@@ -42,6 +49,11 @@ export default function UsuariosPage() {
   const [password, setPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState("COLABORADOR");
   const [newUserColor, setNewUserColor] = useState(AVATAR_PALETTE[0]);
+  const [newCargo, setNewCargo] = useState("");
+  const [newSetor, setNewSetor] = useState("");
+  const [newDiretoria, setNewDiretoria] = useState("");
+  const [newGestorId, setNewGestorId] = useState("");
+  const [newDataInicio, setNewDataInicio] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -66,7 +78,18 @@ export default function UsuariosPage() {
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, role: newUserRole, avatarColor: newUserColor }),
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          role: newUserRole,
+          avatarColor: newUserColor,
+          cargo: newCargo || undefined,
+          setor: newSetor || undefined,
+          diretoria: newDiretoria || undefined,
+          gestorImediatoId: newGestorId || undefined,
+          dataInicio: newDataInicio ? new Date(newDataInicio).toISOString() : undefined,
+        }),
       });
       if (!res.ok) {
         let message = "Erro ao criar usuário";
@@ -83,6 +106,11 @@ export default function UsuariosPage() {
       setEmail("");
       setPassword("");
       setNewUserColor(AVATAR_PALETTE[0]);
+      setNewCargo("");
+      setNewSetor("");
+      setNewDiretoria("");
+      setNewGestorId("");
+      setNewDataInicio("");
       setShowForm(false);
       load();
     } catch {
@@ -104,6 +132,15 @@ export default function UsuariosPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ avatarColor: color }),
+    });
+    load();
+  }
+
+  async function updateField(id: string, field: string, value: string) {
+    await fetch(`/api/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value || null }),
     });
     load();
   }
@@ -142,6 +179,22 @@ export default function UsuariosPage() {
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
+          <input placeholder="Cargo" value={newCargo} onChange={(e) => setNewCargo(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          <input placeholder="Setor" value={newSetor} onChange={(e) => setNewSetor(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          <input placeholder="Diretoria" value={newDiretoria} onChange={(e) => setNewDiretoria(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          <select value={newGestorId} onChange={(e) => setNewGestorId(e.target.value)} className="w-44 rounded-md border border-gray-300 px-3 py-2 text-sm">
+            <option value="">Gestor imediato…</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+          <input
+            type="date"
+            title="Data de início"
+            value={newDataInicio}
+            onChange={(e) => setNewDataInicio(e.target.value)}
+            className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
           <div className="flex items-center gap-1">
             {AVATAR_PALETTE.map((c) => (
               <button
@@ -165,6 +218,10 @@ export default function UsuariosPage() {
               <th className="px-4 py-3">Nome</th>
               <th className="px-4 py-3">E-mail</th>
               <th className="px-4 py-3">Papel</th>
+              <th className="px-4 py-3">Cargo</th>
+              <th className="px-4 py-3">Setor</th>
+              <th className="px-4 py-3">Diretoria</th>
+              <th className="px-4 py-3">Gestor imediato</th>
               <th className="px-4 py-3">Cor</th>
               <th className="px-4 py-3">Equipes</th>
               <th className="px-4 py-3">Status</th>
@@ -188,6 +245,39 @@ export default function UsuariosPage() {
                   >
                     {Object.entries(roleLabel).map(([value, label]) => (
                       <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-4 py-3">
+                  <input
+                    defaultValue={u.cargo ?? ""}
+                    onBlur={(e) => e.target.value !== (u.cargo ?? "") && updateField(u.id, "cargo", e.target.value)}
+                    className="w-28 rounded-md border border-gray-200 px-2 py-1 text-xs"
+                  />
+                </td>
+                <td className="px-4 py-3">
+                  <input
+                    defaultValue={u.setor ?? ""}
+                    onBlur={(e) => e.target.value !== (u.setor ?? "") && updateField(u.id, "setor", e.target.value)}
+                    className="w-28 rounded-md border border-gray-200 px-2 py-1 text-xs"
+                  />
+                </td>
+                <td className="px-4 py-3">
+                  <input
+                    defaultValue={u.diretoria ?? ""}
+                    onBlur={(e) => e.target.value !== (u.diretoria ?? "") && updateField(u.id, "diretoria", e.target.value)}
+                    className="w-28 rounded-md border border-gray-200 px-2 py-1 text-xs"
+                  />
+                </td>
+                <td className="px-4 py-3">
+                  <select
+                    value={u.gestorImediatoId ?? ""}
+                    onChange={(e) => updateField(u.id, "gestorImediatoId", e.target.value)}
+                    className="w-32 rounded-md border border-gray-200 px-2 py-1 text-xs"
+                  >
+                    <option value="">—</option>
+                    {users.filter((o) => o.id !== u.id).map((o) => (
+                      <option key={o.id} value={o.id}>{o.name}</option>
                     ))}
                   </select>
                 </td>

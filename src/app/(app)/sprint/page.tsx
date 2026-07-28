@@ -64,7 +64,7 @@ export default function SprintPage() {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  const isManager = role === "ADMIN" || role === "GESTOR_PROJETO";
+  const isManager = role === "ADMIN" || role === "DIRETOR" || role === "GESTOR_PROJETO";
 
   async function load() {
     if (!userId) return;

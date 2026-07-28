@@ -8,7 +8,7 @@ import { sendMeetingInvite } from "@/lib/mailer";
 import { z } from "zod";
 
 async function visibilityFilterFor(userId: string, role: string) {
-  if (role === "ADMIN") return {};
+  if (role === "ADMIN" || role === "DIRETOR") return {};
 
   if (role === "CLIENTE") {
     return {

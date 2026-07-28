@@ -16,7 +16,7 @@ export default async function DashboardPage() {
       by: ["status"],
       _count: true,
       where:
-        role === "ADMIN"
+        role === "ADMIN" || role === "DIRETOR"
           ? {}
           : { OR: [{ project: { teamId: { in: teamIds } } }, { projectId: null, assigneeId: userId }] },
     }),

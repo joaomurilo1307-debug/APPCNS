@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendNotificationEmail } from "@/lib/mailer";
 import { z } from "zod";
 
 const approveSchema = z.object({
@@ -31,6 +32,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     where: { id: params.id },
     data: { approvalStatus: parsed.data.decision },
   });
+
+  const owner = await prisma.user.findUnique({
+    where: { id: project.ownerId },
+    select: { name: true, email: true },
+  });
+  if (owner) {
+    const decisionLabel = parsed.data.decision === "APROVADO" ? "aprovado" : "rejeitado";
+    sendNotificationEmail({
+      to: [{ email: owner.email, name: owner.name }],
+      subject: `Projeto ${decisionLabel}: ${project.name}`,
+      text: `Olá ${owner.name},\n\nO projeto "${project.name}" foi ${decisionLabel} no consominas-gestao.\n\nAcesse https://${process.env.APP_DOMAIN}/projetos/${project.id} para detalhes.`,
+    }).catch(() => {});
+  }
 
   return NextResponse.json(updated);
 }

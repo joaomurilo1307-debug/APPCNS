@@ -13,7 +13,7 @@ export async function GET() {
 
   const teams = await prisma.team.findMany({
     where:
-      role === "ADMIN"
+      role === "ADMIN" || role === "DIRETOR"
         ? {}
         : { members: { some: { userId } } },
     include: {

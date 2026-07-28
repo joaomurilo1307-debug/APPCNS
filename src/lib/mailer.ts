@@ -101,6 +101,26 @@ async function sendIcsMail(opts: {
   }
 }
 
+export async function sendNotificationEmail(opts: {
+  to: { email: string; name: string }[];
+  subject: string;
+  text: string;
+}) {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return;
+  if (opts.to.length === 0) return;
+
+  try {
+    await getTransporter().sendMail({
+      from: `"Consominas Gestão" <${process.env.SMTP_USER}>`,
+      to: opts.to.map((a) => `"${a.name}" <${a.email}>`).join(", "),
+      subject: opts.subject,
+      text: opts.text,
+    });
+  } catch (err) {
+    console.error("Falha ao enviar e-mail de notificação:", err);
+  }
+}
+
 export async function sendMeetingInvite(opts: {
   eventId: string;
   sequence: number;

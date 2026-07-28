@@ -5,10 +5,15 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 const updateUserSchema = z.object({
-  role: z.enum(["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR"]).optional(),
+  role: z.enum(["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR"]).optional(),
   active: z.boolean().optional(),
   name: z.string().min(2).max(150).optional(),
   avatarColor: z.string().optional(),
+  cargo: z.string().optional(),
+  setor: z.string().optional(),
+  diretoria: z.string().optional(),
+  dataInicio: z.string().datetime().nullable().optional(),
+  gestorImediatoId: z.string().nullable().optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -31,10 +36,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Sem permissão para essa alteração" }, { status: 403 });
   }
 
+  const { dataInicio, ...rest } = parsed.data;
   const updated = await prisma.user.update({
     where: { id: params.id },
-    data: parsed.data,
-    select: { id: true, name: true, email: true, role: true, active: true, avatarColor: true },
+    data: {
+      ...rest,
+      ...(dataInicio !== undefined ? { dataInicio: dataInicio ? new Date(dataInicio) : null } : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      active: true,
+      avatarColor: true,
+      cargo: true,
+      setor: true,
+      diretoria: true,
+      dataInicio: true,
+      gestorImediatoId: true,
+      gestorImediato: { select: { id: true, name: true } },
+    },
   });
 
   return NextResponse.json(updated);
