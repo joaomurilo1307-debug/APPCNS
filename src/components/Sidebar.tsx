@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import SignOutButton from "./SignOutButton";
 import ConsominasLogo from "./ConsominasLogo";
 import { playNotificationSound } from "@/lib/notificationSound";
+import MiniChatWidget from "./MiniChatWidget";
 
 const baseLinks = [
   { href: "/dashboard", label: "Início", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
@@ -31,6 +32,8 @@ export default function Sidebar() {
   const prevTotal = useRef<number | null>(null);
   const [meetingToast, setMeetingToast] = useState<{ title: string; when: string } | null>(null);
   const alertedEventIds = useRef<Set<string>>(new Set());
+  const [callToast, setCallToast] = useState<{ id: string; fromName: string; label: string; url: string | null } | null>(null);
+  const alertedCallIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!session) return;
@@ -77,16 +80,42 @@ export default function Sidebar() {
       }
     }
 
+    async function pollIncomingCalls() {
+      try {
+        const res = await fetch("/api/messages/incoming-calls");
+        if (!res.ok) return;
+        const calls: { id: string; type: "direct" | "team"; fromName: string; teamName?: string; url: string | null }[] =
+          await res.json();
+        for (const call of calls) {
+          if (alertedCallIds.current.has(call.id)) continue;
+          alertedCallIds.current.add(call.id);
+          playNotificationSound();
+          setCallToast({
+            id: call.id,
+            fromName: call.fromName,
+            label: call.type === "team" ? `${call.fromName} · #${call.teamName}` : call.fromName,
+            url: call.url,
+          });
+          setTimeout(() => setCallToast((cur) => (cur?.id === call.id ? null : cur)), 30000);
+        }
+      } catch {
+        // rede instavel; tenta de novo no proximo ciclo
+      }
+    }
+
     heartbeat();
     pollUnread();
     pollUpcomingMeetings();
+    pollIncomingCalls();
     const hb = setInterval(heartbeat, 25000);
     const pu = setInterval(pollUnread, 6000);
     const pm = setInterval(pollUpcomingMeetings, 30000);
+    const pc = setInterval(pollIncomingCalls, 5000);
     return () => {
       clearInterval(hb);
       clearInterval(pu);
       clearInterval(pm);
+      clearInterval(pc);
     };
   }, [session]);
 
@@ -134,6 +163,34 @@ export default function Sidebar() {
           </button>
         </div>
       )}
+
+      {callToast && (
+        <div className="fixed bottom-32 right-6 z-[100] w-80 animate-pulse rounded-xl border border-green-200 bg-white p-4 shadow-xl">
+          <p className="mb-1 text-xs font-semibold text-green-700">📞 Chamada de {callToast.fromName}</p>
+          <p className="text-sm text-gray-500">{callToast.label}</p>
+          <div className="mt-2 flex gap-2">
+            {callToast.url && (
+              <a
+                href={callToast.url}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setCallToast(null)}
+                className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+              >
+                Atender
+              </a>
+            )}
+            <button
+              onClick={() => setCallToast(null)}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50"
+            >
+              Dispensar
+            </button>
+          </div>
+        </div>
+      )}
+
+      <MiniChatWidget />
     </>
   );
 }

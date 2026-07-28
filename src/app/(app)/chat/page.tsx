@@ -3,20 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Avatar from "@/components/Avatar";
+import LinkedText from "@/components/LinkedText";
 import { generateJitsiRoomUrl } from "@/lib/jitsi";
-
-function renderWithLinks(text: string) {
-  const parts = text.split(/(https?:\/\/\S+)/g);
-  return parts.map((part, i) =>
-    /^https?:\/\//.test(part) ? (
-      <a key={i} href={part} target="_blank" rel="noreferrer" className="underline">
-        {part}
-      </a>
-    ) : (
-      <span key={i}>{part}</span>
-    )
-  );
-}
+import { buildCallMessage } from "@/lib/callMessage";
+import { setActiveChat, getActiveChat } from "@/lib/activeChat";
 
 type Contact = { id: string; name: string; avatarColor: string; role: string; online: boolean };
 type Team = { id: string; name: string };
@@ -66,6 +56,25 @@ export default function ChatPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId]);
+
+  useEffect(() => {
+    if (selected) return;
+    const saved = getActiveChat();
+    if (saved) setSelected({ type: saved.type, id: saved.id } as Selection);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!selected) return;
+    if (selected.type === "direct") {
+      const c = contacts.find((c) => c.id === selected.id);
+      if (c) setActiveChat({ type: "direct", id: c.id, name: c.name, avatarColor: c.avatarColor });
+    } else {
+      const t = teams.find((t) => t.id === selected.id);
+      if (t) setActiveChat({ type: "team", id: t.id, name: t.name });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, contacts, teams]);
 
   async function loadConversation() {
     if (!selected) return;
@@ -118,7 +127,7 @@ export default function ChatPage() {
         ? teams.find((t) => t.id === selected.id)?.name ?? "Equipe"
         : contacts.find((c) => c.id === selected.id)?.name ?? "Chamada";
     const url = generateJitsiRoomUrl(roomName);
-    const body = `📹 Chamada iniciada — entre pelo link: ${url}`;
+    const body = buildCallMessage(url);
     if (selected.type === "direct") {
       await fetch(`/api/messages/direct/${selected.id}`, {
         method: "POST",
@@ -225,7 +234,7 @@ export default function ChatPage() {
                         {selected.type === "team" && !mine && (
                           <p className="mb-0.5 text-[11px] font-semibold opacity-70">{m.senderName}</p>
                         )}
-                        <p className="whitespace-pre-wrap break-words">{renderWithLinks(m.body)}</p>
+                        <p className="whitespace-pre-wrap break-words"><LinkedText text={m.body} /></p>
                         <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-gray-400"}`}>
                           {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                         </p>
