@@ -293,9 +293,10 @@ model CalendarEvent {
 }
 
 model CalendarEventAttendee {
-  id      String @id @default(cuid())
+  id     String         @id @default(cuid())
   eventId String
-  userId  String
+  userId String
+  status ApprovalStatus @default(PENDENTE)
 
   event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)

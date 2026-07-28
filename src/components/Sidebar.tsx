@@ -17,7 +17,7 @@ const baseLinks = [
   { href: "/calendario", label: "Calendário", roles: ["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/chat", label: "Chat", roles: ["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/equipes", label: "Equipes", roles: ["ADMIN", "GESTOR_PROJETO"] },
-  { href: "/aprovacoes", label: "Aprovações", roles: ["ADMIN", "APROVADOR"] },
+  { href: "/aprovacoes", label: "Aprovações", roles: ["ADMIN", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/usuarios", label: "Usuários", roles: ["ADMIN"] },
 ];
 

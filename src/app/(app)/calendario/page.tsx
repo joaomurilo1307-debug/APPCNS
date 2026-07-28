@@ -36,6 +36,7 @@ type RawEvent = {
   allDay: boolean;
   project: { id: string; name: string } | null;
   creator: { id: string; name: string; avatarColor: string | null };
+  attendees: { userId: string; status: string }[];
 };
 
 type ViewMode = "month" | "week" | "day" | "faixa";
@@ -148,20 +149,27 @@ export default function CalendarioPage() {
         personColor: t.assignee?.avatarColor ?? null,
         locked: t.locked,
       }));
-    const eventItems: CalItem[] = events.map((e) => ({
-      id: e.id,
-      kind: "event",
-      title: e.title,
-      start: new Date(e.startAt),
-      end: e.endAt ? new Date(e.endAt) : null,
-      allDay: e.allDay,
-      projectId: e.project?.id ?? null,
-      projectName: e.project?.name ?? null,
-      type: e.type,
-      meetingType: e.meetingType,
-      personName: e.creator.name,
-      personColor: e.creator.avatarColor,
-    }));
+    const eventItems: CalItem[] = events
+      .filter((e) => {
+        if (e.creator.id === currentUserId) return true;
+        const mine = e.attendees.find((a) => a.userId === currentUserId);
+        // Convite ainda pendente: so aparece na agenda depois que a pessoa aceitar (fica na aba Aprovacoes ate la).
+        return !mine || mine.status !== "PENDENTE";
+      })
+      .map((e) => ({
+        id: e.id,
+        kind: "event",
+        title: e.title,
+        start: new Date(e.startAt),
+        end: e.endAt ? new Date(e.endAt) : null,
+        allDay: e.allDay,
+        projectId: e.project?.id ?? null,
+        projectName: e.project?.name ?? null,
+        type: e.type,
+        meetingType: e.meetingType,
+        personName: e.creator.name,
+        personColor: e.creator.avatarColor,
+      }));
     return [...taskItems, ...eventItems].sort((a, b) => a.start.getTime() - b.start.getTime());
   }, [tasks, events]);
 

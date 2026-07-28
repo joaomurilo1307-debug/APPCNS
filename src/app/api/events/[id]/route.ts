@@ -67,9 +67,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (parsed.data.endAt !== undefined) data.endAt = parsed.data.endAt ? new Date(parsed.data.endAt) : null;
 
   if (attendeeIds !== undefined) {
+    // So mexe em quem entrou/saiu da lista — preserva o status (Aceito/Recusado) de quem ja estava e ja respondeu.
+    const existing = await prisma.calendarEventAttendee.findMany({
+      where: { eventId: params.id },
+      select: { userId: true },
+    });
+    const existingIds = existing.map((a) => a.userId);
+    const toRemove = existingIds.filter((id) => !attendeeIds.includes(id));
+    const toAdd = attendeeIds.filter((id) => !existingIds.includes(id));
+
     data.attendees = {
-      deleteMany: {},
-      create: attendeeIds.map((uid) => ({ userId: uid })),
+      deleteMany: toRemove.length ? { userId: { in: toRemove } } : undefined,
+      create: toAdd.map((uid) => ({ userId: uid })),
     };
   }
 

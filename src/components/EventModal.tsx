@@ -20,7 +20,19 @@ type EventDetail = {
   allDay: boolean;
   projectId: string | null;
   creator: { id: string; name: string };
-  attendees: { user: { id: string; name: string } }[];
+  attendees: { user: { id: string; name: string }; status: string }[];
+};
+
+const rsvpLabel: Record<string, string> = {
+  PENDENTE: "Pendente",
+  APROVADO: "Aceitou",
+  REJEITADO: "Recusou",
+};
+
+const rsvpStyle: Record<string, string> = {
+  PENDENTE: "text-gray-400",
+  APROVADO: "text-green-600",
+  REJEITADO: "text-red-500",
 };
 
 function toLocalInput(d: Date) {
@@ -57,6 +69,7 @@ export default function EventModal({
   const [allDay, setAllDay] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [attendeeIds, setAttendeeIds] = useState<string[]>([]);
+  const [attendeeStatuses, setAttendeeStatuses] = useState<Record<string, string>>({});
   const [creatorId, setCreatorId] = useState(currentUserId);
   const [canEdit, setCanEdit] = useState(true);
   const { data: session } = useSession();
@@ -79,6 +92,7 @@ export default function EventModal({
         setAllDay(e.allDay);
         setProjectId(e.projectId ?? "");
         setAttendeeIds(e.attendees.map((a) => a.user.id));
+        setAttendeeStatuses(Object.fromEntries(e.attendees.map((a) => [a.user.id, a.status])));
         setCreatorId(e.creator.id);
         setCanEdit(e.creator.id === currentUserId || isPrivileged);
         setLoaded(true);
@@ -277,7 +291,12 @@ export default function EventModal({
                   checked={attendeeIds.includes(m.id)}
                   onChange={() => toggleAttendee(m.id)}
                 />
-                {m.name}
+                <span className="flex-1">{m.name}</span>
+                {attendeeIds.includes(m.id) && attendeeStatuses[m.id] && (
+                  <span className={`text-xs ${rsvpStyle[attendeeStatuses[m.id]]}`}>
+                    {rsvpLabel[attendeeStatuses[m.id]]}
+                  </span>
+                )}
               </label>
             ))}
             {members.length === 0 && <p className="text-xs text-gray-400">Nenhum colega disponível.</p>}
