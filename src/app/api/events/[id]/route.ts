@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam } from "@/lib/permissions";
 import { pushUpdateEvent, pushDeleteEvent } from "@/lib/microsoftGraph";
+import { sendMeetingInvite, sendMeetingCancellation } from "@/lib/mailer";
 import { z } from "zod";
 
 async function canEditEvent(userId: string, role: string, event: { creatorId: string; projectId: string | null }) {
@@ -82,15 +83,35 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     };
   }
 
+  const nextSequence = event.icsSequence + 1;
   const updated = await prisma.calendarEvent.update({
     where: { id: params.id },
-    data,
+    data: { ...data, icsSequence: nextSequence },
     include: {
       project: { select: { id: true, name: true } },
-      creator: { select: { id: true, name: true, avatarColor: true } },
+      creator: { select: { id: true, name: true, avatarColor: true, email: true } },
       attendees: { include: { user: { select: { id: true, name: true, avatarColor: true } } } },
     },
   });
+
+  if (updated.attendees.length) {
+    const attendeeUsers = await prisma.user.findMany({
+      where: { id: { in: updated.attendees.map((a) => a.userId) } },
+      select: { name: true, email: true },
+    });
+    await sendMeetingInvite({
+      eventId: updated.id,
+      sequence: nextSequence,
+      title: updated.title,
+      description: updated.description,
+      startAt: updated.startAt,
+      endAt: updated.endAt,
+      allDay: updated.allDay,
+      organizerEmail: updated.creator.email,
+      organizerName: updated.creator.name,
+      attendees: attendeeUsers.map((u) => ({ email: u.email, name: u.name })),
+    });
+  }
 
   if (updated.outlookEventId) {
     const attendeeEmails = updated.attendees.length
@@ -130,13 +151,33 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const event = await prisma.calendarEvent.findUnique({ where: { id: params.id } });
+  const event = await prisma.calendarEvent.findUnique({
+    where: { id: params.id },
+    include: {
+      creator: { select: { name: true, email: true } },
+      attendees: { include: { user: { select: { name: true, email: true } } } },
+    },
+  });
   if (!event) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
   const allowed = await canEditEvent(userId, role, event);
   if (!allowed) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+
+  if (event.attendees.length) {
+    await sendMeetingCancellation({
+      eventId: event.id,
+      sequence: event.icsSequence + 1,
+      title: event.title,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      allDay: event.allDay,
+      organizerEmail: event.creator.email,
+      organizerName: event.creator.name,
+      attendees: event.attendees.map((a) => ({ email: a.user.email, name: a.user.name })),
+    });
+  }
 
   if (event.outlookEventId) {
     await pushDeleteEvent(event.creatorId, event.outlookEventId);

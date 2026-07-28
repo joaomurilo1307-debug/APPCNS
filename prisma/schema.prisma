@@ -284,6 +284,7 @@ model CalendarEvent {
   outlookEventId String?   @unique
   onlineMeetingProvider OnlineMeetingProvider @default(NENHUM)
   onlineMeetingUrl      String?               @db.Text
+  icsSequence    Int       @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

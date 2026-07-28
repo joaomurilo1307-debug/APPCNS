@@ -17,6 +17,11 @@ services:
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
     volumes:
       - uploads:/app/uploads
     labels:

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUserTeamIds, isReadOnlyRole } from "@/lib/permissions";
 import { pushCreateEvent } from "@/lib/microsoftGraph";
+import { sendMeetingInvite } from "@/lib/mailer";
 import { z } from "zod";
 
 async function visibilityFilterFor(userId: string, role: string) {
@@ -108,14 +109,29 @@ export async function POST(req: Request) {
     },
   });
 
-  const attendeeEmails = event.attendees.length
-    ? (
-        await prisma.user.findMany({
-          where: { id: { in: event.attendees.map((a) => a.userId) } },
-          select: { email: true },
-        })
-      ).map((u) => u.email)
-    : undefined;
+  const attendeeUsers = event.attendees.length
+    ? await prisma.user.findMany({
+        where: { id: { in: event.attendees.map((a) => a.userId) } },
+        select: { name: true, email: true },
+      })
+    : [];
+  const attendeeEmails = attendeeUsers.length ? attendeeUsers.map((u) => u.email) : undefined;
+
+  const organizer = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+  if (organizer && attendeeUsers.length) {
+    await sendMeetingInvite({
+      eventId: event.id,
+      sequence: event.icsSequence,
+      title: event.title,
+      description: event.description,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      allDay: event.allDay,
+      organizerEmail: organizer.email,
+      organizerName: organizer.name,
+      attendees: attendeeUsers.map((u) => ({ email: u.email, name: u.name })),
+    });
+  }
 
   const created = await pushCreateEvent(
     userId,
