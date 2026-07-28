@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import SignOutButton from "./SignOutButton";
 import ConsominasLogo from "./ConsominasLogo";
-import { playNotificationSound } from "@/lib/notificationSound";
+import { playNotificationSound, playRingtone } from "@/lib/notificationSound";
 import MiniChatWidget from "./MiniChatWidget";
 
 const baseLinks = [
@@ -89,7 +89,7 @@ export default function Sidebar() {
         for (const call of calls) {
           if (alertedCallIds.current.has(call.id)) continue;
           alertedCallIds.current.add(call.id);
-          playNotificationSound();
+          playRingtone();
           setCallToast({
             id: call.id,
             fromName: call.fromName,
@@ -97,6 +97,9 @@ export default function Sidebar() {
             url: call.url,
           });
           setTimeout(() => setCallToast((cur) => (cur?.id === call.id ? null : cur)), 30000);
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification("Chamada recebida", { body: `${call.fromName} está te chamando` });
+          }
         }
       } catch {
         // rede instavel; tenta de novo no proximo ciclo
@@ -118,6 +121,12 @@ export default function Sidebar() {
       clearInterval(pc);
     };
   }, [session]);
+
+  useEffect(() => {
+    if (!callToast) return;
+    const ring = setInterval(() => playRingtone(), 1800);
+    return () => clearInterval(ring);
+  }, [callToast?.id]);
 
   return (
     <>

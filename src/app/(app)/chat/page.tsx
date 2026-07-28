@@ -16,6 +16,16 @@ type Unread = { direct: Record<string, number>; team: Record<string, number> };
 
 type Selection = { type: "direct"; id: string } | { type: "team"; id: string } | null;
 
+type CallLogEntry = {
+  id: string;
+  type: "direct" | "team";
+  outgoing: boolean;
+  counterpartName: string;
+  teamName?: string;
+  url: string | null;
+  createdAt: string;
+};
+
 export default function ChatPage() {
   const { data: session } = useSession();
   const myId = (session?.user as any)?.id;
@@ -28,6 +38,13 @@ export default function ChatPage() {
   const [teamMsgs, setTeamMsgs] = useState<TeamMsg[]>([]);
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [showCallLog, setShowCallLog] = useState(false);
+  const [callLog, setCallLog] = useState<CallLogEntry[]>([]);
+
+  async function loadCallLog() {
+    const res = await fetch("/api/messages/calls");
+    if (res.ok) setCallLog(await res.json());
+  }
 
   async function loadContacts() {
     const res = await fetch("/api/presence");
@@ -156,7 +173,20 @@ export default function ChatPage() {
       : teams.find((t) => t.id === selected?.id)?.name;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] gap-4">
+    <div className="flex h-[calc(100vh-4rem)] flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold">Chat</h1>
+        <button
+          onClick={() => {
+            setShowCallLog(true);
+            loadCallLog();
+          }}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+        >
+          📞 Histórico de chamadas
+        </button>
+      </div>
+      <div className="flex flex-1 gap-4 overflow-hidden">
       <div className="flex w-72 shrink-0 flex-col overflow-y-auto rounded-xl border border-gray-200 bg-white">
         <div className="border-b border-gray-100 p-3">
           <p className="text-xs font-semibold text-gray-500">Equipes</p>
@@ -257,6 +287,49 @@ export default function ChatPage() {
           </>
         )}
       </div>
+      </div>
+
+      {showCallLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setShowCallLog(false)}>
+          <div
+            className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 p-4">
+              <h2 className="text-sm font-semibold">📞 Histórico de chamadas</h2>
+              <button onClick={() => setShowCallLog(false)} className="text-gray-400 hover:text-gray-700">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {callLog.length === 0 && <p className="p-3 text-sm text-gray-400">Nenhuma chamada registrada ainda.</p>}
+              <div className="flex flex-col gap-2">
+                {callLog.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-2.5 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        {c.outgoing ? "Você ligou para " : "Chamada de "}
+                        {c.type === "team" ? `# ${c.teamName}` : c.counterpartName}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {new Date(c.createdAt).toLocaleString("pt-BR")}
+                      </p>
+                    </div>
+                    {c.url && (
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="shrink-0 rounded-md bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand-dark hover:bg-brand/20"
+                      >
+                        Entrar
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
