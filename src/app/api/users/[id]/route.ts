@@ -16,6 +16,9 @@ const updateUserSchema = z.object({
   dataInicio: z.string().datetime().nullable().optional(),
   gestorImediatoId: z.string().nullable().optional(),
   password: z.string().min(8).optional(),
+  nivelHierarquico: z.enum(["DIRETORIA", "GERENCIA", "COORDENACAO", "COLABORADOR"]).nullable().optional(),
+  nucleoId: z.string().nullable().optional(),
+  newNucleoName: z.string().min(2).max(100).optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -42,11 +45,23 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Só administradores podem redefinir a senha de outra pessoa" }, { status: 403 });
   }
 
-  const { dataInicio, password, ...rest } = parsed.data;
+  const { dataInicio, password, newNucleoName, ...rest } = parsed.data;
+
+  let nucleoId = rest.nucleoId;
+  if (!nucleoId && newNucleoName) {
+    const nucleo = await prisma.nucleo.upsert({
+      where: { name: newNucleoName },
+      update: {},
+      create: { name: newNucleoName },
+    });
+    nucleoId = nucleo.id;
+  }
+
   const updated = await prisma.user.update({
     where: { id: params.id },
     data: {
       ...rest,
+      ...(nucleoId !== undefined ? { nucleoId } : {}),
       ...(dataInicio !== undefined ? { dataInicio: dataInicio ? new Date(dataInicio) : null } : {}),
       ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
     },
@@ -63,6 +78,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       dataInicio: true,
       gestorImediatoId: true,
       gestorImediato: { select: { id: true, name: true } },
+      nivelHierarquico: true,
+      nucleoId: true,
+      nucleo: { select: { id: true, name: true } },
     },
   });
 

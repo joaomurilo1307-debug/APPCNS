@@ -19,8 +19,13 @@ type UserRow = {
   dataInicio?: string | null;
   gestorImediatoId?: string | null;
   gestorImediato?: { id: string; name: string } | null;
+  nivelHierarquico?: string | null;
+  nucleoId?: string | null;
+  nucleo?: { id: string; name: string } | null;
   teams: { team: { id: string; name: string } }[];
 };
+
+type NucleoOption = { id: string; name: string };
 
 const roleLabel: Record<string, string> = {
   ADMIN: "Admin",
@@ -30,6 +35,13 @@ const roleLabel: Record<string, string> = {
   COLABORADOR: "Colaborador",
   CLIENTE: "Cliente",
   VISUALIZADOR: "Visualizador (só leitura)",
+};
+
+const nivelLabel: Record<string, string> = {
+  DIRETORIA: "Diretoria",
+  GERENCIA: "Gerência",
+  COORDENACAO: "Coordenação",
+  COLABORADOR: "Colaborador",
 };
 
 export default function UsuariosPage() {
@@ -55,6 +67,10 @@ export default function UsuariosPage() {
   const [newDiretoria, setNewDiretoria] = useState("");
   const [newGestorId, setNewGestorId] = useState("");
   const [newDataInicio, setNewDataInicio] = useState("");
+  const [newNivel, setNewNivel] = useState("");
+  const [newNucleoId, setNewNucleoId] = useState("");
+  const [newNucleoName, setNewNucleoName] = useState("");
+  const [nucleos, setNucleos] = useState<NucleoOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -71,8 +87,14 @@ export default function UsuariosPage() {
     }
   }
 
+  async function loadNucleos() {
+    const res = await fetch("/api/nucleos");
+    if (res.ok) setNucleos(await res.json());
+  }
+
   useEffect(() => {
     load();
+    loadNucleos();
   }, []);
 
   async function handleCreate(e: React.FormEvent) {
@@ -93,6 +115,9 @@ export default function UsuariosPage() {
           diretoria: newDiretoria || undefined,
           gestorImediatoId: newGestorId || undefined,
           dataInicio: newDataInicio ? new Date(newDataInicio).toISOString() : undefined,
+          nivelHierarquico: newNivel || undefined,
+          nucleoId: newNucleoName ? undefined : newNucleoId || undefined,
+          newNucleoName: newNucleoName || undefined,
         }),
       });
       if (!res.ok) {
@@ -124,8 +149,12 @@ export default function UsuariosPage() {
       setNewDiretoria("");
       setNewGestorId("");
       setNewDataInicio("");
+      setNewNivel("");
+      setNewNucleoId("");
+      setNewNucleoName("");
       setShowForm(false);
       load();
+      loadNucleos();
     } catch {
       setError("Não foi possível conectar ao servidor. Tente novamente em alguns segundos.");
     }
@@ -237,6 +266,34 @@ export default function UsuariosPage() {
             onChange={(e) => setNewDataInicio(e.target.value)}
             className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
           />
+          <select value={newNivel} onChange={(e) => setNewNivel(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
+            <option value="">Nível hierárquico…</option>
+            {Object.entries(nivelLabel).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
+          <select
+            value={newNucleoId}
+            onChange={(e) => {
+              setNewNucleoId(e.target.value);
+              if (e.target.value) setNewNucleoName("");
+            }}
+            className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">Núcleo…</option>
+            {nucleos.map((n) => (
+              <option key={n.id} value={n.id}>{n.name}</option>
+            ))}
+          </select>
+          <input
+            placeholder="Ou novo núcleo"
+            value={newNucleoName}
+            onChange={(e) => {
+              setNewNucleoName(e.target.value);
+              if (e.target.value) setNewNucleoId("");
+            }}
+            className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
           <div className="flex items-center gap-1">
             {AVATAR_PALETTE.map((c) => (
               <button
@@ -263,6 +320,8 @@ export default function UsuariosPage() {
               <th className="px-4 py-3">Cargo</th>
               <th className="px-4 py-3">Setor</th>
               <th className="px-4 py-3">Diretoria</th>
+              <th className="px-4 py-3">Nível</th>
+              <th className="px-4 py-3">Núcleo</th>
               <th className="px-4 py-3">Gestor imediato</th>
               <th className="px-4 py-3">Cor</th>
               <th className="px-4 py-3">Equipes</th>
@@ -311,6 +370,30 @@ export default function UsuariosPage() {
                     onBlur={(e) => e.target.value !== (u.diretoria ?? "") && updateField(u.id, "diretoria", e.target.value)}
                     className="w-28 rounded-md border border-gray-200 px-2 py-1 text-xs"
                   />
+                </td>
+                <td className="px-4 py-3">
+                  <select
+                    value={u.nivelHierarquico ?? ""}
+                    onChange={(e) => updateField(u.id, "nivelHierarquico", e.target.value)}
+                    className="w-28 rounded-md border border-gray-200 px-2 py-1 text-xs"
+                  >
+                    <option value="">—</option>
+                    {Object.entries(nivelLabel).map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-4 py-3">
+                  <select
+                    value={u.nucleoId ?? ""}
+                    onChange={(e) => updateField(u.id, "nucleoId", e.target.value)}
+                    className="w-28 rounded-md border border-gray-200 px-2 py-1 text-xs"
+                  >
+                    <option value="">—</option>
+                    {nucleos.map((n) => (
+                      <option key={n.id} value={n.id}>{n.name}</option>
+                    ))}
+                  </select>
                 </td>
                 <td className="px-4 py-3">
                   <select

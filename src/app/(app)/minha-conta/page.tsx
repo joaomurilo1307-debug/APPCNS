@@ -13,6 +13,8 @@ type Me = {
   cargo: string | null;
   setor: string | null;
   diretoria: string | null;
+  nivelHierarquico: string | null;
+  nucleo: { id: string; name: string } | null;
   gestorImediato: { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null } | null;
 };
 
@@ -24,6 +26,13 @@ const roleLabel: Record<string, string> = {
   COLABORADOR: "Colaborador",
   CLIENTE: "Cliente",
   VISUALIZADOR: "Visualizador",
+};
+
+const nivelLabel: Record<string, string> = {
+  DIRETORIA: "Diretoria",
+  GERENCIA: "Gerência",
+  COORDENACAO: "Coordenação",
+  COLABORADOR: "Colaborador",
 };
 
 function resizeImageToDataUrl(file: File, maxSize = 320, quality = 0.85): Promise<string> {
@@ -199,6 +208,10 @@ export default function MinhaContaPage() {
           <dd>{me.setor ?? "—"}</dd>
           <dt className="text-gray-400">Diretoria</dt>
           <dd>{me.diretoria ?? "—"}</dd>
+          <dt className="text-gray-400">Nível hierárquico</dt>
+          <dd>{me.nivelHierarquico ? nivelLabel[me.nivelHierarquico] : "—"}</dd>
+          <dt className="text-gray-400">Núcleo</dt>
+          <dd>{me.nucleo?.name ?? "—"}</dd>
           <dt className="text-gray-400">Gestor imediato</dt>
           <dd>
             {me.gestorImediato ? (

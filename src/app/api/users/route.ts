@@ -28,6 +28,9 @@ export async function GET() {
       dataInicio: true,
       gestorImediatoId: true,
       gestorImediato: { select: { id: true, name: true } },
+      nivelHierarquico: true,
+      nucleoId: true,
+      nucleo: { select: { id: true, name: true } },
       teams: { include: { team: { select: { id: true, name: true } } } },
     },
     orderBy: { createdAt: "asc" },
@@ -47,6 +50,9 @@ const createUserSchema = z.object({
   diretoria: z.string().optional(),
   dataInicio: z.string().datetime().nullable().optional(),
   gestorImediatoId: z.string().nullable().optional(),
+  nivelHierarquico: z.enum(["DIRETORIA", "GERENCIA", "COORDENACAO", "COLABORADOR"]).nullable().optional(),
+  nucleoId: z.string().nullable().optional(),
+  newNucleoName: z.string().min(2).max(100).optional(),
 });
 
 export async function POST(req: Request) {
@@ -65,6 +71,16 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
 
+  let nucleoId = parsed.data.nucleoId ?? null;
+  if (!nucleoId && parsed.data.newNucleoName) {
+    const nucleo = await prisma.nucleo.upsert({
+      where: { name: parsed.data.newNucleoName },
+      update: {},
+      create: { name: parsed.data.newNucleoName },
+    });
+    nucleoId = nucleo.id;
+  }
+
   const user = await prisma.user.create({
     data: {
       name: parsed.data.name,
@@ -77,6 +93,8 @@ export async function POST(req: Request) {
       diretoria: parsed.data.diretoria,
       dataInicio: parsed.data.dataInicio ? new Date(parsed.data.dataInicio) : null,
       gestorImediatoId: parsed.data.gestorImediatoId,
+      nivelHierarquico: parsed.data.nivelHierarquico ?? undefined,
+      nucleoId,
     },
     select: { id: true, name: true, email: true, role: true, active: true, avatarColor: true },
   });

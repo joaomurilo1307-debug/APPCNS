@@ -22,6 +22,8 @@ export async function GET() {
       cargo: true,
       setor: true,
       diretoria: true,
+      nivelHierarquico: true,
+      nucleo: { select: { id: true, name: true } },
       gestorImediato: { select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true } },
     },
   });
