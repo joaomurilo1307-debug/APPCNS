@@ -114,6 +114,7 @@ export default function TaskListView({
   const [importRows, setImportRows] = useState<Record<string, any>[] | null>(null);
   const [importMappings, setImportMappings] = useState<ColumnMapping[]>([]);
   const [importing, setImporting] = useState(false);
+  const [showImportHelp, setShowImportHelp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function loadAll() {
@@ -291,7 +292,7 @@ export default function TaskListView({
     XLSX.writeFile(wb, `${projectName.replace(/[^\w\-]+/g, "_")}-backlog.xlsx`);
   }
 
-  function handleDownloadTemplate() {
+  function buildTemplateExample() {
     const importableFields = fields.filter((f) => f.type !== "FORMULA");
     const headers = ["Título", "Descrição", "Status", "Prioridade", "Responsável", "Início", "Prazo", ...importableFields.map((f) => f.name)];
     const example: Record<string, string> = {
@@ -306,6 +307,11 @@ export default function TaskListView({
     for (const f of importableFields) {
       example[f.name] = f.type === "LISTA" ? (JSON.parse(f.options || "[]")[0] ?? "") : "";
     }
+    return { headers, example };
+  }
+
+  function handleDownloadTemplate() {
+    const { headers, example } = buildTemplateExample();
     const ws = XLSX.utils.json_to_sheet([example], { header: headers });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Modelo");
@@ -347,7 +353,7 @@ export default function TaskListView({
             </button>
             <button
               onClick={handleDownloadTemplate}
-              className="rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               Baixar modelo
             </button>
@@ -357,7 +363,58 @@ export default function TaskListView({
         <button onClick={handleExport} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">
           Exportar Excel
         </button>
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => setShowImportHelp((v) => !v)}
+            className="text-xs text-gray-400 underline hover:text-gray-600"
+          >
+            {showImportHelp ? "Ocultar formato da planilha" : "Como formatar a planilha para importar?"}
+          </button>
+        )}
       </div>
+
+      {showImportHelp && canManage && (
+        <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
+          <p className="mb-2">
+            Arquivo <strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong>, com a{" "}
+            <strong>primeira linha contendo os nomes das colunas</strong>. É obrigatório ter uma coluna que você vai
+            mapear como <strong>Título</strong> na hora de importar — as outras são opcionais. Colunas reconhecidas
+            automaticamente pelo nome:
+          </p>
+          <ul className="mb-2 list-disc pl-5">
+            <li><strong>Status</strong>: A fazer, Fazendo, Bloqueado ou Feito</li>
+            <li><strong>Prioridade</strong>: Baixa, Média, Alta ou Urgente</li>
+            <li><strong>Responsável</strong>: nome exato de alguém da equipe (senão fica sem responsável)</li>
+            <li><strong>Início</strong> e <strong>Prazo</strong>: data no formato AAAA-MM-DD (ex: 2026-08-10)</li>
+          </ul>
+          <p className="mb-2">
+            Qualquer outra coluna da planilha pode virar uma coluna personalizada nova (você escolhe o tipo: texto,
+            número, moeda, data, lista, caixa de seleção ou pessoa) ou ser ligada a uma coluna que já existe no
+            projeto. Colunas de <strong>Cálculo</strong> não são preenchidas por importação, elas são calculadas
+            automaticamente.
+          </p>
+          <p className="mb-2 font-medium text-gray-500">Exemplo de como a planilha deve ficar:</p>
+          <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
+            <table className="w-full text-left text-[11px]">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50">
+                  {buildTemplateExample().headers.map((h) => (
+                    <th key={h} className="whitespace-nowrap px-2 py-1 font-semibold">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {buildTemplateExample().headers.map((h) => (
+                    <td key={h} className="whitespace-nowrap px-2 py-1 text-gray-500">{buildTemplateExample().example[h] ?? ""}</td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {showAddField && canManage && (
         <form onSubmit={handleAddField} className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-sm">

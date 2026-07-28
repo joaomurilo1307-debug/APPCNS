@@ -71,12 +71,17 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     }
   }
 
-  function getPos(e: React.MouseEvent): Point {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    return [e.clientX - rect.left, e.clientY - rect.top];
+  /** Converte coordenadas do ponteiro (espaco CSS) para o espaco de coordenadas nativo do canvas —
+   * sem isso, cliques ficam desalinhados sempre que o canvas e exibido em tamanho diferente do seu width/height internos. */
+  function getPos(e: React.PointerEvent): Point {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return [(e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY];
   }
 
-  function handleMouseDown(e: React.MouseEvent) {
+  function handlePointerDown(e: React.PointerEvent) {
     if (tool === "text") {
       const [x, y] = getPos(e);
       const text = prompt("Texto:");
@@ -85,11 +90,12 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
       }
       return;
     }
+    canvasRef.current?.setPointerCapture(e.pointerId);
     drawing.current = true;
     currentPath.current = [getPos(e)];
   }
 
-  function handleMouseMove(e: React.MouseEvent) {
+  function handlePointerMove(e: React.PointerEvent) {
     if (!drawing.current || tool !== "pen") return;
     currentPath.current.push(getPos(e));
     const canvas = canvasRef.current;
@@ -104,12 +110,13 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     ctx.stroke();
   }
 
-  function handleMouseUp() {
+  function handlePointerUp(e: React.PointerEvent) {
     if (drawing.current && currentPath.current.length > 1) {
       setElements((prev) => [...prev, { type: "path", points: currentPath.current, color, width: 2.5 }]);
     }
     drawing.current = false;
     currentPath.current = [];
+    canvasRef.current?.releasePointerCapture(e.pointerId);
   }
 
   function handleClear() {
@@ -142,6 +149,9 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
             />
           ))}
         </div>
+        {tool === "text" && (
+          <span className="text-xs text-gray-400">Clique no quadro no local exato onde o texto deve aparecer</span>
+        )}
         <button onClick={handleClear} className="ml-auto rounded-md bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
           Limpar
         </button>
@@ -150,10 +160,11 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
         ref={canvasRef}
         width={1000}
         height={600}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        style={{ touchAction: "none" }}
         className="w-full cursor-crosshair rounded-xl border border-gray-200 bg-white"
       />
     </div>
