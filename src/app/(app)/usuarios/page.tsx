@@ -45,8 +45,14 @@ export default function UsuariosPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/users");
-    if (res.ok) setUsers(await res.json());
+    try {
+      const res = await fetch("/api/users");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setUsers(data);
+    } catch {
+      // rede instavel ou deploy em andamento; a tela mantem os dados anteriores
+    }
   }
 
   useEffect(() => {
@@ -56,22 +62,32 @@ export default function UsuariosPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const res = await fetch("/api/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password, role: newUserRole, avatarColor: newUserColor }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Erro ao criar usuário");
-      return;
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password, role: newUserRole, avatarColor: newUserColor }),
+      });
+      if (!res.ok) {
+        let message = "Erro ao criar usuário";
+        try {
+          const data = await res.json();
+          message = data.error?.formErrors?.join(", ") || data.error || message;
+        } catch {
+          // resposta nao veio em JSON (ex: deploy em andamento) — mantem mensagem generica
+        }
+        setError(typeof message === "string" ? message : "Erro ao criar usuário");
+        return;
+      }
+      setName("");
+      setEmail("");
+      setPassword("");
+      setNewUserColor(AVATAR_PALETTE[0]);
+      setShowForm(false);
+      load();
+    } catch {
+      setError("Não foi possível conectar ao servidor. Tente novamente em alguns segundos.");
     }
-    setName("");
-    setEmail("");
-    setPassword("");
-    setNewUserColor(AVATAR_PALETTE[0]);
-    setShowForm(false);
-    load();
   }
 
   async function updateRole(id: string, newRole: string) {
