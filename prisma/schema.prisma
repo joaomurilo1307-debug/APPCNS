@@ -192,6 +192,7 @@ model User {
   scorecardItems  ScorecardItem[]
   auditLogs       AuditLog[]
   notifications   Notification[]
+  resourceRates   ResourceRate[]
 }
 
 model DirectMessage {
@@ -306,9 +307,22 @@ model Project {
   decisions  Decision[]
   ideas      Idea[]
   scorecardItems ScorecardItem[]
+  resourceRates  ResourceRate[]
 
   @@index([teamId])
   @@index([ownerId])
+}
+
+model ResourceRate {
+  id         String @id @default(cuid())
+  projectId  String
+  userId     String
+  hourlyRate Float  @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
 }
 
 model Milestone {

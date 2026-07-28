@@ -40,7 +40,27 @@ type ListTask = {
   assigneeId: string | null;
   assignee: { id: string; name: string } | null;
   customFieldValues: CustomFieldValue[];
+  parentTaskId: string | null;
+  _count?: { subtasks: number };
 };
+
+function buildHierarchy(tasks: ListTask[], collapsed: Set<string>) {
+  const byParent = new Map<string | null, ListTask[]>();
+  for (const t of tasks) {
+    const key = t.parentTaskId && tasks.some((x) => x.id === t.parentTaskId) ? t.parentTaskId : null;
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key)!.push(t);
+  }
+  const result: { task: ListTask; depth: number }[] = [];
+  function walk(parentId: string | null, depth: number) {
+    for (const t of byParent.get(parentId) ?? []) {
+      result.push({ task: t, depth });
+      if (!collapsed.has(t.id)) walk(t.id, depth + 1);
+    }
+  }
+  walk(null, 0);
+  return result;
+}
 
 const statusOptions = [
   { v: "A_FAZER", l: "A fazer" },
@@ -102,6 +122,16 @@ export default function TaskListView({
   const [tasks, setTasks] = useState<ListTask[]>([]);
   const [fields, setFields] = useState<CustomField[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  function toggleCollapsed(id: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [showAddField, setShowAddField] = useState(false);
   const [newFieldName, setNewFieldName] = useState("");
@@ -417,10 +447,10 @@ export default function TaskListView({
             </button>
             <button
               onClick={handleAddResourcePackage}
-              title="Cria as colunas Horas estimadas, Valor hora e Custo estimado (calculado automaticamente)"
+              title="Cria as colunas Horas estimadas, Valor hora e Custo estimado (calculado automaticamente). Para custo real (horas gastas de verdade), veja a aba Recursos."
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
             >
-              📦 Pacote de recursos
+              📦 Colunas de estimativa
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelected} className="hidden" />
           </>
@@ -643,6 +673,7 @@ export default function TaskListView({
               <th className="min-w-[160px] px-3 py-2">Responsável</th>
               <th className="min-w-[130px] px-3 py-2">Início</th>
               <th className="min-w-[130px] px-3 py-2">Prazo</th>
+              <th className="min-w-[160px] px-3 py-2">Tarefa-mãe</th>
               {fields.map((f) => (
                 <th key={f.id} className="min-w-[140px] px-3 py-2">
                   <div className="flex items-center gap-1">
@@ -659,14 +690,27 @@ export default function TaskListView({
             </tr>
           </thead>
           <tbody>
-            {tasks.map((t) => (
+            {buildHierarchy(tasks, collapsed).map(({ task: t, depth }) => (
               <tr key={t.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                 <td className="px-3 py-1.5">
-                  <input
-                    defaultValue={t.title}
-                    onBlur={(e) => e.target.value !== t.title && patchTask(t.id, { title: e.target.value })}
-                    className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200 focus:border-gray-300"
-                  />
+                  <div className="flex items-center gap-1" style={{ paddingLeft: depth * 20 }}>
+                    {depth > 0 && <span className="text-gray-300">↳</span>}
+                    {!!t._count?.subtasks && (
+                      <button
+                        type="button"
+                        onClick={() => toggleCollapsed(t.id)}
+                        className="w-4 shrink-0 text-gray-400 hover:text-gray-700"
+                        title={collapsed.has(t.id) ? "Expandir subtarefas" : "Recolher subtarefas"}
+                      >
+                        {collapsed.has(t.id) ? "▸" : "▾"}
+                      </button>
+                    )}
+                    <input
+                      defaultValue={t.title}
+                      onBlur={(e) => e.target.value !== t.title && patchTask(t.id, { title: e.target.value })}
+                      className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200 focus:border-gray-300"
+                    />
+                  </div>
                 </td>
                 <td className="px-3 py-1.5">
                   <select
@@ -717,6 +761,20 @@ export default function TaskListView({
                     onBlur={(e) => patchTask(t.id, { dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
                     className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
                   />
+                </td>
+                <td className="px-3 py-1.5">
+                  <select
+                    value={t.parentTaskId ?? ""}
+                    onChange={(e) => patchTask(t.id, { parentTaskId: e.target.value || null })}
+                    className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                  >
+                    <option value="">— (tarefa principal)</option>
+                    {tasks
+                      .filter((o) => o.id !== t.id)
+                      .map((o) => (
+                        <option key={o.id} value={o.id}>{o.title}</option>
+                      ))}
+                  </select>
                 </td>
                 {fields.map((f) => {
                   const value = t.customFieldValues.find((v) => v.customFieldId === f.id)?.value ?? "";

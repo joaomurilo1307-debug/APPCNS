@@ -12,6 +12,7 @@ const updateTaskSchema = z.object({
   status: z.enum(["A_FAZER", "FAZENDO", "BLOQUEADO", "FEITO"]).optional(),
   priority: z.enum(["BAIXA", "MEDIA", "ALTA", "URGENTE"]).optional(),
   assigneeId: z.string().nullable().optional(),
+  parentTaskId: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
   dueDate: z.string().datetime().nullable().optional(),
   locked: z.boolean().optional(),
@@ -58,6 +59,24 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   if (parsed.data.locked !== undefined && role !== "ADMIN" && role !== "GESTOR_PROJETO") {
     return NextResponse.json({ error: "Só Admin ou Gestor de Projeto pode travar/destravar tarefa" }, { status: 403 });
+  }
+
+  if (parsed.data.parentTaskId) {
+    if (parsed.data.parentTaskId === task.id) {
+      return NextResponse.json({ error: "Uma tarefa não pode ser subtarefa dela mesma" }, { status: 422 });
+    }
+    let cursor: string | null = parsed.data.parentTaskId;
+    while (cursor) {
+      const ancestor: { id: string; parentTaskId: string | null } | null = await prisma.task.findUnique({
+        where: { id: cursor },
+        select: { id: true, parentTaskId: true },
+      });
+      if (!ancestor) break;
+      if (ancestor.parentTaskId === task.id) {
+        return NextResponse.json({ error: "Isso criaria um ciclo entre tarefa e subtarefa" }, { status: 422 });
+      }
+      cursor = ancestor.parentTaskId;
+    }
   }
 
   const { customFieldValues, ...rest } = parsed.data;

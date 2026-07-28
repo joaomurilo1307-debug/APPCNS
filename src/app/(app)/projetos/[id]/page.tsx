@@ -7,6 +7,7 @@ import Whiteboard from "@/components/Whiteboard";
 import GoalsPanel from "@/components/GoalsPanel";
 import GanttChart from "@/components/GanttChart";
 import TaskListView from "@/components/TaskListView";
+import ResourcesPanel from "@/components/ResourcesPanel";
 
 type ProjectDetail = {
   id: string;
@@ -56,7 +57,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "gantt" | "lista">("kanban");
+  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "gantt" | "lista" | "recursos">("kanban");
   const [ganttTasks, setGanttTasks] = useState<
     { id: string; title: string; startDate: string | null; dueDate: string | null; status: string }[]
   >([]);
@@ -264,6 +265,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         >
           Lista
         </button>
+        <button
+          onClick={() => setTab("recursos")}
+          className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+            tab === "recursos" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
+          }`}
+        >
+          Recursos
+        </button>
       </div>
 
       {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} />}
@@ -280,6 +289,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           currentUserId={(session?.user as any)?.id}
         />
       )}
+      {tab === "recursos" && <ResourcesPanel projectId={project.id} canManage={canManage} />}
     </div>
   );
 }
