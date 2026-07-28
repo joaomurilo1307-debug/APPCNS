@@ -158,6 +158,7 @@ model User {
   role         UserRole  @default(COLABORADOR)
   active       Boolean   @default(true)
   avatarColor  String    @default("#0f766e")
+  avatarUrl    String?   @db.Text
   lastSeenAt   DateTime?
   cargo        String?
   setor        String?

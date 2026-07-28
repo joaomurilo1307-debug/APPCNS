@@ -8,7 +8,7 @@ import { generateJitsiRoomUrl } from "@/lib/jitsi";
 import { buildCallMessage } from "@/lib/callMessage";
 import { setActiveChat, getActiveChat } from "@/lib/activeChat";
 
-type Contact = { id: string; name: string; avatarColor: string; role: string; online: boolean };
+type Contact = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null; role: string; online: boolean };
 type Team = { id: string; name: string };
 type DirectMsg = { id: string; senderId: string; receiverId: string; body: string; createdAt: string };
 type TeamMsg = { id: string; senderId: string; body: string; createdAt: string; sender: { id: string; name: string; avatarColor: string } };
@@ -85,7 +85,7 @@ export default function ChatPage() {
     if (!selected) return;
     if (selected.type === "direct") {
       const c = contacts.find((c) => c.id === selected.id);
-      if (c) setActiveChat({ type: "direct", id: c.id, name: c.name, avatarColor: c.avatarColor });
+      if (c) setActiveChat({ type: "direct", id: c.id, name: c.name, avatarColor: c.avatarColor, avatarUrl: c.avatarUrl });
     } else {
       const t = teams.find((t) => t.id === selected.id);
       if (t) setActiveChat({ type: "team", id: t.id, name: t.name });
@@ -173,7 +173,7 @@ export default function ChatPage() {
       : teams.find((t) => t.id === selected?.id)?.name;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col gap-3">
+    <div className="flex h-[calc(100vh-7.5rem)] flex-col gap-3">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Chat</h1>
         <button
@@ -218,14 +218,17 @@ export default function ChatPage() {
             }`}
           >
             <span className="relative shrink-0">
-              <Avatar name={c.name} color={c.avatarColor} size={26} />
+              <Avatar name={c.name} color={c.avatarColor} photoUrl={c.avatarUrl} size={26} />
               <span
                 className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white ${
                   c.online ? "bg-green-500" : "bg-gray-300"
                 }`}
               />
             </span>
-            <span className="flex-1 truncate">{c.name}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {c.name}
+              {c.cargo && <span className="block text-xs text-gray-400">{c.cargo}</span>}
+            </span>
             {unread.direct[c.id] > 0 && (
               <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">{unread.direct[c.id]}</span>
             )}

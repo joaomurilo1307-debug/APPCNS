@@ -42,6 +42,28 @@ function parsePriority(raw?: string | null) {
   return priorityMap[raw.trim().toLowerCase()];
 }
 
+const checkboxTrue = new Set(["sim", "yes", "true", "verdadeiro", "1", "x"]);
+const checkboxFalse = new Set(["não", "nao", "no", "false", "falso", "0"]);
+
+function resolveCustomValue(
+  type: string | undefined,
+  raw: unknown,
+  teamMembers: { user: { id: string; name: string } }[]
+): string | undefined {
+  const str = String(raw).trim();
+  if (type === "PESSOA") {
+    const match = teamMembers.find((tm) => tm.user.name.toLowerCase() === str.toLowerCase());
+    return match?.user.id;
+  }
+  if (type === "CHECKBOX") {
+    const lower = str.toLowerCase();
+    if (checkboxTrue.has(lower)) return "true";
+    if (checkboxFalse.has(lower)) return "false";
+    return undefined;
+  }
+  return str;
+}
+
 const columnMappingSchema = z.object({
   column: z.string(),
   targetType: z.enum(["ignore", "builtin", "existingField", "newField"]),
@@ -84,6 +106,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     include: { user: { select: { id: true, name: true } } },
   });
 
+  const existingFields = await prisma.customField.findMany({ where: { projectId: params.id } });
+  const typeByFieldId = new Map(existingFields.map((f) => [f.id, f.type as string]));
+
   const newFieldIdByColumn = new Map<string, string>();
   const maxOrderResult = await prisma.customField.aggregate({
     where: { projectId: params.id },
@@ -97,6 +122,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         data: { projectId: params.id, name: m.newFieldName, type: m.newFieldType, order: nextOrder++ },
       });
       newFieldIdByColumn.set(m.column, field.id);
+      typeByFieldId.set(field.id, field.type);
     }
   }
 
@@ -141,9 +167,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (m.targetType === "newField") fieldId = newFieldIdByColumn.get(m.column);
 
       if (fieldId) {
-        await prisma.taskCustomFieldValue.create({
-          data: { taskId: task.id, customFieldId: fieldId, value: String(raw) },
-        });
+        const value = resolveCustomValue(typeByFieldId.get(fieldId), raw, teamMembers);
+        if (value !== undefined) {
+          await prisma.taskCustomFieldValue.create({
+            data: { taskId: task.id, customFieldId: fieldId, value },
+          });
+        }
       }
     }
   }

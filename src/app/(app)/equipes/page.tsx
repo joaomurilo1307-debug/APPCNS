@@ -8,7 +8,7 @@ type Team = {
   id: string;
   name: string;
   description: string | null;
-  members: { user: { id: string; name: string; email: string; avatarColor: string }; role: string }[];
+  members: { user: { id: string; name: string; email: string; avatarColor: string; avatarUrl?: string | null; cargo?: string | null }; role: string }[];
   _count: { projects: number };
 };
 
@@ -120,7 +120,7 @@ export default function EquipesPage() {
                 {team.members.map((m) => (
                   <li key={m.user.id} className="flex items-center justify-between text-sm text-gray-600">
                     <div className="flex items-center gap-2">
-                      <Avatar name={m.user.name} color={m.user.avatarColor} />
+                      <Avatar name={m.user.name} color={m.user.avatarColor} photoUrl={m.user.avatarUrl} />
                       {m.user.name} <span className="text-xs text-gray-400">({m.role})</span>
                     </div>
                     {canManageMembers && (

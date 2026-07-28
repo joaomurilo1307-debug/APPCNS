@@ -91,7 +91,7 @@ export default async function DashboardPage() {
       where: { id: { in: teamIds } },
       include: {
         members: {
-          include: { user: { select: { id: true, name: true, avatarColor: true, cargo: true, role: true } } },
+          include: { user: { select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true, role: true, gestorImediato: { select: { name: true } } } } },
         },
       },
     }),
@@ -198,8 +198,13 @@ export default async function DashboardPage() {
                   <div className="flex flex-col gap-2">
                     {team.members.map((m) => (
                       <div key={m.user.id} className="flex items-center gap-2 text-sm">
-                        <Avatar name={m.user.name} color={m.user.avatarColor} size={24} />
-                        <span className="flex-1 truncate">{m.user.name}</span>
+                        <Avatar name={m.user.name} color={m.user.avatarColor} photoUrl={m.user.avatarUrl} size={24} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate">{m.user.name}</p>
+                          {m.user.gestorImediato && (
+                            <p className="truncate text-[11px] text-gray-400">Reporta a {m.user.gestorImediato.name}</p>
+                          )}
+                        </div>
                         <span className="shrink-0 text-xs text-gray-400">{m.user.cargo || m.role}</span>
                       </div>
                     ))}

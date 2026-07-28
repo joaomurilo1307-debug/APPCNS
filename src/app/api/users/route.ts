@@ -20,6 +20,7 @@ export async function GET() {
       role: true,
       active: true,
       avatarColor: true,
+      avatarUrl: true,
       createdAt: true,
       cargo: true,
       setor: true,

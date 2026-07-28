@@ -12,6 +12,7 @@ type UserRow = {
   role: string;
   active: boolean;
   avatarColor: string;
+  avatarUrl?: string | null;
   cargo?: string | null;
   setor?: string | null;
   diretoria?: string | null;
@@ -232,7 +233,7 @@ export default function UsuariosPage() {
               <tr key={u.id} className="border-b last:border-0">
                 <td className="px-4 py-3 font-medium">
                   <div className="flex items-center gap-2">
-                    <Avatar name={u.name} color={u.avatarColor} />
+                    <Avatar name={u.name} color={u.avatarColor} photoUrl={u.avatarUrl} />
                     {u.name}
                   </div>
                 </td>

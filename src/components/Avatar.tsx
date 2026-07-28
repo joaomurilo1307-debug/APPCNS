@@ -8,11 +8,24 @@ export default function Avatar({
   name,
   color,
   size = 24,
+  photoUrl,
 }: {
   name: string;
   color?: string | null;
   size?: number;
+  photoUrl?: string | null;
 }) {
+  if (photoUrl) {
+    return (
+      <img
+        src={photoUrl}
+        alt={name}
+        title={name}
+        className="inline-block shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   return (
     <span
       title={name}

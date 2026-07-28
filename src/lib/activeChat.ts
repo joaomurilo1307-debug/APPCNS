@@ -1,5 +1,5 @@
 export type ActiveChatInfo =
-  | { type: "direct"; id: string; name: string; avatarColor?: string }
+  | { type: "direct"; id: string; name: string; avatarColor?: string; avatarUrl?: string | null }
   | { type: "team"; id: string; name: string };
 
 const KEY = "cns_active_chat";

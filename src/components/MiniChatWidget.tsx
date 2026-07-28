@@ -62,7 +62,7 @@ export default function MiniChatWidget() {
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center gap-2 bg-brand/10 px-3 py-2 text-left"
       >
-        {chat.type === "direct" && <Avatar name={chat.name} color={chat.avatarColor} size={22} />}
+        {chat.type === "direct" && <Avatar name={chat.name} color={chat.avatarColor} photoUrl={chat.avatarUrl} size={22} />}
         <span className="flex-1 truncate text-sm font-medium text-brand-dark">
           {chat.type === "team" ? `# ${chat.name}` : chat.name}
         </span>

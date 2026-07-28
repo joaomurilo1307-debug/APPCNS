@@ -319,11 +319,32 @@ export default function TaskListView({
     XLSX.writeFile(wb, `${projectName.replace(/[^\w\-]+/g, "_")}-backlog.xlsx`);
   }
 
+  function exampleForField(f: CustomField, alt: boolean): string {
+    switch (f.type) {
+      case "LISTA": {
+        const opts = JSON.parse(f.options || "[]") as string[];
+        return (alt ? opts[1] : opts[0]) ?? opts[0] ?? "";
+      }
+      case "NUMERO":
+        return alt ? "8" : "3";
+      case "MOEDA":
+        return alt ? "1250.00" : "480.50";
+      case "DATA":
+        return alt ? "2026-08-14" : "2026-08-05";
+      case "CHECKBOX":
+        return alt ? "Não" : "Sim";
+      case "PESSOA":
+        return (alt ? team.members[1]?.user.name : team.members[0]?.user.name) ?? "Nome exato de alguém da equipe";
+      default:
+        return alt ? "Outro exemplo de texto" : "Exemplo de texto";
+    }
+  }
+
   function buildTemplateExample() {
     const importableFields = fields.filter((f) => f.type !== "FORMULA");
     const headers = ["Título", "Descrição", "Status", "Prioridade", "Responsável", "Início", "Prazo", ...importableFields.map((f) => f.name)];
-    const example: Record<string, string> = {
-      Título: "Ex: Revisar contrato XPTO",
+    const row1: Record<string, string> = {
+      Título: "Revisar contrato XPTO",
       Descrição: "Detalhes da tarefa (opcional)",
       Status: "A fazer",
       Prioridade: "Média",
@@ -331,15 +352,25 @@ export default function TaskListView({
       Início: "2026-08-01",
       Prazo: "2026-08-10",
     };
+    const row2: Record<string, string> = {
+      Título: "Enviar proposta ao cliente",
+      Descrição: "",
+      Status: "Fazendo",
+      Prioridade: "Alta",
+      Responsável: team.members[1]?.user.name ?? team.members[0]?.user.name ?? "",
+      Início: "2026-08-03",
+      Prazo: "2026-08-07",
+    };
     for (const f of importableFields) {
-      example[f.name] = f.type === "LISTA" ? (JSON.parse(f.options || "[]")[0] ?? "") : "";
+      row1[f.name] = exampleForField(f, false);
+      row2[f.name] = exampleForField(f, true);
     }
-    return { headers, example };
+    return { headers, rows: [row1, row2], example: row1 };
   }
 
   function handleDownloadTemplate() {
-    const { headers, example } = buildTemplateExample();
-    const ws = XLSX.utils.json_to_sheet([example], { header: headers });
+    const { headers, rows } = buildTemplateExample();
+    const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Modelo");
     XLSX.writeFile(wb, "modelo-importacao.xlsx");
@@ -409,26 +440,36 @@ export default function TaskListView({
       </div>
 
       {showImportHelp && canManage && (
-        <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-          <p className="mb-2">
+        <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-600">
+          <p className="mb-3">
             Arquivo <strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong>, com a{" "}
-            <strong>primeira linha contendo os nomes das colunas</strong>. É obrigatório ter uma coluna que você vai
-            mapear como <strong>Título</strong> na hora de importar — as outras são opcionais. Colunas reconhecidas
-            automaticamente pelo nome:
+            <strong>primeira linha contendo os nomes das colunas</strong>. Baixe o modelo abaixo, preencha por cima
+            dele e importe — assim as colunas já vêm no formato certo.
           </p>
-          <ul className="mb-2 list-disc pl-5">
+          <p className="mb-1 font-semibold text-gray-700">Colunas reconhecidas automaticamente pelo nome:</p>
+          <ul className="mb-3 list-disc space-y-0.5 pl-5">
+            <li><strong>Título</strong> — obrigatório, é o único campo que precisa existir</li>
+            <li><strong>Descrição</strong> — texto livre, opcional</li>
             <li><strong>Status</strong>: A fazer, Fazendo, Bloqueado ou Feito</li>
             <li><strong>Prioridade</strong>: Baixa, Média, Alta ou Urgente</li>
-            <li><strong>Responsável</strong>: nome exato de alguém da equipe (senão fica sem responsável)</li>
+            <li><strong>Responsável</strong>: nome exato de alguém da equipe (senão a tarefa fica sem responsável)</li>
             <li><strong>Início</strong> e <strong>Prazo</strong>: data no formato AAAA-MM-DD (ex: 2026-08-10)</li>
           </ul>
-          <p className="mb-2">
-            Qualquer outra coluna da planilha pode virar uma coluna personalizada nova (você escolhe o tipo: texto,
-            número, moeda, data, lista, caixa de seleção ou pessoa) ou ser ligada a uma coluna que já existe no
-            projeto. Colunas de <strong>Cálculo</strong> não são preenchidas por importação, elas são calculadas
-            automaticamente.
+          <p className="mb-1 font-semibold text-gray-700">Colunas personalizadas do projeto:</p>
+          <ul className="mb-3 list-disc space-y-0.5 pl-5">
+            <li><strong>Texto / Número / Moeda</strong>: valor livre (moeda e número aceitam ponto decimal, ex: 480.50)</li>
+            <li><strong>Data</strong>: formato AAAA-MM-DD</li>
+            <li><strong>Lista suspensa</strong>: precisa ser exatamente uma das opções já cadastradas na coluna</li>
+            <li><strong>Caixa de seleção</strong>: Sim/Não (ou Yes/No, true/false)</li>
+            <li><strong>Pessoa</strong>: nome exato de alguém da equipe, igual ao campo Responsável</li>
+          </ul>
+          <p className="mb-3 text-gray-500">
+            Qualquer coluna nova da planilha que a gente não reconheça automaticamente vira uma coluna personalizada
+            nova (você escolhe o tipo na hora de importar) ou pode ser ligada a uma coluna já existente. Colunas de{" "}
+            <strong>Cálculo</strong> nunca são preenchidas por importação — elas são sempre calculadas
+            automaticamente a partir de outras colunas.
           </p>
-          <p className="mb-2 font-medium text-gray-500">Exemplo de como a planilha deve ficar:</p>
+          <p className="mb-1 font-semibold text-gray-700">Exemplo de como a planilha deve ficar:</p>
           <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
             <table className="w-full text-left text-[11px]">
               <thead>
@@ -439,11 +480,13 @@ export default function TaskListView({
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  {buildTemplateExample().headers.map((h) => (
-                    <td key={h} className="whitespace-nowrap px-2 py-1 text-gray-500">{buildTemplateExample().example[h] ?? ""}</td>
-                  ))}
-                </tr>
+                {buildTemplateExample().rows.map((row, i) => (
+                  <tr key={i} className={i > 0 ? "border-t border-gray-50" : ""}>
+                    {buildTemplateExample().headers.map((h) => (
+                      <td key={h} className="whitespace-nowrap px-2 py-1 text-gray-500">{row[h] ?? ""}</td>
+                    ))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
