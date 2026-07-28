@@ -1,8 +1,14 @@
 import { prisma } from "@/lib/prisma";
 
-const TENANT_ID = process.env.AZURE_TENANT_ID!;
 const CLIENT_ID = process.env.AZURE_CLIENT_ID!;
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET!;
+
+// "common" em vez do tenant especifico da Consominas: cada pessoa autentica contra a
+// PROPRIA conta/organizacao Microsoft (onde a caixa de e-mail dela realmente existe),
+// em vez de ser tratada como convidada sem mailbox dentro do tenant da empresa.
+// Exige que o registro do app no Azure esteja configurado como multi-tenant
+// ("Contas em qualquer diretorio organizacional").
+const AUTHORITY = "https://login.microsoftonline.com/common";
 
 const SCOPES = "offline_access Calendars.ReadWrite User.Read";
 
@@ -22,11 +28,11 @@ export function getAuthorizeUrl(state: string) {
     // silenciosamente a sessao ja logada no navegador (ex: conta admin usada antes).
     prompt: "select_account",
   });
-  return `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize?${params.toString()}`;
+  return `${AUTHORITY}/oauth2/v2.0/authorize?${params.toString()}`;
 }
 
 async function tokenRequest(body: Record<string, string>) {
-  const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
+  const res = await fetch(`${AUTHORITY}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
