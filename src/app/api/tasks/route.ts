@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUserTeamIds } from "@/lib/permissions";
+import { reconcileTaskOutlook } from "@/lib/taskOutlookSync";
 import { z } from "zod";
 
 async function visibilityFilterFor(userId: string, role: string) {
@@ -101,6 +102,11 @@ export async function POST(req: Request) {
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
     },
   });
+
+  await reconcileTaskOutlook(
+    { assigneeId: null, outlookEventId: null },
+    { id: task.id, title: task.title, dueDate: task.dueDate, assigneeId: task.assigneeId, status: task.status, outlookEventId: null }
+  );
 
   return NextResponse.json(task, { status: 201 });
 }

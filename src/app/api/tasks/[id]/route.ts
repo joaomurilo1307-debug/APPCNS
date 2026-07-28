@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canModifyTask, canDeleteTask } from "@/lib/permissions";
+import { reconcileTaskOutlook, removeTaskFromOutlook } from "@/lib/taskOutlookSync";
 import { z } from "zod";
 
 const updateTaskSchema = z.object({
@@ -67,6 +68,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   const updated = await prisma.task.update({ where: { id: params.id }, data });
+
+  await reconcileTaskOutlook(
+    { assigneeId: task.assigneeId, outlookEventId: task.outlookEventId },
+    {
+      id: updated.id,
+      title: updated.title,
+      dueDate: updated.dueDate,
+      assigneeId: updated.assigneeId,
+      status: updated.status,
+      outlookEventId: updated.outlookEventId,
+    }
+  );
+
   return NextResponse.json(updated);
 }
 
@@ -84,6 +98,8 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (task.locked) {
     return NextResponse.json({ error: "Tarefa travada — destrave antes de excluir" }, { status: 403 });
   }
+
+  await removeTaskFromOutlook({ assigneeId: task.assigneeId, outlookEventId: task.outlookEventId });
 
   await prisma.task.delete({ where: { id: params.id } });
   return NextResponse.json({ ok: true });

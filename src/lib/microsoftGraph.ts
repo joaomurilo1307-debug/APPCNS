@@ -92,7 +92,10 @@ async function graphFetch(userId: string, path: string, init?: RequestInit) {
   return res;
 }
 
-function toGraphEvent(e: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean }) {
+function toGraphEvent(
+  e: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean },
+  reminderMinutesBeforeStart?: number
+) {
   const end = e.endAt ?? new Date(e.startAt.getTime() + 30 * 60 * 1000);
   return {
     subject: e.title,
@@ -100,17 +103,21 @@ function toGraphEvent(e: { title: string; description?: string | null; startAt: 
     start: { dateTime: e.startAt.toISOString(), timeZone: "America/Sao_Paulo" },
     end: { dateTime: end.toISOString(), timeZone: "America/Sao_Paulo" },
     isAllDay: e.allDay,
+    ...(reminderMinutesBeforeStart !== undefined
+      ? { isReminderOn: true, reminderMinutesBeforeStart }
+      : {}),
   };
 }
 
 export async function pushCreateEvent(
   userId: string,
-  event: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean }
+  event: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean },
+  reminderMinutesBeforeStart?: number
 ): Promise<string | null> {
   try {
     const res = await graphFetch(userId, "/me/events", {
       method: "POST",
-      body: JSON.stringify(toGraphEvent(event)),
+      body: JSON.stringify(toGraphEvent(event, reminderMinutesBeforeStart)),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -123,12 +130,13 @@ export async function pushCreateEvent(
 export async function pushUpdateEvent(
   userId: string,
   outlookEventId: string,
-  event: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean }
+  event: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean },
+  reminderMinutesBeforeStart?: number
 ) {
   try {
     await graphFetch(userId, `/me/events/${outlookEventId}`, {
       method: "PATCH",
-      body: JSON.stringify(toGraphEvent(event)),
+      body: JSON.stringify(toGraphEvent(event, reminderMinutesBeforeStart)),
     });
   } catch {
     // best-effort sync; local change already saved
