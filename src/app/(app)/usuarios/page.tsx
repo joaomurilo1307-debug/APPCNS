@@ -96,11 +96,20 @@ export default function UsuariosPage() {
         let message = "Erro ao criar usuário";
         try {
           const data = await res.json();
-          message = data.error?.formErrors?.join(", ") || data.error || message;
+          if (data.error?.fieldErrors) {
+            const fieldMessages = Object.entries(data.error.fieldErrors as Record<string, string[]>)
+              .filter(([, msgs]) => msgs?.length)
+              .map(([field, msgs]) => `${field}: ${msgs.join(", ")}`);
+            if (fieldMessages.length) message = fieldMessages.join(" · ");
+          } else if (data.error?.formErrors?.length) {
+            message = data.error.formErrors.join(", ");
+          } else if (typeof data.error === "string") {
+            message = data.error;
+          }
         } catch {
           // resposta nao veio em JSON (ex: deploy em andamento) — mantem mensagem generica
         }
-        setError(typeof message === "string" ? message : "Erro ao criar usuário");
+        setError(message);
         return;
       }
       setName("");
@@ -174,7 +183,16 @@ export default function UsuariosPage() {
         <form onSubmit={handleCreate} className="mb-8 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-4">
           <input required placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm" />
           <input required type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <input required type="password" placeholder="Senha provisória" value={password} onChange={(e) => setPassword(e.target.value)} className="w-48 rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          <input
+            required
+            type="password"
+            minLength={8}
+            title="Mínimo de 8 caracteres"
+            placeholder="Senha provisória (mín. 8 caracteres)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-56 rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
           <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
             {Object.entries(roleLabel).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
