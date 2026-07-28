@@ -18,6 +18,9 @@ export function getAuthorizeUrl(state: string) {
     response_mode: "query",
     scope: SCOPES,
     state,
+    // Forca a tela de selecao de conta da Microsoft em vez de reaproveitar
+    // silenciosamente a sessao ja logada no navegador (ex: conta admin usada antes).
+    prompt: "select_account",
   });
   return `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize?${params.toString()}`;
 }
