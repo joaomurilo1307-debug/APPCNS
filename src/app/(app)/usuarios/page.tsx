@@ -56,6 +56,9 @@ export default function UsuariosPage() {
   const [newGestorId, setNewGestorId] = useState("");
   const [newDataInicio, setNewDataInicio] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetError, setResetError] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -155,6 +158,26 @@ export default function UsuariosPage() {
     load();
   }
 
+  async function handleResetPassword(id: string) {
+    if (newPassword.length < 8) {
+      setResetError("Mínimo de 8 caracteres.");
+      return;
+    }
+    setResetError(null);
+    const res = await fetch(`/api/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: newPassword }),
+    });
+    if (!res.ok) {
+      setResetError("Não foi possível redefinir a senha.");
+      return;
+    }
+    alert(`Senha redefinida. Repasse para a pessoa: ${newPassword}`);
+    setResettingId(null);
+    setNewPassword("");
+  }
+
   async function toggleActive(u: UserRow) {
     await fetch(`/api/users/${u.id}`, {
       method: "PATCH",
@@ -244,6 +267,7 @@ export default function UsuariosPage() {
               <th className="px-4 py-3">Cor</th>
               <th className="px-4 py-3">Equipes</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Senha</th>
             </tr>
           </thead>
           <tbody>
@@ -324,6 +348,50 @@ export default function UsuariosPage() {
                   >
                     {u.active ? "Ativo" : "Inativo"}
                   </button>
+                </td>
+                <td className="px-4 py-3">
+                  {resettingId === u.id ? (
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Nova senha (mín. 8)"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-36 rounded-md border border-gray-300 px-2 py-1 text-xs"
+                      />
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleResetPassword(u.id)}
+                          className="rounded-md bg-brand px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-dark"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => {
+                            setResettingId(null);
+                            setNewPassword("");
+                            setResetError(null);
+                          }}
+                          className="rounded-md border border-gray-300 px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-50"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                      {resetError && <p className="text-[11px] text-red-600">{resetError}</p>}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setResettingId(u.id);
+                        setNewPassword("");
+                        setResetError(null);
+                      }}
+                      className="text-xs text-brand-dark underline hover:text-brand"
+                    >
+                      Redefinir
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

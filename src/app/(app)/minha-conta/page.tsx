@@ -57,6 +57,11 @@ export default function MinhaContaPage() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
   async function load() {
     const res = await fetch("/api/users/me");
     if (res.ok) setMe(await res.json());
@@ -80,6 +85,31 @@ export default function MinhaContaPage() {
       return;
     }
     load();
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(false);
+    if (newPassword.length < 8) {
+      setPasswordError("A nova senha precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+    setSaving(true);
+    const res = await fetch("/api/users/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    setSaving(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setPasswordError(typeof data?.error === "string" ? data.error : "Não foi possível trocar a senha.");
+      return;
+    }
+    setCurrentPassword("");
+    setNewPassword("");
+    setPasswordSuccess(true);
   }
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -184,6 +214,43 @@ export default function MinhaContaPage() {
         <p className="mt-4 text-xs text-gray-400">
           Esses dados são cadastrados pelo administrador. Se algo estiver errado, peça para corrigir em Usuários.
         </p>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-sm font-semibold">Trocar senha</h2>
+        <form onSubmit={handleChangePassword} className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-xs text-gray-500">
+            Senha atual
+            <input
+              type="password"
+              required
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gray-500">
+            Nova senha (mín. 8 caracteres)
+            <input
+              type="password"
+              required
+              minLength={8}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <div>
+            <button
+              disabled={saving}
+              className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50"
+            >
+              Salvar nova senha
+            </button>
+          </div>
+          {passwordError && <p className="text-sm text-red-600">{passwordError}</p>}
+          {passwordSuccess && <p className="text-sm text-green-600">Senha alterada com sucesso.</p>}
+        </form>
       </div>
     </div>
   );

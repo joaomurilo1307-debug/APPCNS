@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 
 const updateUserSchema = z.object({
@@ -14,6 +15,7 @@ const updateUserSchema = z.object({
   diretoria: z.string().optional(),
   dataInicio: z.string().datetime().nullable().optional(),
   gestorImediatoId: z.string().nullable().optional(),
+  password: z.string().min(8).optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -36,12 +38,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Sem permissão para essa alteração" }, { status: 403 });
   }
 
-  const { dataInicio, ...rest } = parsed.data;
+  if (parsed.data.password && !isAdmin) {
+    return NextResponse.json({ error: "Só administradores podem redefinir a senha de outra pessoa" }, { status: 403 });
+  }
+
+  const { dataInicio, password, ...rest } = parsed.data;
   const updated = await prisma.user.update({
     where: { id: params.id },
     data: {
       ...rest,
       ...(dataInicio !== undefined ? { dataInicio: dataInicio ? new Date(dataInicio) : null } : {}),
+      ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
     },
     select: {
       id: true,
