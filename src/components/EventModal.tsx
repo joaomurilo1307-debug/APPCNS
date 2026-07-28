@@ -219,6 +219,7 @@ export default function EventModal({
             >
               <option value="NENHUM">Nenhum</option>
               <option value="TEAMS">Microsoft Teams</option>
+              <option value="JITSI">Videochamada (Jitsi Meet)</option>
               <option value="GOOGLE_MEET">Google Meet</option>
             </select>
           </label>
@@ -235,9 +236,20 @@ export default function EventModal({
               )}
             </div>
           )}
+          {onlineMeetingProvider === "JITSI" && (
+            <div className="col-span-2 text-xs">
+              {onlineMeetingUrl ? (
+                <a href={onlineMeetingUrl} target="_blank" rel="noreferrer" className="text-brand-dark underline">
+                  Entrar na videochamada
+                </a>
+              ) : (
+                <p className="text-gray-400">O link é gerado automaticamente ao salvar — sem login, entra direto.</p>
+              )}
+            </div>
+          )}
           {onlineMeetingProvider === "GOOGLE_MEET" && (
             <p className="col-span-2 text-xs text-amber-600">
-              Integração com Google Meet ainda não configurada — fala com o time pra habilitar.
+              Integração real com Google Meet ainda não configurada (precisaria de Google Workspace). Use "Videochamada (Jitsi Meet)" — funciona igual, sem login.
             </p>
           )}
         </div>

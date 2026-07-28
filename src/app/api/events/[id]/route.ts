@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { canManageTeam } from "@/lib/permissions";
 import { pushUpdateEvent, pushDeleteEvent } from "@/lib/microsoftGraph";
 import { sendMeetingInvite, sendMeetingCancellation } from "@/lib/mailer";
+import { generateJitsiRoomUrl } from "@/lib/jitsi";
 import { z } from "zod";
 
 async function canEditEvent(userId: string, role: string, event: { creatorId: string; projectId: string | null }) {
@@ -38,7 +39,7 @@ const updateEventSchema = z.object({
   description: z.string().nullable().optional(),
   type: z.enum(["REUNIAO", "COMPROMISSO", "ENTREGA", "PRAZO", "OUTRO"]).optional(),
   meetingType: z.enum(["ALINHAMENTO", "KICKOFF", "UM_A_UM", "DIRETORIA", "CLIENTE", "TECNICA", "TREINAMENTO", "OUTRA"]).nullable().optional(),
-  onlineMeetingProvider: z.enum(["NENHUM", "TEAMS", "GOOGLE_MEET"]).optional(),
+  onlineMeetingProvider: z.enum(["NENHUM", "TEAMS", "GOOGLE_MEET", "JITSI"]).optional(),
   startAt: z.string().datetime().optional(),
   endAt: z.string().datetime().nullable().optional(),
   allDay: z.boolean().optional(),
@@ -66,6 +67,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const data: any = { ...rest };
   if (parsed.data.startAt !== undefined) data.startAt = new Date(parsed.data.startAt);
   if (parsed.data.endAt !== undefined) data.endAt = parsed.data.endAt ? new Date(parsed.data.endAt) : null;
+  if (parsed.data.onlineMeetingProvider === "JITSI" && (event.onlineMeetingProvider !== "JITSI" || !event.onlineMeetingUrl)) {
+    data.onlineMeetingUrl = generateJitsiRoomUrl(parsed.data.title ?? event.title);
+  }
 
   if (attendeeIds !== undefined) {
     // So mexe em quem entrou/saiu da lista — preserva o status (Aceito/Recusado) de quem ja estava e ja respondeu.

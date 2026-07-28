@@ -10,7 +10,7 @@ export async function GET() {
   const userId = (session.user as any).id;
 
   const invites = await prisma.calendarEventAttendee.findMany({
-    where: { userId, status: "PENDENTE" },
+    where: { userId },
     include: {
       event: {
         include: {
@@ -19,7 +19,8 @@ export async function GET() {
         },
       },
     },
-    orderBy: { event: { startAt: "asc" } },
+    orderBy: { event: { startAt: "desc" } },
+    take: 50,
   });
 
   return NextResponse.json(invites);

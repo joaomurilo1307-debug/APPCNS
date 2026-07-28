@@ -77,20 +77,23 @@ export default function AprovacoesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: decision }),
     });
-    setInvites((prev) => prev.filter((i) => i.id !== id));
+    setInvites((prev) => prev.map((i) => (i.id === id ? { ...i, status: decision } : i)));
   }
 
   const pendentes = projects.filter((p) => p.approvalStatus === "PENDENTE");
   const decididos = projects.filter((p) => p.approvalStatus === "APROVADO" || p.approvalStatus === "REJEITADO");
+
+  const invitesPendentes = invites.filter((i) => i.status === "PENDENTE");
+  const invitesDecididos = invites.filter((i) => i.status !== "PENDENTE");
 
   return (
     <div>
       <h1 className="mb-1 text-2xl font-semibold">Aprovações</h1>
       <p className="mb-6 text-sm text-gray-500">Convites de reunião e projetos aguardando sua decisão.</p>
 
-      <h2 className="mb-3 text-sm font-semibold text-gray-600">Convites de reunião ({invites.length})</h2>
+      <h2 className="mb-3 text-sm font-semibold text-gray-600">Convites de reunião ({invitesPendentes.length})</h2>
       <div className="mb-8 grid gap-3">
-        {invites.map((inv) => (
+        {invitesPendentes.map((inv) => (
           <div key={inv.id} className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4">
             <div className="flex items-center gap-3">
               <Avatar name={inv.event.creator.name} color={inv.event.creator.avatarColor} />
@@ -131,8 +134,24 @@ export default function AprovacoesPage() {
             </div>
           </div>
         ))}
-        {invites.length === 0 && <p className="text-sm text-gray-400">Nenhum convite de reunião pendente.</p>}
+        {invitesPendentes.length === 0 && <p className="text-sm text-gray-400">Nenhum convite de reunião pendente.</p>}
       </div>
+
+      {invitesDecididos.length > 0 && (
+        <>
+          <h2 className="mb-3 text-sm font-semibold text-gray-600">Histórico de convites</h2>
+          <div className="mb-8 grid gap-2">
+            {invitesDecididos.map((inv) => (
+              <div key={inv.id} className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-2 text-sm">
+                <span>{inv.event.title} <span className="text-xs text-gray-400">· {inv.event.creator.name}</span></span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${statusStyle[inv.status]}`}>
+                  {inv.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {canApproveProjects && (
         <>

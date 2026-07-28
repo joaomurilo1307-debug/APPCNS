@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getUserTeamIds, isReadOnlyRole } from "@/lib/permissions";
 import { pushCreateEvent } from "@/lib/microsoftGraph";
 import { sendMeetingInvite } from "@/lib/mailer";
+import { generateJitsiRoomUrl } from "@/lib/jitsi";
 import { z } from "zod";
 
 async function visibilityFilterFor(userId: string, role: string) {
@@ -68,7 +69,7 @@ const createEventSchema = z.object({
   description: z.string().optional(),
   type: z.enum(["REUNIAO", "COMPROMISSO", "ENTREGA", "PRAZO", "OUTRO"]).optional(),
   meetingType: z.enum(["ALINHAMENTO", "KICKOFF", "UM_A_UM", "DIRETORIA", "CLIENTE", "TECNICA", "TREINAMENTO", "OUTRA"]).nullable().optional(),
-  onlineMeetingProvider: z.enum(["NENHUM", "TEAMS", "GOOGLE_MEET"]).optional(),
+  onlineMeetingProvider: z.enum(["NENHUM", "TEAMS", "GOOGLE_MEET", "JITSI"]).optional(),
   startAt: z.string().datetime(),
   endAt: z.string().datetime().nullable().optional(),
   allDay: z.boolean().optional(),
@@ -98,6 +99,7 @@ export async function POST(req: Request) {
       startAt: new Date(parsed.data.startAt),
       endAt: parsed.data.endAt ? new Date(parsed.data.endAt) : null,
       creatorId: userId,
+      onlineMeetingUrl: parsed.data.onlineMeetingProvider === "JITSI" ? generateJitsiRoomUrl(parsed.data.title) : undefined,
       attendees: attendeeIds?.length
         ? { create: attendeeIds.map((uid) => ({ userId: uid })) }
         : undefined,

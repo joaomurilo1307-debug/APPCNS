@@ -65,6 +65,12 @@ function buildIcs(opts: {
   return lines.join("\r\n");
 }
 
+function formatEventWhen(startAt: Date, allDay: boolean) {
+  return allDay
+    ? startAt.toLocaleDateString("pt-BR", { timeZone: "UTC" })
+    : startAt.toLocaleString("pt-BR", { timeZone: "UTC" });
+}
+
 async function sendIcsMail(opts: {
   method: "REQUEST" | "CANCEL";
   uid: string;
@@ -82,14 +88,30 @@ async function sendIcsMail(opts: {
   if (opts.attendees.length === 0) return;
 
   const ics = buildIcs(opts);
-  const subjectPrefix = opts.method === "CANCEL" ? "Cancelado: " : "";
+  const when = formatEventWhen(opts.startAt, opts.allDay);
+  const appUrl = process.env.APP_DOMAIN ? `https://${process.env.APP_DOMAIN}/aprovacoes` : null;
+
+  let subject: string;
+  let text: string;
+  if (opts.method === "CANCEL") {
+    subject = `Cancelado: ${opts.title}`;
+    text = `A reunião "${opts.title}" (${when}) foi cancelada por ${opts.organizerName}.`;
+  } else {
+    subject = `Reunião pendente de aprovação: ${opts.title}`;
+    text = [
+      `${opts.organizerName} convidou você para a reunião "${opts.title}", em ${when}.`,
+      opts.description ? `\n${opts.description}` : "",
+      `\nEssa reunião está aguardando sua confirmação.`,
+      appUrl ? `Acesse ${appUrl} (aba Aprovações) para aceitar ou recusar, ou responda diretamente pelo convite em anexo.` : "",
+    ].filter(Boolean).join("\n");
+  }
 
   try {
     await getTransporter().sendMail({
       from: `"${opts.organizerName}" <${opts.organizerEmail}>`,
       to: opts.attendees.map((a) => `"${a.name}" <${a.email}>`).join(", "),
-      subject: `${subjectPrefix}${opts.title}`,
-      text: opts.description || opts.title,
+      subject,
+      text,
       icalEvent: {
         method: opts.method,
         filename: "convite.ics",

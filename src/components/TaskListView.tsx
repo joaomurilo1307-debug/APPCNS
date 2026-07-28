@@ -206,6 +206,33 @@ export default function TaskListView({
     loadAll();
   }
 
+  async function handleAddResourcePackage() {
+    if (fields.some((f) => f.name === "Horas estimadas" || f.name === "Custo estimado")) {
+      alert("As colunas de recursos já existem nesta lista.");
+      return;
+    }
+    const createField = async (name: string, type: CustomField["type"]) => {
+      const res = await fetch(`/api/projects/${projectId}/fields`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, type }),
+      });
+      return res.json();
+    };
+    const horas = await createField("Horas estimadas", "NUMERO");
+    const valorHora = await createField("Valor hora (R$)", "MOEDA");
+    await fetch(`/api/projects/${projectId}/fields`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Custo estimado",
+        type: "FORMULA",
+        formula: { operation: "multiplicacao", fieldIds: [horas.id, valorHora.id] },
+      }),
+    });
+    loadAll();
+  }
+
   async function handleDeleteField(fieldId: string) {
     if (!confirm("Excluir esta coluna? Os valores preenchidos nela serão perdidos.")) return;
     await fetch(`/api/fields/${fieldId}`, { method: "DELETE" });
@@ -356,6 +383,13 @@ export default function TaskListView({
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               Baixar modelo
+            </button>
+            <button
+              onClick={handleAddResourcePackage}
+              title="Cria as colunas Horas estimadas, Valor hora e Custo estimado (calculado automaticamente)"
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+            >
+              📦 Pacote de recursos
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelected} className="hidden" />
           </>

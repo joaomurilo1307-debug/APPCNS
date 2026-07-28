@@ -3,6 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Avatar from "@/components/Avatar";
+import { generateJitsiRoomUrl } from "@/lib/jitsi";
+
+function renderWithLinks(text: string) {
+  const parts = text.split(/(https?:\/\/\S+)/g);
+  return parts.map((part, i) =>
+    /^https?:\/\//.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noreferrer" className="underline">
+        {part}
+      </a>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
 
 type Contact = { id: string; name: string; avatarColor: string; role: string; online: boolean };
 type Team = { id: string; name: string };
@@ -97,6 +111,31 @@ export default function ChatPage() {
     loadConversation();
   }
 
+  async function startCall() {
+    if (!selected) return;
+    const roomName =
+      selected.type === "team"
+        ? teams.find((t) => t.id === selected.id)?.name ?? "Equipe"
+        : contacts.find((c) => c.id === selected.id)?.name ?? "Chamada";
+    const url = generateJitsiRoomUrl(roomName);
+    const body = `📹 Chamada iniciada — entre pelo link: ${url}`;
+    if (selected.type === "direct") {
+      await fetch(`/api/messages/direct/${selected.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+    } else {
+      await fetch(`/api/messages/team/${selected.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+    }
+    loadConversation();
+    window.open(url, "_blank");
+  }
+
   const currentMessages: { id: string; senderId: string; senderName?: string; body: string; createdAt: string }[] =
     selected?.type === "direct"
       ? directMsgs
@@ -165,8 +204,16 @@ export default function ChatPage() {
           </div>
         ) : (
           <>
-            <div className="border-b border-gray-100 p-3 text-sm font-semibold">
-              {selected.type === "team" ? `# ${selectedName}` : selectedName}
+            <div className="flex items-center justify-between border-b border-gray-100 p-3 text-sm font-semibold">
+              <span>{selected.type === "team" ? `# ${selectedName}` : selectedName}</span>
+              <button
+                type="button"
+                onClick={startCall}
+                title="Iniciar videochamada instantânea"
+                className="rounded-md bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand-dark hover:bg-brand/20"
+              >
+                📹 Chamada
+              </button>
             </div>
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
               <div className="flex flex-col gap-2">
@@ -178,7 +225,7 @@ export default function ChatPage() {
                         {selected.type === "team" && !mine && (
                           <p className="mb-0.5 text-[11px] font-semibold opacity-70">{m.senderName}</p>
                         )}
-                        <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                        <p className="whitespace-pre-wrap break-words">{renderWithLinks(m.body)}</p>
                         <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-gray-400"}`}>
                           {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                         </p>
