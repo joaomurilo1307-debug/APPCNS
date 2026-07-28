@@ -9,6 +9,7 @@ type Task = {
   startDate: string | null;
   dueDate: string | null;
   status: string;
+  groupLabel?: string | null;
 };
 
 const statusColor: Record<string, string> = {
@@ -32,7 +33,15 @@ function fmtDate(d: Date) {
   return d.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
 }
 
-export default function GanttChart({ tasks, onChanged }: { tasks: Task[]; onChanged?: () => void }) {
+export default function GanttChart({
+  tasks,
+  onChanged,
+  groupByProject,
+}: {
+  tasks: Task[];
+  onChanged?: () => void;
+  groupByProject?: boolean;
+}) {
   const [zoom, setZoom] = useState<keyof typeof ZOOM_LEVELS>("médio");
   const [labelWidth, setLabelWidth] = useState<keyof typeof LABEL_WIDTHS>("estreita");
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
@@ -40,6 +49,17 @@ export default function GanttChart({ tasks, onChanged }: { tasks: Task[]; onChan
   const labelPx = LABEL_WIDTHS[labelWidth];
 
   const withDates = useMemo(() => tasks.filter((t) => t.startDate && t.dueDate), [tasks]);
+
+  const groups = useMemo(() => {
+    if (!groupByProject) return [{ label: null as string | null, tasks: withDates }];
+    const map = new Map<string, Task[]>();
+    withDates.forEach((t) => {
+      const key = t.groupLabel ?? "Sem projeto";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(t);
+    });
+    return Array.from(map.entries()).map(([label, tasks]) => ({ label, tasks }));
+  }, [withDates, groupByProject]);
 
   const { rangeStart, totalDays } = useMemo(() => {
     const allDates: Date[] = [];
@@ -120,37 +140,49 @@ export default function GanttChart({ tasks, onChanged }: { tasks: Task[]; onChan
               </div>
             ))}
           </div>
-          {withDates.map((t) => {
-            const start = offsetDays(t.startDate!);
-            const end = offsetDays(t.dueDate!);
-            const width = Math.max(1, end - start + 1) * dayWidth;
-            return (
-              <div key={t.id} className="flex border-b border-gray-50 hover:bg-gray-50/60">
-                <div
-                  style={{ width: labelPx }}
-                  title={t.title}
-                  onClick={() => setOpenTaskId(t.id)}
-                  className="shrink-0 cursor-pointer truncate px-3 py-2 text-xs hover:text-brand-dark hover:underline"
-                >
-                  {t.title}
+          {groups.map((group) => (
+            <div key={group.label ?? "all"}>
+              {groupByProject && (
+                <div className="flex border-b border-gray-100 bg-gray-50">
+                  <div style={{ width: labelPx }} className="shrink-0 px-3 py-2 text-xs font-semibold">
+                    {group.label}
+                  </div>
+                  <div style={{ width: totalDays * dayWidth }} />
                 </div>
-                <div className="relative" style={{ width: totalDays * dayWidth, height: 32 }}>
-                  <div
-                    onClick={() => setOpenTaskId(t.id)}
-                    className={`group absolute top-1.5 h-4 cursor-pointer rounded ${statusColor[t.status]}`}
-                    style={{ left: start * dayWidth, width }}
-                  >
-                    <div className="pointer-events-none absolute -top-9 left-0 z-10 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-                      <span className="font-medium">{t.title}</span>
-                      <span className="ml-1 text-gray-300">
-                        · {fmtDate(new Date(t.startDate!))} – {fmtDate(new Date(t.dueDate!))} · {statusLabel[t.status]}
-                      </span>
+              )}
+              {group.tasks.map((t) => {
+                const start = offsetDays(t.startDate!);
+                const end = offsetDays(t.dueDate!);
+                const width = Math.max(1, end - start + 1) * dayWidth;
+                return (
+                  <div key={t.id} className="flex border-b border-gray-50 hover:bg-gray-50/60">
+                    <div
+                      style={{ width: labelPx }}
+                      title={t.title}
+                      onClick={() => setOpenTaskId(t.id)}
+                      className="shrink-0 cursor-pointer truncate px-3 py-2 text-xs hover:text-brand-dark hover:underline"
+                    >
+                      {t.title}
+                    </div>
+                    <div className="relative" style={{ width: totalDays * dayWidth, height: 32 }}>
+                      <div
+                        onClick={() => setOpenTaskId(t.id)}
+                        className={`group absolute top-1.5 h-4 cursor-pointer rounded ${statusColor[t.status]}`}
+                        style={{ left: start * dayWidth, width }}
+                      >
+                        <div className="pointer-events-none absolute -top-9 left-0 z-10 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                          <span className="font-medium">{t.title}</span>
+                          <span className="ml-1 text-gray-300">
+                            · {fmtDate(new Date(t.startDate!))} – {fmtDate(new Date(t.dueDate!))} · {statusLabel[t.status]}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
 
