@@ -13,7 +13,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const project = await prisma.project.findUnique({
     where: { id: params.id },
     include: {
-      team: true,
+      team: {
+        include: {
+          members: { include: { user: { select: { id: true, name: true, avatarColor: true } } } },
+        },
+      },
       owner: { select: { id: true, name: true } },
       approver: { select: { id: true, name: true } },
       clients: { include: { user: { select: { id: true, name: true } } } },

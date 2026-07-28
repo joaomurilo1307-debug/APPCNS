@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import KanbanBoard from "@/components/KanbanBoard";
 import Whiteboard from "@/components/Whiteboard";
 import GoalsPanel from "@/components/GoalsPanel";
+import GanttChart from "@/components/GanttChart";
 
 type ProjectDetail = {
   id: string;
@@ -54,7 +55,10 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [tab, setTab] = useState<"kanban" | "board" | "metas">("kanban");
+  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "gantt">("kanban");
+  const [ganttTasks, setGanttTasks] = useState<
+    { id: string; title: string; startDate: string | null; dueDate: string | null; status: string }[]
+  >([]);
 
   async function load() {
     const res = await fetch(`/api/projects/${params.id}`);
@@ -64,6 +68,13 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   useEffect(() => {
     load();
   }, [params.id]);
+
+  useEffect(() => {
+    if (tab !== "gantt") return;
+    fetch(`/api/tasks?projectId=${params.id}`)
+      .then((r) => r.json())
+      .then(setGanttTasks);
+  }, [tab, params.id, refreshKey]);
 
   async function handleCreateTask(e: React.FormEvent) {
     e.preventDefault();
@@ -236,10 +247,19 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         >
           Metas
         </button>
+        <button
+          onClick={() => setTab("gantt")}
+          className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+            tab === "gantt" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
+          }`}
+        >
+          Gantt
+        </button>
       </div>
 
       {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} />}
       {tab === "board" && <Whiteboard projectId={project.id} />}
+      {tab === "gantt" && <GanttChart tasks={ganttTasks} />}
       {tab === "metas" && (
         <GoalsPanel
           projectId={project.id}
