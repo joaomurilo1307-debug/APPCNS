@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import TaskDetailModal from "./TaskDetailModal";
 
 type Task = {
   id: string;
@@ -17,9 +18,27 @@ const statusColor: Record<string, string> = {
   FEITO: "bg-green-500",
 };
 
-const DAY_WIDTH = 28;
+const statusLabel: Record<string, string> = {
+  A_FAZER: "A fazer",
+  FAZENDO: "Fazendo",
+  BLOQUEADO: "Bloqueado",
+  FEITO: "Feito",
+};
 
-export default function GanttChart({ tasks }: { tasks: Task[] }) {
+const ZOOM_LEVELS = { compacto: 18, médio: 28, largo: 44 } as const;
+const LABEL_WIDTHS = { estreita: 200, larga: 320 } as const;
+
+function fmtDate(d: Date) {
+  return d.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
+}
+
+export default function GanttChart({ tasks, onChanged }: { tasks: Task[]; onChanged?: () => void }) {
+  const [zoom, setZoom] = useState<keyof typeof ZOOM_LEVELS>("médio");
+  const [labelWidth, setLabelWidth] = useState<keyof typeof LABEL_WIDTHS>("estreita");
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const dayWidth = ZOOM_LEVELS[zoom];
+  const labelPx = LABEL_WIDTHS[labelWidth];
+
   const withDates = useMemo(() => tasks.filter((t) => t.startDate && t.dueDate), [tasks]);
 
   const { rangeStart, totalDays } = useMemo(() => {
@@ -54,40 +73,94 @@ export default function GanttChart({ tasks }: { tasks: Task[] }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-      <div style={{ minWidth: totalDays * DAY_WIDTH + 200 }}>
-        <div className="flex border-b border-gray-100">
-          <div className="w-[200px] shrink-0 border-r border-gray-100 px-3 py-2 text-xs font-semibold text-gray-500">
-            Tarefa
-          </div>
-          {days.map((d, i) => (
-            <div
-              key={i}
-              style={{ width: DAY_WIDTH }}
-              className="shrink-0 border-r border-gray-50 py-2 text-center text-[10px] text-gray-400"
+    <div>
+      <div className="mb-2 flex flex-wrap items-center gap-4 text-xs text-gray-500">
+        <div className="flex items-center gap-1">
+          <span>Zoom:</span>
+          {(Object.keys(ZOOM_LEVELS) as (keyof typeof ZOOM_LEVELS)[]).map((z) => (
+            <button
+              key={z}
+              onClick={() => setZoom(z)}
+              className={`rounded-md border px-2 py-1 capitalize ${zoom === z ? "border-brand bg-brand text-white" : "border-gray-300 hover:bg-gray-50"}`}
             >
-              {d.getDate()}/{d.getMonth() + 1}
-            </div>
+              {z}
+            </button>
           ))}
         </div>
-        {withDates.map((t) => {
-          const start = offsetDays(t.startDate!);
-          const end = offsetDays(t.dueDate!);
-          const width = Math.max(1, end - start + 1) * DAY_WIDTH;
-          return (
-            <div key={t.id} className="flex border-b border-gray-50">
-              <div className="w-[200px] shrink-0 truncate px-3 py-2 text-xs">{t.title}</div>
-              <div className="relative" style={{ width: totalDays * DAY_WIDTH, height: 32 }}>
-                <div
-                  className={`absolute top-1.5 h-4 rounded ${statusColor[t.status]}`}
-                  style={{ left: start * DAY_WIDTH, width }}
-                  title={t.title}
-                />
-              </div>
-            </div>
-          );
-        })}
+        <div className="flex items-center gap-1">
+          <span>Nome da tarefa:</span>
+          {(Object.keys(LABEL_WIDTHS) as (keyof typeof LABEL_WIDTHS)[]).map((w) => (
+            <button
+              key={w}
+              onClick={() => setLabelWidth(w)}
+              className={`rounded-md border px-2 py-1 capitalize ${labelWidth === w ? "border-brand bg-brand text-white" : "border-gray-300 hover:bg-gray-50"}`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
       </div>
+
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+        <div style={{ minWidth: totalDays * dayWidth + labelPx }}>
+          <div className="flex border-b border-gray-100">
+            <div
+              style={{ width: labelPx }}
+              className="shrink-0 border-r border-gray-100 px-3 py-2 text-xs font-semibold text-gray-500"
+            >
+              Projeto / Tarefa
+            </div>
+            {days.map((d, i) => (
+              <div
+                key={i}
+                style={{ width: dayWidth }}
+                className="shrink-0 border-r border-gray-50 py-2 text-center text-[10px] text-gray-400"
+              >
+                {d.getDate()}/{d.getMonth() + 1}
+              </div>
+            ))}
+          </div>
+          {withDates.map((t) => {
+            const start = offsetDays(t.startDate!);
+            const end = offsetDays(t.dueDate!);
+            const width = Math.max(1, end - start + 1) * dayWidth;
+            return (
+              <div key={t.id} className="flex border-b border-gray-50 hover:bg-gray-50/60">
+                <div
+                  style={{ width: labelPx }}
+                  title={t.title}
+                  onClick={() => setOpenTaskId(t.id)}
+                  className="shrink-0 cursor-pointer truncate px-3 py-2 text-xs hover:text-brand-dark hover:underline"
+                >
+                  {t.title}
+                </div>
+                <div className="relative" style={{ width: totalDays * dayWidth, height: 32 }}>
+                  <div
+                    onClick={() => setOpenTaskId(t.id)}
+                    className={`group absolute top-1.5 h-4 cursor-pointer rounded ${statusColor[t.status]}`}
+                    style={{ left: start * dayWidth, width }}
+                  >
+                    <div className="pointer-events-none absolute -top-9 left-0 z-10 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                      <span className="font-medium">{t.title}</span>
+                      <span className="ml-1 text-gray-300">
+                        · {fmtDate(new Date(t.startDate!))} – {fmtDate(new Date(t.dueDate!))} · {statusLabel[t.status]}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {openTaskId && (
+        <TaskDetailModal
+          taskId={openTaskId}
+          onClose={() => setOpenTaskId(null)}
+          onChanged={() => onChanged?.()}
+        />
+      )}
     </div>
   );
 }

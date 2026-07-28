@@ -268,7 +268,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
       {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} />}
       {tab === "board" && <Whiteboard projectId={project.id} />}
-      {tab === "gantt" && <GanttChart tasks={ganttTasks} />}
+      {tab === "gantt" && <GanttChart tasks={ganttTasks} onChanged={() => setRefreshKey((k) => k + 1)} />}
       {tab === "lista" && (
         <TaskListView projectId={project.id} projectName={project.name} team={project.team} canManage={canManage} />
       )}

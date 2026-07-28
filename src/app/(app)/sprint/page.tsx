@@ -159,7 +159,7 @@ export default function SprintPage() {
         </DndContext>
       )}
 
-      {view === "gantt" && weekTasks.length > 0 && <GanttChart tasks={weekTasks} />}
+      {view === "gantt" && weekTasks.length > 0 && <GanttChart tasks={weekTasks} onChanged={load} />}
 
       {openTaskId && <TaskDetailModal taskId={openTaskId} onClose={() => setOpenTaskId(null)} onChanged={load} />}
     </div>
