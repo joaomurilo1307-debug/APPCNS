@@ -15,6 +15,7 @@ const updateTaskSchema = z.object({
   startDate: z.string().datetime().nullable().optional(),
   dueDate: z.string().datetime().nullable().optional(),
   locked: z.boolean().optional(),
+  customFieldValues: z.record(z.string().nullable()).optional(),
 });
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
@@ -59,15 +60,37 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Só Admin ou Gestor de Projeto pode travar/destravar tarefa" }, { status: 403 });
   }
 
-  const data: any = { ...parsed.data };
+  const { customFieldValues, ...rest } = parsed.data;
+  const data: any = { ...rest };
   if (parsed.data.dueDate !== undefined) {
     data.dueDate = parsed.data.dueDate ? new Date(parsed.data.dueDate) : null;
   }
   if (parsed.data.startDate !== undefined) {
     data.startDate = parsed.data.startDate ? new Date(parsed.data.startDate) : null;
   }
+  if (parsed.data.status !== undefined && parsed.data.status !== task.status) {
+    if (parsed.data.status === "FAZENDO" && !task.actualStartedAt) {
+      data.actualStartedAt = new Date();
+    }
+    if (parsed.data.status === "FEITO") {
+      data.actualEndedAt = new Date();
+      if (!task.actualStartedAt) data.actualStartedAt = data.actualStartedAt ?? new Date();
+    } else if (task.status === "FEITO") {
+      data.actualEndedAt = null;
+    }
+  }
 
   const updated = await prisma.task.update({ where: { id: params.id }, data });
+
+  if (customFieldValues) {
+    for (const [customFieldId, value] of Object.entries(customFieldValues)) {
+      await prisma.taskCustomFieldValue.upsert({
+        where: { taskId_customFieldId: { taskId: params.id, customFieldId } },
+        update: { value },
+        create: { taskId: params.id, customFieldId, value },
+      });
+    }
+  }
 
   await reconcileTaskOutlook(
     { assigneeId: task.assigneeId, outlookEventId: task.outlookEventId },

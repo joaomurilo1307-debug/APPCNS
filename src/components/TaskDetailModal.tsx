@@ -23,7 +23,18 @@ type TaskDetail = {
   subtasks: Subtask[];
   attachments: Attachment[];
   comments: Comment[];
+  actualStartedAt: string | null;
+  actualEndedAt: string | null;
 };
+
+function elapsedLabel(task: Pick<TaskDetail, "actualStartedAt" | "actualEndedAt">) {
+  if (!task.actualStartedAt) return null;
+  const start = new Date(task.actualStartedAt);
+  const end = task.actualEndedAt ? new Date(task.actualEndedAt) : new Date();
+  const hours = (end.getTime() - start.getTime()) / 3600000;
+  const formatted = hours < 1 ? `${Math.round(hours * 60)} min` : hours < 24 ? `${hours.toFixed(1)}h` : `${Math.round(hours / 24)} dia(s)`;
+  return task.actualEndedAt ? `Concluída em ${formatted}` : `Em execução há ${formatted}`;
+}
 
 const statusLabel: Record<string, string> = {
   A_FAZER: "A fazer",
@@ -216,6 +227,10 @@ export default function TaskDetailModal({
               />
             </div>
           </div>
+
+          {elapsedLabel(task) && (
+            <p className="mb-4 text-xs text-gray-400">⏱ {elapsedLabel(task)}</p>
+          )}
 
           {canModify && (
             <textarea

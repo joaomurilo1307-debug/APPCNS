@@ -6,6 +6,7 @@ import KanbanBoard from "@/components/KanbanBoard";
 import Whiteboard from "@/components/Whiteboard";
 import GoalsPanel from "@/components/GoalsPanel";
 import GanttChart from "@/components/GanttChart";
+import TaskListView from "@/components/TaskListView";
 
 type ProjectDetail = {
   id: string;
@@ -55,7 +56,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "gantt">("kanban");
+  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "gantt" | "lista">("kanban");
   const [ganttTasks, setGanttTasks] = useState<
     { id: string; title: string; startDate: string | null; dueDate: string | null; status: string }[]
   >([]);
@@ -255,11 +256,22 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         >
           Gantt
         </button>
+        <button
+          onClick={() => setTab("lista")}
+          className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+            tab === "lista" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
+          }`}
+        >
+          Lista
+        </button>
       </div>
 
       {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} />}
       {tab === "board" && <Whiteboard projectId={project.id} />}
       {tab === "gantt" && <GanttChart tasks={ganttTasks} />}
+      {tab === "lista" && (
+        <TaskListView projectId={project.id} projectName={project.name} team={project.team} canManage={canManage} />
+      )}
       {tab === "metas" && (
         <GoalsPanel
           projectId={project.id}

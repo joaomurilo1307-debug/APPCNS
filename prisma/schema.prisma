@@ -64,6 +64,16 @@ enum EventType {
   OUTRO
 }
 
+enum CustomFieldType {
+  TEXTO
+  NUMERO
+  MOEDA
+  DATA
+  LISTA
+  CHECKBOX
+  PESSOA
+}
+
 model User {
   id           String    @id @default(cuid())
   name         String
@@ -148,6 +158,32 @@ model Project {
   board    ProjectBoard?
   goals    Goal[]
   events   CalendarEvent[]
+  customFields CustomField[]
+}
+
+model CustomField {
+  id        String          @id @default(cuid())
+  projectId String
+  name      String
+  type      CustomFieldType
+  options   String?         @db.Text
+  order     Int             @default(0)
+  createdAt DateTime        @default(now())
+
+  project Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  values  TaskCustomFieldValue[]
+}
+
+model TaskCustomFieldValue {
+  id            String  @id @default(cuid())
+  taskId        String
+  customFieldId String
+  value         String? @db.Text
+
+  task        Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  customField CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, customFieldId])
 }
 
 model Goal {
@@ -234,15 +270,18 @@ model Task {
   parentTaskId      String?
   locked            Boolean           @default(false)
   outlookEventId    String?           @unique
+  actualStartedAt   DateTime?
+  actualEndedAt     DateTime?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
-  project     Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  assignee    User?         @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  parentTask  Task?         @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
-  subtasks    Task[]        @relation("Subtasks")
-  attachments Attachment[]
-  comments    TaskComment[]
+  project      Project?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  assignee     User?                  @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  parentTask   Task?                  @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks     Task[]                 @relation("Subtasks")
+  attachments  Attachment[]
+  comments     TaskComment[]
+  customFieldValues TaskCustomFieldValue[]
 }
 
 model TaskComment {

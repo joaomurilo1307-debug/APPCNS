@@ -21,13 +21,16 @@ const statusLabel: Record<string, string> = {
   FEITO: "Feito",
 };
 
-function startOfWeek(d: Date) {
-  const date = new Date(d);
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  date.setDate(diff);
-  date.setHours(0, 0, 0, 0);
-  return date;
+/** Segunda a sexta da semana corrente, em limites UTC-meia-noite — mesmo referencial usado ao salvar datas de tarefas (input date -> new Date(str).toISOString()), evitando exclusoes por fuso horario. */
+function mondayToFridayRangeUTC() {
+  const now = new Date();
+  const day = now.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+  const friday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 4);
+  const start = new Date(Date.UTC(monday.getFullYear(), monday.getMonth(), monday.getDate()));
+  const end = new Date(Date.UTC(friday.getFullYear(), friday.getMonth(), friday.getDate(), 23, 59, 59, 999));
+  return { start, end };
 }
 
 export default function SprintPage() {
@@ -43,10 +46,7 @@ export default function SprintPage() {
       .then(setTasks);
   }, [userId]);
 
-  const weekStart = startOfWeek(new Date());
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  weekEnd.setHours(23, 59, 59, 999);
+  const { start: weekStart, end: weekEnd } = mondayToFridayRangeUTC();
 
   const weekTasks = tasks.filter((t) => {
     if (!t.dueDate) return false;
@@ -58,7 +58,7 @@ export default function SprintPage() {
     <div>
       <h1 className="mb-1 text-2xl font-semibold">Sprint da Semana</h1>
       <p className="mb-6 text-sm text-gray-500">
-        Suas tarefas com prazo entre {weekStart.toLocaleDateString("pt-BR")} e {weekEnd.toLocaleDateString("pt-BR")}.
+        Suas tarefas com prazo entre {weekStart.toLocaleDateString("pt-BR", { timeZone: "UTC" })} e {weekEnd.toLocaleDateString("pt-BR", { timeZone: "UTC" })}.
       </p>
 
       <div className="grid gap-2">
@@ -74,7 +74,7 @@ export default function SprintPage() {
             <div className="flex items-center gap-3 text-xs">
               <span className="text-gray-500">{statusLabel[t.status]}</span>
               <span className="text-gray-400">
-                {t.dueDate && new Date(t.dueDate).toLocaleDateString("pt-BR")}
+                {t.dueDate && new Date(t.dueDate).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
               </span>
             </div>
           </div>
