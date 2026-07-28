@@ -83,6 +83,7 @@ model User {
   role         UserRole  @default(COLABORADOR)
   active       Boolean   @default(true)
   avatarColor  String    @default("#0f766e")
+  lastSeenAt   DateTime?
   createdAt    DateTime  @default(now())
 
   teams           UserTeam[]
@@ -96,6 +97,50 @@ model User {
   createdEvents   CalendarEvent[]         @relation("EventCreator")
   eventInvites    CalendarEventAttendee[]
   outlookAccount  OutlookAccount?
+  sentDirectMessages     DirectMessage[]   @relation("DMSender")
+  receivedDirectMessages DirectMessage[]   @relation("DMReceiver")
+  teamMessages           TeamMessage[]     @relation("TeamMessageSender")
+  teamMessageReads       TeamMessageRead[]
+}
+
+model DirectMessage {
+  id         String    @id @default(cuid())
+  senderId   String
+  receiverId String
+  body       String
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
+
+  sender   User @relation("DMSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("DMReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, receiverId])
+  @@index([receiverId, senderId])
+}
+
+model TeamMessage {
+  id        String   @id @default(cuid())
+  teamId    String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sender User @relation("TeamMessageSender", fields: [senderId], references: [id])
+
+  @@index([teamId, createdAt])
+}
+
+model TeamMessageRead {
+  id         String   @id @default(cuid())
+  userId     String
+  teamId     String
+  lastReadAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
 }
 
 model OutlookAccount {
@@ -121,6 +166,8 @@ model Team {
   members  UserTeam[]
   projects Project[]
   goals    Goal[]
+  messages     TeamMessage[]
+  messageReads TeamMessageRead[]
 }
 
 model UserTeam {

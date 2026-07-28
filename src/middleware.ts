@@ -9,6 +9,7 @@ export const config = {
     "/sprint/:path*",
     "/gantt/:path*",
     "/calendario/:path*",
+    "/chat/:path*",
     "/usuarios/:path*",
     "/aprovacoes/:path*",
     "/portal-cliente/:path*",
