@@ -96,8 +96,16 @@ async function graphFetch(userId: string, path: string, init?: RequestInit) {
 }
 
 function toGraphEvent(
-  e: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean },
-  reminderMinutesBeforeStart?: number
+  e: {
+    title: string;
+    description?: string | null;
+    startAt: Date;
+    endAt: Date | null;
+    allDay: boolean;
+    attendeeEmails?: string[];
+  },
+  reminderMinutesBeforeStart?: number,
+  withTeamsMeeting?: boolean
 ) {
   const end = e.endAt ?? new Date(e.startAt.getTime() + 30 * 60 * 1000);
   return {
@@ -109,22 +117,32 @@ function toGraphEvent(
     ...(reminderMinutesBeforeStart !== undefined
       ? { isReminderOn: true, reminderMinutesBeforeStart }
       : {}),
+    ...(withTeamsMeeting ? { isOnlineMeeting: true, onlineMeetingProvider: "teamsForBusiness" } : {}),
+    ...(e.attendeeEmails?.length
+      ? {
+          attendees: e.attendeeEmails.map((email) => ({
+            emailAddress: { address: email },
+            type: "required",
+          })),
+        }
+      : {}),
   };
 }
 
 export async function pushCreateEvent(
   userId: string,
-  event: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean },
-  reminderMinutesBeforeStart?: number
-): Promise<string | null> {
+  event: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean; attendeeEmails?: string[] },
+  reminderMinutesBeforeStart?: number,
+  withTeamsMeeting?: boolean
+): Promise<{ outlookEventId: string; onlineMeetingUrl: string | null } | null> {
   try {
     const res = await graphFetch(userId, "/me/events", {
       method: "POST",
-      body: JSON.stringify(toGraphEvent(event, reminderMinutesBeforeStart)),
+      body: JSON.stringify(toGraphEvent(event, reminderMinutesBeforeStart, withTeamsMeeting)),
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.id as string;
+    return { outlookEventId: data.id as string, onlineMeetingUrl: data.onlineMeeting?.joinUrl ?? null };
   } catch {
     return null;
   }
@@ -133,16 +151,20 @@ export async function pushCreateEvent(
 export async function pushUpdateEvent(
   userId: string,
   outlookEventId: string,
-  event: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean },
-  reminderMinutesBeforeStart?: number
-) {
+  event: { title: string; description?: string | null; startAt: Date; endAt: Date | null; allDay: boolean; attendeeEmails?: string[] },
+  reminderMinutesBeforeStart?: number,
+  withTeamsMeeting?: boolean
+): Promise<{ onlineMeetingUrl: string | null } | null> {
   try {
-    await graphFetch(userId, `/me/events/${outlookEventId}`, {
+    const res = await graphFetch(userId, `/me/events/${outlookEventId}`, {
       method: "PATCH",
-      body: JSON.stringify(toGraphEvent(event, reminderMinutesBeforeStart)),
+      body: JSON.stringify(toGraphEvent(event, reminderMinutesBeforeStart, withTeamsMeeting)),
     });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return { onlineMeetingUrl: data.onlineMeeting?.joinUrl ?? null };
   } catch {
-    // best-effort sync; local change already saved
+    return null;
   }
 }
 

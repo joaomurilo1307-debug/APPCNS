@@ -45,9 +45,9 @@ export async function reconcileTaskOutlook(prev: Pick<TaskState, "assigneeId" | 
   if (updated.outlookEventId && !assigneeChanged) {
     await pushUpdateEvent(updated.assigneeId!, updated.outlookEventId, payload, REMINDER_MINUTES_BEFORE);
   } else {
-    const outlookEventId = await pushCreateEvent(updated.assigneeId!, payload, REMINDER_MINUTES_BEFORE);
-    if (outlookEventId) {
-      await prisma.task.update({ where: { id: updated.id }, data: { outlookEventId } });
+    const created = await pushCreateEvent(updated.assigneeId!, payload, REMINDER_MINUTES_BEFORE);
+    if (created) {
+      await prisma.task.update({ where: { id: updated.id }, data: { outlookEventId: created.outlookEventId } });
     }
   }
 }

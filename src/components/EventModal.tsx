@@ -13,6 +13,8 @@ type EventDetail = {
   description: string | null;
   type: string;
   meetingType: string | null;
+  onlineMeetingProvider: string;
+  onlineMeetingUrl: string | null;
   startAt: string;
   endAt: string | null;
   allDay: boolean;
@@ -48,6 +50,8 @@ export default function EventModal({
   const [description, setDescription] = useState("");
   const [type, setType] = useState("COMPROMISSO");
   const [meetingType, setMeetingType] = useState("");
+  const [onlineMeetingProvider, setOnlineMeetingProvider] = useState("NENHUM");
+  const [onlineMeetingUrl, setOnlineMeetingUrl] = useState<string | null>(null);
   const [start, setStart] = useState(() => toLocalInput(initialStart ?? new Date()));
   const [end, setEnd] = useState("");
   const [allDay, setAllDay] = useState(false);
@@ -68,6 +72,8 @@ export default function EventModal({
         setDescription(e.description ?? "");
         setType(e.type);
         setMeetingType(e.meetingType ?? "");
+        setOnlineMeetingProvider(e.onlineMeetingProvider ?? "NENHUM");
+        setOnlineMeetingUrl(e.onlineMeetingUrl ?? null);
         setStart(toLocalInput(new Date(e.startAt)));
         setEnd(e.endAt ? toLocalInput(new Date(e.endAt)) : "");
         setAllDay(e.allDay);
@@ -90,6 +96,7 @@ export default function EventModal({
       description: description || undefined,
       type,
       meetingType: type === "REUNIAO" ? meetingType || null : null,
+      onlineMeetingProvider,
       startAt: new Date(start).toISOString(),
       endAt: end ? new Date(end).toISOString() : null,
       allDay,
@@ -187,6 +194,37 @@ export default function EventModal({
                 ))}
               </select>
             </label>
+          )}
+          <label className="col-span-2 flex flex-col gap-1 text-xs text-gray-500">
+            Vídeo da reunião
+            <select
+              disabled={!canEdit}
+              value={onlineMeetingProvider}
+              onChange={(e) => setOnlineMeetingProvider(e.target.value)}
+              className="rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-50"
+            >
+              <option value="NENHUM">Nenhum</option>
+              <option value="TEAMS">Microsoft Teams</option>
+              <option value="GOOGLE_MEET">Google Meet</option>
+            </select>
+          </label>
+          {onlineMeetingProvider === "TEAMS" && (
+            <div className="col-span-2 text-xs">
+              {onlineMeetingUrl ? (
+                <a href={onlineMeetingUrl} target="_blank" rel="noreferrer" className="text-brand-dark underline">
+                  Entrar na reunião do Teams
+                </a>
+              ) : (
+                <p className="text-gray-400">
+                  O link é gerado ao salvar (precisa ter conectado o Outlook em Calendário → Conectar Outlook).
+                </p>
+              )}
+            </div>
+          )}
+          {onlineMeetingProvider === "GOOGLE_MEET" && (
+            <p className="col-span-2 text-xs text-amber-600">
+              Integração com Google Meet ainda não configurada — fala com o time pra habilitar.
+            </p>
           )}
         </div>
 

@@ -37,6 +37,7 @@ const updateEventSchema = z.object({
   description: z.string().nullable().optional(),
   type: z.enum(["REUNIAO", "COMPROMISSO", "ENTREGA", "PRAZO", "OUTRO"]).optional(),
   meetingType: z.enum(["ALINHAMENTO", "KICKOFF", "UM_A_UM", "DIRETORIA", "CLIENTE", "TECNICA", "TREINAMENTO", "OUTRA"]).nullable().optional(),
+  onlineMeetingProvider: z.enum(["NENHUM", "TEAMS", "GOOGLE_MEET"]).optional(),
   startAt: z.string().datetime().optional(),
   endAt: z.string().datetime().nullable().optional(),
   allDay: z.boolean().optional(),
@@ -83,13 +84,34 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   });
 
   if (updated.outlookEventId) {
-    await pushUpdateEvent(updated.creatorId, updated.outlookEventId, {
-      title: updated.title,
-      description: updated.description,
-      startAt: updated.startAt,
-      endAt: updated.endAt,
-      allDay: updated.allDay,
-    });
+    const attendeeEmails = updated.attendees.length
+      ? (
+          await prisma.user.findMany({
+            where: { id: { in: updated.attendees.map((a) => a.userId) } },
+            select: { email: true },
+          })
+        ).map((u) => u.email)
+      : undefined;
+
+    const wantsTeams = updated.onlineMeetingProvider === "TEAMS" && !updated.onlineMeetingUrl;
+    const result = await pushUpdateEvent(
+      updated.creatorId,
+      updated.outlookEventId,
+      {
+        title: updated.title,
+        description: updated.description,
+        startAt: updated.startAt,
+        endAt: updated.endAt,
+        allDay: updated.allDay,
+        attendeeEmails,
+      },
+      undefined,
+      wantsTeams
+    );
+    if (wantsTeams && result?.onlineMeetingUrl) {
+      await prisma.calendarEvent.update({ where: { id: updated.id }, data: { onlineMeetingUrl: result.onlineMeetingUrl } });
+      updated.onlineMeetingUrl = result.onlineMeetingUrl;
+    }
   }
 
   return NextResponse.json(updated);
