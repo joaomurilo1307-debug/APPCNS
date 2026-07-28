@@ -185,27 +185,42 @@ export async function fetchMe(userId: string) {
 
 export async function pullEvents(userId: string) {
   const account = await prisma.outlookAccount.findUnique({ where: { userId } });
-  if (!account) return { pulled: 0 };
+  if (!account) return { pulled: 0, debug: ["Usuário não tem OutlookAccount conectado"] };
 
   const url =
     account.deltaLink ??
     "/me/calendarView/delta?startDateTime=" +
-      new Date(Date.now() - 30 * 86400000).toISOString() +
+      encodeURIComponent(new Date(Date.now() - 30 * 86400000).toISOString()) +
       "&endDateTime=" +
-      new Date(Date.now() + 180 * 86400000).toISOString();
+      encodeURIComponent(new Date(Date.now() + 180 * 86400000).toISOString());
 
   let nextUrl = url.startsWith("http") ? url : `https://graph.microsoft.com/v1.0${url}`;
   let pulled = 0;
   let deltaLink: string | null = null;
+  const debug: string[] = [];
+  let pageCount = 0;
 
   while (nextUrl) {
+    pageCount++;
+    if (pageCount > 20) {
+      debug.push("Interrompido após 20 páginas (limite de segurança)");
+      break;
+    }
     const token = await getValidAccessToken(userId);
-    if (!token) break;
+    if (!token) {
+      debug.push("Token de acesso inválido/expirado ao chamar " + nextUrl);
+      break;
+    }
     const res: Response = await fetch(nextUrl, {
       headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="America/Sao_Paulo"' },
     });
-    if (!res.ok) break;
+    if (!res.ok) {
+      const errorBody = await res.text();
+      debug.push(`Graph respondeu ${res.status} para ${nextUrl}: ${errorBody.slice(0, 500)}`);
+      break;
+    }
     const data = await res.json();
+    debug.push(`Página ${pageCount}: ${data.value?.length ?? 0} item(ns)`);
 
     for (const item of data.value ?? []) {
       if (item["@removed"]) {
@@ -246,7 +261,8 @@ export async function pullEvents(userId: string) {
 
   if (deltaLink) {
     await prisma.outlookAccount.update({ where: { userId }, data: { deltaLink } });
+    debug.push("deltaLink salvo para a próxima sincronização");
   }
 
-  return { pulled };
+  return { pulled, debug };
 }
