@@ -10,7 +10,7 @@ async function visibilityFilterFor(userId: string, role: string) {
   if (role === "ADMIN") return {};
 
   if (role === "CLIENTE") {
-    return { project: { clients: { some: { userId } } } };
+    return { OR: [{ project: { clients: { some: { userId } } } }, { assigneeId: userId }] };
   }
 
   if (role === "APROVADOR") {
@@ -19,7 +19,7 @@ async function visibilityFilterFor(userId: string, role: string) {
       OR: [
         { project: { teamId: { in: teamIds } } },
         { project: { approverId: userId } },
-        { projectId: null, assigneeId: userId },
+        { assigneeId: userId },
       ],
     };
   }
@@ -28,7 +28,7 @@ async function visibilityFilterFor(userId: string, role: string) {
   return {
     OR: [
       { project: { teamId: { in: teamIds } } },
-      { projectId: null, assigneeId: userId },
+      { assigneeId: userId },
     ],
   };
 }

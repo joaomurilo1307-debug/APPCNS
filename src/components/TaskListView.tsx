@@ -8,10 +8,25 @@ type Member = { id: string; name: string };
 type CustomField = {
   id: string;
   name: string;
-  type: "TEXTO" | "NUMERO" | "MOEDA" | "DATA" | "LISTA" | "CHECKBOX" | "PESSOA";
+  type: "TEXTO" | "NUMERO" | "MOEDA" | "DATA" | "LISTA" | "CHECKBOX" | "PESSOA" | "FORMULA";
   options: string | null;
   order: number;
 };
+
+const operationLabel: Record<string, string> = {
+  soma: "+",
+  subtracao: "-",
+  multiplicacao: "×",
+  divisao: "÷",
+};
+
+function computeFormula(op: string, a: number, b: number) {
+  if (op === "soma") return a + b;
+  if (op === "subtracao") return a - b;
+  if (op === "multiplicacao") return a * b;
+  if (op === "divisao") return b === 0 ? null : a / b;
+  return null;
+}
 
 type CustomFieldValue = { customFieldId: string; value: string | null };
 
@@ -49,7 +64,10 @@ const fieldTypeOptions: { v: CustomField["type"]; l: string }[] = [
   { v: "LISTA", l: "Lista suspensa" },
   { v: "CHECKBOX", l: "Caixa de seleção" },
   { v: "PESSOA", l: "Pessoa" },
+  { v: "FORMULA", l: "Cálculo (entre 2 colunas)" },
 ];
+
+const importableFieldTypeOptions = fieldTypeOptions.filter((o) => o.v !== "FORMULA");
 
 const BUILTIN_TARGETS = [
   { v: "title", l: "Título" },
@@ -89,6 +107,9 @@ export default function TaskListView({
   const [newFieldName, setNewFieldName] = useState("");
   const [newFieldType, setNewFieldType] = useState<CustomField["type"]>("TEXTO");
   const [newFieldOptions, setNewFieldOptions] = useState("");
+  const [newFormulaOp, setNewFormulaOp] = useState("soma");
+  const [newFormulaField1, setNewFormulaField1] = useState("");
+  const [newFormulaField2, setNewFormulaField2] = useState("");
 
   const [importRows, setImportRows] = useState<Record<string, any>[] | null>(null);
   const [importMappings, setImportMappings] = useState<ColumnMapping[]>([]);
@@ -157,6 +178,10 @@ export default function TaskListView({
   async function handleAddField(e: React.FormEvent) {
     e.preventDefault();
     if (!newFieldName.trim()) return;
+    if (newFieldType === "FORMULA" && (!newFormulaField1 || !newFormulaField2)) {
+      alert("Escolha as duas colunas do cálculo.");
+      return;
+    }
     await fetch(`/api/projects/${projectId}/fields`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -164,11 +189,18 @@ export default function TaskListView({
         name: newFieldName,
         type: newFieldType,
         options: newFieldType === "LISTA" ? newFieldOptions.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+        formula:
+          newFieldType === "FORMULA"
+            ? { operation: newFormulaOp, fieldIds: [newFormulaField1, newFormulaField2] }
+            : undefined,
       }),
     });
     setNewFieldName("");
     setNewFieldType("TEXTO");
     setNewFieldOptions("");
+    setNewFormulaOp("soma");
+    setNewFormulaField1("");
+    setNewFormulaField2("");
     setShowAddField(false);
     loadAll();
   }
@@ -249,7 +281,7 @@ export default function TaskListView({
         Prazo: t.dueDate?.slice(0, 10) ?? "",
       };
       for (const f of fields) {
-        row[f.name] = t.customFieldValues.find((v) => v.customFieldId === f.id)?.value ?? "";
+        row[f.name] = f.type === "FORMULA" ? getFormulaValue(f, t) ?? "" : t.customFieldValues.find((v) => v.customFieldId === f.id)?.value ?? "";
       }
       return row;
     });
@@ -257,6 +289,41 @@ export default function TaskListView({
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Backlog");
     XLSX.writeFile(wb, `${projectName.replace(/[^\w\-]+/g, "_")}-backlog.xlsx`);
+  }
+
+  function handleDownloadTemplate() {
+    const importableFields = fields.filter((f) => f.type !== "FORMULA");
+    const headers = ["Título", "Descrição", "Status", "Prioridade", "Responsável", "Início", "Prazo", ...importableFields.map((f) => f.name)];
+    const example: Record<string, string> = {
+      Título: "Ex: Revisar contrato XPTO",
+      Descrição: "Detalhes da tarefa (opcional)",
+      Status: "A fazer",
+      Prioridade: "Média",
+      Responsável: team.members[0]?.user.name ?? "Nome exato de um membro da equipe",
+      Início: "2026-08-01",
+      Prazo: "2026-08-10",
+    };
+    for (const f of importableFields) {
+      example[f.name] = f.type === "LISTA" ? (JSON.parse(f.options || "[]")[0] ?? "") : "";
+    }
+    const ws = XLSX.utils.json_to_sheet([example], { header: headers });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Modelo");
+    XLSX.writeFile(wb, "modelo-importacao.xlsx");
+  }
+
+  const numericFields = fields.filter((f) => f.type === "NUMERO" || f.type === "MOEDA");
+
+  function getFormulaValue(field: CustomField, task: ListTask): number | null {
+    if (!field.options) return null;
+    try {
+      const { operation, fieldIds } = JSON.parse(field.options) as { operation: string; fieldIds: [string, string] };
+      const a = Number(task.customFieldValues.find((v) => v.customFieldId === fieldIds[0])?.value ?? 0);
+      const b = Number(task.customFieldValues.find((v) => v.customFieldId === fieldIds[1])?.value ?? 0);
+      return computeFormula(operation, a, b);
+    } catch {
+      return null;
+    }
   }
 
   if (!loaded) return <p className="text-sm text-gray-400">Carregando...</p>;
@@ -277,6 +344,12 @@ export default function TaskListView({
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               Importar Excel
+            </button>
+            <button
+              onClick={handleDownloadTemplate}
+              className="rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
+            >
+              Baixar modelo
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelected} className="hidden" />
           </>
@@ -308,6 +381,33 @@ export default function TaskListView({
               className="flex-1 rounded-md border border-gray-300 px-2 py-1.5"
             />
           )}
+          {newFieldType === "FORMULA" && (
+            <>
+              {numericFields.length < 2 ? (
+                <span className="text-xs text-red-500">Crie ao menos 2 colunas do tipo Número/Moeda antes.</span>
+              ) : (
+                <>
+                  <select value={newFormulaField1} onChange={(e) => setNewFormulaField1(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5">
+                    <option value="">Coluna A</option>
+                    {numericFields.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                  <select value={newFormulaOp} onChange={(e) => setNewFormulaOp(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5">
+                    {Object.entries(operationLabel).map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                  <select value={newFormulaField2} onChange={(e) => setNewFormulaField2(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5">
+                    <option value="">Coluna B</option>
+                    {numericFields.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+            </>
+          )}
           <button className="rounded-md bg-brand px-3 py-1.5 font-medium text-white hover:bg-brand-dark">Adicionar</button>
         </form>
       )}
@@ -318,6 +418,10 @@ export default function TaskListView({
             <div className="border-b border-gray-100 p-4">
               <h2 className="text-lg font-semibold">Importar planilha — mapear colunas</h2>
               <p className="text-xs text-gray-500">{importRows.length} linha(s) encontrada(s). Escolha o destino de cada coluna.</p>
+              <p className="mt-1 text-xs text-gray-400">
+                Status aceita: A fazer, Fazendo, Bloqueado, Feito. Prioridade aceita: Baixa, Média, Alta, Urgente.
+                Responsável deve ser o nome exato de um membro da equipe. Datas no formato AAAA-MM-DD.
+              </p>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               <div className="flex flex-col gap-2">
@@ -347,11 +451,13 @@ export default function TaskListView({
                           <option key={b.v} value={`builtin:${b.v}`}>{b.l}</option>
                         ))}
                       </optgroup>
-                      {fields.length > 0 && (
+                      {fields.filter((f) => f.type !== "FORMULA").length > 0 && (
                         <optgroup label="Colunas existentes">
-                          {fields.map((f) => (
-                            <option key={f.id} value={`existing:${f.id}`}>{f.name}</option>
-                          ))}
+                          {fields
+                            .filter((f) => f.type !== "FORMULA")
+                            .map((f) => (
+                              <option key={f.id} value={`existing:${f.id}`}>{f.name}</option>
+                            ))}
                         </optgroup>
                       )}
                       <option value="newField">+ Criar nova coluna</option>
@@ -362,7 +468,7 @@ export default function TaskListView({
                         onChange={(e) => updateMapping(m.column, { newFieldType: e.target.value as CustomField["type"] })}
                         className="w-40 rounded-md border border-gray-300 px-2 py-1.5"
                       >
-                        {fieldTypeOptions.map((o) => (
+                        {importableFieldTypeOptions.map((o) => (
                           <option key={o.v} value={o.v}>{o.l}</option>
                         ))}
                       </select>
@@ -547,6 +653,14 @@ export default function TaskListView({
                             <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
                           ))}
                         </select>
+                      )}
+                      {f.type === "FORMULA" && (
+                        <span className="block px-2 py-1 text-gray-500">
+                          {(() => {
+                            const result = getFormulaValue(f, t);
+                            return result === null ? "—" : result.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+                          })()}
+                        </span>
                       )}
                     </td>
                   );

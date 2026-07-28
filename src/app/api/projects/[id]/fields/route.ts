@@ -19,8 +19,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
 const createFieldSchema = z.object({
   name: z.string().min(1).max(60),
-  type: z.enum(["TEXTO", "NUMERO", "MOEDA", "DATA", "LISTA", "CHECKBOX", "PESSOA"]),
+  type: z.enum(["TEXTO", "NUMERO", "MOEDA", "DATA", "LISTA", "CHECKBOX", "PESSOA", "FORMULA"]),
   options: z.array(z.string()).optional(),
+  formula: z
+    .object({
+      operation: z.enum(["soma", "subtracao", "multiplicacao", "divisao"]),
+      fieldIds: z.array(z.string()).length(2),
+    })
+    .optional(),
 });
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -44,12 +50,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     _max: { order: true },
   });
 
+  const optionsValue =
+    parsed.data.type === "FORMULA"
+      ? parsed.data.formula
+        ? JSON.stringify(parsed.data.formula)
+        : null
+      : parsed.data.options?.length
+      ? JSON.stringify(parsed.data.options)
+      : null;
+
   const field = await prisma.customField.create({
     data: {
       projectId: params.id,
       name: parsed.data.name,
       type: parsed.data.type,
-      options: parsed.data.options?.length ? JSON.stringify(parsed.data.options) : null,
+      options: optionsValue,
       order: (maxOrder._max.order ?? -1) + 1,
     },
   });
