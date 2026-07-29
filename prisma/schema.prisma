@@ -205,6 +205,25 @@ model User {
   auditLogs       AuditLog[]
   notifications   Notification[]
   resourceRates   ResourceRate[]
+  approvalRequestsSent     ApprovalRequest[] @relation("ApprovalRequester")
+  approvalRequestsReceived ApprovalRequest[] @relation("ApprovalApprover")
+}
+
+model ApprovalRequest {
+  id          String         @id @default(cuid())
+  title       String
+  description String?        @db.Text
+  requesterId String
+  approverId  String
+  status      ApprovalStatus @default(PENDENTE)
+  decidedAt   DateTime?
+  createdAt   DateTime       @default(now())
+
+  requester User @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  approver  User @relation("ApprovalApprover", fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@index([approverId, status])
+  @@index([requesterId])
 }
 
 model DirectMessage {
