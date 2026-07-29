@@ -315,9 +315,9 @@ export default function UsuariosPage() {
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+      <div className="max-h-[calc(100vh-14rem)] overflow-auto rounded-xl border border-gray-200 bg-white">
         <table className="w-full text-sm">
-          <thead className="border-b bg-gray-50 text-left text-gray-500">
+          <thead className="sticky top-0 z-10 border-b bg-gray-50 text-left text-gray-500">
             <tr>
               <th className="px-4 py-3">Nome</th>
               <th className="px-4 py-3">E-mail</th>

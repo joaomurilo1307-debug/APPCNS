@@ -663,9 +663,9 @@ export default function TaskListView({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+      <div className="max-h-[calc(100vh-14rem)] overflow-auto rounded-xl border border-gray-200 bg-white">
         <table className="w-full border-collapse text-sm">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs text-gray-500">
               <th className="min-w-[220px] px-3 py-2">Título</th>
               <th className="min-w-[120px] px-3 py-2">Status</th>
