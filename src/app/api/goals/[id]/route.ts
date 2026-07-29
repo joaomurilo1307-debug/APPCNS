@@ -20,12 +20,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     where: { id: params.id },
     include: {
       project: { select: { id: true, name: true } },
-      assignedUser: { select: { id: true, name: true, avatarColor: true } },
+      assignedUsers: { select: { id: true, name: true, avatarColor: true } },
       assignedTeam: { select: { id: true, name: true } },
       subGoals: {
         include: {
           project: { select: { id: true, name: true } },
-          assignedUser: { select: { id: true, name: true, avatarColor: true } },
+          assignedUsers: { select: { id: true, name: true, avatarColor: true } },
           assignedTeam: { select: { id: true, name: true } },
         },
       },
@@ -48,7 +48,7 @@ const updateGoalSchema = z.object({
   currentValue: z.number().optional(),
   unit: z.string().nullable().optional(),
   dueDate: z.string().datetime().nullable().optional(),
-  assignedUserId: z.string().nullable().optional(),
+  assignedUserIds: z.array(z.string()).optional(),
   assignedTeamId: z.string().nullable().optional(),
   parentGoalId: z.string().nullable().optional(),
   contributionValue: z.number().nullable().optional(),
@@ -59,7 +59,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const goal = await prisma.goal.findUnique({ where: { id: params.id }, include: { project: true } });
+  const goal = await prisma.goal.findUnique({
+    where: { id: params.id },
+    include: { project: true, assignedUsers: { select: { id: true } } },
+  });
   if (!goal) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
   const userId = (session.user as any).id;
@@ -70,7 +73,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
   const canManage = await canManageGoal(userId, role, goal);
-  const isAssignedUser = goal.assignedUserId === userId;
+  const isAssignedUser = goal.assignedUsers.some((u) => u.id === userId);
   const isAssignedTeamMember = goal.assignedTeamId
     ? await isTeamManager(userId, goal.assignedTeamId).then(async (isMgr) => {
         if (isMgr) return true;
@@ -91,8 +94,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Uma meta não pode ser subMeta dela mesma" }, { status: 422 });
   }
 
-  const data: any = { ...parsed.data };
+  const { assignedUserIds, ...rest } = parsed.data;
+  const data: any = { ...rest };
   if (parsed.data.dueDate !== undefined) data.dueDate = parsed.data.dueDate ? new Date(parsed.data.dueDate) : null;
+  if (assignedUserIds !== undefined) data.assignedUsers = { set: assignedUserIds.map((id) => ({ id })) };
 
   const updated = await prisma.goal.update({ where: { id: params.id }, data });
   return NextResponse.json(updated);

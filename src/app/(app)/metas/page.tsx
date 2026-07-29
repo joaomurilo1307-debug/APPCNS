@@ -12,7 +12,7 @@ type SubGoal = {
   unit: string | null;
   fraction: number;
   project: { id: string; name: string } | null;
-  assignedUser: { id: string; name: string; avatarColor: string | null } | null;
+  assignedUsers: { id: string; name: string; avatarColor: string | null }[];
   autoFromProjectProgress: boolean;
   contributionValue: number | null;
 };
@@ -26,7 +26,7 @@ type Goal = {
   computedCurrentValue: number;
   unit: string | null;
   dueDate: string | null;
-  assignedUser: { id: string; name: string; avatarColor: string | null } | null;
+  assignedUsers: { id: string; name: string; avatarColor: string | null }[];
   assignedTeam: { id: string; name: string } | null;
   subGoals: SubGoal[];
 };
@@ -217,6 +217,17 @@ export default function MetasPage() {
                 )}
               </div>
 
+              {g.assignedUsers.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  {g.assignedUsers.map((u) => (
+                    <span key={u.id} className="flex items-center gap-1">
+                      <Avatar name={u.name} color={u.avatarColor} size={18} />
+                      {u.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {g.targetValue && (
                 <>
                   <div className="mb-1 h-2 w-full overflow-hidden rounded-full bg-gray-100">
@@ -236,7 +247,9 @@ export default function MetasPage() {
                   {g.subGoals.map((sg) => (
                     <div key={sg.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs">
                       <div className="flex items-center gap-2">
-                        {sg.assignedUser && <Avatar name={sg.assignedUser.name} color={sg.assignedUser.avatarColor} size={18} />}
+                        {sg.assignedUsers.slice(0, 3).map((u) => (
+                          <Avatar key={u.id} name={u.name} color={u.avatarColor} size={18} />
+                        ))}
                         <span>
                           {sg.title}
                           {sg.project && <span className="text-gray-400"> · {sg.project.name}</span>}

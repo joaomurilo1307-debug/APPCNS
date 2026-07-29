@@ -186,10 +186,13 @@ export default function PersonPanel({
 
   async function handleAssignGoal() {
     if (!selected || !goalChoice) return;
+    const current = await fetch(`/api/goals/${goalChoice}`).then((r) => (r.ok ? r.json() : null));
+    const ids = new Set<string>((current?.assignedUsers ?? []).map((u: { id: string }) => u.id));
+    ids.add(selected.id);
     const res = await fetch(`/api/goals/${goalChoice}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assignedUserId: selected.id }),
+      body: JSON.stringify({ assignedUserIds: Array.from(ids) }),
     });
     setFeedback(res.ok ? "Pessoa associada à meta." : "Não foi possível associar à meta.");
   }

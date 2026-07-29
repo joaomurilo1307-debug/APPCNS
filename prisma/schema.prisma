@@ -191,7 +191,7 @@ model User {
   assignedTasks   Task[]         @relation("TaskAssignee")
   attachments     Attachment[]
   taskComments    TaskComment[]
-  assignedGoals   Goal[]
+  assignedGoals   Goal[]         @relation("GoalAssignees")
   createdEvents   CalendarEvent[]         @relation("EventCreator")
   eventInvites    CalendarEventAttendee[]
   outlookAccount  OutlookAccount?
@@ -541,7 +541,6 @@ model Goal {
   currentValue  Float    @default(0)
   unit          String?
   dueDate       DateTime?
-  assignedUserId String?
   assignedTeamId String?
   parentGoalId  String?
   contributionValue Float?
@@ -550,7 +549,7 @@ model Goal {
   updatedAt     DateTime @updatedAt
 
   project      Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignedUser User?   @relation(fields: [assignedUserId], references: [id])
+  assignedUsers User[]  @relation("GoalAssignees")
   assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
   parentGoal   Goal?   @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: SetNull)
   subGoals     Goal[]  @relation("GoalHierarchy")

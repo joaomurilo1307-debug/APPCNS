@@ -11,7 +11,7 @@ type Goal = {
   currentValue: number;
   unit: string | null;
   dueDate: string | null;
-  assignedUser: { id: string; name: string; avatarColor: string | null } | null;
+  assignedUsers: { id: string; name: string; avatarColor: string | null }[];
   assignedTeam: { id: string; name: string } | null;
   parentGoal: { id: string; title: string } | null;
   autoFromProjectProgress: boolean;
@@ -39,7 +39,7 @@ export default function GoalsPanel({
   const [unit, setUnit] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [assignType, setAssignType] = useState<"pessoa" | "equipe">("pessoa");
-  const [assignedUserId, setAssignedUserId] = useState("");
+  const [assignedUserIds, setAssignedUserIds] = useState<Set<string>>(new Set());
   const [generalGoals, setGeneralGoals] = useState<GeneralGoal[]>([]);
   const [parentGoalId, setParentGoalId] = useState("");
   const [contributionValue, setContributionValue] = useState("");
@@ -53,6 +53,14 @@ export default function GoalsPanel({
   const [editParentGoalId, setEditParentGoalId] = useState("");
   const [editContributionValue, setEditContributionValue] = useState("");
   const [editAutoFromProject, setEditAutoFromProject] = useState(false);
+  const [editAssignedUserIds, setEditAssignedUserIds] = useState<Set<string>>(new Set());
+
+  function toggleAssignee(ids: Set<string>, setIds: (s: Set<string>) => void, id: string) {
+    const next = new Set(ids);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setIds(next);
+  }
 
   async function load() {
     const res = await fetch(`/api/projects/${projectId}/goals`);
@@ -80,7 +88,7 @@ export default function GoalsPanel({
         targetValue: targetValue ? Number(targetValue) : null,
         unit: unit || null,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-        assignedUserId: assignType === "pessoa" ? assignedUserId || null : null,
+        assignedUserIds: assignType === "pessoa" ? Array.from(assignedUserIds) : [],
         assignedTeamId: assignType === "equipe" ? team.id : null,
         parentGoalId: parentGoalId || undefined,
         contributionValue: contributionValue ? Number(contributionValue) : undefined,
@@ -91,7 +99,7 @@ export default function GoalsPanel({
     setTargetValue("");
     setUnit("");
     setDueDate("");
-    setAssignedUserId("");
+    setAssignedUserIds(new Set());
     setParentGoalId("");
     setContributionValue("");
     setAutoFromProject(false);
@@ -125,6 +133,7 @@ export default function GoalsPanel({
     setEditParentGoalId(g.parentGoal?.id ?? "");
     setEditContributionValue(g.contributionValue?.toString() ?? "");
     setEditAutoFromProject(g.autoFromProjectProgress);
+    setEditAssignedUserIds(new Set(g.assignedUsers.map((u) => u.id)));
   }
 
   async function handleSaveEdit(goalId: string) {
@@ -139,6 +148,7 @@ export default function GoalsPanel({
         parentGoalId: editParentGoalId || null,
         contributionValue: editContributionValue ? Number(editContributionValue) : null,
         autoFromProjectProgress: editAutoFromProject,
+        assignedUserIds: Array.from(editAssignedUserIds),
       }),
     });
     setEditingId(null);
@@ -147,7 +157,7 @@ export default function GoalsPanel({
 
   function canEditProgress(g: Goal) {
     if (canManage) return true;
-    if (g.assignedUser?.id === currentUserId) return true;
+    if (g.assignedUsers.some((u) => u.id === currentUserId)) return true;
     if (g.assignedTeam && team.members.some((m) => m.user.id === currentUserId)) return true;
     return false;
   }
@@ -203,16 +213,19 @@ export default function GoalsPanel({
             </select>
           </label>
           {assignType === "pessoa" && (
-            <select
-              value={assignedUserId}
-              onChange={(e) => setAssignedUserId(e.target.value)}
-              className="col-span-2 rounded-md border border-gray-300 px-2 py-1.5"
-            >
-              <option value="">Ninguém</option>
+            <div className="col-span-2 flex max-h-32 flex-col gap-1 overflow-y-auto rounded-md border border-gray-300 p-2">
+              {team.members.length === 0 && <p className="text-xs text-gray-400">Sem membros na equipe.</p>}
               {team.members.map((m) => (
-                <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
+                <label key={m.user.id} className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={assignedUserIds.has(m.user.id)}
+                    onChange={() => toggleAssignee(assignedUserIds, setAssignedUserIds, m.user.id)}
+                  />
+                  {m.user.name}
+                </label>
               ))}
-            </select>
+            </div>
           )}
           <label className="flex flex-col gap-1">
             Ligar a uma meta geral (opcional)
@@ -302,6 +315,21 @@ export default function GoalsPanel({
                     <input type="checkbox" checked={editAutoFromProject} onChange={(e) => setEditAutoFromProject(e.target.checked)} />
                     Calcular progresso automaticamente pelo % concluído do projeto
                   </label>
+                  <div className="col-span-2 flex flex-col gap-1">
+                    <span className="text-xs text-gray-500">Atribuir a</span>
+                    <div className="flex max-h-32 flex-col gap-1 overflow-y-auto rounded-md border border-gray-300 p-2">
+                      {team.members.map((m) => (
+                        <label key={m.user.id} className="flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={editAssignedUserIds.has(m.user.id)}
+                            onChange={() => toggleAssignee(editAssignedUserIds, setEditAssignedUserIds, m.user.id)}
+                          />
+                          {m.user.name}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                   <div className="col-span-2 flex gap-2">
                     <button onClick={() => handleSaveEdit(g.id)} className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark">
                       Salvar
@@ -326,13 +354,13 @@ export default function GoalsPanel({
                   </div>
                 )}
               </div>
-              <div className="mb-2 flex items-center gap-2 text-xs text-gray-500">
-                {g.assignedUser && (
-                  <span className="flex items-center gap-1">
-                    <Avatar name={g.assignedUser.name} color={g.assignedUser.avatarColor} size={18} />
-                    {g.assignedUser.name}
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                {g.assignedUsers.map((u) => (
+                  <span key={u.id} className="flex items-center gap-1">
+                    <Avatar name={u.name} color={u.avatarColor} size={18} />
+                    {u.name}
                   </span>
-                )}
+                ))}
                 {g.assignedTeam && <span>👥 Equipe {g.assignedTeam.name}</span>}
                 {g.dueDate && <span>· Prazo: {new Date(g.dueDate).toLocaleDateString("pt-BR")}</span>}
                 {g.parentGoal && <span>· ligada a "{g.parentGoal.title}"{g.contributionValue ? ` (vale ${g.contributionValue})` : ""}</span>}

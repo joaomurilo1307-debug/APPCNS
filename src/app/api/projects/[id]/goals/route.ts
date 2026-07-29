@@ -13,7 +13,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const goals = await prisma.goal.findMany({
     where: { projectId: params.id },
     include: {
-      assignedUser: { select: { id: true, name: true, avatarColor: true } },
+      assignedUsers: { select: { id: true, name: true, avatarColor: true } },
       assignedTeam: { select: { id: true, name: true } },
       parentGoal: { select: { id: true, title: true } },
     },
@@ -31,7 +31,7 @@ const createGoalSchema = z.object({
   targetValue: z.number().nullable().optional(),
   unit: z.string().nullable().optional(),
   dueDate: z.string().datetime().nullable().optional(),
-  assignedUserId: z.string().nullable().optional(),
+  assignedUserIds: z.array(z.string()).optional(),
   assignedTeamId: z.string().nullable().optional(),
   parentGoalId: z.string().nullable().optional(),
   contributionValue: z.number().nullable().optional(),
@@ -54,11 +54,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const parsed = createGoalSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
+  const { assignedUserIds, ...rest } = parsed.data;
   const goal = await prisma.goal.create({
     data: {
-      ...parsed.data,
+      ...rest,
       projectId: params.id,
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
+      assignedUsers: assignedUserIds?.length ? { connect: assignedUserIds.map((id) => ({ id })) } : undefined,
     },
   });
 
