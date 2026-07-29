@@ -211,6 +211,8 @@ model User {
   pdisAsPessoa  PDI[] @relation("PDIPessoa")
   pdisAsGestor  PDI[] @relation("PDICriador")
   nucleosGerenciados Nucleo[] @relation("NucleoGerente")
+  projetosComoDiretor     Project[] @relation("ProjectDiretor")
+  projetosComoCoordenador Project[] @relation("ProjectCoordenador")
 }
 
 model ApprovalRequest {
@@ -305,7 +307,8 @@ model Nucleo {
   createdAt   DateTime @default(now())
 
   membros  User[]
-  gerentes User[] @relation("NucleoGerente")
+  gerentes User[]    @relation("NucleoGerente")
+  projetos Project[] @relation("ProjectNucleo")
 }
 
 model UserTeam {
@@ -353,6 +356,9 @@ model Project {
   ideas      Idea[]
   scorecardItems ScorecardItem[]
   resourceRates  ResourceRate[]
+  nucleos       Nucleo[] @relation("ProjectNucleo")
+  diretores     User[]   @relation("ProjectDiretor")
+  coordenadores User[]   @relation("ProjectCoordenador")
 
   @@index([teamId])
   @@index([ownerId])

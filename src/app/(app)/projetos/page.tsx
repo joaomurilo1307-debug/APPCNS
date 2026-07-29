@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import ProgressBar from "@/components/ProgressBar";
 
 type Project = {
   id: string;
@@ -110,11 +111,8 @@ export default function ProjetosPage() {
               </span>
             </div>
             <p className="text-xs text-gray-400">{p.team.name}</p>
-            <div className="mt-3 flex items-center gap-2">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
-                <div className="h-full bg-brand" style={{ width: `${p.percentComplete}%` }} />
-              </div>
-              <span className="text-xs font-medium text-gray-500">{p.percentComplete}%</span>
+            <div className="mt-3">
+              <ProgressBar percent={p.percentComplete} size="sm" />
             </div>
             <p className="mt-2 text-sm text-gray-500">{p._count.tasks} tarefa(s)</p>
           </Link>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Avatar from "@/components/Avatar";
 
 type Person = {
@@ -16,6 +16,14 @@ type Person = {
   gestorImediatoId: string | null;
   gestorImediato: { id: string; name: string } | null;
   nucleo: { id: string; name: string } | null;
+};
+
+type NucleoData = {
+  id: string;
+  name: string;
+  description: string | null;
+  membros: { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null; nivelHierarquico: string | null }[];
+  gerentes: { id: string; name: string; avatarColor: string; avatarUrl: string | null }[];
 };
 
 const nivelLabel: Record<string, string> = {
@@ -45,7 +53,7 @@ function TreeNode({
         <Avatar name={person.name} color={person.avatarColor} photoUrl={person.avatarUrl} size={36} />
         <p className="whitespace-nowrap text-xs font-medium">{person.name}</p>
         <p className="whitespace-nowrap text-[10px] text-gray-400">
-          {person.cargo || (person.nivelHierarquico ? nivelLabel[person.nivelHierarquico] : person.nucleo?.name) || "—"}
+          {person.cargo || (person.nivelHierarquico ? nivelLabel[person.nivelHierarquico] : null) || "—"}
         </p>
       </button>
       {children.length > 0 && (
@@ -61,53 +69,89 @@ function TreeNode({
 
 export default function OrganogramaPage() {
   const [people, setPeople] = useState<Person[]>([]);
+  const [nucleos, setNucleos] = useState<NucleoData[]>([]);
   const [nucleoFilter, setNucleoFilter] = useState("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Person | null>(null);
 
   useEffect(() => {
-    fetch("/api/organograma")
-      .then((r) => r.json())
-      .then(setPeople)
-      .catch(() => {});
+    fetch("/api/organograma").then((r) => r.json()).then(setPeople).catch(() => {});
+    fetch("/api/nucleos").then((r) => r.json()).then(setNucleos).catch(() => {});
   }, []);
 
-  const nucleos = Array.from(new Set(people.map((p) => p.nucleo?.name).filter(Boolean))) as string[];
-  let scoped = nucleoFilter ? people.filter((p) => p.nucleo?.name === nucleoFilter) : people;
+  const peopleById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
 
-  if (search.trim()) {
-    const q = search.trim().toLowerCase();
-    const byId = new Map(scoped.map((p) => [p.id, p]));
-    const matches = scoped.filter((p) => p.name.toLowerCase().includes(q));
-    const keep = new Set<string>();
-    for (const m of matches) {
-      let cur: Person | undefined = m;
-      while (cur) {
-        keep.add(cur.id);
-        cur = cur.gestorImediatoId ? byId.get(cur.gestorImediatoId) : undefined;
+  // Diretores/gerentes: qualquer pessoa listada como gerente/visualizador de ao menos um núcleo.
+  const cabecalho = useMemo(() => {
+    const map = new Map<string, { person: { id: string; name: string; avatarColor: string; avatarUrl: string | null }; nucleos: string[] }>();
+    for (const n of nucleos) {
+      for (const g of n.gerentes) {
+        if (!map.has(g.id)) map.set(g.id, { person: g, nucleos: [] });
+        map.get(g.id)!.nucleos.push(n.name);
       }
     }
-    scoped = scoped.filter((p) => keep.has(p.id));
+    return Array.from(map.values());
+  }, [nucleos]);
+
+  const q = search.trim().toLowerCase();
+
+  function buildTreeForNucleo(n: NucleoData) {
+    let membros = n.membros.map((m) => peopleById.get(m.id)).filter((p): p is Person => !!p);
+
+    if (q) {
+      const byId = new Map(membros.map((p) => [p.id, p]));
+      const matches = membros.filter((p) => p.name.toLowerCase().includes(q));
+      if (matches.length === 0) return null;
+      const keep = new Set<string>();
+      for (const m of matches) {
+        let cur: Person | undefined = m;
+        while (cur) {
+          keep.add(cur.id);
+          cur = cur.gestorImediatoId ? byId.get(cur.gestorImediatoId) : undefined;
+        }
+      }
+      membros = membros.filter((p) => keep.has(p.id));
+    }
+
+    if (membros.length === 0) return null;
+
+    const ids = new Set(membros.map((p) => p.id));
+    const byManager = new Map<string, Person[]>();
+    const roots: Person[] = [];
+    for (const p of membros) {
+      if (p.gestorImediatoId && ids.has(p.gestorImediatoId)) {
+        if (!byManager.has(p.gestorImediatoId)) byManager.set(p.gestorImediatoId, []);
+        byManager.get(p.gestorImediatoId)!.push(p);
+      } else {
+        roots.push(p);
+      }
+    }
+    return { roots, byManager };
   }
 
-  const ids = new Set(scoped.map((p) => p.id));
-  const byManager = new Map<string, Person[]>();
-  const roots: Person[] = [];
-  for (const p of scoped) {
-    if (p.gestorImediatoId && ids.has(p.gestorImediatoId)) {
-      if (!byManager.has(p.gestorImediatoId)) byManager.set(p.gestorImediatoId, []);
-      byManager.get(p.gestorImediatoId)!.push(p);
-    } else {
-      roots.push(p);
-    }
-  }
+  const visibleNucleos = (nucleoFilter ? nucleos.filter((n) => n.id === nucleoFilter) : nucleos).filter(
+    (n) => !q || buildTreeForNucleo(n) !== null
+  );
+
+  const nucleoMemberIds = useMemo(() => new Set(nucleos.flatMap((n) => n.membros.map((m) => m.id))), [nucleos]);
+  const semNucleo: NucleoData | null = useMemo(() => {
+    const orfaos = people.filter((p) => !nucleoMemberIds.has(p.id));
+    if (orfaos.length === 0) return null;
+    return {
+      id: "__sem_nucleo__",
+      name: "Sem núcleo",
+      description: null,
+      membros: orfaos.map((p) => ({ id: p.id, name: p.name, avatarColor: p.avatarColor, avatarUrl: p.avatarUrl, cargo: p.cargo, nivelHierarquico: p.nivelHierarquico })),
+      gerentes: [],
+    };
+  }, [people, nucleoMemberIds]);
 
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Organograma</h1>
-          <p className="text-sm text-gray-500">Hierarquia direta das pessoas (cargo e gestor imediato).</p>
+          <p className="text-sm text-gray-500">Pessoas agrupadas por núcleo, com hierarquia direta (cargo e gestor imediato).</p>
         </div>
         <div className="flex gap-2">
           <input
@@ -124,21 +168,62 @@ export default function OrganogramaPage() {
             >
               <option value="">Todos os núcleos</option>
               {nucleos.map((n) => (
-                <option key={n} value={n}>{n}</option>
+                <option key={n.id} value={n.id}>{n.name}</option>
               ))}
             </select>
           )}
         </div>
       </div>
 
-      {roots.length === 0 && <p className="text-sm text-gray-400">Ninguém encontrado.</p>}
+      {cabecalho.length > 0 && (
+        <div className="mb-8 rounded-xl border border-gray-200 bg-white p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Diretores e Gerentes</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {cabecalho.map(({ person, nucleos: nomes }) => {
+              const full = peopleById.get(person.id);
+              return (
+                <button
+                  key={person.id}
+                  onClick={() => full && setSelected(full)}
+                  className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 text-left hover:border-brand"
+                >
+                  <Avatar name={person.name} color={person.avatarColor} photoUrl={person.avatarUrl} size={36} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{person.name}</p>
+                    <p className="truncate text-xs text-gray-400">{nomes.join(", ")}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white p-8">
-        <ul className="orgchart-tree">
-          {roots.map((p) => (
-            <TreeNode key={p.id} person={p} byManager={byManager} onSelect={setSelected} />
-          ))}
-        </ul>
+      <div className="flex flex-col gap-6">
+        {[...visibleNucleos, ...(!nucleoFilter && semNucleo ? [semNucleo] : [])].map((n) => {
+          const tree = buildTreeForNucleo(n);
+          if (!tree) return null;
+          return (
+            <div key={n.id} className="rounded-xl border border-gray-200 bg-white p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-semibold">{n.name}</h2>
+                {n.gerentes.length > 0 && (
+                  <p className="text-xs text-gray-400">
+                    Cabeça: {n.gerentes.map((g) => g.name).join(", ")}
+                  </p>
+                )}
+              </div>
+              <div className="overflow-x-auto py-2">
+                <ul className="orgchart-tree">
+                  {tree.roots.map((p) => (
+                    <TreeNode key={p.id} person={p} byManager={tree.byManager} onSelect={setSelected} />
+                  ))}
+                </ul>
+              </div>
+            </div>
+          );
+        })}
+        {visibleNucleos.length === 0 && <p className="text-sm text-gray-400">Ninguém encontrado.</p>}
       </div>
 
       {selected && (

@@ -8,6 +8,7 @@ import GoalsPanel from "@/components/GoalsPanel";
 import GanttChart from "@/components/GanttChart";
 import TaskListView from "@/components/TaskListView";
 import ResourcesPanel from "@/components/ResourcesPanel";
+import ProgressBar from "@/components/ProgressBar";
 
 type ProjectDetail = {
   id: string;
@@ -23,6 +24,9 @@ type ProjectDetail = {
   actualStartedAt: string | null;
   actualEndedAt: string | null;
   percentComplete: number;
+  nucleos: { id: string; name: string }[];
+  diretores: { id: string; name: string }[];
+  coordenadores: { id: string; name: string }[];
 };
 
 function daysBetween(a: Date, b: Date) {
@@ -52,6 +56,8 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
+  const [nucleosList, setNucleosList] = useState<{ id: string; name: string }[]>([]);
+  const [peopleList, setPeopleList] = useState<{ id: string; name: string; nivelHierarquico: string | null }[]>([]);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [title, setTitle] = useState("");
@@ -74,9 +80,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
   useEffect(() => {
     if (!showEditForm) return;
-    fetch("/api/teams")
+    fetch("/api/teams").then((r) => r.json()).then(setTeams).catch(() => {});
+    fetch("/api/nucleos")
       .then((r) => r.json())
-      .then(setTeams)
+      .then((data) => setNucleosList(data.map((n: any) => ({ id: n.id, name: n.name }))))
+      .catch(() => {});
+    fetch("/api/organograma")
+      .then((r) => r.json())
+      .then((data) => setPeopleList(data.map((p: any) => ({ id: p.id, name: p.name, nivelHierarquico: p.nivelHierarquico }))))
       .catch(() => {});
   }, [showEditForm]);
 
@@ -119,6 +130,9 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         teamId: form.get("teamId") || undefined,
         startDate: form.get("startDate") ? new Date(form.get("startDate") as string).toISOString() : null,
         endDate: form.get("endDate") ? new Date(form.get("endDate") as string).toISOString() : null,
+        nucleoIds: form.getAll("nucleoIds"),
+        diretorIds: form.getAll("diretorIds"),
+        coordenadorIds: form.getAll("coordenadorIds"),
       }),
     });
     setShowEditForm(false);
@@ -137,16 +151,20 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             {project.approver && ` · Aprovador: ${project.approver.name} (${project.approvalStatus})`}
           </p>
           <div className="mt-2 flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-32 overflow-hidden rounded-full bg-gray-100">
-                <div className="h-full bg-brand" style={{ width: `${project.percentComplete}%` }} />
-              </div>
-              <span className="text-xs font-medium text-gray-500">{project.percentComplete}% concluído</span>
+            <div className="w-40">
+              <ProgressBar percent={project.percentComplete} />
             </div>
             {timelineSummary(project) && (
-              <span className="text-xs text-gray-400">· {timelineSummary(project)}</span>
+              <span className="text-xs text-gray-400">{timelineSummary(project)}</span>
             )}
           </div>
+          {(project.nucleos.length > 0 || project.diretores.length > 0 || project.coordenadores.length > 0) && (
+            <p className="mt-1 text-xs text-gray-400">
+              {project.nucleos.length > 0 && `Núcleo(s): ${project.nucleos.map((n) => n.name).join(", ")}`}
+              {project.diretores.length > 0 && ` · Diretor(es): ${project.diretores.map((d) => d.name).join(", ")}`}
+              {project.coordenadores.length > 0 && ` · Coordenador(es): ${project.coordenadores.map((c) => c.name).join(", ")}`}
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
           {canManage && (
@@ -216,6 +234,36 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               <input type="date" name="endDate" defaultValue={project.endDate?.slice(0, 10)} className="rounded-md border border-gray-300 px-2 py-1.5" />
             </label>
           </div>
+
+          <label className="col-span-2 flex flex-col gap-1">
+            Núcleo(s) associado(s) — segure Ctrl/Cmd para selecionar mais de um
+            <select name="nucleoIds" multiple defaultValue={project.nucleos.map((n) => n.id)} className="h-28 rounded-md border border-gray-300 px-2 py-1.5">
+              {nucleosList.map((n) => (
+                <option key={n.id} value={n.id}>{n.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            Diretor(es) responsável(is)
+            <select name="diretorIds" multiple defaultValue={project.diretores.map((d) => d.id)} className="h-28 rounded-md border border-gray-300 px-2 py-1.5">
+              {peopleList.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}{p.nivelHierarquico === "DIRETORIA" ? " · Diretoria" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            Coordenador(es) responsável(is)
+            <select name="coordenadorIds" multiple defaultValue={project.coordenadores.map((c) => c.id)} className="h-28 rounded-md border border-gray-300 px-2 py-1.5">
+              {peopleList.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}{p.nivelHierarquico === "COORDENACAO" ? " · Coordenação" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <button className="col-span-2 rounded-md bg-brand px-4 py-2 font-medium text-white hover:bg-brand-dark">
             Salvar
           </button>

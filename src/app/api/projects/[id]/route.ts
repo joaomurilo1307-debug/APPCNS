@@ -22,6 +22,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       approver: { select: { id: true, name: true } },
       clients: { include: { user: { select: { id: true, name: true } } } },
       tasks: { include: { assignee: { select: { id: true, name: true, avatarColor: true } } } },
+      nucleos: { select: { id: true, name: true } },
+      diretores: { select: { id: true, name: true, avatarColor: true, avatarUrl: true } },
+      coordenadores: { select: { id: true, name: true, avatarColor: true, avatarUrl: true } },
     },
   });
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
@@ -38,6 +41,9 @@ const updateSchema = z.object({
   teamId: z.string().optional(),
   startDate: z.string().datetime().nullable().optional(),
   endDate: z.string().datetime().nullable().optional(),
+  nucleoIds: z.array(z.string()).optional(),
+  diretorIds: z.array(z.string()).optional(),
+  coordenadorIds: z.array(z.string()).optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -56,7 +62,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
-  const data: any = { ...parsed.data };
+  const { nucleoIds, diretorIds, coordenadorIds, ...rest } = parsed.data;
+  const data: any = { ...rest };
   if (parsed.data.startDate !== undefined) data.startDate = parsed.data.startDate ? new Date(parsed.data.startDate) : null;
   if (parsed.data.endDate !== undefined) data.endDate = parsed.data.endDate ? new Date(parsed.data.endDate) : null;
   if (parsed.data.approverId !== undefined && parsed.data.approverId !== project.approverId) {
@@ -70,8 +77,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       data.actualEndedAt = new Date();
     }
   }
+  if (nucleoIds !== undefined) data.nucleos = { set: nucleoIds.map((id) => ({ id })) };
+  if (diretorIds !== undefined) data.diretores = { set: diretorIds.map((id) => ({ id })) };
+  if (coordenadorIds !== undefined) data.coordenadores = { set: coordenadorIds.map((id) => ({ id })) };
 
-  const updated = await prisma.project.update({ where: { id: params.id }, data });
+  const updated = await prisma.project.update({
+    where: { id: params.id },
+    data,
+    include: {
+      nucleos: { select: { id: true, name: true } },
+      diretores: { select: { id: true, name: true } },
+      coordenadores: { select: { id: true, name: true } },
+    },
+  });
   return NextResponse.json(updated);
 }
 

@@ -36,11 +36,17 @@ export async function visibleProjectWhere(userId: string, role: string): Promise
   const teamIds = await getUserTeamIds(userId);
   const nucleoUserIds = await nucleoManagedUserIds(userId);
 
-  if (nucleoUserIds.length === 0) return { teamId: { in: teamIds } };
+  const clauses: any[] = [
+    { teamId: { in: teamIds } },
+    { diretores: { some: { id: userId } } },
+    { coordenadores: { some: { id: userId } } },
+    { nucleos: { some: { gerentes: { some: { id: userId } } } } },
+  ];
+  if (nucleoUserIds.length > 0) {
+    clauses.push({ team: { members: { some: { userId: { in: nucleoUserIds } } } } });
+  }
 
-  return {
-    OR: [{ teamId: { in: teamIds } }, { team: { members: { some: { userId: { in: nucleoUserIds } } } } }],
-  };
+  return { OR: clauses };
 }
 
 /** Mesma regra de `visibleProjectWhere`, mas retorna um filtro para o modelo Team diretamente. */
