@@ -167,6 +167,7 @@ model User {
   avatarColor  String    @default("#0f766e")
   avatarUrl    String?   @db.Text
   lastSeenAt   DateTime?
+  statusManual String?
   cargo        String?
   setor        String?
   diretoria    String?
@@ -209,6 +210,7 @@ model User {
   approvalRequestsReceived ApprovalRequest[] @relation("ApprovalApprover")
   pdisAsPessoa  PDI[] @relation("PDIPessoa")
   pdisAsGestor  PDI[] @relation("PDICriador")
+  nucleosGerenciados Nucleo[] @relation("NucleoGerente")
 }
 
 model ApprovalRequest {
@@ -302,7 +304,8 @@ model Nucleo {
   description String?
   createdAt   DateTime @default(now())
 
-  membros User[]
+  membros  User[]
+  gerentes User[] @relation("NucleoGerente")
 }
 
 model UserTeam {

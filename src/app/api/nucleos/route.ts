@@ -13,6 +13,9 @@ export async function GET() {
       membros: {
         select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true, nivelHierarquico: true },
       },
+      gerentes: {
+        select: { id: true, name: true, avatarColor: true, avatarUrl: true },
+      },
     },
     orderBy: { name: "asc" },
   });
