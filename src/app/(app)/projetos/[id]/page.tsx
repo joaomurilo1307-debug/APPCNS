@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import KanbanBoard from "@/components/KanbanBoard";
 import Whiteboard from "@/components/Whiteboard";
@@ -50,6 +51,7 @@ const statusLabel: Record<string, string> = {
 
 export default function ProjectDetailPage({ params }: { params: { id: string } }) {
   const { data: session } = useSession();
+  const router = useRouter();
   const role = (session?.user as any)?.role;
   const canManage = role === "ADMIN" || role === "GESTOR_PROJETO";
   const canCreateTask = role && role !== "CLIENTE" && role !== "VISUALIZADOR";
@@ -139,6 +141,18 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
     load();
   }
 
+  async function handleDeleteProject() {
+    if (!project) return;
+    if (!confirm(`Excluir o projeto "${project.name}" permanentemente? Isso não pode ser desfeito.`)) return;
+    const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      alert(data?.error ?? "Não foi possível excluir o projeto.");
+      return;
+    }
+    router.push("/projetos");
+  }
+
   if (!project) return <p className="text-sm text-gray-400">Carregando...</p>;
 
   return (
@@ -173,6 +187,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               Editar projeto
+            </button>
+          )}
+          {canManage && (
+            <button
+              onClick={handleDeleteProject}
+              className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
+            >
+              Excluir projeto
             </button>
           )}
           {canCreateTask && (

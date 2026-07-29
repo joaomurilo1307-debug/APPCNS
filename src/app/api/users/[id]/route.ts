@@ -90,3 +90,48 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   return NextResponse.json(updated);
 }
+
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  const currentUserId = (session.user as any).id;
+  const currentRole = (session.user as any).role;
+  if (currentRole !== "ADMIN") {
+    return NextResponse.json({ error: "Só administradores podem excluir usuários" }, { status: 403 });
+  }
+  if (currentUserId === params.id) {
+    return NextResponse.json({ error: "Você não pode excluir a si mesmo" }, { status: 422 });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: params.id } });
+  if (!user) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
+
+  const [tasksCount, projectsOwnedCount, eventsCreatedCount] = await Promise.all([
+    prisma.task.count({ where: { assigneeId: params.id } }),
+    prisma.project.count({ where: { ownerId: params.id } }),
+    prisma.calendarEvent.count({ where: { creatorId: params.id } }),
+  ]);
+
+  if (tasksCount > 0 || projectsOwnedCount > 0 || eventsCreatedCount > 0) {
+    return NextResponse.json(
+      {
+        error:
+          `Essa pessoa tem ${tasksCount} tarefa(s), ${projectsOwnedCount} projeto(s) como responsável e ${eventsCreatedCount} evento(s) criado(s) vinculados. ` +
+          `Transfira essas responsabilidades para outra pessoa antes de excluir, ou inative a pessoa em vez de excluir.`,
+      },
+      { status: 422 }
+    );
+  }
+
+  try {
+    await prisma.user.delete({ where: { id: params.id } });
+  } catch {
+    return NextResponse.json(
+      { error: "Não foi possível excluir — essa pessoa ainda tem dados vinculados no sistema. Inative em vez de excluir." },
+      { status: 422 }
+    );
+  }
+
+  return NextResponse.json({ ok: true });
+}

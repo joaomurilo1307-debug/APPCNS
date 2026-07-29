@@ -30,15 +30,17 @@ export async function GET() {
       team: { select: { id: true, name: true } },
       owner: { select: { id: true, name: true } },
       approver: { select: { id: true, name: true } },
-      tasks: { select: { status: true } },
+      tasks: { select: { status: true, dueDate: true } },
       _count: { select: { tasks: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 
+  const now = new Date();
   const result = projects.map(({ tasks, ...p }) => ({
     ...p,
     percentComplete: computePercentComplete(tasks),
+    overdueCount: tasks.filter((t) => t.dueDate && t.status !== "FEITO" && new Date(t.dueDate) < now).length,
   }));
 
   return NextResponse.json(result);

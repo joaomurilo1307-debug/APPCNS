@@ -76,6 +76,27 @@ const priorityOptions = [
   { v: "URGENTE", l: "Urgente" },
 ];
 
+const statusColor: Record<string, string> = {
+  A_FAZER: "bg-gray-100 text-gray-600",
+  FAZENDO: "bg-blue-100 text-blue-700",
+  BLOQUEADO: "bg-rose-100 text-rose-700",
+  FEITO: "bg-emerald-100 text-emerald-700",
+};
+
+const priorityBorderColor: Record<string, string> = {
+  BAIXA: "#d1d5db",
+  MEDIA: "#3b82f6",
+  ALTA: "#f97316",
+  URGENTE: "#ef4444",
+};
+
+const priorityColor: Record<string, string> = {
+  BAIXA: "bg-gray-100 text-gray-600",
+  MEDIA: "bg-blue-100 text-blue-700",
+  ALTA: "bg-orange-100 text-orange-700",
+  URGENTE: "bg-red-100 text-red-700",
+};
+
 const fieldTypeOptions: { v: CustomField["type"]; l: string }[] = [
   { v: "TEXTO", l: "Texto" },
   { v: "NUMERO", l: "Número" },
@@ -698,8 +719,14 @@ export default function TaskListView({
             </tr>
           </thead>
           <tbody>
-            {buildHierarchy(tasks, collapsed).map(({ task: t, depth }) => (
-              <tr key={t.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+            {buildHierarchy(tasks, collapsed).map(({ task: t, depth }) => {
+              const isOverdue = !!t.dueDate && t.status !== "FEITO" && new Date(t.dueDate) < new Date();
+              return (
+              <tr
+                key={t.id}
+                className={`border-b border-gray-50 hover:bg-gray-50/50 ${t.status === "FEITO" ? "opacity-60" : ""}`}
+                style={{ borderLeft: `3px solid ${priorityBorderColor[t.priority] ?? "transparent"}` }}
+              >
                 <td className="px-3 py-1.5">
                   <div className="flex items-center gap-1" style={{ paddingLeft: depth * 20 }}>
                     {depth > 0 && <span className="text-gray-300">↳</span>}
@@ -716,7 +743,9 @@ export default function TaskListView({
                     <input
                       defaultValue={t.title}
                       onBlur={(e) => e.target.value !== t.title && patchTask(t.id, { title: e.target.value })}
-                      className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200 focus:border-gray-300"
+                      className={`w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200 focus:border-gray-300 ${
+                        t.status === "FEITO" ? "line-through" : ""
+                      }`}
                     />
                   </div>
                 </td>
@@ -724,7 +753,7 @@ export default function TaskListView({
                   <select
                     value={t.status}
                     onChange={(e) => patchTask(t.id, { status: e.target.value })}
-                    className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                    className={`w-full rounded-md border border-transparent px-2 py-1 text-xs font-medium hover:border-gray-200 ${statusColor[t.status] ?? ""}`}
                   >
                     {statusOptions.map((s) => (
                       <option key={s.v} value={s.v}>{s.l}</option>
@@ -735,7 +764,7 @@ export default function TaskListView({
                   <select
                     value={t.priority}
                     onChange={(e) => patchTask(t.id, { priority: e.target.value })}
-                    className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                    className={`w-full rounded-md border border-transparent px-2 py-1 text-xs font-medium hover:border-gray-200 ${priorityColor[t.priority] ?? ""}`}
                   >
                     {priorityOptions.map((p) => (
                       <option key={p.v} value={p.v}>{p.l}</option>
@@ -779,8 +808,11 @@ export default function TaskListView({
                     type="date"
                     defaultValue={t.dueDate?.slice(0, 10) ?? ""}
                     onBlur={(e) => patchTask(t.id, { dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                    className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                    className={`w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200 ${
+                      isOverdue ? "bg-rose-50 font-medium text-rose-700" : ""
+                    }`}
                   />
+                  {isOverdue && <span className="ml-1 text-[10px] text-rose-500">atrasada</span>}
                 </td>
                 <td className="px-3 py-1.5">
                   <select
@@ -885,7 +917,8 @@ export default function TaskListView({
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             <tr>
               <td className="px-3 py-2" colSpan={7 + fields.length}>
                 <input

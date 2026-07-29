@@ -11,8 +11,13 @@ type Project = {
   status: string;
   team: { id: string; name: string };
   owner: { name: string };
+  approver: { name: string } | null;
+  approvalStatus: string;
+  startDate: string | null;
+  endDate: string | null;
   _count: { tasks: number };
   percentComplete: number;
+  overdueCount: number;
 };
 
 type Team = { id: string; name: string };
@@ -23,6 +28,18 @@ const statusLabel: Record<string, string> = {
   PAUSADO: "Pausado",
   CONCLUIDO: "Concluído",
 };
+
+const statusColor: Record<string, string> = {
+  PLANEJADO: "bg-gray-100 text-gray-600",
+  EM_ANDAMENTO: "bg-blue-100 text-blue-700",
+  PAUSADO: "bg-amber-100 text-amber-700",
+  CONCLUIDO: "bg-emerald-100 text-emerald-700",
+};
+
+function fmtDate(iso: string | null) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
+}
 
 export default function ProjetosPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -102,19 +119,38 @@ export default function ProjetosPage() {
           <Link
             key={p.id}
             href={`/projetos/${p.id}`}
-            className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:border-brand"
+            className="flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:border-brand hover:shadow-md"
           >
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-semibold">{p.name}</h2>
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+            <div className="mb-2 flex items-start justify-between gap-2">
+              <h2 className="font-semibold leading-tight">{p.name}</h2>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${statusColor[p.status]}`}>
                 {statusLabel[p.status]}
               </span>
             </div>
-            <p className="text-xs text-gray-400">{p.team.name}</p>
+            <p className="text-xs text-gray-400">
+              {p.team.name} · Responsável: {p.owner.name}
+            </p>
+            {p.approver && (
+              <p className="mt-0.5 text-xs text-gray-400">
+                Aprovador: {p.approver.name} ({p.approvalStatus})
+              </p>
+            )}
+
             <div className="mt-3">
               <ProgressBar percent={p.percentComplete} size="sm" />
             </div>
-            <p className="mt-2 text-sm text-gray-500">{p._count.tasks} tarefa(s)</p>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-full bg-gray-50 px-2 py-0.5 text-gray-500">{p._count.tasks} tarefa(s)</span>
+              {p.overdueCount > 0 && (
+                <span className="rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-600">
+                  {p.overdueCount} atrasada(s)
+                </span>
+              )}
+              {p.endDate && (
+                <span className="rounded-full bg-gray-50 px-2 py-0.5 text-gray-500">Prazo: {fmtDate(p.endDate)}</span>
+              )}
+            </div>
           </Link>
         ))}
         {projects.length === 0 && <p className="text-sm text-gray-400">Nenhum projeto ainda.</p>}

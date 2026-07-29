@@ -19,11 +19,16 @@ type Task = {
   status: string;
   priority: string;
   locked: boolean;
+  dueDate: string | null;
   assigneeId: string | null;
   assignee: { id: string; name: string; avatarColor: string } | null;
   project: { id: string; name: string } | null;
-  _count?: { subtasks: number };
+  _count?: { subtasks: number; attachments: number; comments: number };
 };
+
+function fmtDueDate(iso: string) {
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
+}
 
 const columns = [
   { key: "A_FAZER", label: "A fazer" },
@@ -194,14 +199,33 @@ function TaskCard({
         {task.assignee && <Avatar name={task.assignee.name} color={task.assignee.avatarColor} size={22} />}
       </div>
       {task.project && <p className="mt-1 text-xs text-gray-400">{task.project.name}</p>}
-      <div className="mt-2 flex items-center justify-between">
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span className={`rounded-full px-2 py-0.5 text-xs ${priorityColor[task.priority]}`}>
           {task.priority}
         </span>
+        {task.dueDate && (
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs ${
+              task.status !== "FEITO" && new Date(task.dueDate) < new Date()
+                ? "bg-rose-100 text-rose-700"
+                : "bg-gray-100 text-gray-500"
+            }`}
+          >
+            📅 {fmtDueDate(task.dueDate)}
+          </span>
+        )}
+        {!!task._count?.subtasks && (
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+            {task._count.subtasks} subtarefa(s)
+          </span>
+        )}
+        {!!task._count?.attachments && (
+          <span className="text-xs text-gray-400">📎 {task._count.attachments}</span>
+        )}
+        {!!task._count?.comments && (
+          <span className="text-xs text-gray-400">💬 {task._count.comments}</span>
+        )}
       </div>
-      {task._count?.subtasks ? (
-        <p className="mt-1 text-[11px] text-gray-400">{task._count.subtasks} subtarefa(s)</p>
-      ) : null}
     </div>
   );
 }

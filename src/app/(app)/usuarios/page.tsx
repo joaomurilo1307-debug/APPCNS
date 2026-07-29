@@ -220,6 +220,17 @@ export default function UsuariosPage() {
     load();
   }
 
+  async function handleDelete(u: UserRow) {
+    if (!confirm(`Excluir "${u.name}" permanentemente? Isso não pode ser desfeito.`)) return;
+    const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      alert(data?.error ?? "Não foi possível excluir.");
+      return;
+    }
+    load();
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -333,6 +344,7 @@ export default function UsuariosPage() {
               <th className="px-4 py-3">Equipes</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Senha</th>
+              <th className="px-4 py-3">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -488,6 +500,14 @@ export default function UsuariosPage() {
                       Redefinir
                     </button>
                   )}
+                </td>
+                <td className="px-4 py-3">
+                  <button
+                    onClick={() => handleDelete(u)}
+                    className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                  >
+                    Excluir
+                  </button>
                 </td>
               </tr>
             ))}
