@@ -54,7 +54,7 @@ const createUserSchema = z.object({
   whatsapp: z.string().optional(),
   dataInicio: z.string().datetime().nullable().optional(),
   gestorImediatoId: z.string().nullable().optional(),
-  nivelHierarquico: z.enum(["DIRETORIA", "GERENCIA", "COORDENACAO", "COLABORADOR"]).nullable().optional(),
+  nivelHierarquico: z.enum(["DIRETORIA", "GERENCIA", "COORDENACAO", "SUPERVISOR", "COLABORADOR"]).nullable().optional(),
   nucleoId: z.string().nullable().optional(),
   newNucleoName: z.string().min(2).max(100).optional(),
 });

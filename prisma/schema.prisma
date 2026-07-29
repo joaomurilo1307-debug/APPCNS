@@ -28,6 +28,7 @@ enum NivelHierarquico {
   DIRETORIA
   GERENCIA
   COORDENACAO
+  SUPERVISOR
   COLABORADOR
 }
 

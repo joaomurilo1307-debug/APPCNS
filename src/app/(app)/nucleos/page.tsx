@@ -18,6 +18,7 @@ const nivelLabel: Record<string, string> = {
   DIRETORIA: "Diretoria",
   GERENCIA: "Gerência",
   COORDENACAO: "Coordenação",
+  SUPERVISOR: "Supervisor",
   COLABORADOR: "Colaborador",
 };
 
@@ -25,6 +26,7 @@ export default function NucleosPage() {
   const { data: session } = useSession();
   const role = (session?.user as any)?.role;
   const canManage = role === "ADMIN" || role === "DIRETOR";
+  const isAdmin = role === "ADMIN";
 
   const [nucleos, setNucleos] = useState<Nucleo[]>([]);
   const [allPeople, setAllPeople] = useState<Person[]>([]);
@@ -36,6 +38,8 @@ export default function NucleosPage() {
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editGerenteIds, setEditGerenteIds] = useState<string[]>([]);
+  const [addMemberChoice, setAddMemberChoice] = useState("");
+  const [addingMember, setAddingMember] = useState(false);
 
   async function load() {
     const res = await fetch("/api/nucleos");
@@ -98,6 +102,20 @@ export default function NucleosPage() {
     setEditGerenteIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
+  async function handleAddMember(nucleoId: string) {
+    if (!addMemberChoice) return;
+    setAddingMember(true);
+    await fetch(`/api/users/${addMemberChoice}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nucleoId }),
+    });
+    setAddMemberChoice("");
+    setAddingMember(false);
+    load();
+    loadPeople();
+  }
+
   return (
     <div>
       <h1 className="mb-1 text-2xl font-semibold">Núcleos</h1>
@@ -155,6 +173,32 @@ export default function NucleosPage() {
                     </label>
                   ))}
                 </div>
+                {isAdmin && (
+                  <>
+                    <p className="mt-2 text-xs font-semibold text-gray-500">Adicionar pessoa como membro deste núcleo</p>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={addMemberChoice}
+                        onChange={(e) => setAddMemberChoice(e.target.value)}
+                        className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+                      >
+                        <option value="">Selecione a pessoa</option>
+                        {allPeople
+                          .filter((p) => !n.membros.some((m) => m.id === p.id))
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                      </select>
+                      <button
+                        onClick={() => handleAddMember(n.id)}
+                        disabled={!addMemberChoice || addingMember}
+                        className="rounded-md border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-40"
+                      >
+                        Adicionar
+                      </button>
+                    </div>
+                  </>
+                )}
                 <div className="mt-2 flex gap-2">
                   <button onClick={() => saveEdit(n.id)} className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark">
                     Salvar

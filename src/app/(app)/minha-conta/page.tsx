@@ -33,6 +33,7 @@ const nivelLabel: Record<string, string> = {
   DIRETORIA: "Diretoria",
   GERENCIA: "Gerência",
   COORDENACAO: "Coordenação",
+  SUPERVISOR: "Supervisor",
   COLABORADOR: "Colaborador",
 };
 
