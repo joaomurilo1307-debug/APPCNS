@@ -48,18 +48,18 @@ export default function RelatoriosPage() {
     fetch("/api/users/me").then((r) => r.json()).then((me) => setNivel(me.nivelHierarquico ?? null)).catch(() => {});
   }, []);
 
-  const canSeeNucleoInsights = role === "ADMIN" || role === "DIRETOR" || nivel === "GERENCIA" || nivel === "DIRETORIA";
+  const isDiretoria = role === "ADMIN" || role === "DIRETOR" || nivel === "DIRETORIA";
 
   useEffect(() => {
-    if (!canSeeNucleoInsights) return;
+    if (!isDiretoria) return;
     fetch("/api/nucleos").then((r) => r.json()).then((data) => setNucleoNames(data.map((n: any) => n.name))).catch(() => {});
-  }, [canSeeNucleoInsights]);
+  }, [isDiretoria]);
 
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Relatórios</h1>
-        <p className="text-sm text-gray-500">Indicadores de cada projeto e, para diretoria/gerência, dos núcleos.</p>
+        <p className="text-sm text-gray-500">Indicadores de cada projeto e, para diretoria, dos núcleos.</p>
       </div>
 
       <h2 className="mb-3 text-sm font-semibold text-gray-600">Projetos</h2>
@@ -119,14 +119,32 @@ export default function RelatoriosPage() {
         {projects.length === 0 && <p className="text-sm text-gray-400">Nenhum projeto visível ainda.</p>}
       </div>
 
-      {canSeeNucleoInsights && (
+      {isDiretoria && (
         <>
           <h2 className="mb-3 text-sm font-semibold text-gray-600">Núcleos</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="mb-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {nucleoNames.map((name) => (
               <div key={name} className="rounded-xl border border-dashed border-gray-300 bg-white p-5 text-center">
                 <p className="mb-2 text-sm font-medium">{name}</p>
                 <p className="text-xs text-gray-400">Indicadores via Power BI — em breve.</p>
+              </div>
+            ))}
+            {nucleoNames.length === 0 && <p className="text-sm text-gray-400">Nenhum núcleo cadastrado.</p>}
+          </div>
+
+          <div className="mb-3 border-t border-gray-200 pt-6">
+            <h2 className="text-sm font-semibold text-gray-600">Rito de Gestão</h2>
+            <p className="text-xs text-gray-400">Só visível para diretoria.</p>
+          </div>
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            🔌 Os indicadores desta seção virão de uma integração com o Power BI (projeto "Rito de Gestão" já em
+            andamento fora do app). Por enquanto, os painéis abaixo são placeholders.
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {nucleoNames.map((name) => (
+              <div key={`rito-${name}`} className="rounded-xl border border-dashed border-gray-300 bg-white p-5">
+                <p className="text-sm font-medium">{name}</p>
+                <p className="mt-3 text-xs text-gray-400">📊 Painel de indicadores — aguardando Power BI.</p>
               </div>
             ))}
             {nucleoNames.length === 0 && <p className="text-sm text-gray-400">Nenhum núcleo cadastrado.</p>}
