@@ -207,6 +207,8 @@ model User {
   resourceRates   ResourceRate[]
   approvalRequestsSent     ApprovalRequest[] @relation("ApprovalRequester")
   approvalRequestsReceived ApprovalRequest[] @relation("ApprovalApprover")
+  pdisAsPessoa  PDI[] @relation("PDIPessoa")
+  pdisAsGestor  PDI[] @relation("PDICriador")
 }
 
 model ApprovalRequest {
@@ -521,7 +523,7 @@ model TaskCustomFieldValue {
 
 model Goal {
   id            String   @id @default(cuid())
-  projectId     String
+  projectId     String?
   title         String
   description   String?
   targetValue   Float?
@@ -530,14 +532,52 @@ model Goal {
   dueDate       DateTime?
   assignedUserId String?
   assignedTeamId String?
+  parentGoalId  String?
+  contributionValue Float?
+  autoFromProjectProgress Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignedUser User?   @relation(fields: [assignedUserId], references: [id])
   assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
+  parentGoal   Goal?   @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: SetNull)
+  subGoals     Goal[]  @relation("GoalHierarchy")
 
   @@index([projectId])
+  @@index([parentGoalId])
+}
+
+model PDI {
+  id        String   @id @default(cuid())
+  userId    String
+  gestorId  String
+  period    String?
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User      @relation("PDIPessoa", fields: [userId], references: [id], onDelete: Cascade)
+  gestor User      @relation("PDICriador", fields: [gestorId], references: [id], onDelete: Cascade)
+  items  PDIItem[]
+
+  @@index([userId])
+  @@index([gestorId])
+}
+
+model PDIItem {
+  id          String    @id @default(cuid())
+  pdiId       String
+  title       String
+  description String?
+  status      TaskStatus @default(A_FAZER)
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  pdi PDI @relation(fields: [pdiId], references: [id], onDelete: Cascade)
+
+  @@index([pdiId])
 }
 
 model CalendarEvent {

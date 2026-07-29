@@ -13,7 +13,13 @@ type Goal = {
   dueDate: string | null;
   assignedUser: { id: string; name: string; avatarColor: string | null } | null;
   assignedTeam: { id: string; name: string } | null;
+  parentGoal: { id: string; title: string } | null;
+  autoFromProjectProgress: boolean;
+  contributionValue: number | null;
+  fraction: number;
 };
+
+type GeneralGoal = { id: string; title: string };
 
 export default function GoalsPanel({
   projectId,
@@ -34,14 +40,24 @@ export default function GoalsPanel({
   const [dueDate, setDueDate] = useState("");
   const [assignType, setAssignType] = useState<"pessoa" | "equipe">("pessoa");
   const [assignedUserId, setAssignedUserId] = useState("");
+  const [generalGoals, setGeneralGoals] = useState<GeneralGoal[]>([]);
+  const [parentGoalId, setParentGoalId] = useState("");
+  const [contributionValue, setContributionValue] = useState("");
+  const [autoFromProject, setAutoFromProject] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/projects/${projectId}/goals`);
     if (res.ok) setGoals(await res.json());
   }
 
+  async function loadGeneralGoals() {
+    const res = await fetch("/api/goals");
+    if (res.ok) setGeneralGoals((await res.json()).map((g: any) => ({ id: g.id, title: g.title })));
+  }
+
   useEffect(() => {
     load();
+    loadGeneralGoals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -57,6 +73,9 @@ export default function GoalsPanel({
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
         assignedUserId: assignType === "pessoa" ? assignedUserId || null : null,
         assignedTeamId: assignType === "equipe" ? team.id : null,
+        parentGoalId: parentGoalId || undefined,
+        contributionValue: contributionValue ? Number(contributionValue) : undefined,
+        autoFromProjectProgress: autoFromProject,
       }),
     });
     setTitle("");
@@ -64,6 +83,9 @@ export default function GoalsPanel({
     setUnit("");
     setDueDate("");
     setAssignedUserId("");
+    setParentGoalId("");
+    setContributionValue("");
+    setAutoFromProject(false);
     setShowForm(false);
     load();
   }
@@ -154,6 +176,32 @@ export default function GoalsPanel({
               ))}
             </select>
           )}
+          <label className="flex flex-col gap-1">
+            Ligar a uma meta geral (opcional)
+            <select
+              value={parentGoalId}
+              onChange={(e) => setParentGoalId(e.target.value)}
+              className="rounded-md border border-gray-300 px-2 py-1.5"
+            >
+              <option value="">Nenhuma</option>
+              {generalGoals.map((g) => (
+                <option key={g.id} value={g.id}>{g.title}</option>
+              ))}
+            </select>
+          </label>
+          {parentGoalId && (
+            <input
+              type="number"
+              placeholder="Quanto essa meta vale pra meta geral (ex: 1)"
+              value={contributionValue}
+              onChange={(e) => setContributionValue(e.target.value)}
+              className="rounded-md border border-gray-300 px-2 py-1.5"
+            />
+          )}
+          <label className="col-span-2 flex items-center gap-2 text-xs text-gray-600">
+            <input type="checkbox" checked={autoFromProject} onChange={(e) => setAutoFromProject(e.target.checked)} />
+            Calcular progresso automaticamente pelo % concluído do projeto (em vez de preencher manualmente)
+          </label>
           <button className="col-span-2 rounded-md bg-brand px-4 py-2 font-medium text-white hover:bg-brand-dark">
             Criar meta
           </button>
@@ -162,7 +210,8 @@ export default function GoalsPanel({
 
       <div className="flex flex-col gap-3">
         {goals.map((g) => {
-          const pct = g.targetValue ? Math.min(100, Math.round((g.currentValue / g.targetValue) * 100)) : 0;
+          const auto = g.autoFromProjectProgress;
+          const pct = auto ? Math.round(g.fraction * 100) : g.targetValue ? Math.min(100, Math.round((g.currentValue / g.targetValue) * 100)) : 0;
           return (
             <div key={g.id} className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="mb-2 flex items-center justify-between">
@@ -182,8 +231,17 @@ export default function GoalsPanel({
                 )}
                 {g.assignedTeam && <span>👥 Equipe {g.assignedTeam.name}</span>}
                 {g.dueDate && <span>· Prazo: {new Date(g.dueDate).toLocaleDateString("pt-BR")}</span>}
+                {g.parentGoal && <span>· ligada a "{g.parentGoal.title}"{g.contributionValue ? ` (vale ${g.contributionValue})` : ""}</span>}
+                {auto && <span>· auto pelo progresso do projeto</span>}
               </div>
-              {g.targetValue ? (
+              {auto ? (
+                <>
+                  <div className="mb-1 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div className="h-full bg-brand" style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-xs text-gray-500">{pct}% concluído (segue o andamento das tarefas do projeto)</p>
+                </>
+              ) : g.targetValue ? (
                 <>
                   <div className="mb-1 h-2 w-full overflow-hidden rounded-full bg-gray-100">
                     <div className="h-full bg-brand" style={{ width: `${pct}%` }} />

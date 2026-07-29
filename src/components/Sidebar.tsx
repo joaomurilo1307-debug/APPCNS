@@ -20,6 +20,8 @@ const baseLinks = [
   { href: "/equipes", label: "Equipes", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
   { href: "/nucleos", label: "Núcleos", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/organograma", label: "Organograma", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/metas", label: "Metas", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/pdi", label: "PDI", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/aprovacoes", label: "Aprovações", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/usuarios", label: "Usuários", roles: ["ADMIN"] },
 ];

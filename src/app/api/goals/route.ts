@@ -2,27 +2,38 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canManageTeam } from "@/lib/permissions";
-import { computeGoalFraction } from "@/lib/goals";
+import { computeGoalFraction, computeGoalCurrentValue } from "@/lib/goals";
 import { z } from "zod";
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const goals = await prisma.goal.findMany({
-    where: { projectId: params.id },
+    where: { parentGoalId: null },
     include: {
+      project: { select: { id: true, name: true } },
       assignedUser: { select: { id: true, name: true, avatarColor: true } },
       assignedTeam: { select: { id: true, name: true } },
-      parentGoal: { select: { id: true, title: true } },
+      subGoals: {
+        include: {
+          project: { select: { id: true, name: true } },
+          assignedUser: { select: { id: true, name: true, avatarColor: true } },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  const withFraction = await Promise.all(goals.map(async (g) => ({ ...g, fraction: await computeGoalFraction(g.id) })));
+  const withComputed = await Promise.all(
+    goals.map(async (g) => ({
+      ...g,
+      computedCurrentValue: await computeGoalCurrentValue(g.id),
+      subGoals: await Promise.all(g.subGoals.map(async (sg) => ({ ...sg, fraction: await computeGoalFraction(sg.id) }))),
+    }))
+  );
 
-  return NextResponse.json(withFraction);
+  return NextResponse.json(withComputed);
 }
 
 const createGoalSchema = z.object({
@@ -33,22 +44,16 @@ const createGoalSchema = z.object({
   dueDate: z.string().datetime().nullable().optional(),
   assignedUserId: z.string().nullable().optional(),
   assignedTeamId: z.string().nullable().optional(),
-  parentGoalId: z.string().nullable().optional(),
-  contributionValue: z.number().nullable().optional(),
-  autoFromProjectProgress: z.boolean().optional(),
 });
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const project = await prisma.project.findUnique({ where: { id: params.id } });
-  if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
-
-  const userId = (session.user as any).id;
   const role = (session.user as any).role;
-  const allowed = await canManageTeam(userId, role, project.teamId);
-  if (!allowed) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  if (role !== "ADMIN" && role !== "DIRETOR") {
+    return NextResponse.json({ error: "Só Admin ou Diretor podem criar metas gerais" }, { status: 403 });
+  }
 
   const body = await req.json();
   const parsed = createGoalSchema.safeParse(body);
@@ -57,7 +62,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const goal = await prisma.goal.create({
     data: {
       ...parsed.data,
-      projectId: params.id,
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
     },
   });
