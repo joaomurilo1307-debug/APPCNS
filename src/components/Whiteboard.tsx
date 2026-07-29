@@ -187,6 +187,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
   function handleUndo() {
     if (history.length === 0) return;
     const prev = history[history.length - 1];
+    console.log("[WB DEBUG] handleUndo", { historyLen: history.length, prevStrokes: prev.strokes.length, currentStrokes: strokes.length, prevNodes: prev.nodes.length, currentNodes: nodes.length });
     setFuture((f) => [{ nodes, strokes }, ...f].slice(0, 50));
     setHistory((h) => h.slice(0, -1));
     setNodes(prev.nodes);
@@ -299,6 +300,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     const pos = getCanvasPos(e.clientX, e.clientY);
     drawingRef.current = true;
     drawSnapshotRef.current = { nodes, strokes };
+    console.log("[WB DEBUG] startStroke snapshot", { strokesAtStart: strokes.length });
     const stroke: Stroke = { id: newId(), points: [pos], color: drawColor, width: drawWidth };
     currentStrokeRef.current = stroke;
     setCurrentStroke(stroke);
@@ -322,8 +324,14 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     currentStrokeRef.current = null;
     setCurrentStroke(null);
     if (finished && finished.points.length > 1) {
+      console.log("[WB DEBUG] endStroke committing", { snapshotStrokes: drawSnapshotRef.current?.strokes.length, points: finished.points.length });
       if (drawSnapshotRef.current) {
-        setHistory((h) => [...h.slice(-49), drawSnapshotRef.current!]);
+        const snap = drawSnapshotRef.current;
+        setHistory((h) => {
+          const next = [...h.slice(-49), snap];
+          console.log("[WB DEBUG] setHistory updater", { prevLen: h.length, nextLen: next.length, pushedSnapStrokes: snap.strokes.length });
+          return next;
+        });
         setFuture([]);
       }
       setStrokes((s) => [...s, finished]);
