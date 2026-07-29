@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Avatar from "./Avatar";
+import { resolveStatus } from "@/lib/presenceStatus";
 
-type Person = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null; role: string; online: boolean };
+type Person = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null; role: string; online: boolean; statusManual: string | null };
 
 export default function OnlinePeopleWidget({ currentUserId }: { currentUserId: string }) {
   const [people, setPeople] = useState<Person[]>([]);
@@ -24,18 +25,22 @@ export default function OnlinePeopleWidget({ currentUserId }: { currentUserId: s
 
   return (
     <div className="flex flex-col gap-2">
-      {online.map((p) => (
-        <div key={p.id} className="flex items-center gap-2 text-sm">
-          <span className="relative shrink-0">
-            <Avatar name={p.name} color={p.avatarColor} photoUrl={p.avatarUrl} size={24} />
-            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-green-500" />
-          </span>
-          <span className="min-w-0 flex-1 truncate">
-            {p.name}
-            {p.cargo && <span className="ml-1 text-xs text-gray-400">· {p.cargo}</span>}
-          </span>
-        </div>
-      ))}
+      {online.map((p) => {
+        const status = resolveStatus(true, p.statusManual);
+        return (
+          <div key={p.id} className="flex items-center gap-2 text-sm">
+            <span className="relative shrink-0">
+              <Avatar name={p.name} color={p.avatarColor} photoUrl={p.avatarUrl} size={24} />
+              <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white ${status.color}`} />
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              {p.name}
+              {p.cargo && <span className="ml-1 text-xs text-gray-400">· {p.cargo}</span>}
+              {status.key !== "DISPONIVEL" && <span className="ml-1 text-xs text-gray-400">({status.label})</span>}
+            </span>
+          </div>
+        );
+      })}
       {online.length === 0 && <p className="text-xs text-gray-400">Ninguém online agora.</p>}
       {offline.length > 0 && (
         <details className="mt-1">

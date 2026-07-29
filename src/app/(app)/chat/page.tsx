@@ -7,8 +7,9 @@ import LinkedText from "@/components/LinkedText";
 import { generateJitsiRoomUrl } from "@/lib/jitsi";
 import { buildCallMessage } from "@/lib/callMessage";
 import { setActiveChat, getActiveChat } from "@/lib/activeChat";
+import { resolveStatus } from "@/lib/presenceStatus";
 
-type Contact = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null; role: string; online: boolean };
+type Contact = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null; role: string; online: boolean; statusManual: string | null };
 type Team = { id: string; name: string };
 type DirectMsg = { id: string; senderId: string; receiverId: string; body: string; createdAt: string };
 type TeamMsg = { id: string; senderId: string; body: string; createdAt: string; sender: { id: string; name: string; avatarColor: string } };
@@ -40,6 +41,7 @@ export default function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showCallLog, setShowCallLog] = useState(false);
   const [callLog, setCallLog] = useState<CallLogEntry[]>([]);
+  const [search, setSearch] = useState("");
 
   async function loadCallLog() {
     const res = await fetch("/api/messages/calls");
@@ -172,6 +174,10 @@ export default function ChatPage() {
       ? contacts.find((c) => c.id === selected.id)?.name
       : teams.find((t) => t.id === selected?.id)?.name;
 
+  const searchLower = search.trim().toLowerCase();
+  const filteredContacts = searchLower ? contacts.filter((c) => c.name.toLowerCase().includes(searchLower)) : contacts;
+  const filteredTeams = searchLower ? teams.filter((t) => t.name.toLowerCase().includes(searchLower)) : teams;
+
   return (
     <div className="flex h-[calc(100vh-7.5rem)] flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -189,9 +195,17 @@ export default function ChatPage() {
       <div className="flex flex-1 gap-4 overflow-hidden">
       <div className="flex w-72 shrink-0 flex-col overflow-y-auto rounded-xl border border-gray-200 bg-white">
         <div className="border-b border-gray-100 p-3">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar pessoa ou equipe..."
+            className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+          />
+        </div>
+        <div className="border-b border-gray-100 p-3">
           <p className="text-xs font-semibold text-gray-500">Equipes</p>
         </div>
-        {teams.map((t) => (
+        {filteredTeams.map((t) => (
           <button
             key={t.id}
             onClick={() => setSelected({ type: "team", id: t.id })}
@@ -209,7 +223,7 @@ export default function ChatPage() {
         <div className="border-b border-t border-gray-100 p-3">
           <p className="text-xs font-semibold text-gray-500">Pessoas</p>
         </div>
-        {contacts.map((c) => (
+        {filteredContacts.map((c) => (
           <button
             key={c.id}
             onClick={() => setSelected({ type: "direct", id: c.id })}
@@ -221,7 +235,7 @@ export default function ChatPage() {
               <Avatar name={c.name} color={c.avatarColor} photoUrl={c.avatarUrl} size={26} />
               <span
                 className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white ${
-                  c.online ? "bg-green-500" : "bg-gray-300"
+                  resolveStatus(c.online, c.statusManual).color
                 }`}
               />
             </span>
@@ -234,8 +248,10 @@ export default function ChatPage() {
             )}
           </button>
         ))}
-        {contacts.length === 0 && teams.length === 0 && (
-          <p className="p-3 text-xs text-gray-400">Nenhum contato disponível ainda.</p>
+        {filteredContacts.length === 0 && filteredTeams.length === 0 && (
+          <p className="p-3 text-xs text-gray-400">
+            {searchLower ? "Nenhum resultado para essa busca." : "Nenhum contato disponível ainda."}
+          </p>
         )}
       </div>
 

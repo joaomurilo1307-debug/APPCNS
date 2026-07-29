@@ -1,25 +1,89 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Avatar from "./Avatar";
+import { MANUAL_STATUSES, ManualStatus, resolveStatus, statusLabel } from "@/lib/presenceStatus";
 
-type Me = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null };
+type Me = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null; statusManual: string | null };
 
 export default function TopBar() {
   const [me, setMe] = useState<Me | null>(null);
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  function load() {
     fetch("/api/users/me")
       .then((r) => (r.ok ? r.json() : null))
       .then(setMe)
       .catch(() => {});
+  }
+
+  useEffect(() => {
+    load();
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  async function setStatus(status: ManualStatus | null) {
+    setOpen(false);
+    setMe((prev) => (prev ? { ...prev, statusManual: status } : prev));
+    await fetch("/api/users/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ statusManual: status }),
+    });
+  }
 
   if (!me) return <div className="h-14 shrink-0 border-b border-gray-100 bg-white" />;
 
+  const status = resolveStatus(true, me.statusManual);
+
   return (
-    <div className="flex h-14 shrink-0 items-center justify-end border-b border-gray-100 bg-white px-6">
+    <div className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-gray-100 bg-white px-6">
+      <div className="relative" ref={menuRef}>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          title="Definir status"
+          className="flex items-center gap-1.5 rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
+        >
+          <span className={`h-2.5 w-2.5 rounded-full ${status.color}`} />
+          {status.label}
+        </button>
+        {open && (
+          <div className="absolute right-0 top-9 z-50 w-44 rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+            {MANUAL_STATUSES.map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatus(s)}
+                className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-gray-50 ${
+                  me.statusManual === s ? "bg-brand/10 text-brand-dark" : ""
+                }`}
+              >
+                <span className={`h-2.5 w-2.5 rounded-full ${resolveStatus(true, s).color}`} />
+                {statusLabel[s]}
+              </button>
+            ))}
+            <div className="my-1 border-t border-gray-100" />
+            <button
+              onClick={() => setStatus(null)}
+              className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-gray-50 ${
+                !me.statusManual ? "bg-brand/10 text-brand-dark" : ""
+              }`}
+            >
+              <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+              Automático (online/offline)
+            </button>
+          </div>
+        )}
+      </div>
       <Link href="/minha-conta" className="flex items-center gap-2 rounded-full px-2 py-1 hover:bg-gray-50">
         <div className="text-right">
           <p className="text-sm font-medium leading-tight">{me.name}</p>

@@ -11,7 +11,7 @@ export async function GET() {
 
   const users = await prisma.user.findMany({
     where: { active: true },
-    select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true, role: true, lastSeenAt: true },
+    select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true, role: true, lastSeenAt: true, statusManual: true },
     orderBy: { name: "asc" },
   });
 
@@ -24,6 +24,7 @@ export async function GET() {
     cargo: u.cargo,
     role: u.role,
     online: !!u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() < ONLINE_THRESHOLD_MS,
+    statusManual: u.statusManual,
   }));
 
   return NextResponse.json(result);

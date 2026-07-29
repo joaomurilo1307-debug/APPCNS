@@ -24,6 +24,7 @@ export async function GET() {
       ramal: true,
       whatsapp: true,
       nivelHierarquico: true,
+      statusManual: true,
       nucleo: { select: { id: true, name: true } },
       gestorImediato: { select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true } },
     },
@@ -38,6 +39,7 @@ const updateMeSchema = z.object({
   avatarUrl: z.string().max(400_000).nullable().optional(),
   currentPassword: z.string().optional(),
   newPassword: z.string().min(8).optional(),
+  statusManual: z.enum(["DISPONIVEL", "OCUPADO", "AUSENTE", "NAO_PERTURBE"]).nullable().optional(),
 });
 
 export async function PATCH(req: Request) {
@@ -67,7 +69,7 @@ export async function PATCH(req: Request) {
   const updated = await prisma.user.update({
     where: { id: userId },
     data: { ...rest, ...(passwordHash ? { passwordHash } : {}) },
-    select: { id: true, name: true, avatarColor: true, avatarUrl: true },
+    select: { id: true, name: true, avatarColor: true, avatarUrl: true, statusManual: true },
   });
 
   return NextResponse.json(updated);
