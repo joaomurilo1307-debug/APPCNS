@@ -51,6 +51,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const canCreateTask = role && role !== "CLIENTE" && role !== "VISUALIZADOR";
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [title, setTitle] = useState("");
@@ -70,6 +71,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   useEffect(() => {
     load();
   }, [params.id]);
+
+  useEffect(() => {
+    if (!showEditForm) return;
+    fetch("/api/teams")
+      .then((r) => r.json())
+      .then(setTeams)
+      .catch(() => {});
+  }, [showEditForm]);
 
   useEffect(() => {
     if (tab !== "gantt") return;
@@ -107,6 +116,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         ownerId: form.get("ownerId") || undefined,
         approverId: form.get("approverId") || null,
         status: form.get("status"),
+        teamId: form.get("teamId") || undefined,
         startDate: form.get("startDate") ? new Date(form.get("startDate") as string).toISOString() : null,
         endDate: form.get("endDate") ? new Date(form.get("endDate") as string).toISOString() : null,
       }),
@@ -182,6 +192,17 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             <select name="status" defaultValue={project.status} className="rounded-md border border-gray-300 px-2 py-1.5">
               {Object.entries(statusLabel).map(([v, l]) => (
                 <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            Equipe
+            <select name="teamId" defaultValue={project.team.id} className="rounded-md border border-gray-300 px-2 py-1.5">
+              {!teams.some((t) => t.id === project.team.id) && (
+                <option value={project.team.id}>{project.team.name}</option>
+              )}
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
           </label>

@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { visibleTeamFilter, getUserTeamIds } from "@/lib/permissions";
+import { visibleProjectWhere, getUserTeamIds } from "@/lib/permissions";
 import { eventTypeLabel, priorityColor } from "@/lib/calendarColors";
 import OnlinePeopleWidget from "@/components/OnlinePeopleWidget";
 import Avatar from "@/components/Avatar";
@@ -46,7 +46,7 @@ export default async function DashboardPage() {
   const userId = (session!.user as any).id;
   const role = (session!.user as any).role;
   const name = session!.user?.name ?? "";
-  const teamFilter = await visibleTeamFilter(userId, role);
+  const projectVisibility = await visibleProjectWhere(userId, role);
   const teamIds = await getUserTeamIds(userId);
 
   const now = new Date();
@@ -58,14 +58,19 @@ export default async function DashboardPage() {
   const evVisibility = await eventVisibility(userId, role, teamIds);
 
   const [projectCount, taskCounts, myTaskCount, todayEvents, myOpenTasks, myTeams] = await Promise.all([
-    prisma.project.count({ where: teamFilter }),
+    prisma.project.count({ where: projectVisibility }),
     prisma.task.groupBy({
       by: ["status"],
       _count: true,
       where:
-        role === "ADMIN" || role === "DIRETOR"
+        Object.keys(projectVisibility).length === 0
           ? {}
-          : { OR: [{ project: { teamId: { in: teamIds } } }, { projectId: null, assigneeId: userId }] },
+          : {
+              OR: [
+                ...(projectVisibility.OR ?? [projectVisibility]).map((clause: any) => ({ project: clause })),
+                { projectId: null, assigneeId: userId },
+              ],
+            },
     }),
     prisma.task.count({ where: { assigneeId: userId, status: { not: "FEITO" } } }),
     prisma.calendarEvent.findMany({

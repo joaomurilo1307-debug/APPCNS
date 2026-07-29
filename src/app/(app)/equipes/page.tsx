@@ -12,10 +12,11 @@ type Team = {
   _count: { projects: number };
 };
 
-type UserOption = { id: string; name: string };
+type UserOption = { id: string; name: string; nucleo?: { name: string } | null };
 
 export default function EquipesPage() {
   const { data: session } = useSession();
+  const myId = (session?.user as any)?.id;
   const role = (session?.user as any)?.role;
   const isAdmin = role === "ADMIN";
   const canManageMembers = role === "ADMIN" || role === "GESTOR_PROJETO";
@@ -32,8 +33,8 @@ export default function EquipesPage() {
   async function load() {
     const res = await fetch("/api/teams");
     setTeams(await res.json());
-    if (isAdmin) {
-      const uRes = await fetch("/api/users");
+    if (canManageMembers) {
+      const uRes = await fetch("/api/organograma");
       if (uRes.ok) setAllUsers(await uRes.json());
     }
   }
@@ -41,7 +42,7 @@ export default function EquipesPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
+  }, [canManageMembers]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -110,6 +111,8 @@ export default function EquipesPage() {
         {teams.map((team) => {
           const memberIds = new Set(team.members.map((m) => m.user.id));
           const availableUsers = allUsers.filter((u) => !memberIds.has(u.id));
+          const isThisTeamGestor = team.members.some((m) => m.user.id === myId && m.role === "GESTOR");
+          const canAddToThisTeam = isAdmin || isThisTeamGestor;
           return (
             <div key={team.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <h2 className="font-semibold">{team.name}</h2>
@@ -139,7 +142,7 @@ export default function EquipesPage() {
                 ))}
               </ul>
 
-              {isAdmin && (
+              {canAddToThisTeam && (
                 <div className="mt-4 border-t border-gray-100 pt-3">
                   {addingToTeam === team.id ? (
                     <div className="flex flex-wrap items-center gap-2">
@@ -148,9 +151,12 @@ export default function EquipesPage() {
                         onChange={(e) => setSelectedUserId(e.target.value)}
                         className="rounded-md border border-gray-300 px-2 py-1 text-xs"
                       >
-                        <option value="">Selecione a pessoa</option>
+                        <option value="">Selecione a pessoa (qualquer núcleo)</option>
                         {availableUsers.map((u) => (
-                          <option key={u.id} value={u.id}>{u.name}</option>
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                            {u.nucleo ? ` · ${u.nucleo.name}` : ""}
+                          </option>
                         ))}
                       </select>
                       <select

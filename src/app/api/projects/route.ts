@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canManageTeam } from "@/lib/permissions";
+import { canManageTeam, visibleProjectWhere } from "@/lib/permissions";
 import { computePercentComplete } from "@/lib/progress";
 import { sendNotificationEmail } from "@/lib/mailer";
 import { z } from "zod";
@@ -18,15 +18,10 @@ export async function GET() {
   if (role === "CLIENTE") {
     where = { clients: { some: { userId } } };
   } else if (role === "APROVADOR") {
-    const teamIds = (
-      await prisma.userTeam.findMany({ where: { userId }, select: { teamId: true } })
-    ).map((t) => t.teamId);
-    where = { OR: [{ teamId: { in: teamIds } }, { approverId: userId }] };
+    const base = await visibleProjectWhere(userId, role);
+    where = Object.keys(base).length === 0 ? {} : { OR: [...(base.OR ?? [base]), { approverId: userId }] };
   } else if (role !== "ADMIN") {
-    const teamIds = (
-      await prisma.userTeam.findMany({ where: { userId }, select: { teamId: true } })
-    ).map((t) => t.teamId);
-    where = { teamId: { in: teamIds } };
+    where = await visibleProjectWhere(userId, role);
   }
 
   const projects = await prisma.project.findMany({

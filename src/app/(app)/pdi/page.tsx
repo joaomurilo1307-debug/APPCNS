@@ -38,7 +38,7 @@ export default function PdiPage() {
   const [subordinados, setSubordinados] = useState<Subordinado[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [newItemTitle, setNewItemTitle] = useState("");
-  const [newPdiUserId, setNewPdiUserId] = useState("");
+  const [creatingFor, setCreatingFor] = useState<string | null>(null);
   const [newPeriod, setNewPeriod] = useState("");
 
   async function load() {
@@ -59,7 +59,6 @@ export default function PdiPage() {
 
   const meusPdisComoGestor = pdis.filter((p) => p.gestor.id === myId);
   const meuProprioPdi = pdis.filter((p) => p.user.id === myId);
-  const semPdiAinda = subordinados.filter((s) => !meusPdisComoGestor.some((p) => p.user.id === s.id));
 
   async function handleCreatePdi(userId: string) {
     const res = await fetch("/api/pdi", {
@@ -69,7 +68,7 @@ export default function PdiPage() {
     });
     if (res.ok) {
       setNewPeriod("");
-      setNewPdiUserId("");
+      setCreatingFor(null);
       load();
     }
   }
@@ -160,35 +159,56 @@ export default function PdiPage() {
       {subordinados.length > 0 && (
         <>
           <h2 className="mb-3 text-sm font-semibold text-gray-600">Seus liderados</h2>
-          <div className="mb-8 flex flex-col gap-3">
-            {meusPdisComoGestor.map((p) => (
-              <PdiCard key={p.id} pdi={p} isGestorView />
-            ))}
-            {semPdiAinda.map((s) => (
-              <div key={s.id} className="flex items-center justify-between rounded-xl border border-dashed border-gray-300 bg-white p-4">
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span>{s.name}</span>
-                  <span className="text-xs text-gray-400">ainda sem PDI</span>
+          <div className="mb-8 flex flex-col gap-4">
+            {subordinados.map((s) => {
+              const pdisDele = meusPdisComoGestor.filter((p) => p.user.id === s.id);
+              return (
+                <div key={s.id} className="flex flex-col gap-2">
+                  {pdisDele.map((p) => (
+                    <PdiCard key={p.id} pdi={p} isGestorView />
+                  ))}
+                  {pdisDele.length === 0 && (
+                    <div className="flex items-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white p-4 text-sm text-gray-500">
+                      <span>{s.name}</span>
+                      <span className="text-xs text-gray-400">ainda sem PDI</span>
+                    </div>
+                  )}
+                  {creatingFor === s.id ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-2">
+                      <input
+                        placeholder="Período (ex: 2026-S2)"
+                        value={newPeriod}
+                        onChange={(e) => setNewPeriod(e.target.value)}
+                        className="w-36 rounded-md border border-gray-300 px-2 py-1 text-xs"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleCreatePdi(s.id)}
+                        className="rounded-md bg-brand px-3 py-1 text-xs text-white hover:bg-brand-dark"
+                      >
+                        Criar
+                      </button>
+                      <button
+                        onClick={() => {
+                          setCreatingFor(null);
+                          setNewPeriod("");
+                        }}
+                        className="text-xs text-gray-400"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setCreatingFor(s.id)}
+                      className="self-start text-xs font-medium text-brand hover:underline"
+                    >
+                      + Novo PDI para {s.name}{pdisDele.length > 0 ? " (novo período)" : ""}
+                    </button>
+                  )}
                 </div>
-                <div className="flex gap-2">
-                  <input
-                    placeholder="Período (ex: 2026-S2)"
-                    value={newPdiUserId === s.id ? newPeriod : ""}
-                    onChange={(e) => {
-                      setNewPdiUserId(s.id);
-                      setNewPeriod(e.target.value);
-                    }}
-                    className="w-36 rounded-md border border-gray-300 px-2 py-1 text-xs"
-                  />
-                  <button
-                    onClick={() => handleCreatePdi(s.id)}
-                    className="rounded-md bg-brand px-3 py-1 text-xs text-white hover:bg-brand-dark"
-                  >
-                    Criar PDI
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

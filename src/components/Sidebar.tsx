@@ -17,6 +17,7 @@ const baseLinks = [
   { href: "/gantt", label: "Gantt", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"] },
   { href: "/calendario", label: "Calendário", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/chat", label: "Chat", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/pessoas", label: "Buscar pessoas", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/equipes", label: "Equipes", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
   { href: "/nucleos", label: "Núcleos", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/organograma", label: "Organograma", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },

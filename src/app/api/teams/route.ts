@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { visibleTeamWhere } from "@/lib/permissions";
 import { z } from "zod";
 
 export async function GET() {
@@ -12,10 +13,7 @@ export async function GET() {
   const role = (session.user as any).role;
 
   const teams = await prisma.team.findMany({
-    where:
-      role === "ADMIN" || role === "DIRETOR"
-        ? {}
-        : { members: { some: { userId } } },
+    where: await visibleTeamWhere(userId, role),
     include: {
       members: { include: { user: { select: { id: true, name: true, email: true, avatarColor: true, avatarUrl: true, cargo: true } } } },
       _count: { select: { projects: true } },

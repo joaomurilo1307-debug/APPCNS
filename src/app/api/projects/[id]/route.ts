@@ -35,6 +35,7 @@ const updateSchema = z.object({
   status: z.enum(["PLANEJADO", "EM_ANDAMENTO", "PAUSADO", "CONCLUIDO"]).optional(),
   ownerId: z.string().optional(),
   approverId: z.string().nullable().optional(),
+  teamId: z.string().optional(),
   startDate: z.string().datetime().nullable().optional(),
   endDate: z.string().datetime().nullable().optional(),
 });

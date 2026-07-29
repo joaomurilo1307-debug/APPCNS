@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getUserTeamIds } from "@/lib/permissions";
+import { visibleProjectWhere } from "@/lib/permissions";
 import { reconcileTaskOutlook } from "@/lib/taskOutlookSync";
 import { z } from "zod";
 
@@ -14,22 +14,17 @@ async function visibilityFilterFor(userId: string, role: string) {
   }
 
   if (role === "APROVADOR") {
-    const teamIds = await getUserTeamIds(userId);
+    const base = await visibleProjectWhere(userId, role);
+    if (Object.keys(base).length === 0) return {};
     return {
-      OR: [
-        { project: { teamId: { in: teamIds } } },
-        { project: { approverId: userId } },
-        { assigneeId: userId },
-      ],
+      OR: [...(base.OR ?? [base]).map((clause: any) => ({ project: clause })), { project: { approverId: userId } }, { assigneeId: userId }],
     };
   }
 
-  const teamIds = await getUserTeamIds(userId);
+  const base = await visibleProjectWhere(userId, role);
+  if (Object.keys(base).length === 0) return {};
   return {
-    OR: [
-      { project: { teamId: { in: teamIds } } },
-      { assigneeId: userId },
-    ],
+    OR: [...(base.OR ?? [base]).map((clause: any) => ({ project: clause })), { assigneeId: userId }],
   };
 }
 
