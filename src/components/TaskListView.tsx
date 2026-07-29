@@ -146,6 +146,7 @@ export default function TaskListView({
   const [importing, setImporting] = useState(false);
   const [showImportHelp, setShowImportHelp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [allPeople, setAllPeople] = useState<{ id: string; name: string; nucleo: { name: string } | null }[]>([]);
 
   async function loadAll() {
     const [t, f] = await Promise.all([
@@ -161,6 +162,13 @@ export default function TaskListView({
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  useEffect(() => {
+    fetch("/api/organograma")
+      .then((r) => r.json())
+      .then(setAllPeople)
+      .catch(() => {});
+  }, []);
 
   async function patchTask(taskId: string, data: any) {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...data } : t)));
@@ -741,9 +749,21 @@ export default function TaskListView({
                     className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
                   >
                     <option value="">Ninguém</option>
-                    {team.members.map((m) => (
-                      <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
-                    ))}
+                    <optgroup label="Equipe do projeto">
+                      {team.members.map((m) => (
+                        <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Outras pessoas (outro núcleo)">
+                      {allPeople
+                        .filter((p) => !team.members.some((m) => m.user.id === p.id))
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                            {p.nucleo ? ` · ${p.nucleo.name}` : ""}
+                          </option>
+                        ))}
+                    </optgroup>
                   </select>
                 </td>
                 <td className="px-3 py-1.5">

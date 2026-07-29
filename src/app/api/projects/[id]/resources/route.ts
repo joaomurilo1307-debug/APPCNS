@@ -26,7 +26,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
           title: true,
           status: true,
           assigneeId: true,
-          assignee: { select: { id: true, name: true } },
+          assignee: { select: { id: true, name: true, avatarColor: true, avatarUrl: true } },
           actualStartedAt: true,
           actualEndedAt: true,
         },
@@ -55,15 +55,32 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     })
     .sort((a, b) => b.hoursSpent - a.hoursSpent);
 
-  const resources = project.team.members.map((m) => {
-    const rate = rateByUser.get(m.user.id) ?? 0;
-    const mine = activities.filter((a) => a.assigneeId === m.user.id);
+  const peopleById = new Map(
+    project.team.members.map((m) => [
+      m.user.id,
+      { id: m.user.id, name: m.user.name, avatarColor: m.user.avatarColor, avatarUrl: m.user.avatarUrl },
+    ])
+  );
+  for (const t of project.tasks) {
+    if (t.assigneeId && t.assignee && !peopleById.has(t.assigneeId)) {
+      peopleById.set(t.assigneeId, {
+        id: t.assignee.id,
+        name: `${t.assignee.name} (outro núcleo)`,
+        avatarColor: (t.assignee as any).avatarColor,
+        avatarUrl: (t.assignee as any).avatarUrl,
+      });
+    }
+  }
+
+  const resources = Array.from(peopleById.values()).map((u) => {
+    const rate = rateByUser.get(u.id) ?? 0;
+    const mine = activities.filter((a) => a.assigneeId === u.id);
     const totalHours = mine.reduce((s, a) => s + a.hoursSpent, 0);
     return {
-      userId: m.user.id,
-      name: m.user.name,
-      avatarColor: m.user.avatarColor,
-      avatarUrl: m.user.avatarUrl,
+      userId: u.id,
+      name: u.name,
+      avatarColor: u.avatarColor,
+      avatarUrl: u.avatarUrl,
       hourlyRate: rate,
       hoursSpent: totalHours,
       cost: totalHours * rate,

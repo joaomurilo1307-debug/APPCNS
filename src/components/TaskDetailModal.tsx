@@ -58,6 +58,7 @@ export default function TaskDetailModal({
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [teamMembers, setTeamMembers] = useState<{ id: string; name: string }[]>([]);
+  const [allPeople, setAllPeople] = useState<{ id: string; name: string; nucleo: { name: string } | null }[]>([]);
   const [newComment, setNewComment] = useState("");
   const [newSubtask, setNewSubtask] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -82,6 +83,13 @@ export default function TaskDetailModal({
         setTeamMembers(team ? team.members.map((m: any) => m.user) : []);
       });
   }, [task?.project?.teamId]);
+
+  useEffect(() => {
+    fetch("/api/organograma")
+      .then((r) => r.json())
+      .then(setAllPeople)
+      .catch(() => {});
+  }, []);
 
   if (!task) return null;
 
@@ -201,9 +209,21 @@ export default function TaskDetailModal({
                 className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-50"
               >
                 <option value="">Ninguém</option>
-                {teamMembers.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
+                <optgroup label="Equipe do projeto">
+                  {teamMembers.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Outras pessoas (outro núcleo)">
+                  {allPeople
+                    .filter((p) => !teamMembers.some((m) => m.id === p.id))
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.nucleo ? ` · ${p.nucleo.name}` : ""}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
             </div>
             <div>
