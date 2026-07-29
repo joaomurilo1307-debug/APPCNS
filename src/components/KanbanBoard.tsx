@@ -30,12 +30,37 @@ function fmtDueDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
 }
 
-const columns = [
-  { key: "A_FAZER", label: "A fazer" },
-  { key: "FAZENDO", label: "Fazendo" },
-  { key: "BLOQUEADO", label: "Bloqueado" },
-  { key: "FEITO", label: "Feito" },
+type ColumnConfig = { key: string; label: string; visible: boolean };
+
+const defaultColumns: ColumnConfig[] = [
+  { key: "A_FAZER", label: "A fazer", visible: true },
+  { key: "FAZENDO", label: "Fazendo", visible: true },
+  { key: "BLOQUEADO", label: "Bloqueado", visible: true },
+  { key: "FEITO", label: "Feito", visible: true },
 ];
+
+const columnAccent: Record<string, { dot: string; bar: string; tint: string; badgeBg: string; badgeText: string }> = {
+  A_FAZER: { dot: "bg-slate-400", bar: "from-slate-300 to-slate-400", tint: "from-slate-50/80 to-white", badgeBg: "bg-slate-100", badgeText: "text-slate-600" },
+  FAZENDO: { dot: "bg-blue-500", bar: "from-blue-400 to-blue-500", tint: "from-blue-50/70 to-white", badgeBg: "bg-blue-100", badgeText: "text-blue-700" },
+  BLOQUEADO: { dot: "bg-rose-500", bar: "from-rose-400 to-rose-500", tint: "from-rose-50/70 to-white", badgeBg: "bg-rose-100", badgeText: "text-rose-700" },
+  FEITO: { dot: "bg-emerald-500", bar: "from-emerald-400 to-emerald-500", tint: "from-emerald-50/70 to-white", badgeBg: "bg-emerald-100", badgeText: "text-emerald-700" },
+};
+const fallbackAccent = { dot: "bg-brand", bar: "from-brand/60 to-brand", tint: "from-brand/[0.04] to-white", badgeBg: "bg-brand/10", badgeText: "text-brand-dark" };
+
+function parseColumns(raw: string | null | undefined): ColumnConfig[] {
+  if (!raw) return defaultColumns;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // garante que todo status padrão continue presente (mesmo que oculto), pra não perder tarefas de vista
+      const byKey = new Map(parsed.map((c: ColumnConfig) => [c.key, c]));
+      return defaultColumns.map((d) => byKey.get(d.key) ?? { ...d, visible: false });
+    }
+  } catch {
+    // config antiga/invalida, cai no padrão
+  }
+  return defaultColumns;
+}
 
 const priorityLabel: Record<string, string> = {
   BAIXA: "Baixa",
@@ -67,9 +92,13 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
   const { data: session } = useSession();
   const role = (session?.user as any)?.role;
   const userId = (session?.user as any)?.id;
+  const canManage = role === "ADMIN" || role === "GESTOR_PROJETO";
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [columns, setColumns] = useState<ColumnConfig[]>(defaultColumns);
+  const [editingColumns, setEditingColumns] = useState(false);
+  const [draftColumns, setDraftColumns] = useState<ColumnConfig[]>(defaultColumns);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   async function load() {
@@ -79,8 +108,17 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
     setTasks(await res.json());
   }
 
+  async function loadColumns() {
+    if (!projectId) return;
+    const res = await fetch(`/api/projects/${projectId}`);
+    if (!res.ok) return;
+    const project = await res.json();
+    setColumns(parseColumns(project.kanbanColumns));
+  }
+
   useEffect(() => {
     load();
+    loadColumns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -115,12 +153,85 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
     });
   }
 
+  function openColumnEditor() {
+    setDraftColumns(columns);
+    setEditingColumns(true);
+  }
+
+  function updateDraftLabel(key: string, label: string) {
+    setDraftColumns((prev) => prev.map((c) => (c.key === key ? { ...c, label } : c)));
+  }
+
+  function toggleDraftVisible(key: string) {
+    setDraftColumns((prev) => prev.map((c) => (c.key === key ? { ...c, visible: !c.visible } : c)));
+  }
+
+  async function saveColumns() {
+    if (!projectId) return;
+    await fetch(`/api/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kanbanColumns: JSON.stringify(draftColumns) }),
+    });
+    setColumns(draftColumns);
+    setEditingColumns(false);
+  }
+
+  const visibleColumns = columns.filter((c) => c.visible);
+
   return (
     <>
+      {projectId && canManage && (
+        <div className="mb-3 flex justify-end">
+          <button
+            onClick={openColumnEditor}
+            className="rounded-full border border-gray-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-gray-500 shadow-sm hover:border-brand/30 hover:text-brand-dark"
+          >
+            ✏️ Editar colunas
+          </button>
+        </div>
+      )}
+
+      {editingColumns && (
+        <div className="shadow-elevated mb-4 rounded-2xl border border-gray-100 bg-white p-4">
+          <p className="mb-3 text-sm font-semibold text-gray-700">Colunas do quadro</p>
+          <div className="flex flex-col gap-2">
+            {draftColumns.map((c) => {
+              const accent = columnAccent[c.key] ?? fallbackAccent;
+              return (
+                <div key={c.key} className="flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${accent.dot}`} />
+                  <input
+                    value={c.label}
+                    onChange={(e) => updateDraftLabel(c.key, e.target.value)}
+                    className="flex-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+                  />
+                  <label className="flex shrink-0 items-center gap-1.5 text-xs text-gray-500">
+                    <input type="checkbox" checked={c.visible} onChange={() => toggleDraftVisible(c.key)} />
+                    Mostrar
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-gray-400">
+            Ocultar uma coluna não apaga as tarefas nela — elas continuam existindo, só somem da visão do quadro.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button onClick={saveColumns} className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark">
+              Salvar
+            </button>
+            <button onClick={() => setEditingColumns(false)} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          {columns.map((col) => (
-            <Column key={col.key} id={col.key} label={col.label}>
+          {visibleColumns.map((col) => (
+            <Column key={col.key} id={col.key} label={col.label} count={tasks.filter((t) => t.status === col.key).length}>
               {tasks
                 .filter((t) => t.status === col.key)
                 .map((task) => (
@@ -151,17 +262,25 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
   );
 }
 
-function Column({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
+function Column({ id, label, count, children }: { id: string; label: string; count: number; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const accent = columnAccent[id] ?? fallbackAccent;
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-[300px] rounded-xl border p-3 ${
-        isOver ? "border-brand bg-brand/5" : "border-gray-200 bg-gray-50"
+      className={`relative flex min-h-[320px] flex-col overflow-hidden rounded-2xl border bg-gradient-to-b p-3 pt-4 transition-colors ${accent.tint} ${
+        isOver ? "border-brand/50 shadow-soft" : "border-gray-200/80"
       }`}
     >
-      <h3 className="mb-3 text-sm font-semibold text-gray-600">{label}</h3>
-      <div className="flex flex-col gap-2">{children}</div>
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent.bar}`} />
+      <div className="mb-3 flex items-center gap-2">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${accent.dot}`} />
+        <h3 className="text-sm font-semibold text-gray-700">{label}</h3>
+        <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${accent.badgeBg} ${accent.badgeText}`}>
+          {count}
+        </span>
+      </div>
+      <div className="flex flex-1 flex-col gap-2">{children}</div>
     </div>
   );
 }
@@ -194,10 +313,10 @@ function TaskCard({
   return (
     <div
       ref={setNodeRef}
-      style={{ ...style, borderLeftColor: task.assignee?.avatarColor || "#e5e7eb", borderLeftWidth: 4 }}
+      style={{ ...style, borderLeftColor: task.assignee?.avatarColor || "#e5e7eb", borderLeftWidth: 3 }}
       {...(draggable ? { ...listeners, ...attributes } : {})}
       onClick={onOpen}
-      className={`group relative rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md ${
+      className={`card-hover group relative rounded-xl border border-gray-100 bg-white p-3 shadow-soft ${
         draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer opacity-90"
       }`}
     >
@@ -214,7 +333,7 @@ function TaskCard({
         </button>
       )}
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium">
+        <p className="text-sm font-medium leading-snug">
           {task.locked && "🔒 "}
           {task.title}
         </p>

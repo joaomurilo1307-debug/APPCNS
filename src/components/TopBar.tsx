@@ -66,7 +66,7 @@ export default function TopBar() {
   const status = resolveStatus(true, me.statusManual);
 
   return (
-    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-gray-100 bg-white px-6">
+    <div className="glass shadow-soft relative z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/60 px-6">
       <div className="relative w-72" ref={searchRef}>
         <input
           value={search}
@@ -76,10 +76,10 @@ export default function TopBar() {
           }}
           onFocus={() => setSearchOpen(true)}
           placeholder="🔍 Buscar pessoa..."
-          className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm"
+          className="w-full rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-sm shadow-sm outline-none transition-shadow focus:border-brand/40 focus:shadow-soft focus:ring-2 focus:ring-brand/15"
         />
         {searchOpen && q && (
-          <div className="absolute left-0 top-9 z-50 max-h-80 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+          <div className="shadow-elevated absolute left-0 top-10 z-50 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-100 bg-white p-1.5">
             {searchResults.map((p) => (
               <button
                 key={p.id}

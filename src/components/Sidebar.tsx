@@ -8,22 +8,38 @@ import SignOutButton from "./SignOutButton";
 import ConsominasLogo from "./ConsominasLogo";
 import { playNotificationSound, playRingtone } from "@/lib/notificationSound";
 import MiniChatWidget from "./MiniChatWidget";
+import {
+  IconHome,
+  IconFolders,
+  IconCheckSquare,
+  IconZap,
+  IconBarChart,
+  IconCalendar,
+  IconChat,
+  IconUsers,
+  IconNetwork,
+  IconTarget,
+  IconReport,
+  IconTrendingUp,
+  IconCheckCircle,
+  IconShieldUser,
+} from "./NavIcons";
 
 const baseLinks = [
-  { href: "/dashboard", label: "Início", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/projetos", label: "Projetos", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/tarefas", label: "Tarefas (todas)", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/sprint", label: "Sprint da Semana", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/gantt", label: "Gantt", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"] },
-  { href: "/calendario", label: "Calendário", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/chat", label: "Chat", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/equipes", label: "Equipes", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
-  { href: "/nucleos", label: "Núcleos", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/metas", label: "Metas", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/relatorios", label: "Relatórios", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/pdi", label: "PDI", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/aprovacoes", label: "Aprovações", roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/usuarios", label: "Usuários", roles: ["ADMIN"] },
+  { href: "/dashboard", label: "Início", icon: IconHome, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/projetos", label: "Projetos", icon: IconFolders, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/tarefas", label: "Tarefas (todas)", icon: IconCheckSquare, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/sprint", label: "Sprint da Semana", icon: IconZap, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/gantt", label: "Gantt", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"] },
+  { href: "/calendario", label: "Calendário", icon: IconCalendar, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/chat", label: "Chat", icon: IconChat, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/equipes", label: "Equipes", icon: IconUsers, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
+  { href: "/nucleos", label: "Núcleos", icon: IconNetwork, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/metas", label: "Metas", icon: IconTarget, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/relatorios", label: "Relatórios", icon: IconReport, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/pdi", label: "PDI", icon: IconTrendingUp, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/aprovacoes", label: "Aprovações", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/usuarios", label: "Usuários", icon: IconShieldUser, roles: ["ADMIN"] },
 ];
 
 export default function Sidebar() {
@@ -134,37 +150,47 @@ export default function Sidebar() {
 
   return (
     <>
-      <aside className="flex h-screen w-60 flex-col justify-between border-r border-gray-100 bg-white p-4 shadow-sm">
+      <aside className="glass shadow-elevated relative flex h-screen w-64 flex-col justify-between border-r border-white/60 p-4">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-brand/[0.04] via-transparent to-accent/[0.03]" />
         <div>
-          <div className="mb-6 border-b border-gray-100 px-2 pb-4">
+          <div className="mb-5 flex items-center gap-2 border-b border-gray-100 px-1 pb-4">
             <ConsominasLogo size={30} />
           </div>
-          <nav className="flex flex-col gap-1">
-            {links.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  pathname?.startsWith(link.href)
-                    ? "bg-gradient-to-r from-brand/15 to-transparent text-brand-dark border-l-2 border-brand"
-                    : "text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                <span>{link.label}</span>
-                {link.href === "/chat" && unreadTotal > 0 && (
-                  <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {unreadTotal > 99 ? "99+" : unreadTotal}
-                  </span>
-                )}
-              </Link>
-            ))}
+          <nav className="flex flex-col gap-0.5">
+            {links.map((link) => {
+              const Icon = link.icon;
+              const active = pathname?.startsWith(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+                    active
+                      ? "bg-gradient-to-r from-brand to-brand-dark text-white shadow-soft"
+                      : "text-gray-600 hover:bg-brand/[0.06] hover:text-brand-dark"
+                  }`}
+                >
+                  <Icon className={`shrink-0 transition-colors ${active ? "text-white" : "text-gray-400 group-hover:text-brand"}`} />
+                  <span className="flex-1 truncate">{link.label}</span>
+                  {link.href === "/chat" && unreadTotal > 0 && (
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                        active ? "bg-white/25 text-white" : "bg-accent text-white"
+                      }`}
+                    >
+                      {unreadTotal > 99 ? "99+" : unreadTotal}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
           </nav>
         </div>
         <SignOutButton />
       </aside>
 
       {meetingToast && (
-        <div className="fixed bottom-6 right-6 z-[100] w-80 rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
+        <div className="shadow-elevated fixed bottom-6 right-6 z-[100] w-80 rounded-2xl border border-white/60 bg-white/95 p-4 backdrop-blur">
           <p className="mb-1 text-xs font-semibold text-brand-dark">🔔 Reunião em breve</p>
           <p className="text-sm font-medium">{meetingToast.title}</p>
           <p className="text-xs text-gray-400">às {meetingToast.when}</p>
@@ -178,7 +204,7 @@ export default function Sidebar() {
       )}
 
       {callToast && (
-        <div className="fixed bottom-32 right-6 z-[100] w-80 animate-pulse rounded-xl border border-green-200 bg-white p-4 shadow-xl">
+        <div className="shadow-elevated fixed bottom-32 right-6 z-[100] w-80 animate-pulse rounded-2xl border border-green-200 bg-white/95 p-4 backdrop-blur">
           <p className="mb-1 text-xs font-semibold text-green-700">📞 Chamada de {callToast.fromName}</p>
           <p className="text-sm text-gray-500">{callToast.label}</p>
           <div className="mt-2 flex gap-2">

@@ -119,7 +119,7 @@ export default function ProjetosPage() {
           <Link
             key={p.id}
             href={`/projetos/${p.id}`}
-            className="flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:border-brand hover:shadow-md"
+            className="card-hover flex flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-soft hover:border-brand/30"
           >
             <div className="mb-2 flex items-start justify-between gap-2">
               <h2 className="font-semibold leading-tight">{p.name}</h2>

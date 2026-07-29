@@ -44,6 +44,7 @@ const updateSchema = z.object({
   nucleoIds: z.array(z.string()).optional(),
   diretorIds: z.array(z.string()).optional(),
   coordenadorIds: z.array(z.string()).optional(),
+  kanbanColumns: z.string().max(4000).nullable().optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {

@@ -337,6 +337,7 @@ model Project {
   endDate        DateTime?
   actualStartedAt DateTime?
   actualEndedAt   DateTime?
+  kanbanColumns  String?        @db.Text
   horizon        Horizon?
   orcamento      Float?
   createdAt      DateTime       @default(now())

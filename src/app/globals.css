@@ -3,6 +3,33 @@
 @tailwind utilities;
 
 body {
-  @apply bg-gray-50 text-ink bg-brand-texture;
+  @apply text-ink;
+  background-color: #f6f7f9;
+  background-image:
+    radial-gradient(circle at 8% 8%, rgba(0, 169, 157, 0.10), transparent 42%),
+    radial-gradient(circle at 92% 4%, rgba(230, 51, 41, 0.07), transparent 38%),
+    radial-gradient(circle at 50% 100%, rgba(0, 132, 122, 0.06), transparent 55%),
+    linear-gradient(180deg, #fbfcfd 0%, #f3f5f7 100%);
   background-attachment: fixed;
+}
+
+@layer utilities {
+  .shadow-soft {
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px rgba(16, 24, 40, 0.05);
+  }
+  .shadow-elevated {
+    box-shadow: 0 2px 4px rgba(16, 24, 40, 0.04), 0 12px 28px -8px rgba(16, 24, 40, 0.14);
+  }
+  .card-hover {
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(16, 24, 40, 0.04), 0 16px 32px -12px rgba(16, 24, 40, 0.18);
+  }
+  .glass {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
 }
