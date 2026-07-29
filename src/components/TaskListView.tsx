@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
+import Avatar from "@/components/Avatar";
 
 type Member = { id: string; name: string };
 
@@ -167,7 +168,11 @@ export default function TaskListView({
   const [importing, setImporting] = useState(false);
   const [showImportHelp, setShowImportHelp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [allPeople, setAllPeople] = useState<{ id: string; name: string; nucleo: { name: string } | null }[]>([]);
+  const [allPeople, setAllPeople] = useState<{ id: string; name: string; avatarColor?: string | null; nucleo: { name: string } | null }[]>([]);
+
+  function personColor(id: string | null) {
+    return id ? allPeople.find((p) => p.id === id)?.avatarColor ?? null : null;
+  }
 
   async function loadAll() {
     const [t, f] = await Promise.all([
@@ -453,38 +458,38 @@ export default function TaskListView({
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {canManage && (
           <>
             <button
               onClick={() => setShowAddField((v) => !v)}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+              className="card-hover rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm font-medium text-gray-600 shadow-soft hover:border-brand/30 hover:text-brand-dark"
             >
               + Coluna
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+              className="card-hover rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm font-medium text-gray-600 shadow-soft hover:border-brand/30 hover:text-brand-dark"
             >
               Importar Excel
             </button>
             <button
               onClick={handleDownloadTemplate}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+              className="card-hover rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm font-medium text-gray-600 shadow-soft hover:border-brand/30 hover:text-brand-dark"
             >
               Baixar modelo
             </button>
             <button
               onClick={handleAddResourcePackage}
               title="Cria as colunas Horas estimadas, Valor hora e Custo estimado (calculado automaticamente). Para custo real (horas gastas de verdade), veja a aba Recursos."
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+              className="card-hover rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm font-medium text-gray-600 shadow-soft hover:border-brand/30 hover:text-brand-dark"
             >
               📦 Colunas de estimativa
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelected} className="hidden" />
           </>
         )}
-        <button onClick={handleExport} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">
+        <button onClick={handleExport} className="card-hover rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm font-medium text-gray-600 shadow-soft hover:border-brand/30 hover:text-brand-dark">
           Exportar Excel
         </button>
         {canManage && (
@@ -692,20 +697,20 @@ export default function TaskListView({
         </div>
       )}
 
-      <div className="max-h-[calc(100vh-14rem)] overflow-auto rounded-xl border border-gray-200 bg-white">
-        <table className="w-full border-collapse text-sm">
+      <div className="shadow-elevated max-h-[calc(100vh-14rem)] overflow-auto rounded-2xl border border-gray-100 bg-white">
+        <table className="w-full border-separate border-spacing-y-1 px-2 text-sm">
           <thead className="sticky top-0 z-10">
-            <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs text-gray-500">
-              <th className="min-w-[220px] px-3 py-2">Título</th>
-              <th className="min-w-[120px] px-3 py-2">Status</th>
-              <th className="min-w-[110px] px-3 py-2">Prioridade</th>
-              <th className="min-w-[160px] px-3 py-2">Responsável</th>
-              <th className="min-w-[130px] px-3 py-2">Início</th>
-              <th className="min-w-[130px] px-3 py-2">Prazo</th>
-              <th className="min-w-[160px] px-3 py-2">Tarefa-mãe</th>
+            <tr className="glass text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              <th className="min-w-[240px] px-3 py-2.5">Título</th>
+              <th className="min-w-[130px] px-3 py-2.5">Status</th>
+              <th className="min-w-[120px] px-3 py-2.5">Prioridade</th>
+              <th className="min-w-[180px] px-3 py-2.5">Responsável</th>
+              <th className="min-w-[130px] px-3 py-2.5">Início</th>
+              <th className="min-w-[130px] px-3 py-2.5">Prazo</th>
+              <th className="min-w-[160px] px-3 py-2.5">Tarefa-mãe</th>
               {fields.map((f) => (
-                <th key={f.id} className="min-w-[140px] px-3 py-2">
-                  <div className="flex items-center gap-1">
+                <th key={f.id} className="min-w-[140px] px-3 py-2.5">
+                  <div className="flex items-center gap-1 normal-case tracking-normal">
                     <span className="truncate">{f.name}</span>
                     {canManage && (
                       <button onClick={() => handleDeleteField(f.id)} className="text-gray-300 hover:text-red-500" title="Excluir coluna">
@@ -715,20 +720,21 @@ export default function TaskListView({
                   </div>
                 </th>
               ))}
-              <th className="w-8 px-2 py-2" />
+              <th className="w-8 px-2 py-2.5" />
             </tr>
           </thead>
           <tbody>
             {buildHierarchy(tasks, collapsed).map(({ task: t, depth }) => {
               const isOverdue = !!t.dueDate && t.status !== "FEITO" && new Date(t.dueDate) < new Date();
+              const rowCell = "border-y border-gray-100 bg-white py-2 px-3 group-hover:bg-brand/[0.025] transition-colors";
               return (
-              <tr
-                key={t.id}
-                className={`border-b border-gray-50 hover:bg-gray-50/50 ${t.status === "FEITO" ? "opacity-60" : ""}`}
-                style={{ borderLeft: `3px solid ${priorityBorderColor[t.priority] ?? "transparent"}` }}
-              >
-                <td className="px-3 py-1.5">
-                  <div className="flex items-center gap-1" style={{ paddingLeft: depth * 20 }}>
+              <tr key={t.id} className={`group ${t.status === "FEITO" ? "opacity-60" : ""}`}>
+                <td className={`${rowCell} rounded-l-xl border-l`}>
+                  <div className="flex items-center gap-1.5" style={{ paddingLeft: depth * 20 }}>
+                    <span
+                      className="h-5 w-1 shrink-0 rounded-full"
+                      style={{ backgroundColor: priorityBorderColor[t.priority] ?? "transparent" }}
+                    />
                     {depth > 0 && <span className="text-gray-300">↳</span>}
                     {!!t._count?.subtasks && (
                       <button
@@ -743,82 +749,85 @@ export default function TaskListView({
                     <input
                       defaultValue={t.title}
                       onBlur={(e) => e.target.value !== t.title && patchTask(t.id, { title: e.target.value })}
-                      className={`w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200 focus:border-gray-300 ${
+                      className={`w-full rounded-lg border border-transparent bg-transparent px-2 py-1 font-medium hover:border-gray-200 hover:bg-white focus:border-brand/40 focus:bg-white ${
                         t.status === "FEITO" ? "line-through" : ""
                       }`}
                     />
                   </div>
                 </td>
-                <td className="px-3 py-1.5">
+                <td className={rowCell}>
                   <select
                     value={t.status}
                     onChange={(e) => patchTask(t.id, { status: e.target.value })}
-                    className={`w-full rounded-md border border-transparent px-2 py-1 text-xs font-medium hover:border-gray-200 ${statusColor[t.status] ?? ""}`}
+                    className={`w-full rounded-full border border-transparent px-2.5 py-1 text-xs font-semibold hover:border-gray-200 ${statusColor[t.status] ?? ""}`}
                   >
                     {statusOptions.map((s) => (
                       <option key={s.v} value={s.v}>{s.l}</option>
                     ))}
                   </select>
                 </td>
-                <td className="px-3 py-1.5">
+                <td className={rowCell}>
                   <select
                     value={t.priority}
                     onChange={(e) => patchTask(t.id, { priority: e.target.value })}
-                    className={`w-full rounded-md border border-transparent px-2 py-1 text-xs font-medium hover:border-gray-200 ${priorityColor[t.priority] ?? ""}`}
+                    className={`w-full rounded-full border border-transparent px-2.5 py-1 text-xs font-semibold hover:border-gray-200 ${priorityColor[t.priority] ?? ""}`}
                   >
                     {priorityOptions.map((p) => (
                       <option key={p.v} value={p.v}>{p.l}</option>
                     ))}
                   </select>
                 </td>
-                <td className="px-3 py-1.5">
-                  <select
-                    value={t.assigneeId ?? ""}
-                    onChange={(e) => patchTask(t.id, { assigneeId: e.target.value || null })}
-                    className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
-                  >
-                    <option value="">Ninguém</option>
-                    <optgroup label="Equipe do projeto">
-                      {team.members.map((m) => (
-                        <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Outras pessoas (outro núcleo)">
-                      {allPeople
-                        .filter((p) => !team.members.some((m) => m.user.id === p.id))
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                            {p.nucleo ? ` · ${p.nucleo.name}` : ""}
-                          </option>
+                <td className={rowCell}>
+                  <div className="flex items-center gap-1.5">
+                    {t.assigneeId && <Avatar name={t.assignee?.name ?? "?"} color={personColor(t.assigneeId)} size={22} />}
+                    <select
+                      value={t.assigneeId ?? ""}
+                      onChange={(e) => patchTask(t.id, { assigneeId: e.target.value || null })}
+                      className="w-full rounded-lg border border-transparent bg-transparent px-1 py-1 hover:border-gray-200 hover:bg-white"
+                    >
+                      <option value="">Ninguém</option>
+                      <optgroup label="Equipe do projeto">
+                        {team.members.map((m) => (
+                          <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
                         ))}
-                    </optgroup>
-                  </select>
+                      </optgroup>
+                      <optgroup label="Outras pessoas (outro núcleo)">
+                        {allPeople
+                          .filter((p) => !team.members.some((m) => m.user.id === p.id))
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                              {p.nucleo ? ` · ${p.nucleo.name}` : ""}
+                            </option>
+                          ))}
+                      </optgroup>
+                    </select>
+                  </div>
                 </td>
-                <td className="px-3 py-1.5">
+                <td className={rowCell}>
                   <input
                     type="date"
                     defaultValue={t.startDate?.slice(0, 10) ?? ""}
                     onBlur={(e) => patchTask(t.id, { startDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                    className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                    className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 hover:border-gray-200 hover:bg-white"
                   />
                 </td>
-                <td className="px-3 py-1.5">
+                <td className={rowCell}>
                   <input
                     type="date"
                     defaultValue={t.dueDate?.slice(0, 10) ?? ""}
                     onBlur={(e) => patchTask(t.id, { dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                    className={`w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200 ${
-                      isOverdue ? "bg-rose-50 font-medium text-rose-700" : ""
+                    className={`w-full rounded-lg border border-transparent px-2 py-1 hover:border-gray-200 hover:bg-white ${
+                      isOverdue ? "bg-rose-50 font-medium text-rose-700" : "bg-transparent"
                     }`}
                   />
-                  {isOverdue && <span className="ml-1 text-[10px] text-rose-500">atrasada</span>}
+                  {isOverdue && <span className="ml-1 text-[10px] font-semibold text-rose-500">atrasada</span>}
                 </td>
-                <td className="px-3 py-1.5">
+                <td className={rowCell}>
                   <select
                     value={t.parentTaskId ?? ""}
                     onChange={(e) => patchTask(t.id, { parentTaskId: e.target.value || null })}
-                    className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                    className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 hover:border-gray-200 hover:bg-white"
                   >
                     <option value="">— (tarefa principal)</option>
                     {tasks
@@ -831,12 +840,12 @@ export default function TaskListView({
                 {fields.map((f) => {
                   const value = t.customFieldValues.find((v) => v.customFieldId === f.id)?.value ?? "";
                   return (
-                    <td key={f.id} className="px-3 py-1.5">
+                    <td key={f.id} className={rowCell}>
                       {f.type === "TEXTO" && (
                         <input
                           defaultValue={value}
                           onBlur={(e) => e.target.value !== value && patchCustomField(t.id, f.id, e.target.value)}
-                          className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                          className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 hover:border-gray-200 hover:bg-white"
                         />
                       )}
                       {f.type === "NUMERO" && (
@@ -844,7 +853,7 @@ export default function TaskListView({
                           type="number"
                           defaultValue={value}
                           onBlur={(e) => e.target.value !== value && patchCustomField(t.id, f.id, e.target.value)}
-                          className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                          className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 hover:border-gray-200 hover:bg-white"
                         />
                       )}
                       {f.type === "MOEDA" && (
@@ -855,7 +864,7 @@ export default function TaskListView({
                             step="0.01"
                             defaultValue={value}
                             onBlur={(e) => e.target.value !== value && patchCustomField(t.id, f.id, e.target.value)}
-                            className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                            className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 hover:border-gray-200 hover:bg-white"
                           />
                         </div>
                       )}
@@ -864,14 +873,14 @@ export default function TaskListView({
                           type="date"
                           defaultValue={value}
                           onBlur={(e) => e.target.value !== value && patchCustomField(t.id, f.id, e.target.value)}
-                          className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                          className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 hover:border-gray-200 hover:bg-white"
                         />
                       )}
                       {f.type === "LISTA" && (
                         <select
                           value={value}
                           onChange={(e) => patchCustomField(t.id, f.id, e.target.value)}
-                          className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                          className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 hover:border-gray-200 hover:bg-white"
                         >
                           <option value="">—</option>
                           {(JSON.parse(f.options || "[]") as string[]).map((opt) => (
@@ -890,7 +899,7 @@ export default function TaskListView({
                         <select
                           value={value}
                           onChange={(e) => patchCustomField(t.id, f.id, e.target.value)}
-                          className="w-full rounded-md border border-transparent px-2 py-1 hover:border-gray-200"
+                          className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 hover:border-gray-200 hover:bg-white"
                         >
                           <option value="">Ninguém</option>
                           {team.members.map((m) => (
@@ -909,9 +918,9 @@ export default function TaskListView({
                     </td>
                   );
                 })}
-                <td className="px-2 py-1.5 text-center">
+                <td className={`${rowCell} rounded-r-xl border-r text-center`}>
                   {canManage && (
-                    <button onClick={() => handleDeleteTask(t.id)} className="text-gray-300 hover:text-red-500">
+                    <button onClick={() => handleDeleteTask(t.id)} className="text-gray-300 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100">
                       ✕
                     </button>
                   )}
@@ -926,7 +935,7 @@ export default function TaskListView({
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddTask()}
-                  className="w-full rounded-md border border-dashed border-gray-300 px-2 py-1.5 text-sm"
+                  className="w-full rounded-xl border border-dashed border-gray-300 bg-gray-50/50 px-3 py-2 text-sm hover:border-brand/40 hover:bg-white focus:border-brand/50 focus:bg-white"
                 />
               </td>
             </tr>
