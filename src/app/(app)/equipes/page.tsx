@@ -70,6 +70,12 @@ export default function EquipesPage() {
     load();
   }
 
+  async function handleRemoveMember(teamId: string, userId: string) {
+    if (!confirm("Remover essa pessoa da equipe?")) return;
+    await fetch(`/api/teams/${teamId}/members/${userId}`, { method: "DELETE" });
+    load();
+  }
+
   async function updateColor(userId: string, color: string) {
     await fetch(`/api/users/${userId}`, {
       method: "PATCH",
@@ -127,7 +133,7 @@ export default function EquipesPage() {
                       {m.user.name} <span className="text-xs text-gray-400">({m.role})</span>
                     </div>
                     {canManageMembers && (
-                      <div className="flex gap-1">
+                      <div className="flex items-center gap-1">
                         {AVATAR_PALETTE.slice(0, 5).map((c) => (
                           <button
                             key={c}
@@ -136,6 +142,15 @@ export default function EquipesPage() {
                             style={{ backgroundColor: c }}
                           />
                         ))}
+                        {canAddToThisTeam && (
+                          <button
+                            onClick={() => handleRemoveMember(team.id, m.user.id)}
+                            title="Remover da equipe"
+                            className="ml-1 text-xs text-gray-300 hover:text-red-500"
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
                     )}
                   </li>
