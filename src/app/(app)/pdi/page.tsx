@@ -33,13 +33,20 @@ const statusLabel: Record<string, string> = {
 export default function PdiPage() {
   const { data: session } = useSession();
   const myId = (session?.user as any)?.id;
+  const role = (session?.user as any)?.role;
+  const isAdminOrDiretor = role === "ADMIN" || role === "DIRETOR";
 
   const [pdis, setPdis] = useState<Pdi[]>([]);
   const [subordinados, setSubordinados] = useState<Liderado[]>([]);
+  const [allPeople, setAllPeople] = useState<Liderado[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
   const [newPeriod, setNewPeriod] = useState("");
+
+  const [showAnyoneForm, setShowAnyoneForm] = useState(false);
+  const [anyoneSearch, setAnyoneSearch] = useState("");
+  const [anyonePeriod, setAnyonePeriod] = useState("");
 
   const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
   const [editPeriodValue, setEditPeriodValue] = useState("");
@@ -57,26 +64,56 @@ export default function PdiPage() {
     if (res.ok) setSubordinados(await res.json());
   }
 
+  async function loadAllPeople() {
+    const res = await fetch("/api/organograma");
+    if (res.ok) setAllPeople(await res.json());
+  }
+
   useEffect(() => {
     load();
     loadSubordinados();
+    if (isAdminOrDiretor) loadAllPeople();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId]);
 
   const liderosIds = new Set(subordinados.map((s) => s.id));
-  const meusPdisComoGestor = pdis.filter((p) => liderosIds.has(p.user.id));
+  const pdisQueGerencio = pdis.filter((p) => p.gestor.id === myId);
   const meuProprioPdi = pdis.filter((p) => p.user.id === myId);
 
-  async function handleCreatePdi(userId: string) {
+  // pessoas que tenho PDI como gestor mas que não estão na lista "gerenciável" padrão
+  // (ex: admin criando um PDI fora da linha de hierarquia direta)
+  const extraPersonIds = Array.from(new Set(pdisQueGerencio.filter((p) => !liderosIds.has(p.user.id)).map((p) => p.user.id)));
+  const extraPeople: Liderado[] = extraPersonIds.map((id) => {
+    const anyPdi = pdisQueGerencio.find((p) => p.user.id === id)!;
+    return { id, name: anyPdi.user.name, avatarColor: anyPdi.user.avatarColor, avatarUrl: anyPdi.user.avatarUrl, cargo: anyPdi.user.cargo };
+  });
+  const pessoasGerenciadas = [...subordinados, ...extraPeople];
+
+  const anyoneQuery = anyoneSearch.trim().toLowerCase();
+  const anyoneResults = anyoneQuery
+    ? allPeople.filter((p) => p.id !== myId && p.name.toLowerCase().includes(anyoneQuery)).slice(0, 6)
+    : [];
+
+  async function handleCreatePdi(userId: string, period?: string) {
     const res = await fetch("/api/pdi", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, period: newPeriod || undefined }),
+      body: JSON.stringify({ userId, period: period || undefined }),
     });
     if (res.ok) {
       setNewPeriod("");
       setCreatingFor(null);
       load();
+    }
+    return res.ok;
+  }
+
+  async function handleCreatePdiForAnyone(userId: string) {
+    const ok = await handleCreatePdi(userId, anyonePeriod);
+    if (ok) {
+      setAnyoneSearch("");
+      setAnyonePeriod("");
+      setShowAnyoneForm(false);
     }
   }
 
@@ -262,12 +299,66 @@ export default function PdiPage() {
       <h1 className="mb-1 text-2xl font-semibold">PDI — Plano de Desenvolvimento Individual</h1>
       <p className="mb-6 text-sm text-gray-500">Ações de desenvolvimento acordadas entre você e seu gestor.</p>
 
-      {subordinados.length > 0 && (
+      {(pessoasGerenciadas.length > 0 || isAdminOrDiretor) && (
         <>
           <h2 className="mb-3 text-sm font-semibold text-gray-600">Seus liderados</h2>
+
+          {isAdminOrDiretor && (
+            <div className="mb-4 rounded-xl border border-dashed border-gray-300 bg-white p-4">
+              {showAnyoneForm ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-semibold text-gray-500">Criar PDI para qualquer pessoa da empresa</p>
+                  <div className="relative">
+                    <input
+                      autoFocus
+                      placeholder="Buscar pessoa por nome..."
+                      value={anyoneSearch}
+                      onChange={(e) => setAnyoneSearch(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+                    />
+                    {anyoneResults.length > 0 && (
+                      <div className="shadow-elevated absolute left-0 top-9 z-10 w-full rounded-lg border border-gray-100 bg-white p-1">
+                        {anyoneResults.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => handleCreatePdiForAnyone(p.id)}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-gray-50"
+                          >
+                            <Avatar name={p.name} color={p.avatarColor} photoUrl={p.avatarUrl} size={22} />
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    placeholder="Período (ex: 2026-S2, opcional)"
+                    value={anyonePeriod}
+                    onChange={(e) => setAnyonePeriod(e.target.value)}
+                    className="w-48 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs"
+                  />
+                  <button
+                    onClick={() => {
+                      setShowAnyoneForm(false);
+                      setAnyoneSearch("");
+                      setAnyonePeriod("");
+                    }}
+                    className="self-start text-xs text-gray-400 hover:underline"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setShowAnyoneForm(true)} className="text-xs font-medium text-brand hover:underline">
+                  + Criar PDI para qualquer pessoa
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="mb-8 flex flex-col gap-4">
-            {subordinados.map((s) => {
-              const pdisDele = meusPdisComoGestor.filter((p) => p.user.id === s.id);
+            {pessoasGerenciadas.map((s) => {
+              const pdisDele = pdisQueGerencio.filter((p) => p.user.id === s.id);
               return (
                 <div key={s.id} className="flex flex-col gap-2">
                   {pdisDele.map((p) => (
