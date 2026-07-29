@@ -48,6 +48,9 @@ export default function PessoasPage() {
   const [feedback, setFeedback] = useState("");
 
   const [nucleoChoice, setNucleoChoice] = useState("");
+  const [nivelChoice, setNivelChoice] = useState("");
+  const [gestorChoice, setGestorChoice] = useState("");
+  const [cargoValue, setCargoValue] = useState("");
   const [projectChoice, setProjectChoice] = useState("");
   const [goalChoice, setGoalChoice] = useState("");
 
@@ -67,20 +70,31 @@ export default function PessoasPage() {
     setSelected(p);
     setFeedback("");
     setNucleoChoice(p.nucleo?.id ?? "");
+    setNivelChoice(p.nivelHierarquico ?? "");
+    setGestorChoice(p.gestorImediato?.id ?? "");
+    setCargoValue(p.cargo ?? "");
     setProjectChoice("");
     setGoalChoice("");
   }
 
-  async function handleSetNucleo() {
+  async function handleSaveHierarquia() {
     if (!selected) return;
     const res = await fetch(`/api/users/${selected.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nucleoId: nucleoChoice || null }),
+      body: JSON.stringify({
+        nucleoId: nucleoChoice || null,
+        nivelHierarquico: nivelChoice || null,
+        gestorImediatoId: gestorChoice || null,
+        cargo: cargoValue || undefined,
+      }),
     });
-    setFeedback(res.ok ? "Núcleo atualizado." : "Não foi possível atualizar o núcleo.");
+    setFeedback(res.ok ? "Hierarquia atualizada." : "Não foi possível salvar.");
     if (res.ok) {
-      fetch("/api/organograma").then((r) => r.json()).then(setPeople).catch(() => {});
+      const fresh = await (await fetch("/api/organograma")).json();
+      setPeople(fresh);
+      const updated = fresh.find((p: Person) => p.id === selected.id);
+      if (updated) setSelected(updated);
     }
   }
 
@@ -242,19 +256,62 @@ export default function PessoasPage() {
 
             <div className="flex flex-col gap-3 border-t border-gray-100 pt-3">
               {isAdmin && (
-                <div className="flex items-center gap-2">
-                  <select
-                    value={nucleoChoice}
-                    onChange={(e) => setNucleoChoice(e.target.value)}
-                    className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <p className="mb-2 text-xs font-semibold text-gray-500">Editar hierarquia</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex flex-col gap-1 text-[11px] text-gray-500">
+                      Núcleo
+                      <select
+                        value={nucleoChoice}
+                        onChange={(e) => setNucleoChoice(e.target.value)}
+                        className="rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+                      >
+                        <option value="">Sem núcleo</option>
+                        {nucleos.map((n) => (
+                          <option key={n.id} value={n.id}>{n.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px] text-gray-500">
+                      Nível hierárquico
+                      <select
+                        value={nivelChoice}
+                        onChange={(e) => setNivelChoice(e.target.value)}
+                        className="rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+                      >
+                        <option value="">Sem nível</option>
+                        {Object.entries(nivelLabel).map(([v, l]) => (
+                          <option key={v} value={v}>{l}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px] text-gray-500">
+                      Gestor imediato
+                      <select
+                        value={gestorChoice}
+                        onChange={(e) => setGestorChoice(e.target.value)}
+                        className="rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+                      >
+                        <option value="">Ninguém</option>
+                        {people.filter((p) => p.id !== selected.id).map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px] text-gray-500">
+                      Cargo
+                      <input
+                        value={cargoValue}
+                        onChange={(e) => setCargoValue(e.target.value)}
+                        className="rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+                      />
+                    </label>
+                  </div>
+                  <button
+                    onClick={handleSaveHierarquia}
+                    className="mt-2 w-full rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark"
                   >
-                    <option value="">Sem núcleo</option>
-                    {nucleos.map((n) => (
-                      <option key={n.id} value={n.id}>{n.name}</option>
-                    ))}
-                  </select>
-                  <button onClick={handleSetNucleo} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50">
-                    Mudar núcleo
+                    Salvar hierarquia
                   </button>
                 </div>
               )}
