@@ -73,7 +73,7 @@ const priorityOptions = [
   { v: "BAIXA", l: "Baixa" },
   { v: "MEDIA", l: "Média" },
   { v: "ALTA", l: "Alta" },
-  { v: "URGENTE", l: "Urgente" },
+  { v: "URGENTE", l: "Muito crítica" },
 ];
 
 const statusColor: Record<string, string> = {

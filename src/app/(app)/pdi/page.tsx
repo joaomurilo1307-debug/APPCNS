@@ -41,6 +41,12 @@ export default function PdiPage() {
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
   const [newPeriod, setNewPeriod] = useState("");
 
+  const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
+  const [editPeriodValue, setEditPeriodValue] = useState("");
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editItemTitle, setEditItemTitle] = useState("");
+  const [editItemDescription, setEditItemDescription] = useState("");
+
   async function load() {
     const res = await fetch("/api/pdi");
     if (res.ok) setPdis(await res.json());
@@ -94,6 +100,38 @@ export default function PdiPage() {
     load();
   }
 
+  async function handleSavePeriod(pdiId: string) {
+    await fetch(`/api/pdi/${pdiId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period: editPeriodValue || null }),
+    });
+    setEditingPeriodId(null);
+    load();
+  }
+
+  function startEditItem(it: Item) {
+    setEditingItemId(it.id);
+    setEditItemTitle(it.title);
+    setEditItemDescription(it.description ?? "");
+  }
+
+  async function handleSaveItem(itemId: string) {
+    await fetch(`/api/pdi-items/${itemId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: editItemTitle, description: editItemDescription || null }),
+    });
+    setEditingItemId(null);
+    load();
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    if (!confirm("Excluir esta ação do PDI?")) return;
+    await fetch(`/api/pdi-items/${itemId}`, { method: "DELETE" });
+    load();
+  }
+
   function PdiCard({ pdi, isGestorView }: { pdi: Pdi; isGestorView: boolean }) {
     const open = openId === pdi.id;
     const done = pdi.items.filter((i) => i.status === "FEITO").length;
@@ -112,21 +150,88 @@ export default function PdiPage() {
         </button>
         {open && (
           <div className="mt-3 flex flex-col gap-2 border-t border-gray-100 pt-3">
+            {isGestorView && (
+              <div className="mb-1 flex items-center gap-2 text-xs">
+                {editingPeriodId === pdi.id ? (
+                  <>
+                    <input
+                      autoFocus
+                      value={editPeriodValue}
+                      onChange={(e) => setEditPeriodValue(e.target.value)}
+                      placeholder="Período (ex: 2026-S2)"
+                      className="w-36 rounded-md border border-gray-300 px-2 py-1"
+                    />
+                    <button onClick={() => handleSavePeriod(pdi.id)} className="text-brand-dark hover:underline">Salvar</button>
+                    <button onClick={() => setEditingPeriodId(null)} className="text-gray-400">Cancelar</button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setEditingPeriodId(pdi.id);
+                      setEditPeriodValue(pdi.period ?? "");
+                    }}
+                    className="text-gray-400 hover:text-brand-dark hover:underline"
+                  >
+                    ✏️ Editar período
+                  </button>
+                )}
+              </div>
+            )}
             {pdi.items.map((it) => (
-              <div key={it.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm">
-                <div>
-                  <p>{it.title}</p>
-                  {it.description && <p className="text-xs text-gray-400">{it.description}</p>}
-                </div>
-                <select
-                  value={it.status}
-                  onChange={(e) => handleItemStatus(it.id, e.target.value)}
-                  className="rounded-md border border-gray-300 px-2 py-1 text-xs"
-                >
-                  {Object.entries(statusLabel).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
+              <div key={it.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm">
+                {editingItemId === it.id ? (
+                  <div className="flex flex-col gap-1.5">
+                    <input
+                      autoFocus
+                      value={editItemTitle}
+                      onChange={(e) => setEditItemTitle(e.target.value)}
+                      className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+                    />
+                    <textarea
+                      value={editItemDescription}
+                      onChange={(e) => setEditItemDescription(e.target.value)}
+                      placeholder="Descrição (opcional)"
+                      className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+                      rows={2}
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={() => handleSaveItem(it.id)} className="rounded-md bg-brand px-2 py-1 text-xs text-white hover:bg-brand-dark">
+                        Salvar
+                      </button>
+                      <button onClick={() => setEditingItemId(null)} className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-500">
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate">{it.title}</p>
+                      {it.description && <p className="truncate text-xs text-gray-400">{it.description}</p>}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <select
+                        value={it.status}
+                        onChange={(e) => handleItemStatus(it.id, e.target.value)}
+                        className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+                      >
+                        {Object.entries(statusLabel).map(([v, l]) => (
+                          <option key={v} value={v}>{l}</option>
+                        ))}
+                      </select>
+                      {isGestorView && (
+                        <>
+                          <button onClick={() => startEditItem(it)} className="text-gray-400 hover:text-brand-dark" title="Editar">
+                            ✏️
+                          </button>
+                          <button onClick={() => handleDeleteItem(it.id)} className="text-gray-300 hover:text-red-500" title="Excluir">
+                            ✕
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
             {pdi.items.length === 0 && <p className="text-xs text-gray-400">Nenhuma ação cadastrada ainda.</p>}

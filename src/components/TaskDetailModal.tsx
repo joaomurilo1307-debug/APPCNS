@@ -43,6 +43,13 @@ const statusLabel: Record<string, string> = {
   FEITO: "Feito",
 };
 
+const priorityLabel: Record<string, string> = {
+  BAIXA: "Baixa",
+  MEDIA: "Média",
+  ALTA: "Alta",
+  URGENTE: "Muito crítica",
+};
+
 export default function TaskDetailModal({
   taskId,
   onClose,
@@ -196,6 +203,19 @@ export default function TaskDetailModal({
                 className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-50"
               >
                 {Object.entries(statusLabel).map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Criticidade</label>
+              <select
+                disabled={!canModify}
+                value={task.priority}
+                onChange={(e) => patch({ priority: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-50"
+              >
+                {Object.entries(priorityLabel).map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
               </select>

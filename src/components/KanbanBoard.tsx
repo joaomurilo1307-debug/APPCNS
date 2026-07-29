@@ -37,6 +37,13 @@ const columns = [
   { key: "FEITO", label: "Feito" },
 ];
 
+const priorityLabel: Record<string, string> = {
+  BAIXA: "Baixa",
+  MEDIA: "Média",
+  ALTA: "Alta",
+  URGENTE: "Muito crítica",
+};
+
 const priorityColor: Record<string, string> = {
   BAIXA: "bg-gray-100 text-gray-600",
   MEDIA: "bg-blue-100 text-blue-700",
@@ -99,6 +106,15 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
     load();
   }
 
+  async function handlePriorityChange(taskId: string, priority: string) {
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, priority } : t)));
+    await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority }),
+    });
+  }
+
   return (
     <>
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -112,9 +128,11 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
                     key={task.id}
                     task={task}
                     draggable={canModify(role, task, userId)}
+                    canEditPriority={canModify(role, task, userId)}
                     showDelete={canDelete(role, task)}
                     onOpen={() => setOpenTaskId(task.id)}
                     onDelete={() => handleQuickDelete(task.id)}
+                    onPriorityChange={(priority) => handlePriorityChange(task.id, priority)}
                   />
                 ))}
             </Column>
@@ -151,15 +169,19 @@ function Column({ id, label, children }: { id: string; label: string; children: 
 function TaskCard({
   task,
   draggable,
+  canEditPriority,
   showDelete,
   onOpen,
   onDelete,
+  onPriorityChange,
 }: {
   task: Task;
   draggable: boolean;
+  canEditPriority: boolean;
   showDelete: boolean;
   onOpen: () => void;
   onDelete: () => void;
+  onPriorityChange: (priority: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: task.id,
@@ -200,9 +222,23 @@ function TaskCard({
       </div>
       {task.project && <p className="mt-1 text-xs text-gray-400">{task.project.name}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span className={`rounded-full px-2 py-0.5 text-xs ${priorityColor[task.priority]}`}>
-          {task.priority}
-        </span>
+        {canEditPriority ? (
+          <select
+            value={task.priority}
+            onChange={(e) => onPriorityChange(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            className={`rounded-full border-0 px-2 py-0.5 text-xs font-medium ${priorityColor[task.priority]}`}
+          >
+            {Object.entries(priorityLabel).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
+        ) : (
+          <span className={`rounded-full px-2 py-0.5 text-xs ${priorityColor[task.priority]}`}>
+            {priorityLabel[task.priority] ?? task.priority}
+          </span>
+        )}
         {task.dueDate && (
           <span
             className={`rounded-full px-2 py-0.5 text-xs ${
