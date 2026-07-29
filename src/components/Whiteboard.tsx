@@ -138,6 +138,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
   const panRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number; moved: boolean } | null>(null);
   const drawingRef = useRef(false);
   const drawSnapshotRef = useRef<BoardSnapshot | null>(null);
+  const currentStrokeRef = useRef<Stroke | null>(null);
 
   useEffect(() => {
     fetch(`/api/projects/${projectId}/board`)
@@ -298,35 +299,36 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     const pos = getCanvasPos(e.clientX, e.clientY);
     drawingRef.current = true;
     drawSnapshotRef.current = { nodes, strokes };
-    setCurrentStroke({ id: newId(), points: [pos], color: drawColor, width: drawWidth });
+    const stroke: Stroke = { id: newId(), points: [pos], color: drawColor, width: drawWidth };
+    currentStrokeRef.current = stroke;
+    setCurrentStroke(stroke);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
   function continueStroke(e: React.PointerEvent) {
-    if (!drawingRef.current) return;
+    if (!drawingRef.current || !currentStrokeRef.current) return;
     const pos = getCanvasPos(e.clientX, e.clientY);
-    setCurrentStroke((prev) => {
-      if (!prev) return prev;
-      const last = prev.points[prev.points.length - 1];
-      if (last && Math.hypot(pos.x - last.x, pos.y - last.y) < 3) return prev;
-      return { ...prev, points: [...prev.points, pos] };
-    });
+    const last = currentStrokeRef.current.points[currentStrokeRef.current.points.length - 1];
+    if (last && Math.hypot(pos.x - last.x, pos.y - last.y) < 3) return;
+    const updated: Stroke = { ...currentStrokeRef.current, points: [...currentStrokeRef.current.points, pos] };
+    currentStrokeRef.current = updated;
+    setCurrentStroke(updated);
   }
 
   function endStroke() {
     if (!drawingRef.current) return;
     drawingRef.current = false;
-    setCurrentStroke((prev) => {
-      if (prev && prev.points.length > 1) {
-        if (drawSnapshotRef.current) {
-          setHistory((h) => [...h.slice(-49), drawSnapshotRef.current!]);
-          setFuture([]);
-        }
-        setStrokes((s) => [...s, prev]);
+    const finished = currentStrokeRef.current;
+    currentStrokeRef.current = null;
+    setCurrentStroke(null);
+    if (finished && finished.points.length > 1) {
+      if (drawSnapshotRef.current) {
+        setHistory((h) => [...h.slice(-49), drawSnapshotRef.current!]);
+        setFuture([]);
       }
-      drawSnapshotRef.current = null;
-      return null;
-    });
+      setStrokes((s) => [...s, finished]);
+    }
+    drawSnapshotRef.current = null;
   }
 
   function handleContainerPointerDown(e: React.PointerEvent) {
