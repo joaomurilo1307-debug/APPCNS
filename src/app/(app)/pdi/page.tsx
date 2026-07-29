@@ -21,7 +21,7 @@ type Pdi = {
   items: Item[];
 };
 
-type Subordinado = { id: string; name: string; gestorImediatoId: string | null };
+type Liderado = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null };
 
 const statusLabel: Record<string, string> = {
   A_FAZER: "A fazer",
@@ -35,7 +35,7 @@ export default function PdiPage() {
   const myId = (session?.user as any)?.id;
 
   const [pdis, setPdis] = useState<Pdi[]>([]);
-  const [subordinados, setSubordinados] = useState<Subordinado[]>([]);
+  const [subordinados, setSubordinados] = useState<Liderado[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
@@ -47,8 +47,8 @@ export default function PdiPage() {
   }
 
   async function loadSubordinados() {
-    const res = await fetch("/api/organograma");
-    if (res.ok) setSubordinados((await res.json()).filter((p: Subordinado) => p.gestorImediatoId === myId));
+    const res = await fetch("/api/pdi/manageable");
+    if (res.ok) setSubordinados(await res.json());
   }
 
   useEffect(() => {
@@ -57,7 +57,8 @@ export default function PdiPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId]);
 
-  const meusPdisComoGestor = pdis.filter((p) => p.gestor.id === myId);
+  const liderosIds = new Set(subordinados.map((s) => s.id));
+  const meusPdisComoGestor = pdis.filter((p) => liderosIds.has(p.user.id));
   const meuProprioPdi = pdis.filter((p) => p.user.id === myId);
 
   async function handleCreatePdi(userId: string) {

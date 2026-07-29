@@ -87,7 +87,7 @@ export default function ChatPage() {
     if (!selected) return;
     if (selected.type === "direct") {
       const c = contacts.find((c) => c.id === selected.id);
-      if (c) setActiveChat({ type: "direct", id: c.id, name: c.name, avatarColor: c.avatarColor, avatarUrl: c.avatarUrl });
+      if (c) setActiveChat({ type: "direct", id: c.id, name: c.name, avatarColor: c.avatarColor });
     } else {
       const t = teams.find((t) => t.id === selected.id);
       if (t) setActiveChat({ type: "team", id: t.id, name: t.name });

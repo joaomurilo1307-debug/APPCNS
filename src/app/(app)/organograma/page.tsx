@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Avatar from "@/components/Avatar";
 
 type Person = {
@@ -68,16 +69,37 @@ function TreeNode({
 }
 
 export default function OrganogramaPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-gray-400">Carregando...</p>}>
+      <OrganogramaContent />
+    </Suspense>
+  );
+}
+
+function OrganogramaContent() {
   const [people, setPeople] = useState<Person[]>([]);
+  const searchParams = useSearchParams();
+  const pessoaParam = searchParams?.get("pessoa") ?? "";
+
   const [nucleos, setNucleos] = useState<NucleoData[]>([]);
   const [nucleoFilter, setNucleoFilter] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(pessoaParam);
   const [selected, setSelected] = useState<Person | null>(null);
+  const [autoOpened, setAutoOpened] = useState(false);
 
   useEffect(() => {
     fetch("/api/organograma").then((r) => r.json()).then(setPeople).catch(() => {});
     fetch("/api/nucleos").then((r) => r.json()).then(setNucleos).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!pessoaParam || autoOpened || people.length === 0) return;
+    const match = people.find((p) => p.name === pessoaParam);
+    if (match) {
+      setSelected(match);
+      setAutoOpened(true);
+    }
+  }, [pessoaParam, autoOpened, people]);
 
   const peopleById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
 

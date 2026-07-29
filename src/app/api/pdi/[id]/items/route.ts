@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canManagePdiFor } from "@/lib/permissions";
 import { z } from "zod";
 
 const createItemSchema = z.object({
@@ -19,8 +20,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
-  if (!(role === "ADMIN" || role === "DIRETOR" || pdi.gestorId === userId)) {
-    return NextResponse.json({ error: "Só o gestor responsável pode adicionar ações ao PDI" }, { status: 403 });
+  const allowed = role === "ADMIN" || role === "DIRETOR" || pdi.gestorId === userId || (await canManagePdiFor(userId, role, pdi.userId));
+  if (!allowed) {
+    return NextResponse.json({ error: "Só o gestor responsável (ou coordenador/gerente do núcleo dessa pessoa) pode adicionar ações ao PDI" }, { status: 403 });
   }
 
   const body = await req.json();

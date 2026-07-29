@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canManagePdiFor } from "@/lib/permissions";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -20,7 +21,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
-  const isManager = role === "ADMIN" || role === "DIRETOR" || item.pdi.gestorId === userId;
+  const isManager =
+    role === "ADMIN" || role === "DIRETOR" || item.pdi.gestorId === userId || (await canManagePdiFor(userId, role, item.pdi.userId));
   const isOwner = item.pdi.userId === userId;
 
   const body = await req.json();

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canManagePdiFor, manageablePdiUserIds } from "@/lib/permissions";
 import { z } from "zod";
 
 export async function GET() {
@@ -11,7 +12,11 @@ export async function GET() {
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
 
-  const where = role === "ADMIN" || role === "DIRETOR" ? {} : { OR: [{ userId }, { gestorId: userId }] };
+  let where: any = {};
+  if (role !== "ADMIN" && role !== "DIRETOR") {
+    const manageableIds = await manageablePdiUserIds(userId);
+    where = { OR: [{ userId }, { gestorId: userId }, { userId: { in: manageableIds } }] };
+  }
 
   const pdis = await prisma.pDI.findMany({
     where,
@@ -43,13 +48,15 @@ export async function POST(req: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
-  const target = await prisma.user.findUnique({ where: { id: parsed.data.userId }, select: { id: true, gestorImediatoId: true } });
+  const target = await prisma.user.findUnique({ where: { id: parsed.data.userId }, select: { id: true } });
   if (!target) return NextResponse.json({ error: "Pessoa não encontrada" }, { status: 404 });
 
-  const isAdmin = role === "ADMIN" || role === "DIRETOR";
-  const isDirectManager = target.gestorImediatoId === gestorId;
-  if (!isAdmin && !isDirectManager) {
-    return NextResponse.json({ error: "Só o gestor imediato dessa pessoa (ou Admin/Diretor) pode criar um PDI" }, { status: 403 });
+  const allowed = await canManagePdiFor(gestorId, role, target.id);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Só o gestor imediato, coordenador do núcleo, gerente/diretor do núcleo dessa pessoa (ou Admin/Diretor) pode criar um PDI" },
+      { status: 403 }
+    );
   }
 
   const pdi = await prisma.pDI.create({

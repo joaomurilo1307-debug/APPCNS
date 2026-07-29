@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canManagePdiFor } from "@/lib/permissions";
 import { z } from "zod";
 
-async function canManagePdi(userId: string, role: string, pdi: { gestorId: string }) {
-  return role === "ADMIN" || role === "DIRETOR" || pdi.gestorId === userId;
+async function canManagePdi(userId: string, role: string, pdi: { gestorId: string; userId: string }) {
+  if (role === "ADMIN" || role === "DIRETOR" || pdi.gestorId === userId) return true;
+  return canManagePdiFor(userId, role, pdi.userId);
 }
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {

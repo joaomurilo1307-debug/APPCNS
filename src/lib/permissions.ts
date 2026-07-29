@@ -66,6 +66,44 @@ export async function visibleTeamWhere(userId: string, role: string): Promise<an
   };
 }
 
+/**
+ * IDs de pessoas para quem `userId` pode criar/gerenciar PDI, além de ADMIN/DIRETOR (que veem todo mundo):
+ * - Liderados diretos (gestorImediatoId === userId).
+ * - Se `userId` é coordenador (nivelHierarquico=COORDENACAO), todo mundo do mesmo núcleo.
+ * - Se `userId` é gerente/diretor de um ou mais núcleos (Nucleo.gerentes), todo mundo desses núcleos.
+ */
+export async function manageablePdiUserIds(userId: string): Promise<string[]> {
+  const me = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { nivelHierarquico: true, nucleoId: true },
+  });
+
+  const idSet = new Set<string>();
+
+  const directs = await prisma.user.findMany({ where: { gestorImediatoId: userId }, select: { id: true } });
+  directs.forEach((d) => idSet.add(d.id));
+
+  if (me?.nivelHierarquico === "COORDENACAO" && me.nucleoId) {
+    const membros = await prisma.user.findMany({ where: { nucleoId: me.nucleoId }, select: { id: true } });
+    membros.forEach((m) => idSet.add(m.id));
+  }
+
+  const nucleosGeridos = await prisma.nucleo.findMany({
+    where: { gerentes: { some: { id: userId } } },
+    select: { membros: { select: { id: true } } },
+  });
+  nucleosGeridos.forEach((n) => n.membros.forEach((m) => idSet.add(m.id)));
+
+  idSet.delete(userId);
+  return Array.from(idSet);
+}
+
+export async function canManagePdiFor(userId: string, role: string, targetUserId: string): Promise<boolean> {
+  if (role === "ADMIN" || role === "DIRETOR") return true;
+  const ids = await manageablePdiUserIds(userId);
+  return ids.includes(targetUserId);
+}
+
 export async function isTeamManager(userId: string, teamId: string): Promise<boolean> {
   const membership = await prisma.userTeam.findUnique({
     where: { userId_teamId: { userId, teamId } },

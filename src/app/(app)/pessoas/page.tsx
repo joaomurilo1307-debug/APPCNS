@@ -61,6 +61,8 @@ export default function PessoasPage() {
   const q = search.trim().toLowerCase();
   const filtered = q ? people.filter((p) => p.name.toLowerCase().includes(q)) : people;
 
+  const subordinados = selected ? people.filter((p) => p.gestorImediato?.id === selected.id) : [];
+
   function openPerson(p: Person) {
     setSelected(p);
     setFeedback("");
@@ -106,7 +108,7 @@ export default function PessoasPage() {
 
   async function handleStartChat() {
     if (!selected) return;
-    setActiveChat({ type: "direct", id: selected.id, name: selected.name, avatarColor: selected.avatarColor, avatarUrl: selected.avatarUrl });
+    setActiveChat({ type: "direct", id: selected.id, name: selected.name, avatarColor: selected.avatarColor });
     setSelected(null);
   }
 
@@ -196,13 +198,47 @@ export default function PessoasPage() {
                 📹 Iniciar chamada
               </button>
               <Link
-                href="/organograma"
+                href={`/organograma?pessoa=${encodeURIComponent(selected.name)}`}
                 onClick={() => setSelected(null)}
                 className="rounded-md border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50"
               >
-                🌳 Ver organograma
+                🌳 Ver no organograma
               </Link>
             </div>
+
+            {(selected.gestorImediato || subordinados.length > 0) && (
+              <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="mb-2 text-xs font-semibold text-gray-400">Posição na hierarquia</p>
+                <div className="flex flex-col items-center gap-1">
+                  {selected.gestorImediato && (
+                    <>
+                      <div className="flex flex-col items-center gap-1 opacity-70">
+                        <Avatar name={selected.gestorImediato.name} color="#6b7280" size={26} />
+                        <span className="text-[11px] text-gray-500">{selected.gestorImediato.name}</span>
+                      </div>
+                      <span className="h-3 w-px bg-gray-300" />
+                    </>
+                  )}
+                  <div className="flex flex-col items-center gap-1 rounded-md bg-white px-2 py-1 shadow-sm">
+                    <Avatar name={selected.name} color={selected.avatarColor} size={30} />
+                    <span className="text-xs font-medium">{selected.name}</span>
+                  </div>
+                  {subordinados.length > 0 && (
+                    <>
+                      <span className="h-3 w-px bg-gray-300" />
+                      <div className="flex flex-wrap justify-center gap-3">
+                        {subordinados.map((s) => (
+                          <div key={s.id} className="flex flex-col items-center gap-1">
+                            <Avatar name={s.name} color={s.avatarColor} size={24} />
+                            <span className="text-[11px] text-gray-500">{s.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3 border-t border-gray-100 pt-3">
               {isAdmin && (
