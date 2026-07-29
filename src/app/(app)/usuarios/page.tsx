@@ -24,6 +24,7 @@ type UserRow = {
   nucleoId?: string | null;
   nucleo?: { id: string; name: string } | null;
   teams: { team: { id: string; name: string } }[];
+  anonymizedAt?: string | null;
 };
 
 type NucleoOption = { id: string; name: string };
@@ -227,6 +228,23 @@ export default function UsuariosPage() {
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       alert(data?.error ?? "Não foi possível excluir.");
+      return;
+    }
+    load();
+  }
+
+  async function handleOffboard(u: UserRow) {
+    if (
+      !confirm(
+        `Encerrar vínculo de "${u.name}" e anonimizar os dados pessoais dela (nome, e-mail, whatsapp, foto)?\n\n` +
+          "Isso é IRREVERSÍVEL. O histórico de tarefas, projetos e PDI continua vinculado, mas o nome real não aparece mais em lugar nenhum."
+      )
+    )
+      return;
+    const res = await fetch(`/api/users/${u.id}/offboard`, { method: "POST" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      alert(data?.error ?? "Não foi possível encerrar o vínculo.");
       return;
     }
     load();
@@ -457,6 +475,11 @@ export default function UsuariosPage() {
                   >
                     {u.active ? "Ativo" : "Inativo"}
                   </button>
+                  {u.anonymizedAt && (
+                    <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-400" title={`Anonimizado em ${new Date(u.anonymizedAt).toLocaleDateString("pt-BR")}`}>
+                      🔒 anonimizado
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   {resettingId === u.id ? (
@@ -503,12 +526,23 @@ export default function UsuariosPage() {
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <button
-                    onClick={() => handleDelete(u)}
-                    className="text-xs text-red-500 hover:text-red-700 hover:underline"
-                  >
-                    Excluir
-                  </button>
+                  <div className="flex flex-col items-start gap-1">
+                    <button
+                      onClick={() => handleDelete(u)}
+                      className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                    >
+                      Excluir
+                    </button>
+                    {!u.anonymizedAt && (
+                      <button
+                        onClick={() => handleOffboard(u)}
+                        title="Anonimiza nome, e-mail, whatsapp e foto — mantém histórico de tarefas/projetos/PDI. Irreversível."
+                        className="text-[11px] text-gray-400 hover:text-gray-700 hover:underline"
+                      >
+                        Encerrar vínculo
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

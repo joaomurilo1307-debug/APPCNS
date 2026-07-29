@@ -178,6 +178,7 @@ model User {
   nucleoId     String?
   dataInicio   DateTime?
   gestorImediatoId String?
+  anonymizedAt DateTime?
   createdAt    DateTime  @default(now())
 
   gestorImediato  User?      @relation("GestorImediato", fields: [gestorImediatoId], references: [id], onDelete: SetNull)
@@ -364,6 +365,7 @@ model Project {
 
   @@index([teamId])
   @@index([ownerId])
+  @@index([status])
 }
 
 model ResourceRate {
@@ -556,6 +558,7 @@ model Goal {
 
   @@index([projectId])
   @@index([parentGoalId])
+  @@index([assignedTeamId])
 }
 
 model PDI {
@@ -683,6 +686,9 @@ model Task {
   @@index([projectId])
   @@index([assigneeId])
   @@index([parentTaskId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([dependsOnId])
 }
 
 model TaskComment {

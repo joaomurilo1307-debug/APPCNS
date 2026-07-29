@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { logAudit } from "@/lib/auditLog";
 
 const updateUserSchema = z.object({
   role: z.enum(["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR"]).optional(),
@@ -49,43 +50,55 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const { dataInicio, password, newNucleoName, ...rest } = parsed.data;
 
-  let nucleoId = rest.nucleoId;
-  if (!nucleoId && newNucleoName) {
-    const nucleo = await prisma.nucleo.upsert({
-      where: { name: newNucleoName },
-      update: {},
-      create: { name: newNucleoName },
-    });
-    nucleoId = nucleo.id;
-  }
+  const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
 
-  const updated = await prisma.user.update({
-    where: { id: params.id },
-    data: {
-      ...rest,
-      ...(nucleoId !== undefined ? { nucleoId } : {}),
-      ...(dataInicio !== undefined ? { dataInicio: dataInicio ? new Date(dataInicio) : null } : {}),
-      ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      active: true,
-      avatarColor: true,
-      cargo: true,
-      setor: true,
-      diretoria: true,
-      ramal: true,
-      whatsapp: true,
-      dataInicio: true,
-      gestorImediatoId: true,
-      gestorImediato: { select: { id: true, name: true } },
-      nivelHierarquico: true,
-      nucleoId: true,
-      nucleo: { select: { id: true, name: true } },
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    let nucleoId = rest.nucleoId;
+    if (!nucleoId && newNucleoName) {
+      const nucleo = await tx.nucleo.upsert({
+        where: { name: newNucleoName },
+        update: {},
+        create: { name: newNucleoName },
+      });
+      nucleoId = nucleo.id;
+    }
+
+    return tx.user.update({
+      where: { id: params.id },
+      data: {
+        ...rest,
+        ...(nucleoId !== undefined ? { nucleoId } : {}),
+        ...(dataInicio !== undefined ? { dataInicio: dataInicio ? new Date(dataInicio) : null } : {}),
+        ...(passwordHash ? { passwordHash } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        avatarColor: true,
+        cargo: true,
+        setor: true,
+        diretoria: true,
+        ramal: true,
+        whatsapp: true,
+        dataInicio: true,
+        gestorImediatoId: true,
+        gestorImediato: { select: { id: true, name: true } },
+        nivelHierarquico: true,
+        nucleoId: true,
+        nucleo: { select: { id: true, name: true } },
+      },
+    });
+  });
+
+  await logAudit({
+    userId: currentUserId,
+    action: password ? "user.password_reset" : "user.update",
+    entityType: "User",
+    entityId: params.id,
+    metadata: { fields: Object.keys(rest), passwordChanged: !!password },
   });
 
   return NextResponse.json(updated);
@@ -132,6 +145,14 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
       { status: 422 }
     );
   }
+
+  await logAudit({
+    userId: currentUserId,
+    action: "user.delete",
+    entityType: "User",
+    entityId: params.id,
+    metadata: { deletedName: user.name, deletedEmail: user.email },
+  });
 
   return NextResponse.json({ ok: true });
 }

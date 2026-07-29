@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { logAudit } from "@/lib/auditLog";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -34,6 +35,7 @@ export async function GET() {
       nucleoId: true,
       nucleo: { select: { id: true, name: true } },
       teams: { include: { team: { select: { id: true, name: true } } } },
+      anonymizedAt: true,
     },
     orderBy: { createdAt: "asc" },
   });
@@ -75,34 +77,44 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
 
-  let nucleoId = parsed.data.nucleoId ?? null;
-  if (!nucleoId && parsed.data.newNucleoName) {
-    const nucleo = await prisma.nucleo.upsert({
-      where: { name: parsed.data.newNucleoName },
-      update: {},
-      create: { name: parsed.data.newNucleoName },
-    });
-    nucleoId = nucleo.id;
-  }
+  const user = await prisma.$transaction(async (tx) => {
+    let nucleoId = parsed.data.nucleoId ?? null;
+    if (!nucleoId && parsed.data.newNucleoName) {
+      const nucleo = await tx.nucleo.upsert({
+        where: { name: parsed.data.newNucleoName },
+        update: {},
+        create: { name: parsed.data.newNucleoName },
+      });
+      nucleoId = nucleo.id;
+    }
 
-  const user = await prisma.user.create({
-    data: {
-      name: parsed.data.name,
-      email: parsed.data.email.toLowerCase(),
-      passwordHash,
-      role: parsed.data.role,
-      avatarColor: parsed.data.avatarColor,
-      cargo: parsed.data.cargo,
-      setor: parsed.data.setor,
-      diretoria: parsed.data.diretoria,
-      ramal: parsed.data.ramal,
-      whatsapp: parsed.data.whatsapp,
-      dataInicio: parsed.data.dataInicio ? new Date(parsed.data.dataInicio) : null,
-      gestorImediatoId: parsed.data.gestorImediatoId,
-      nivelHierarquico: parsed.data.nivelHierarquico ?? undefined,
-      nucleoId,
-    },
-    select: { id: true, name: true, email: true, role: true, active: true, avatarColor: true },
+    return tx.user.create({
+      data: {
+        name: parsed.data.name,
+        email: parsed.data.email.toLowerCase(),
+        passwordHash,
+        role: parsed.data.role,
+        avatarColor: parsed.data.avatarColor,
+        cargo: parsed.data.cargo,
+        setor: parsed.data.setor,
+        diretoria: parsed.data.diretoria,
+        ramal: parsed.data.ramal,
+        whatsapp: parsed.data.whatsapp,
+        dataInicio: parsed.data.dataInicio ? new Date(parsed.data.dataInicio) : null,
+        gestorImediatoId: parsed.data.gestorImediatoId,
+        nivelHierarquico: parsed.data.nivelHierarquico ?? undefined,
+        nucleoId,
+      },
+      select: { id: true, name: true, email: true, role: true, active: true, avatarColor: true },
+    });
+  });
+
+  await logAudit({
+    userId: (session.user as any).id,
+    action: "user.create",
+    entityType: "User",
+    entityId: user.id,
+    metadata: { name: user.name, email: user.email, role: user.role },
   });
 
   return NextResponse.json(user, { status: 201 });

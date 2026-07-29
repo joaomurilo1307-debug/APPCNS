@@ -145,6 +145,7 @@ export default function TaskListView({
   const [fields, setFields] = useState<CustomField[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   function toggleCollapsed(id: string) {
     setCollapsed((prev) => {
@@ -198,11 +199,15 @@ export default function TaskListView({
 
   async function patchTask(taskId: string, data: any) {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...data } : t)));
-    await fetch(`/api/tasks/${taskId}`, {
+    const res = await fetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
+    if (!res.ok) {
+      setSaveError("Não foi possível salvar a alteração. A tela foi atualizada com os dados reais.");
+      loadAll();
+    }
   }
 
   async function patchCustomField(taskId: string, fieldId: string, value: string) {
@@ -216,11 +221,15 @@ export default function TaskListView({
         return { ...t, customFieldValues: next };
       })
     );
-    await fetch(`/api/tasks/${taskId}`, {
+    const res = await fetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ customFieldValues: { [fieldId]: value } }),
     });
+    if (!res.ok) {
+      setSaveError("Não foi possível salvar a alteração. A tela foi atualizada com os dados reais.");
+      loadAll();
+    }
   }
 
   async function handleAddTask() {
@@ -458,6 +467,12 @@ export default function TaskListView({
 
   return (
     <div>
+      {saveError && (
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+          <span>⚠️ {saveError}</span>
+          <button onClick={() => setSaveError(null)} className="text-rose-400 hover:text-rose-700">✕</button>
+        </div>
+      )}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {canManage && (
           <>

@@ -128,6 +128,16 @@ export function IconCheckCircle({ className }: IconProps) {
   );
 }
 
+export function IconLock({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+      <path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5" />
+      <circle cx="12" cy="15" r="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function IconShieldUser({ className }: IconProps) {
   return (
     <svg {...base} className={className}>

@@ -23,6 +23,7 @@ import {
   IconTrendingUp,
   IconCheckCircle,
   IconShieldUser,
+  IconLock,
 } from "./NavIcons";
 
 const baseLinks = [
@@ -40,6 +41,7 @@ const baseLinks = [
   { href: "/pdi", label: "PDI", icon: IconTrendingUp, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/aprovacoes", label: "Aprovações", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/usuarios", label: "Usuários", icon: IconShieldUser, roles: ["ADMIN"] },
+  { href: "/auditoria", label: "Auditoria", icon: IconLock, roles: ["ADMIN"] },
 ];
 
 export default function Sidebar() {

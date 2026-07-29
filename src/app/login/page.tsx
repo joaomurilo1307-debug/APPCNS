@@ -23,7 +23,7 @@ export default function LoginPage() {
     });
     setLoading(false);
     if (res?.error) {
-      setError("E-mail ou senha inválidos.");
+      setError(res.error === "CredentialsSignin" ? "E-mail ou senha inválidos." : res.error);
       return;
     }
     router.push("/");

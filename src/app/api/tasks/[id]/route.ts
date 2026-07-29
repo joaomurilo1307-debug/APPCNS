@@ -99,17 +99,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
   }
 
-  const updated = await prisma.task.update({ where: { id: params.id }, data });
-
-  if (customFieldValues) {
-    for (const [customFieldId, value] of Object.entries(customFieldValues)) {
-      await prisma.taskCustomFieldValue.upsert({
-        where: { taskId_customFieldId: { taskId: params.id, customFieldId } },
-        update: { value },
-        create: { taskId: params.id, customFieldId, value },
-      });
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.task.update({ where: { id: params.id }, data });
+    if (customFieldValues) {
+      for (const [customFieldId, value] of Object.entries(customFieldValues)) {
+        await tx.taskCustomFieldValue.upsert({
+          where: { taskId_customFieldId: { taskId: params.id, customFieldId } },
+          update: { value },
+          create: { taskId: params.id, customFieldId, value },
+        });
+      }
     }
-  }
+    return result;
+  });
 
   await reconcileTaskOutlook(
     { assigneeId: task.assigneeId, outlookEventId: task.outlookEventId },
