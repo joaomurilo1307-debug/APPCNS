@@ -6,11 +6,15 @@ import Avatar from "@/components/Avatar";
 type Person = {
   id: string;
   name: string;
+  email: string;
   avatarColor: string;
   avatarUrl: string | null;
   cargo: string | null;
+  ramal: string | null;
+  whatsapp: string | null;
   nivelHierarquico: string | null;
   gestorImediatoId: string | null;
+  gestorImediato: { id: string; name: string } | null;
   nucleo: { id: string; name: string } | null;
 };
 
@@ -21,21 +25,33 @@ const nivelLabel: Record<string, string> = {
   COLABORADOR: "Colaborador",
 };
 
-function TreeNode({ person, byManager }: { person: Person; byManager: Map<string, Person[]> }) {
+function TreeNode({
+  person,
+  byManager,
+  onSelect,
+}: {
+  person: Person;
+  byManager: Map<string, Person[]>;
+  onSelect: (p: Person) => void;
+}) {
   const children = byManager.get(person.id) ?? [];
   return (
     <li>
-      <div className="inline-flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+      <button
+        type="button"
+        onClick={() => onSelect(person)}
+        className="inline-flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm hover:border-brand hover:shadow-md"
+      >
         <Avatar name={person.name} color={person.avatarColor} photoUrl={person.avatarUrl} size={36} />
         <p className="whitespace-nowrap text-xs font-medium">{person.name}</p>
         <p className="whitespace-nowrap text-[10px] text-gray-400">
-          {person.nivelHierarquico ? nivelLabel[person.nivelHierarquico] : person.cargo || "—"}
+          {person.cargo || (person.nivelHierarquico ? nivelLabel[person.nivelHierarquico] : person.nucleo?.name) || "—"}
         </p>
-      </div>
+      </button>
       {children.length > 0 && (
         <ul>
           {children.map((c) => (
-            <TreeNode key={c.id} person={c} byManager={byManager} />
+            <TreeNode key={c.id} person={c} byManager={byManager} onSelect={onSelect} />
           ))}
         </ul>
       )}
@@ -46,6 +62,8 @@ function TreeNode({ person, byManager }: { person: Person; byManager: Map<string
 export default function OrganogramaPage() {
   const [people, setPeople] = useState<Person[]>([]);
   const [nucleoFilter, setNucleoFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Person | null>(null);
 
   useEffect(() => {
     fetch("/api/organograma")
@@ -55,12 +73,27 @@ export default function OrganogramaPage() {
   }, []);
 
   const nucleos = Array.from(new Set(people.map((p) => p.nucleo?.name).filter(Boolean))) as string[];
-  const filtered = nucleoFilter ? people.filter((p) => p.nucleo?.name === nucleoFilter) : people;
+  let scoped = nucleoFilter ? people.filter((p) => p.nucleo?.name === nucleoFilter) : people;
 
-  const ids = new Set(filtered.map((p) => p.id));
+  if (search.trim()) {
+    const q = search.trim().toLowerCase();
+    const byId = new Map(scoped.map((p) => [p.id, p]));
+    const matches = scoped.filter((p) => p.name.toLowerCase().includes(q));
+    const keep = new Set<string>();
+    for (const m of matches) {
+      let cur: Person | undefined = m;
+      while (cur) {
+        keep.add(cur.id);
+        cur = cur.gestorImediatoId ? byId.get(cur.gestorImediatoId) : undefined;
+      }
+    }
+    scoped = scoped.filter((p) => keep.has(p.id));
+  }
+
+  const ids = new Set(scoped.map((p) => p.id));
   const byManager = new Map<string, Person[]>();
   const roots: Person[] = [];
-  for (const p of filtered) {
+  for (const p of scoped) {
     if (p.gestorImediatoId && ids.has(p.gestorImediatoId)) {
       if (!byManager.has(p.gestorImediatoId)) byManager.set(p.gestorImediatoId, []);
       byManager.get(p.gestorImediatoId)!.push(p);
@@ -71,34 +104,75 @@ export default function OrganogramaPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Organograma</h1>
-          <p className="text-sm text-gray-500">Linhas de hierarquia direta (gestor imediato de cada pessoa).</p>
+          <p className="text-sm text-gray-500">Hierarquia direta das pessoas (cargo e gestor imediato).</p>
         </div>
-        {nucleos.length > 0 && (
-          <select
-            value={nucleoFilter}
-            onChange={(e) => setNucleoFilter(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">Todos os núcleos</option>
-            {nucleos.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
-        )}
+        <div className="flex gap-2">
+          <input
+            placeholder="Buscar pessoa..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-48 rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+          {nucleos.length > 0 && (
+            <select
+              value={nucleoFilter}
+              onChange={(e) => setNucleoFilter(e.target.value)}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="">Todos os núcleos</option>
+              {nucleos.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
-      {roots.length === 0 && <p className="text-sm text-gray-400">Ninguém com hierarquia cadastrada ainda.</p>}
+      {roots.length === 0 && <p className="text-sm text-gray-400">Ninguém encontrado.</p>}
 
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white p-8">
         <ul className="orgchart-tree">
           {roots.map((p) => (
-            <TreeNode key={p.id} person={p} byManager={byManager} />
+            <TreeNode key={p.id} person={p} byManager={byManager} onSelect={setSelected} />
           ))}
         </ul>
       </div>
+
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setSelected(null)}>
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Avatar name={selected.name} color={selected.avatarColor} photoUrl={selected.avatarUrl} size={48} />
+                <div>
+                  <p className="font-semibold">{selected.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {selected.cargo || (selected.nivelHierarquico ? nivelLabel[selected.nivelHierarquico] : "—")}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-700">✕</button>
+            </div>
+            <dl className="grid grid-cols-3 gap-y-2 text-sm">
+              <dt className="text-gray-400">E-mail</dt>
+              <dd className="col-span-2 break-all">{selected.email}</dd>
+              <dt className="text-gray-400">Ramal</dt>
+              <dd className="col-span-2">{selected.ramal || "—"}</dd>
+              <dt className="text-gray-400">WhatsApp</dt>
+              <dd className="col-span-2">{selected.whatsapp || "—"}</dd>
+              <dt className="text-gray-400">Núcleo</dt>
+              <dd className="col-span-2">{selected.nucleo?.name || "—"}</dd>
+              <dt className="text-gray-400">Nível</dt>
+              <dd className="col-span-2">{selected.nivelHierarquico ? nivelLabel[selected.nivelHierarquico] : "—"}</dd>
+              <dt className="text-gray-400">Gestor</dt>
+              <dd className="col-span-2">{selected.gestorImediato?.name || "—"}</dd>
+            </dl>
+          </div>
+        </div>
+      )}
 
       <style jsx global>{`
         .orgchart-tree,

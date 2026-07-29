@@ -170,6 +170,8 @@ model User {
   cargo        String?
   setor        String?
   diretoria    String?
+  ramal        String?
+  whatsapp     String?
   nivelHierarquico NivelHierarquico?
   nucleoId     String?
   dataInicio   DateTime?

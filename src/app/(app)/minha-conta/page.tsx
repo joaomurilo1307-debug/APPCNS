@@ -11,8 +11,9 @@ type Me = {
   avatarColor: string;
   avatarUrl: string | null;
   cargo: string | null;
-  setor: string | null;
   diretoria: string | null;
+  ramal: string | null;
+  whatsapp: string | null;
   nivelHierarquico: string | null;
   nucleo: { id: string; name: string } | null;
   gestorImediato: { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null } | null;
@@ -204,10 +205,12 @@ export default function MinhaContaPage() {
           <dd>{roleLabel[me.role] ?? me.role}</dd>
           <dt className="text-gray-400">Cargo</dt>
           <dd>{me.cargo ?? "—"}</dd>
-          <dt className="text-gray-400">Setor</dt>
-          <dd>{me.setor ?? "—"}</dd>
           <dt className="text-gray-400">Diretoria</dt>
           <dd>{me.diretoria ?? "—"}</dd>
+          <dt className="text-gray-400">Ramal</dt>
+          <dd>{me.ramal ?? "—"}</dd>
+          <dt className="text-gray-400">WhatsApp</dt>
+          <dd>{me.whatsapp ?? "—"}</dd>
           <dt className="text-gray-400">Nível hierárquico</dt>
           <dd>{me.nivelHierarquico ? nivelLabel[me.nivelHierarquico] : "—"}</dd>
           <dt className="text-gray-400">Núcleo</dt>

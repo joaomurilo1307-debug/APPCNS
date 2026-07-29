@@ -14,8 +14,9 @@ type UserRow = {
   avatarColor: string;
   avatarUrl?: string | null;
   cargo?: string | null;
-  setor?: string | null;
   diretoria?: string | null;
+  ramal?: string | null;
+  whatsapp?: string | null;
   dataInicio?: string | null;
   gestorImediatoId?: string | null;
   gestorImediato?: { id: string; name: string } | null;
@@ -63,8 +64,9 @@ export default function UsuariosPage() {
   const [newUserRole, setNewUserRole] = useState("COLABORADOR");
   const [newUserColor, setNewUserColor] = useState(AVATAR_PALETTE[0]);
   const [newCargo, setNewCargo] = useState("");
-  const [newSetor, setNewSetor] = useState("");
   const [newDiretoria, setNewDiretoria] = useState("");
+  const [newRamal, setNewRamal] = useState("");
+  const [newWhatsapp, setNewWhatsapp] = useState("");
   const [newGestorId, setNewGestorId] = useState("");
   const [newDataInicio, setNewDataInicio] = useState("");
   const [newNivel, setNewNivel] = useState("");
@@ -111,8 +113,9 @@ export default function UsuariosPage() {
           role: newUserRole,
           avatarColor: newUserColor,
           cargo: newCargo || undefined,
-          setor: newSetor || undefined,
           diretoria: newDiretoria || undefined,
+          ramal: newRamal || undefined,
+          whatsapp: newWhatsapp || undefined,
           gestorImediatoId: newGestorId || undefined,
           dataInicio: newDataInicio ? new Date(newDataInicio).toISOString() : undefined,
           nivelHierarquico: newNivel || undefined,
@@ -145,8 +148,9 @@ export default function UsuariosPage() {
       setPassword("");
       setNewUserColor(AVATAR_PALETTE[0]);
       setNewCargo("");
-      setNewSetor("");
       setNewDiretoria("");
+      setNewRamal("");
+      setNewWhatsapp("");
       setNewGestorId("");
       setNewDataInicio("");
       setNewNivel("");
@@ -251,8 +255,9 @@ export default function UsuariosPage() {
             ))}
           </select>
           <input placeholder="Cargo" value={newCargo} onChange={(e) => setNewCargo(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <input placeholder="Setor" value={newSetor} onChange={(e) => setNewSetor(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
           <input placeholder="Diretoria" value={newDiretoria} onChange={(e) => setNewDiretoria(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          <input placeholder="Ramal" value={newRamal} onChange={(e) => setNewRamal(e.target.value)} className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          <input placeholder="WhatsApp" value={newWhatsapp} onChange={(e) => setNewWhatsapp(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
           <select value={newGestorId} onChange={(e) => setNewGestorId(e.target.value)} className="w-44 rounded-md border border-gray-300 px-3 py-2 text-sm">
             <option value="">Gestor imediato…</option>
             {users.map((u) => (
@@ -318,8 +323,9 @@ export default function UsuariosPage() {
               <th className="px-4 py-3">E-mail</th>
               <th className="px-4 py-3">Papel</th>
               <th className="px-4 py-3">Cargo</th>
-              <th className="px-4 py-3">Setor</th>
               <th className="px-4 py-3">Diretoria</th>
+              <th className="px-4 py-3">Ramal</th>
+              <th className="px-4 py-3">WhatsApp</th>
               <th className="px-4 py-3">Nível</th>
               <th className="px-4 py-3">Núcleo</th>
               <th className="px-4 py-3">Gestor imediato</th>
@@ -359,15 +365,22 @@ export default function UsuariosPage() {
                 </td>
                 <td className="px-4 py-3">
                   <input
-                    defaultValue={u.setor ?? ""}
-                    onBlur={(e) => e.target.value !== (u.setor ?? "") && updateField(u.id, "setor", e.target.value)}
+                    defaultValue={u.diretoria ?? ""}
+                    onBlur={(e) => e.target.value !== (u.diretoria ?? "") && updateField(u.id, "diretoria", e.target.value)}
                     className="w-28 rounded-md border border-gray-200 px-2 py-1 text-xs"
                   />
                 </td>
                 <td className="px-4 py-3">
                   <input
-                    defaultValue={u.diretoria ?? ""}
-                    onBlur={(e) => e.target.value !== (u.diretoria ?? "") && updateField(u.id, "diretoria", e.target.value)}
+                    defaultValue={u.ramal ?? ""}
+                    onBlur={(e) => e.target.value !== (u.ramal ?? "") && updateField(u.id, "ramal", e.target.value)}
+                    className="w-16 rounded-md border border-gray-200 px-2 py-1 text-xs"
+                  />
+                </td>
+                <td className="px-4 py-3">
+                  <input
+                    defaultValue={u.whatsapp ?? ""}
+                    onBlur={(e) => e.target.value !== (u.whatsapp ?? "") && updateField(u.id, "whatsapp", e.target.value)}
                     className="w-28 rounded-md border border-gray-200 px-2 py-1 text-xs"
                   />
                 </td>
