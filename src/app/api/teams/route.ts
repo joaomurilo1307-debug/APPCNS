@@ -32,8 +32,11 @@ const createTeamSchema = z.object({
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if ((session.user as any).role !== "ADMIN") {
-    return NextResponse.json({ error: "Só administradores podem criar equipes" }, { status: 403 });
+
+  const userId = (session.user as any).id;
+  const role = (session.user as any).role;
+  if (role === "CLIENTE" || role === "VISUALIZADOR") {
+    return NextResponse.json({ error: "Seu perfil não pode criar equipes/grupos" }, { status: 403 });
   }
 
   const body = await req.json();
@@ -42,6 +45,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
   }
 
-  const team = await prisma.team.create({ data: parsed.data });
+  const team = await prisma.team.create({
+    data: {
+      ...parsed.data,
+      members: { create: { userId, role: "GESTOR" } },
+    },
+  });
   return NextResponse.json(team, { status: 201 });
 }

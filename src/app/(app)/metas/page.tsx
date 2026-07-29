@@ -43,6 +43,12 @@ export default function MetasPage() {
   const [unit, setUnit] = useState("");
   const [dueDate, setDueDate] = useState("");
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editTargetValue, setEditTargetValue] = useState("");
+  const [editUnit, setEditUnit] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+
   async function load() {
     const res = await fetch("/api/goals");
     if (res.ok) setGoals(await res.json());
@@ -75,6 +81,29 @@ export default function MetasPage() {
   async function handleDelete(id: string) {
     if (!confirm("Excluir esta meta? As subMetas ligadas a ela ficam soltas (não são excluídas).")) return;
     await fetch(`/api/goals/${id}`, { method: "DELETE" });
+    load();
+  }
+
+  function startEdit(g: Goal) {
+    setEditingId(g.id);
+    setEditTitle(g.title);
+    setEditTargetValue(g.targetValue?.toString() ?? "");
+    setEditUnit(g.unit ?? "");
+    setEditDueDate(g.dueDate ? g.dueDate.slice(0, 10) : "");
+  }
+
+  async function handleSaveEdit(id: string) {
+    await fetch(`/api/goals/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: editTitle,
+        targetValue: editTargetValue ? Number(editTargetValue) : null,
+        unit: editUnit || null,
+        dueDate: editDueDate ? new Date(editDueDate).toISOString() : null,
+      }),
+    });
+    setEditingId(null);
     load();
   }
 
@@ -136,15 +165,55 @@ export default function MetasPage() {
           const pct = g.targetValue ? Math.min(100, Math.round((value / g.targetValue) * 100)) : 0;
           return (
             <div key={g.id} className="rounded-xl border border-gray-200 bg-white p-4">
+              {editingId === g.id ? (
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <input
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="col-span-2 rounded-md border border-gray-300 px-2 py-1.5"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Valor alvo"
+                    value={editTargetValue}
+                    onChange={(e) => setEditTargetValue(e.target.value)}
+                    className="rounded-md border border-gray-300 px-2 py-1.5"
+                  />
+                  <input
+                    placeholder="Unidade"
+                    value={editUnit}
+                    onChange={(e) => setEditUnit(e.target.value)}
+                    className="rounded-md border border-gray-300 px-2 py-1.5"
+                  />
+                  <label className="col-span-2 flex flex-col gap-1 text-xs text-gray-500">
+                    Prazo
+                    <input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5" />
+                  </label>
+                  <div className="col-span-2 flex gap-2">
+                    <button onClick={() => handleSaveEdit(g.id)} className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark">
+                      Salvar
+                    </button>
+                    <button onClick={() => setEditingId(null)} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
               <div className="mb-2 flex items-center justify-between">
                 <div>
                   <p className="font-medium">{g.title}</p>
                   {g.description && <p className="text-xs text-gray-500">{g.description}</p>}
                 </div>
                 {canCreate && (
-                  <button onClick={() => handleDelete(g.id)} className="text-xs text-red-400 hover:text-red-700">
-                    Excluir
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => startEdit(g)} className="text-xs text-brand-dark hover:underline">
+                      Editar
+                    </button>
+                    <button onClick={() => handleDelete(g.id)} className="text-xs text-red-400 hover:text-red-700">
+                      Excluir
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -178,6 +247,8 @@ export default function MetasPage() {
                     </div>
                   ))}
                 </div>
+              )}
+                </>
               )}
             </div>
           );

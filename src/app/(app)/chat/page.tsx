@@ -42,6 +42,10 @@ export default function ChatPage() {
   const [showCallLog, setShowCallLog] = useState(false);
   const [callLog, setCallLog] = useState<CallLogEntry[]>([]);
   const [search, setSearch] = useState("");
+  const [showGroupForm, setShowGroupForm] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupMemberIds, setGroupMemberIds] = useState<Set<string>>(new Set());
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   async function loadCallLog() {
     const res = await fetch("/api/messages/calls");
@@ -164,6 +168,45 @@ export default function ChatPage() {
     window.open(url, "_blank");
   }
 
+  function toggleGroupMember(id: string) {
+    setGroupMemberIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleCreateGroup() {
+    if (!groupName.trim()) return;
+    setCreatingGroup(true);
+    try {
+      const res = await fetch("/api/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: groupName }),
+      });
+      if (!res.ok) return;
+      const team = await res.json();
+      await Promise.all(
+        Array.from(groupMemberIds).map((userId) =>
+          fetch(`/api/teams/${team.id}/members`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId, role: "MEMBRO" }),
+          })
+        )
+      );
+      setGroupName("");
+      setGroupMemberIds(new Set());
+      setShowGroupForm(false);
+      await loadTeams();
+      setSelected({ type: "team", id: team.id });
+    } finally {
+      setCreatingGroup(false);
+    }
+  }
+
   const currentMessages: { id: string; senderId: string; senderName?: string; body: string; createdAt: string }[] =
     selected?.type === "direct"
       ? directMsgs
@@ -202,9 +245,54 @@ export default function ChatPage() {
             className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
           />
         </div>
-        <div className="border-b border-gray-100 p-3">
+        <div className="flex items-center justify-between border-b border-gray-100 p-3">
           <p className="text-xs font-semibold text-gray-500">Equipes</p>
+          <button
+            onClick={() => setShowGroupForm((v) => !v)}
+            className="text-xs font-medium text-brand hover:underline"
+          >
+            + Criar grupo
+          </button>
         </div>
+        {showGroupForm && (
+          <div className="border-b border-gray-100 p-3">
+            <input
+              autoFocus
+              placeholder="Nome do grupo"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              className="mb-2 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+            />
+            <p className="mb-1 text-xs text-gray-400">Adicionar pessoas (opcional, dá pra adicionar depois)</p>
+            <div className="mb-2 flex max-h-32 flex-col gap-1 overflow-y-auto rounded-md border border-gray-100 p-1.5">
+              {contacts.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={groupMemberIds.has(c.id)} onChange={() => toggleGroupMember(c.id)} />
+                  {c.name}
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleCreateGroup}
+                disabled={creatingGroup || !groupName.trim()}
+                className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark disabled:opacity-50"
+              >
+                {creatingGroup ? "Criando..." : "Criar"}
+              </button>
+              <button
+                onClick={() => {
+                  setShowGroupForm(false);
+                  setGroupName("");
+                  setGroupMemberIds(new Set());
+                }}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
         {filteredTeams.map((t) => (
           <button
             key={t.id}
