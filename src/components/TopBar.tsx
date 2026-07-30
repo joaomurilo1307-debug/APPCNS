@@ -5,10 +5,12 @@ import Link from "next/link";
 import Avatar from "./Avatar";
 import PersonPanel, { Person } from "./PersonPanel";
 import { MANUAL_STATUSES, ManualStatus, resolveStatus, statusLabel } from "@/lib/presenceStatus";
+import { useSidebar } from "./SidebarContext";
 
 type Me = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null; statusManual: string | null };
 
 export default function TopBar() {
+  const { setOpen: setSidebarOpen } = useSidebar();
   const [me, setMe] = useState<Me | null>(null);
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -66,8 +68,18 @@ export default function TopBar() {
   const status = resolveStatus(true, me.statusManual);
 
   return (
-    <div className="glass shadow-soft relative z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/60 px-6">
-      <div className="relative w-72" ref={searchRef}>
+    <div className="glass shadow-soft relative z-30 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-white/60 px-3 sm:gap-3 sm:px-6">
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100 lg:hidden"
+        aria-label="Abrir menu"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+          <path d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
+      <div className="relative w-full max-w-[9rem] sm:max-w-none sm:w-72" ref={searchRef}>
         <input
           value={search}
           onChange={(e) => {
@@ -75,7 +87,7 @@ export default function TopBar() {
             setSearchOpen(true);
           }}
           onFocus={() => setSearchOpen(true)}
-          placeholder="🔍 Buscar pessoa..."
+          placeholder="🔍 Buscar..."
           className="w-full rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-sm shadow-sm outline-none transition-shadow focus:border-brand/40 focus:shadow-soft focus:ring-2 focus:ring-brand/15"
         />
         {searchOpen && q && (
@@ -137,8 +149,8 @@ export default function TopBar() {
             </div>
           )}
         </div>
-        <Link href="/minha-conta" className="flex items-center gap-2 rounded-full px-2 py-1 hover:bg-gray-50">
-          <div className="text-right">
+        <Link href="/minha-conta" className="flex items-center gap-2 rounded-full px-1 py-1 hover:bg-gray-50 sm:px-2">
+          <div className="hidden text-right sm:block">
             <p className="text-sm font-medium leading-tight">{me.name}</p>
             {me.cargo && <p className="text-xs leading-tight text-gray-400">{me.cargo}</p>}
           </div>

@@ -45,6 +45,16 @@ export function IconZap({ className }: IconProps) {
   );
 }
 
+export function IconAlertCircle({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v6" />
+      <circle cx="12" cy="16.5" r="0.6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function IconBarChart({ className }: IconProps) {
   return (
     <svg {...base} className={className}>

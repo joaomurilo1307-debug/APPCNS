@@ -6,6 +6,7 @@ import { eventTypeLabel, priorityColor } from "@/lib/calendarColors";
 import OnlinePeopleWidget from "@/components/OnlinePeopleWidget";
 import Avatar from "@/components/Avatar";
 import Link from "next/link";
+import { IconFolders, IconTarget, IconZap, IconAlertCircle } from "@/components/NavIcons";
 
 const MOTIVATIONAL_MESSAGES = [
   "Um passo de cada vez constrói o resultado do mês.",
@@ -120,10 +121,16 @@ export default async function DashboardPage() {
       <p className="mb-8 text-sm italic text-brand-dark/70">{motivational}</p>
 
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card label="Projetos" value={projectCount} />
-        <Card label="A fazer" value={statusMap["A_FAZER"] ?? 0} />
-        <Card label="Fazendo" value={statusMap["FAZENDO"] ?? 0} />
-        <Card label="Minhas tarefas pendentes" value={myTaskCount} highlight />
+        <Card label="Projetos" value={projectCount} icon={<IconFolders className="h-5 w-5" />} tone="indigo" />
+        <Card label="A fazer" value={statusMap["A_FAZER"] ?? 0} icon={<IconTarget className="h-5 w-5" />} tone="amber" />
+        <Card label="Fazendo" value={statusMap["FAZENDO"] ?? 0} icon={<IconZap className="h-5 w-5" />} tone="sky" />
+        <Card
+          label="Minhas tarefas pendentes"
+          value={myTaskCount}
+          icon={<IconAlertCircle className="h-5 w-5" />}
+          tone="brand"
+          highlight
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -233,15 +240,56 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Card({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
+const CARD_TONES = {
+  brand: {
+    border: "border-brand/30",
+    bg: "bg-gradient-to-br from-brand/10 via-white to-white",
+    badge: "bg-brand text-white",
+    ring: "ring-brand/20",
+  },
+  indigo: {
+    border: "border-indigo-200",
+    bg: "bg-gradient-to-br from-indigo-50 via-white to-white",
+    badge: "bg-indigo-500 text-white",
+    ring: "ring-indigo-200",
+  },
+  amber: {
+    border: "border-amber-200",
+    bg: "bg-gradient-to-br from-amber-50 via-white to-white",
+    badge: "bg-amber-500 text-white",
+    ring: "ring-amber-200",
+  },
+  sky: {
+    border: "border-sky-200",
+    bg: "bg-gradient-to-br from-sky-50 via-white to-white",
+    badge: "bg-sky-500 text-white",
+    ring: "ring-sky-200",
+  },
+} as const;
+
+function Card({
+  label,
+  value,
+  icon,
+  tone,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  tone: keyof typeof CARD_TONES;
+  highlight?: boolean;
+}) {
+  const t = CARD_TONES[tone];
   return (
     <div
-      className={`rounded-xl border p-5 shadow-sm ${
-        highlight ? "border-brand bg-brand/5" : "border-gray-200 bg-white"
+      className={`card-hover shadow-soft relative overflow-hidden rounded-xl border p-5 ${t.border} ${t.bg} ${
+        highlight ? `ring-1 ${t.ring}` : ""
       }`}
     >
+      <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${t.badge}`}>{icon}</div>
       <p className="text-sm text-gray-500">{label}</p>
-      <p className="mt-2 text-3xl font-semibold">{value}</p>
+      <p className="mt-1 text-3xl font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

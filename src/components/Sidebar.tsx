@@ -8,6 +8,7 @@ import SignOutButton from "./SignOutButton";
 import ConsominasLogo from "./ConsominasLogo";
 import { playNotificationSound, playRingtone } from "@/lib/notificationSound";
 import MiniChatWidget from "./MiniChatWidget";
+import { useSidebar } from "./SidebarContext";
 import {
   IconHome,
   IconFolders,
@@ -47,6 +48,7 @@ export default function Sidebar() {
   const { data: session } = useSession();
   const role = (session?.user as any)?.role;
   const links = baseLinks.filter((l) => !role || l.roles.includes(role));
+  const { open, setOpen } = useSidebar();
 
   const [unreadTotal, setUnreadTotal] = useState(0);
   const prevTotal = useRef<number | null>(null);
@@ -148,13 +150,35 @@ export default function Sidebar() {
     return () => clearInterval(ring);
   }, [callToast?.id]);
 
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
   return (
     <>
-      <aside className="glass shadow-elevated relative flex h-screen w-64 flex-col justify-between border-r border-white/60 p-4">
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] lg:hidden"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`glass shadow-elevated fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col justify-between border-r border-white/60 p-4 transition-transform duration-200 ease-in-out lg:static lg:translate-x-0 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-brand/[0.04] via-transparent to-accent/[0.03]" />
         <div>
-          <div className="mb-5 flex items-center gap-2 border-b border-gray-100 px-1 pb-4">
+          <div className="mb-5 flex items-center justify-between gap-2 border-b border-gray-100 px-1 pb-4">
             <ConsominasLogo size={30} />
+            <button
+              onClick={() => setOpen(false)}
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 lg:hidden"
+              aria-label="Fechar menu"
+            >
+              ✕
+            </button>
           </div>
           <nav className="flex flex-col gap-0.5">
             {links.map((link) => {

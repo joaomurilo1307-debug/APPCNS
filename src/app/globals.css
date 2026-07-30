@@ -6,10 +6,13 @@ body {
   @apply text-ink;
   background-color: #f6f7f9;
   background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
     radial-gradient(circle at 8% 8%, rgba(0, 169, 157, 0.10), transparent 42%),
     radial-gradient(circle at 92% 4%, rgba(230, 51, 41, 0.07), transparent 38%),
     radial-gradient(circle at 50% 100%, rgba(0, 132, 122, 0.06), transparent 55%),
     linear-gradient(180deg, #fbfcfd 0%, #f3f5f7 100%);
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-size: 180px 180px, auto, auto, auto, auto;
   background-attachment: fixed;
 }
 

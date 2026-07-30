@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
+import { SidebarProvider } from "@/components/SidebarContext";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
@@ -10,12 +11,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if ((session.user as any).role === "CLIENTE") redirect("/portal-cliente");
 
   return (
-    <div className="flex h-screen">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <TopBar />
-        <main className="flex-1 overflow-y-auto p-8">{children}</main>
+    <SidebarProvider>
+      <div className="flex h-screen">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <TopBar />
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">{children}</main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
