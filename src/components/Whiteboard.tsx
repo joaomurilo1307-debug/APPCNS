@@ -158,7 +158,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
   const [saving, setSaving] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number; startX: number; startY: number; snapshot: BoardSnapshot } | null>(null);
+  const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const panRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number; moved: boolean } | null>(null);
   const drawingRef = useRef(false);
   const drawSnapshotRef = useRef<BoardSnapshot | null>(null);
@@ -314,13 +314,11 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     e.stopPropagation();
     setSelectedId(node.id);
     const pos = getCanvasPos(e.clientX, e.clientY);
+    pushHistory();
     dragRef.current = {
       id: node.id,
       offsetX: pos.x - node.x,
       offsetY: pos.y - node.y,
-      startX: node.x,
-      startY: node.y,
-      snapshot: { nodes, strokes },
     };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
@@ -399,12 +397,6 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
       return;
     }
     if (dragRef.current) {
-      const { id, startX, startY, snapshot } = dragRef.current;
-      const moved = nodes.some((n) => n.id === id && (n.x !== startX || n.y !== startY));
-      if (moved) {
-        setHistory((h) => [...h.slice(-49), snapshot]);
-        setFuture([]);
-      }
       dragRef.current = null;
       return;
     }
@@ -507,11 +499,21 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
         </div>
 
         <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white px-1 py-1 shadow-soft">
-          <button onClick={handleUndo} disabled={history.length === 0} className="rounded-full px-2 py-1 text-sm hover:bg-gray-100 disabled:opacity-30" title="Desfazer (Ctrl+Z)">
-            ↩️
+          <button
+            onClick={handleUndo}
+            disabled={history.length === 0}
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-30"
+            title="Desfazer a última ação (Ctrl+Z)"
+          >
+            ↩️ Desfazer
           </button>
-          <button onClick={handleRedo} disabled={future.length === 0} className="rounded-full px-2 py-1 text-sm hover:bg-gray-100 disabled:opacity-30" title="Refazer (Ctrl+Shift+Z)">
-            ↪️
+          <button
+            onClick={handleRedo}
+            disabled={future.length === 0}
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-30"
+            title="Refazer (Ctrl+Shift+Z)"
+          >
+            ↪️ Refazer
           </button>
         </div>
 

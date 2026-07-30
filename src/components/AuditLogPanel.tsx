@@ -32,7 +32,7 @@ const actionColor: Record<string, string> = {
   "user.offboard_anonymize": "bg-purple-100 text-purple-700",
 };
 
-export default function AuditoriaPage() {
+export default function AuditLogPanel() {
   const [logs, setLogs] = useState<AuditEntry[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,9 +59,9 @@ export default function AuditoriaPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-semibold">Auditoria</h1>
-      <p className="mb-6 text-sm text-gray-500">
-        Registro de ações sensíveis do sistema — login, criação/edição/exclusão de usuários, anonimização de dados (LGPD).
+      <h2 className="mb-1 text-sm font-semibold text-gray-600">Auditoria</h2>
+      <p className="mb-3 text-xs text-gray-400">
+        Registro de ações sensíveis do sistema — login, criação/edição/exclusão de usuários, anonimização de dados (LGPD). Só visível para administradores.
       </p>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

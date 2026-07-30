@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import ProgressBar from "@/components/ProgressBar";
+import AuditLogPanel from "@/components/AuditLogPanel";
 
 type ProjectInsight = {
   id: string;
@@ -150,6 +151,12 @@ export default function RelatoriosPage() {
             {nucleoNames.length === 0 && <p className="text-sm text-gray-400">Nenhum núcleo cadastrado.</p>}
           </div>
         </>
+      )}
+
+      {role === "ADMIN" && (
+        <div className="mb-3 mt-10 border-t border-gray-200 pt-6">
+          <AuditLogPanel />
+        </div>
       )}
     </div>
   );
