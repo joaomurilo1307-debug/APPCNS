@@ -436,12 +436,15 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     const h = Math.max(1, maxY - minY);
     const newZoom = Math.max(MIN_ZOOM, Math.min(1.3, Math.min(el.clientWidth / w, el.clientHeight / h)));
     setZoom(Math.round(newZoom * 10) / 10);
-    requestAnimationFrame(() => {
+    // setTimeout em vez de requestAnimationFrame: rAF só dispara com a aba ativa/composta na
+    // tela, e uma aba recém-aberta ou em segundo plano pode nunca chamar o callback, deixando
+    // o scroll parado em (0,0). setTimeout roda de qualquer forma (é uma macrotask comum).
+    setTimeout(() => {
       const cx = (minX + maxX) / 2;
       const cy = (minY + maxY) / 2;
       el.scrollLeft = cx * newZoom - el.clientWidth / 2;
       el.scrollTop = cy * newZoom - el.clientHeight / 2;
-    });
+    }, 0);
   }
 
   function handleFitToScreen() {
@@ -454,7 +457,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
   // descobrir que precisa arrastar/clicar em "ajustar à tela" manualmente.
   useEffect(() => {
     if (!loaded) return;
-    requestAnimationFrame(() => fitToScreen(nodes));
+    setTimeout(() => fitToScreen(nodes), 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
 
