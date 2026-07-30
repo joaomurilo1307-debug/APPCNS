@@ -163,6 +163,14 @@ export default function ScheduleChart({
   }
   const byId = new Map(tasks.map((t) => [t.id, t]));
 
+  function toggleDepPanel(taskId: string) {
+    setDepPanelFor((prev) => (prev === taskId ? null : taskId));
+    setNewPredId("");
+    setNewType("FS");
+    setNewLag("0");
+    setDepError(null);
+  }
+
   async function handleAddDependency(successorId: string) {
     if (!newPredId) return;
     setSavingDep(true);
@@ -228,6 +236,7 @@ export default function ScheduleChart({
           </span>
         ) : (
           <>
+            <span className="rounded-full bg-brand/10 px-2.5 py-1 font-medium text-brand">⏱️ Caminho crítico: {cpm.projectDurationDays} dia(s)</span>
             <span className="rounded-full bg-rose-50 px-2.5 py-1 font-medium text-rose-600">🔴 {criticalCount} tarefa(s) crítica(s)</span>
             {conflictCount > 0 && (
               <span className="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
@@ -323,7 +332,7 @@ export default function ScheduleChart({
                   const actualWidth = actualStart !== null && actualEndRaw !== null ? Math.max(1, actualEndRaw - actualStart + 1) * dayWidth : 0;
 
                   return (
-                    <div key={t.id}>
+                    <div key={t.id} className="relative">
                       <div className="flex border-b border-gray-50 hover:bg-gray-50/60" style={{ height: ROW_H }}>
                         <div style={{ width: labelPx, paddingLeft: 12 + depth * 16 }} className="flex shrink-0 items-center gap-1 pr-2 text-xs">
                           {depth > 0 && <span className="text-gray-300">↳</span>}
@@ -334,9 +343,9 @@ export default function ScheduleChart({
                           {hasConflict && <span title="Conflito: início planejado antes do permitido pela rede de dependências">⚠️</span>}
                           {canManage && (
                             <button
-                              onClick={() => setDepPanelFor(depPanelFor === t.id ? null : t.id)}
+                              onClick={() => toggleDepPanel(t.id)}
                               title="Gerenciar dependências"
-                              className="ml-auto shrink-0 text-gray-300 hover:text-brand-dark"
+                              className={`ml-auto shrink-0 ${depPanelFor === t.id ? "text-brand-dark" : "text-gray-300 hover:text-brand-dark"}`}
                             >
                               🔗
                             </button>
@@ -368,11 +377,11 @@ export default function ScheduleChart({
                       </div>
 
                       {depPanelFor === t.id && (
-                        <div className="border-b border-gray-100 bg-gray-50/70 px-4 py-3 text-xs">
+                        <div className="shadow-elevated absolute left-0 right-0 top-full z-30 border border-gray-100 bg-white px-4 py-3 text-xs">
                           <p className="mb-1.5 font-semibold text-gray-600">Predecessoras de "{t.title}"</p>
                           <div className="mb-2 flex flex-col gap-1">
                             {(t.predecessorLinks ?? []).map((link) => (
-                              <div key={link.id} className="flex items-center gap-2 rounded-md bg-white px-2 py-1.5">
+                              <div key={link.id} className="flex items-center gap-2 rounded-md bg-gray-50 px-2 py-1.5">
                                 <span className="flex-1 truncate">{link.predecessor.title}</span>
                                 <span className="text-gray-400">{dependencyTypeLabel[link.type]}</span>
                                 {link.lagDays !== 0 && <span className="text-gray-400">({link.lagDays > 0 ? "+" : ""}{link.lagDays}d)</span>}
@@ -388,7 +397,7 @@ export default function ScheduleChart({
                               className="rounded-md border border-gray-300 px-2 py-1"
                             >
                               <option value="">Escolher tarefa predecessora...</option>
-                              {tasks
+                              {withDates
                                 .filter((o) => o.id !== t.id)
                                 .map((o) => (
                                   <option key={o.id} value={o.id}>{o.title}</option>
@@ -414,6 +423,7 @@ export default function ScheduleChart({
                               Adicionar
                             </button>
                           </div>
+                          <p className="mt-1.5 text-gray-400">Só tarefas com início e prazo definidos aparecem na lista — sem data, a dependência não entra no cálculo do caminho crítico.</p>
                           {depError && <p className="mt-1.5 text-rose-600">{depError}</p>}
                         </div>
                       )}

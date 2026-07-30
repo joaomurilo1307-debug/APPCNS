@@ -31,6 +31,8 @@ export type CpmResult = {
   results: Map<string, CpmTaskResult>;
   hasCycle: boolean;
   cycleTaskIds: string[];
+  /** duração total da rede (dias), do início da tarefa mais cedo ao fim da tarefa crítica mais tardia */
+  projectDurationDays: number;
 };
 
 /**
@@ -61,7 +63,7 @@ export function computeCPM(tasks: CpmTaskInput[], dependencies: CpmDependencyInp
   }
 
   const results = new Map<string, CpmTaskResult>();
-  if (scheduled.length === 0 || !epoch) return { results, hasCycle: false, cycleTaskIds: [] };
+  if (scheduled.length === 0 || !epoch) return { results, hasCycle: false, cycleTaskIds: [], projectDurationDays: 0 };
   const epochDate = epoch;
 
   const validDeps = dependencies.filter((d) => idSet.has(d.predecessorId) && idSet.has(d.successorId));
@@ -91,7 +93,7 @@ export function computeCPM(tasks: CpmTaskInput[], dependencies: CpmDependencyInp
   }
   if (order.length !== scheduled.length) {
     const cycleTaskIds = scheduled.map((t) => t.id).filter((id) => !order.includes(id));
-    return { results, hasCycle: true, cycleTaskIds };
+    return { results, hasCycle: true, cycleTaskIds, projectDurationDays: 0 };
   }
 
   // Passada pra frente: ES/EF
@@ -158,5 +160,5 @@ export function computeCPM(tasks: CpmTaskInput[], dependencies: CpmDependencyInp
     });
   }
 
-  return { results, hasCycle: false, cycleTaskIds: [] };
+  return { results, hasCycle: false, cycleTaskIds: [], projectDurationDays: projectEnd };
 }

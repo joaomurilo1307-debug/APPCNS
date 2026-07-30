@@ -13,8 +13,11 @@ async function canManageSchedule(userId: string, role: string, task: { projectId
   return canManageTeam(userId, role, project.teamId);
 }
 
-/** Verifica se existe caminho de `fromId` até `toId` seguindo predecessor -> sucessor (evita ciclo). */
-async function hasPath(fromId: string, toId: string): Promise<boolean> {
+/**
+ * Verifica se existe caminho de `fromId` até `toId` seguindo predecessor -> sucessor (evita ciclo).
+ * Busca todas as dependências de uma vez (não por passo do BFS) pra evitar N+1 numa rede grande.
+ */
+function hasPath(fromId: string, toId: string, adjacency: Map<string, string[]>): boolean {
   const visited = new Set<string>();
   const queue = [fromId];
   while (queue.length) {
@@ -22,8 +25,7 @@ async function hasPath(fromId: string, toId: string): Promise<boolean> {
     if (current === toId) return true;
     if (visited.has(current)) continue;
     visited.add(current);
-    const links = await prisma.taskDependency.findMany({ where: { predecessorId: current }, select: { successorId: true } });
-    for (const l of links) queue.push(l.successorId);
+    for (const next of adjacency.get(current) ?? []) queue.push(next);
   }
   return false;
 }
@@ -58,7 +60,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const predecessor = await prisma.task.findUnique({ where: { id: parsed.data.predecessorId } });
   if (!predecessor) return NextResponse.json({ error: "Tarefa predecessora não encontrada" }, { status: 404 });
 
-  if (await hasPath(params.id, parsed.data.predecessorId)) {
+  if (task.projectId && predecessor.projectId && task.projectId !== predecessor.projectId) {
+    return NextResponse.json({ error: "As duas tarefas precisam ser do mesmo projeto" }, { status: 422 });
+  }
+
+  const allLinks = await prisma.taskDependency.findMany({ select: { predecessorId: true, successorId: true } });
+  const adjacency = new Map<string, string[]>();
+  for (const l of allLinks) {
+    if (!adjacency.has(l.predecessorId)) adjacency.set(l.predecessorId, []);
+    adjacency.get(l.predecessorId)!.push(l.successorId);
+  }
+
+  if (hasPath(params.id, parsed.data.predecessorId, adjacency)) {
     return NextResponse.json({ error: "Isso criaria um ciclo de dependências (a predecessora já depende, direta ou indiretamente, desta tarefa)" }, { status: 422 });
   }
 
