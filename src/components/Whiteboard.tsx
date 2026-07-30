@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+
+type NodeShape = "rounded" | "rect" | "ellipse" | "diamond";
 
 type MindNode = {
   id: string;
@@ -8,6 +10,7 @@ type MindNode = {
   x: number;
   y: number;
   color: string;
+  shape?: NodeShape;
   parentId: string | null;
 };
 
@@ -32,6 +35,26 @@ const PALETTE = [
 ];
 
 const DRAW_COLORS = ["#1f2937", "#dc2626", "#2563eb", "#16a34a", "#d97706"];
+
+const SHAPES: { v: NodeShape; label: string; icon: string }[] = [
+  { v: "rounded", label: "Arredondado", icon: "▢" },
+  { v: "rect", label: "Retângulo", icon: "▭" },
+  { v: "ellipse", label: "Elipse", icon: "⬭" },
+  { v: "diamond", label: "Losango", icon: "◇" },
+];
+
+function shapeStyle(shape: NodeShape | undefined): CSSProperties {
+  switch (shape) {
+    case "rect":
+      return { borderRadius: 4 };
+    case "ellipse":
+      return { borderRadius: 9999 };
+    case "diamond":
+      return { borderRadius: 6, clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" };
+    default:
+      return { borderRadius: 14 };
+  }
+}
 
 const CANVAS_W = 2400;
 const CANVAS_H = 1400;
@@ -128,6 +151,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState("");
   const [colorPickerFor, setColorPickerFor] = useState<string | null>(null);
+  const [shapePickerFor, setShapePickerFor] = useState<string | null>(null);
   const [history, setHistory] = useState<BoardSnapshot[]>([]);
   const [future, setFuture] = useState<BoardSnapshot[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -262,6 +286,12 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     pushHistory();
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, color: bg } : n)));
     setColorPickerFor(null);
+  }
+
+  function handleSetShape(id: string, shape: NodeShape) {
+    pushHistory();
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, shape } : n)));
+    setShapePickerFor(null);
   }
 
   function startEdit(id: string) {
@@ -535,6 +565,30 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
                   </div>
                 )}
               </div>
+              <div className="relative">
+                <button
+                  onClick={() => setShapePickerFor(shapePickerFor === selected.id ? null : selected.id)}
+                  className="rounded-full bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200"
+                >
+                  🔷 Forma
+                </button>
+                {shapePickerFor === selected.id && (
+                  <div className="shadow-elevated absolute left-0 top-9 z-10 flex gap-1 rounded-xl border border-gray-100 bg-white p-1.5">
+                    {SHAPES.map((s) => (
+                      <button
+                        key={s.v}
+                        onClick={() => handleSetShape(selected.id, s.v)}
+                        title={s.label}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg text-base hover:bg-gray-100 ${
+                          (selected.shape ?? "rounded") === s.v ? "bg-gray-200" : ""
+                        }`}
+                      >
+                        {s.icon}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button onClick={() => startEdit(selected.id)} className="rounded-full bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
                 ✏️ Editar texto
               </button>
@@ -623,7 +677,10 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
               const palette = PALETTE.find((p) => p.bg === n.color) ?? PALETTE[0];
               const isSelected = n.id === selectedId;
               const isEditing = n.id === editingId;
-              const width = nodeWidth(isEditing ? draftText : n.text);
+              const shape = n.shape ?? "rounded";
+              const width = nodeWidth(isEditing ? draftText : n.text) + (shape === "diamond" ? 60 : 0);
+              const padClass = shape === "diamond" ? "px-8 py-8" : "px-3 py-2";
+              const minHClass = shape === "diamond" ? "min-h-[100px]" : "min-h-[44px]";
               return (
                 <div
                   key={n.id}
@@ -632,7 +689,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
                     e.stopPropagation();
                     if (tool === "select") startEdit(n.id);
                   }}
-                  className={`absolute flex min-h-[44px] items-center justify-center rounded-xl px-3 py-2 text-center text-sm font-medium ${
+                  className={`absolute flex ${minHClass} items-center justify-center ${padClass} text-center text-sm font-medium ${
                     tool === "select" ? "cursor-grab active:cursor-grabbing" : ""
                   }`}
                   style={{
@@ -645,6 +702,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
                     color: "#1f2937",
                     boxShadow: isSelected ? `0 0 0 3px ${palette.border}66, 0 1px 2px rgba(0,0,0,0.05)` : "0 1px 2px rgba(0,0,0,0.05)",
                     pointerEvents: tool === "draw" ? "none" : "auto",
+                    ...shapeStyle(shape),
                   }}
                 >
                   {isEditing ? (
