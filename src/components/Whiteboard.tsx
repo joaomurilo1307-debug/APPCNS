@@ -522,12 +522,14 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <div className="flex overflow-hidden rounded-full border border-gray-200 shadow-soft">
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setTool("select")}
             className={`px-3 py-1.5 text-sm font-medium ${tool === "select" ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
           >
             🖱️ Selecionar
           </button>
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setTool("draw")}
             className={`px-3 py-1.5 text-sm font-medium ${tool === "draw" ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
           >
@@ -537,6 +539,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
 
         <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white px-1 py-1 shadow-soft">
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleUndo}
             disabled={history.length === 0}
             className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-30"
@@ -545,6 +548,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
             ↩️ Desfazer
           </button>
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleRedo}
             disabled={future.length === 0}
             className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-30"
@@ -555,21 +559,21 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
         </div>
 
         <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white px-1 py-1 shadow-soft">
-          <button onClick={() => handleZoom(-0.1)} className="rounded-full px-2 py-1 text-sm hover:bg-gray-100">−</button>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleZoom(-0.1)} className="rounded-full px-2 py-1 text-sm hover:bg-gray-100">−</button>
           <span className="w-10 text-center text-xs text-gray-500">{Math.round(zoom * 100)}%</span>
-          <button onClick={() => handleZoom(0.1)} className="rounded-full px-2 py-1 text-sm hover:bg-gray-100">+</button>
-          <button onClick={handleFitToScreen} className="rounded-full px-2 py-1 text-xs text-gray-500 hover:bg-gray-100" title="Ajustar à tela">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleZoom(0.1)} className="rounded-full px-2 py-1 text-sm hover:bg-gray-100">+</button>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={handleFitToScreen} className="rounded-full px-2 py-1 text-xs text-gray-500 hover:bg-gray-100" title="Ajustar à tela">
             ⛶
           </button>
         </div>
 
-        <button onClick={handleAutoLayout} className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 shadow-soft hover:border-brand/30">
+        <button onMouseDown={(e) => e.preventDefault()} onClick={handleAutoLayout} className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 shadow-soft hover:border-brand/30">
           🧭 Organizar automaticamente
         </button>
 
         {saving && <span className="text-xs text-gray-400">salvando...</span>}
 
-        <button onClick={handleClearAll} className="ml-auto rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-500 shadow-soft hover:border-red-200 hover:text-red-600">
+        <button onMouseDown={(e) => e.preventDefault()} onClick={handleClearAll} className="ml-auto rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-500 shadow-soft hover:border-red-200 hover:text-red-600">
           Limpar tudo
         </button>
       </div>
@@ -577,6 +581,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
       {tool === "select" && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => handleAddChild(selectedId ?? "root")}
             className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-soft hover:bg-brand-dark"
           >
@@ -586,6 +591,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
             <>
               <div className="relative">
                 <button
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setColorPickerFor(colorPickerFor === selected.id ? null : selected.id)}
                   className="rounded-full bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200"
                 >
@@ -596,6 +602,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
                     {PALETTE.map((p) => (
                       <button
                         key={p.bg}
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => handleSetColor(selected.id, p.bg)}
                         className="h-6 w-6 rounded-full border-2"
                         style={{ backgroundColor: p.bg, borderColor: p.border }}
@@ -606,6 +613,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
               </div>
               <div className="relative">
                 <button
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setShapePickerFor(shapePickerFor === selected.id ? null : selected.id)}
                   className="rounded-full bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200"
                 >
@@ -616,6 +624,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
                     {SHAPES.map((s) => (
                       <button
                         key={s.v}
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => handleSetShape(selected.id, s.v)}
                         title={s.label}
                         className={`flex h-8 w-8 items-center justify-center rounded-lg text-base hover:bg-gray-100 ${
@@ -628,11 +637,11 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
                   </div>
                 )}
               </div>
-              <button onClick={() => startEdit(selected.id)} className="rounded-full bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
+              <button onMouseDown={(e) => e.preventDefault()} onClick={() => startEdit(selected.id)} className="rounded-full bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
                 ✏️ Editar texto
               </button>
               {selected.id !== "root" && (
-                <button onClick={() => handleDeleteNode(selected.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-sm text-red-600 hover:bg-red-100">
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleDeleteNode(selected.id)} className="rounded-full bg-red-50 px-3 py-1.5 text-sm text-red-600 hover:bg-red-100">
                   ✕ Excluir
                 </button>
               )}

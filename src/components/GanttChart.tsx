@@ -52,16 +52,19 @@ export default function GanttChart({
 
   const withDates = useMemo(() => tasks.filter((t) => t.startDate && t.dueDate), [tasks]);
 
+  // A hierarquia (numeração WBS + indentação) precisa vir de TODAS as tarefas, não só as
+  // com data — senão subtarefa sem data some da lista inteira, não só perde a barra. A barra
+  // em si continua só desenhada pra quem tem início+prazo (ver render abaixo).
   const groups = useMemo(() => {
-    if (!groupByProject) return [{ label: null as string | null, rows: buildWbsHierarchy(withDates) }];
+    if (!groupByProject) return [{ label: null as string | null, rows: buildWbsHierarchy(tasks) }];
     const map = new Map<string, Task[]>();
-    withDates.forEach((t) => {
+    tasks.forEach((t) => {
       const key = t.groupLabel ?? "Sem projeto";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
     });
-    return Array.from(map.entries()).map(([label, tasks]) => ({ label, rows: buildWbsHierarchy(tasks) }));
-  }, [withDates, groupByProject]);
+    return Array.from(map.entries()).map(([label, ts]) => ({ label, rows: buildWbsHierarchy(ts) }));
+  }, [tasks, groupByProject]);
 
   const { rangeStart, totalDays } = useMemo(() => {
     const allDates: Date[] = [];
@@ -90,8 +93,9 @@ export default function GanttChart({
     return d;
   });
 
-  if (withDates.length === 0) {
-    return <p className="text-sm text-gray-400">Nenhuma tarefa com data de início e prazo definidos ainda.</p>;
+  const totalRows = groups.reduce((sum, g) => sum + g.rows.length, 0);
+  if (totalRows === 0) {
+    return <p className="text-sm text-gray-400">Nenhuma tarefa neste projeto ainda.</p>;
   }
 
   return (
@@ -153,8 +157,9 @@ export default function GanttChart({
                 </div>
               )}
               {group.rows.map(({ task: t, depth, wbs }) => {
-                const start = offsetDays(t.startDate!);
-                const end = offsetDays(t.dueDate!);
+                const hasDates = !!(t.startDate && t.dueDate);
+                const start = hasDates ? offsetDays(t.startDate!) : 0;
+                const end = hasDates ? offsetDays(t.dueDate!) : 0;
                 const width = Math.max(1, end - start + 1) * dayWidth;
                 return (
                   <div key={t.id} className="flex border-b border-gray-50 hover:bg-gray-50/60">
@@ -165,21 +170,32 @@ export default function GanttChart({
                       className="flex shrink-0 cursor-pointer items-center gap-1.5 truncate py-2 pr-2 text-xs hover:text-brand-dark hover:underline"
                     >
                       <span className="shrink-0 font-mono text-[10px] text-gray-400">{wbs}</span>
+                      {depth > 0 && <span className="shrink-0 text-gray-300">↳</span>}
                       <span className="truncate">{t.title}</span>
                     </div>
                     <div className="relative" style={{ width: totalDays * dayWidth, height: 32 }}>
-                      <div
-                        onClick={() => setOpenTaskId(t.id)}
-                        className={`group absolute top-1.5 h-4 cursor-pointer rounded ${statusColor[t.status]}`}
-                        style={{ left: start * dayWidth, width }}
-                      >
-                        <div className="pointer-events-none absolute -top-9 left-0 z-10 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-                          <span className="font-medium">{t.title}</span>
-                          <span className="ml-1 text-gray-300">
-                            · {fmtDate(new Date(t.startDate!))} – {fmtDate(new Date(t.dueDate!))} · {statusLabel[t.status]}
-                          </span>
+                      {hasDates ? (
+                        <div
+                          onClick={() => setOpenTaskId(t.id)}
+                          className={`group absolute top-1.5 h-4 cursor-pointer rounded ${statusColor[t.status]}`}
+                          style={{ left: start * dayWidth, width }}
+                        >
+                          <div className="pointer-events-none absolute -top-9 left-0 z-10 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                            <span className="font-medium">{t.title}</span>
+                            <span className="ml-1 text-gray-300">
+                              · {fmtDate(new Date(t.startDate!))} – {fmtDate(new Date(t.dueDate!))} · {statusLabel[t.status]}
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <span
+                          onClick={() => setOpenTaskId(t.id)}
+                          className="absolute top-2 cursor-pointer text-[10px] text-gray-300 hover:text-gray-400"
+                          style={{ left: 4 }}
+                        >
+                          sem data
+                        </span>
+                      )}
                     </div>
                   </div>
                 );

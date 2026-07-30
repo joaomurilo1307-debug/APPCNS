@@ -43,13 +43,18 @@ const ZOOM_LEVELS = { compacto: 16, médio: 26, largo: 42 } as const;
 const NAME_WIDTHS = { estreita: 200, larga: 320 } as const;
 const ROW_H = 36;
 const WBS_W = 40;
-const DUR_W = 58;
-const START_W = 92;
-const END_W = 92;
-const REAL_W = 118;
-const PCT_W = 48;
-const FLOAT_W = 60;
-const PRED_W = 92;
+
+const COLUMNS = [
+  { key: "dur", label: "Dur.", width: 58 },
+  { key: "start", label: "Início prev.", width: 92 },
+  { key: "end", label: "Término prev.", width: 92 },
+  { key: "realStart", label: "Início real", width: 76 },
+  { key: "realEnd", label: "Término real", width: 76 },
+  { key: "pct", label: "%", width: 48 },
+  { key: "float", label: "Folga", width: 60 },
+  { key: "pred", label: "Predec.", width: 92 },
+] as const;
+type ColumnKey = (typeof COLUMNS)[number]["key"];
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
@@ -87,7 +92,7 @@ export default function ScheduleChart({
   onChanged?: () => void;
   canManage?: boolean;
 }) {
-  const [zoom, setZoom] = useState<keyof typeof ZOOM_LEVELS>("médio");
+  const [zoom, setZoom] = useState<keyof typeof ZOOM_LEVELS>("compacto");
   const [nameWidth, setNameWidth] = useState<keyof typeof NAME_WIDTHS>("estreita");
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [depPanelFor, setDepPanelFor] = useState<string | null>(null);
@@ -100,10 +105,45 @@ export default function ScheduleChart({
   const dragRef = useRef(drag);
   dragRef.current = drag;
   const draggedRef = useRef(false);
+  const [hiddenCols, setHiddenCols] = useState<Set<ColumnKey>>(new Set());
+  const [showColMenu, setShowColMenu] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null);
 
   const dayWidth = ZOOM_LEVELS[zoom];
   const namePx = NAME_WIDTHS[nameWidth];
-  const TABLE_W = WBS_W + namePx + DUR_W + START_W + END_W + REAL_W + PCT_W + FLOAT_W + PRED_W;
+  const visibleCols = COLUMNS.filter((c) => !hiddenCols.has(c.key));
+  const TABLE_W = WBS_W + namePx + visibleCols.reduce((sum, c) => sum + c.width, 0);
+
+  function toggleCol(key: ColumnKey) {
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  // Arrastar o fundo (área de datas, fora da tabela fixa e dos controles) pra fazer pan
+  // horizontal/vertical — como no Mind Chart. Barras e a tabela sticky/inputs ficam de fora
+  // porque já param a propagação (barras) ou são detectados aqui (.sticky, input, button...).
+  function handlePanPointerDown(e: React.PointerEvent) {
+    const target = e.target as HTMLElement;
+    if (target.closest("input, button, select, textarea, .sticky")) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    panRef.current = { startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
+  }
+  function handlePanPointerMove(e: React.PointerEvent) {
+    if (!panRef.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollLeft = panRef.current.scrollLeft - (e.clientX - panRef.current.startX);
+    el.scrollTop = panRef.current.scrollTop - (e.clientY - panRef.current.startY);
+  }
+  function handlePanPointerUp() {
+    panRef.current = null;
+  }
 
   const withDates = useMemo(() => tasks.filter((t) => t.startDate && t.dueDate), [tasks]);
 
@@ -303,11 +343,35 @@ export default function ScheduleChart({
             )}
           </>
         )}
-        {canManage && <span className="text-gray-400">Arraste a barra pra mover · segure a borda direita pra mudar a duração</span>}
+        <div className="relative">
+          <button
+            onClick={() => setShowColMenu((v) => !v)}
+            className={`rounded-md border px-2 py-1 ${showColMenu ? "border-brand bg-brand text-white" : "border-gray-300 hover:bg-gray-50"}`}
+          >
+            ⚙️ Colunas
+          </button>
+          {showColMenu && (
+            <div className="shadow-elevated absolute left-0 top-9 z-40 w-44 rounded-lg border border-gray-100 bg-white p-2 text-xs normal-case text-gray-700">
+              {COLUMNS.map((c) => (
+                <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-gray-50">
+                  <input type="checkbox" checked={!hiddenCols.has(c.key)} onChange={() => toggleCol(c.key)} />
+                  {c.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        {canManage && <span className="text-gray-400">Arraste a barra pra mover · segure a borda direita pra mudar a duração · arraste o fundo do cronograma pra navegar</span>}
       </div>
 
-      <div className="overflow-auto rounded-xl border border-gray-200 bg-white" style={{ maxHeight: "72vh" }}>
-        <div style={{ width: TABLE_W + totalDays * dayWidth }}>
+      <div ref={scrollRef} className="overflow-auto rounded-xl border border-gray-200 bg-white" style={{ maxHeight: "72vh" }}>
+        <div
+          style={{ width: TABLE_W + totalDays * dayWidth, cursor: "grab" }}
+          onPointerDown={handlePanPointerDown}
+          onPointerMove={handlePanPointerMove}
+          onPointerUp={handlePanPointerUp}
+          onPointerLeave={handlePanPointerUp}
+        >
           {/* cabeçalho */}
           <div className="flex" style={{ height: ROW_H }}>
             <div
@@ -316,13 +380,9 @@ export default function ScheduleChart({
             >
               <div style={{ width: WBS_W }} className="px-1.5 text-center">#</div>
               <div style={{ width: namePx }} className="px-2">Tarefa</div>
-              <div style={{ width: DUR_W }} className="px-1.5 text-center">Dur.</div>
-              <div style={{ width: START_W }} className="px-1.5 text-center">Início prev.</div>
-              <div style={{ width: END_W }} className="px-1.5 text-center">Término prev.</div>
-              <div style={{ width: REAL_W }} className="px-1.5 text-center">Execução real</div>
-              <div style={{ width: PCT_W }} className="px-1.5 text-center">%</div>
-              <div style={{ width: FLOAT_W }} className="px-1.5 text-center">Folga</div>
-              <div style={{ width: PRED_W }} className="px-1.5 text-center">Predec.</div>
+              {visibleCols.map((c) => (
+                <div key={c.key} style={{ width: c.width }} className="px-1.5 text-center">{c.label}</div>
+              ))}
             </div>
             <div className="sticky top-0 z-20 flex shrink-0 border-b border-gray-200 bg-gray-50">
               {days.map((d, i) => {
@@ -445,55 +505,72 @@ export default function ScheduleChart({
                       {isCritical && <span className="shrink-0" title="No caminho crítico (folga zero)">🔴</span>}
                       {hasConflict && <span className="shrink-0" title="Conflito: início planejado antes do permitido pela rede">⚠️</span>}
                     </div>
-                    <div style={{ width: DUR_W }} className="shrink-0 px-1">
-                      <input
-                        type="number"
-                        min={0}
-                        disabled={!canManage || !t.startDate}
-                        defaultValue={dur ?? ""}
-                        onBlur={(e) => e.target.value !== "" && handleDurationChange(t, e.target.value)}
-                        title={t.startDate ? "Duração em dias — preenche o término automaticamente" : "Defina o início primeiro"}
-                        className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-center hover:border-gray-200 focus:border-brand disabled:text-gray-300"
-                      />
-                    </div>
-                    <div style={{ width: START_W }} className="shrink-0 px-1">
-                      <input
-                        type="date"
-                        disabled={!canManage}
-                        defaultValue={toDateInput(t.startDate)}
-                        onBlur={(e) => handleStartChange(t, e.target.value)}
-                        className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-[10px] hover:border-gray-200 focus:border-brand disabled:text-gray-400"
-                      />
-                    </div>
-                    <div style={{ width: END_W }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
-                      {t.dueDate ? fmtDate(new Date(t.dueDate)) : "—"}
-                    </div>
-                    <div style={{ width: REAL_W }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
-                      {t.actualStartedAt
-                        ? `${fmtDate(new Date(t.actualStartedAt))} – ${t.actualEndedAt ? fmtDate(new Date(t.actualEndedAt)) : "..."}`
-                        : "—"}
-                    </div>
-                    <div style={{ width: PCT_W }} className="shrink-0 px-1 text-center text-[10px] font-medium text-gray-500">
-                      {pct}%
-                    </div>
-                    <div style={{ width: FLOAT_W }} className="shrink-0 px-1 text-center text-[10px]">
-                      {result && !cpm.hasCycle ? (
-                        isCritical ? <span className="font-medium text-rose-600">crítica</span> : <span className="text-gray-400">{result.float}d</span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </div>
-                    <div style={{ width: PRED_W }} className="shrink-0 px-1">
-                      <button
-                        onClick={() => toggleDepPanel(t.id)}
-                        title="Gerenciar dependências"
-                        className={`w-full truncate rounded px-1 py-1 text-left text-[10px] hover:bg-gray-100 ${
-                          depPanelFor === t.id ? "bg-brand/10 text-brand-dark" : "text-gray-500"
-                        }`}
-                      >
-                        {predText || "—"} 🔗
-                      </button>
-                    </div>
+                    {!hiddenCols.has("dur") && (
+                      <div style={{ width: COLUMNS[0].width }} className="shrink-0 px-1">
+                        <input
+                          type="number"
+                          min={0}
+                          disabled={!canManage || !t.startDate}
+                          defaultValue={dur ?? ""}
+                          onBlur={(e) => e.target.value !== "" && handleDurationChange(t, e.target.value)}
+                          title={t.startDate ? "Duração em dias — preenche o término automaticamente" : "Defina o início primeiro"}
+                          className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-center hover:border-gray-200 focus:border-brand disabled:text-gray-300"
+                        />
+                      </div>
+                    )}
+                    {!hiddenCols.has("start") && (
+                      <div style={{ width: COLUMNS[1].width }} className="shrink-0 px-1">
+                        <input
+                          type="date"
+                          disabled={!canManage}
+                          defaultValue={toDateInput(t.startDate)}
+                          onBlur={(e) => handleStartChange(t, e.target.value)}
+                          className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-[10px] hover:border-gray-200 focus:border-brand disabled:text-gray-400"
+                        />
+                      </div>
+                    )}
+                    {!hiddenCols.has("end") && (
+                      <div style={{ width: COLUMNS[2].width }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
+                        {t.dueDate ? fmtDate(new Date(t.dueDate)) : "—"}
+                      </div>
+                    )}
+                    {!hiddenCols.has("realStart") && (
+                      <div style={{ width: COLUMNS[3].width }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
+                        {t.actualStartedAt ? fmtDate(new Date(t.actualStartedAt)) : "—"}
+                      </div>
+                    )}
+                    {!hiddenCols.has("realEnd") && (
+                      <div style={{ width: COLUMNS[4].width }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
+                        {t.actualEndedAt ? fmtDate(new Date(t.actualEndedAt)) : t.actualStartedAt ? "..." : "—"}
+                      </div>
+                    )}
+                    {!hiddenCols.has("pct") && (
+                      <div style={{ width: COLUMNS[5].width }} className="shrink-0 px-1 text-center text-[10px] font-medium text-gray-500">
+                        {pct}%
+                      </div>
+                    )}
+                    {!hiddenCols.has("float") && (
+                      <div style={{ width: COLUMNS[6].width }} className="shrink-0 px-1 text-center text-[10px]">
+                        {result && !cpm.hasCycle ? (
+                          isCritical ? <span className="font-medium text-rose-600">crítica</span> : <span className="text-gray-400">{result.float}d</span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </div>
+                    )}
+                    {!hiddenCols.has("pred") && (
+                      <div style={{ width: COLUMNS[7].width }} className="shrink-0 px-1">
+                        <button
+                          onClick={() => toggleDepPanel(t.id)}
+                          title="Gerenciar dependências"
+                          className={`w-full truncate rounded px-1 py-1 text-left text-[10px] hover:bg-gray-100 ${
+                            depPanelFor === t.id ? "bg-brand/10 text-brand-dark" : "text-gray-500"
+                          }`}
+                        >
+                          {predText || "—"} 🔗
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="relative shrink-0 group-hover:bg-gray-50/40" style={{ width: totalDays * dayWidth, height: ROW_H }}>
