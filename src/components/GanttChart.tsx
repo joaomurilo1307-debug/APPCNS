@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import TaskDetailModal from "./TaskDetailModal";
+import { buildWbsHierarchy } from "@/lib/wbs";
 
 type Task = {
   id: string;
@@ -10,6 +11,7 @@ type Task = {
   dueDate: string | null;
   status: string;
   groupLabel?: string | null;
+  parentTaskId?: string | null;
 };
 
 const statusColor: Record<string, string> = {
@@ -51,14 +53,14 @@ export default function GanttChart({
   const withDates = useMemo(() => tasks.filter((t) => t.startDate && t.dueDate), [tasks]);
 
   const groups = useMemo(() => {
-    if (!groupByProject) return [{ label: null as string | null, tasks: withDates }];
+    if (!groupByProject) return [{ label: null as string | null, rows: buildWbsHierarchy(withDates) }];
     const map = new Map<string, Task[]>();
     withDates.forEach((t) => {
       const key = t.groupLabel ?? "Sem projeto";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
     });
-    return Array.from(map.entries()).map(([label, tasks]) => ({ label, tasks }));
+    return Array.from(map.entries()).map(([label, tasks]) => ({ label, rows: buildWbsHierarchy(tasks) }));
   }, [withDates, groupByProject]);
 
   const { rangeStart, totalDays } = useMemo(() => {
@@ -150,19 +152,20 @@ export default function GanttChart({
                   <div style={{ width: totalDays * dayWidth }} />
                 </div>
               )}
-              {group.tasks.map((t) => {
+              {group.rows.map(({ task: t, depth, wbs }) => {
                 const start = offsetDays(t.startDate!);
                 const end = offsetDays(t.dueDate!);
                 const width = Math.max(1, end - start + 1) * dayWidth;
                 return (
                   <div key={t.id} className="flex border-b border-gray-50 hover:bg-gray-50/60">
                     <div
-                      style={{ width: labelPx }}
+                      style={{ width: labelPx, paddingLeft: 12 + depth * 16 }}
                       title={t.title}
                       onClick={() => setOpenTaskId(t.id)}
-                      className="shrink-0 cursor-pointer truncate px-3 py-2 text-xs hover:text-brand-dark hover:underline"
+                      className="flex shrink-0 cursor-pointer items-center gap-1.5 truncate py-2 pr-2 text-xs hover:text-brand-dark hover:underline"
                     >
-                      {t.title}
+                      <span className="shrink-0 font-mono text-[10px] text-gray-400">{wbs}</span>
+                      <span className="truncate">{t.title}</span>
                     </div>
                     <div className="relative" style={{ width: totalDays * dayWidth, height: 32 }}>
                       <div
