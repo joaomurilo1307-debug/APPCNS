@@ -239,6 +239,25 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     };
   }
 
+  // Rola a tela pra manter um ponto do canvas visível, sem mudar o zoom (diferente de
+  // fitToScreen, que recalcula zoom pra caber tudo — aqui é só "não perder de vista o que
+  // acabou de aparecer"). setTimeout em vez de rAF pelo mesmo motivo do centralizar no load.
+  function panToPoint(x: number, y: number) {
+    const el = containerRef.current;
+    if (!el) return;
+    setTimeout(() => {
+      const margin = 60;
+      const viewLeft = el.scrollLeft / zoom;
+      const viewTop = el.scrollTop / zoom;
+      const viewRight = viewLeft + el.clientWidth / zoom;
+      const viewBottom = viewTop + el.clientHeight / zoom;
+      const alreadyVisible = x > viewLeft + margin && x < viewRight - margin && y > viewTop + margin && y < viewBottom - margin;
+      if (alreadyVisible) return;
+      el.scrollLeft = x * zoom - el.clientWidth / 2;
+      el.scrollTop = y * zoom - el.clientHeight / 2;
+    }, 0);
+  }
+
   function handleAddChild(parentId: string | null) {
     pushHistory();
     const parent = parentId ? nodes.find((n) => n.id === parentId) : null;
@@ -252,6 +271,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     setSelectedId(node.id);
     setEditingId(node.id);
     setDraftText(node.text);
+    panToPoint(x, y);
   }
 
   function handleAddSibling(id: string) {
