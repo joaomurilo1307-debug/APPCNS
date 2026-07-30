@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import KanbanBoard from "@/components/KanbanBoard";
 import Whiteboard from "@/components/Whiteboard";
 import GoalsPanel from "@/components/GoalsPanel";
-import GanttChart from "@/components/GanttChart";
+import ScheduleChart from "@/components/ScheduleChart";
 import TaskListView from "@/components/TaskListView";
 import ResourcesPanel from "@/components/ResourcesPanel";
 import ProgressBar from "@/components/ProgressBar";
@@ -69,7 +69,17 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<"kanban" | "board" | "metas" | "gantt" | "lista" | "recursos" | "chat">("kanban");
   const [ganttTasks, setGanttTasks] = useState<
-    { id: string; title: string; startDate: string | null; dueDate: string | null; status: string }[]
+    {
+      id: string;
+      title: string;
+      startDate: string | null;
+      dueDate: string | null;
+      actualStartedAt: string | null;
+      actualEndedAt: string | null;
+      status: string;
+      parentTaskId: string | null;
+      predecessorLinks: { id: string; predecessorId: string; type: "FS" | "SS" | "FF" | "SF"; lagDays: number; predecessor: { id: string; title: string } }[];
+    }[]
   >([]);
 
   async function load() {
@@ -347,7 +357,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             tab === "gantt" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
           }`}
         >
-          Gantt
+          Programação
         </button>
         <button
           onClick={() => setTab("lista")}
@@ -377,7 +387,9 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
       {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} />}
       {tab === "board" && <Whiteboard projectId={project.id} />}
-      {tab === "gantt" && <GanttChart tasks={ganttTasks} onChanged={() => setRefreshKey((k) => k + 1)} />}
+      {tab === "gantt" && (
+        <ScheduleChart tasks={ganttTasks} onChanged={() => setRefreshKey((k) => k + 1)} canManage={canManage} />
+      )}
       {tab === "lista" && (
         <TaskListView projectId={project.id} projectName={project.name} team={project.team} canManage={canManage} />
       )}

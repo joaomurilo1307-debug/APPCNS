@@ -667,7 +667,6 @@ model Task {
   projectId         String?
   assigneeId        String?
   parentTaskId      String?
-  dependsOnId       String?
   locked            Boolean           @default(false)
   outlookEventId    String?           @unique
   actualStartedAt   DateTime?
@@ -679,18 +678,42 @@ model Task {
   assignee     User?                  @relation("TaskAssignee", fields: [assigneeId], references: [id])
   parentTask   Task?                  @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
   subtasks     Task[]                 @relation("Subtasks")
-  dependsOn    Task?                  @relation("TaskDependency", fields: [dependsOnId], references: [id], onDelete: SetNull)
-  blocksTasks  Task[]                 @relation("TaskDependency")
   attachments  Attachment[]
   comments     TaskComment[]
   customFieldValues TaskCustomFieldValue[]
+  predecessorLinks TaskDependency[] @relation("DependencySuccessor")
+  successorLinks   TaskDependency[] @relation("DependencyPredecessor")
 
   @@index([projectId])
   @@index([assigneeId])
   @@index([parentTaskId])
   @@index([status])
   @@index([dueDate])
-  @@index([dependsOnId])
+}
+
+enum DependencyType {
+  FS
+  SS
+  FF
+  SF
+}
+
+/** Dependencia de cronograma entre duas tarefas (rede de precedencia, estilo MS Project/Primavera).
+    predecessor precisa ocorrer (conforme `type`) antes do sucessor, com `lagDays` de folga/antecedencia. */
+model TaskDependency {
+  id            String         @id @default(cuid())
+  predecessorId String
+  successorId   String
+  type          DependencyType @default(FS)
+  lagDays       Int            @default(0)
+  createdAt     DateTime       @default(now())
+
+  predecessor Task @relation("DependencyPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor   Task @relation("DependencySuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId])
+  @@index([predecessorId])
+  @@index([successorId])
 }
 
 model TaskComment {

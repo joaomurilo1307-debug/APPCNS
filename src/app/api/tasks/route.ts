@@ -57,6 +57,9 @@ export async function GET(req: Request) {
         include: { assignee: { select: { id: true, name: true, avatarColor: true } } },
       },
       customFieldValues: true,
+      predecessorLinks: {
+        include: { predecessor: { select: { id: true, title: true } } },
+      },
       _count: { select: { attachments: true, comments: true, subtasks: true } },
     },
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
