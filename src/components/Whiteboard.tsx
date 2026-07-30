@@ -166,10 +166,15 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   useEffect(() => {
+    console.log("[WB DEBUG] strokes state changed " + JSON.stringify({ strokesLen: strokes.length }));
+  }, [strokes]);
+
+  useEffect(() => {
     if (!loaded) return;
     setSaving(true);
     const timeout = setTimeout(() => {
       const data: BoardData = { version: 3, nodes, strokes };
+      console.log("[WB DEBUG] saving " + JSON.stringify({ strokesLen: strokes.length }));
       fetch(`/api/projects/${projectId}/board`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -187,7 +192,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
   function handleUndo() {
     if (history.length === 0) return;
     const prev = history[history.length - 1];
-    console.log("[WB DEBUG] handleUndo", { historyLen: history.length, prevStrokes: prev.strokes.length, currentStrokes: strokes.length, prevNodes: prev.nodes.length, currentNodes: nodes.length });
+    console.log("[WB DEBUG] handleUndo " + JSON.stringify({ historyLen: history.length, prevStrokes: prev.strokes.length, currentStrokes: strokes.length, prevNodes: prev.nodes.length, currentNodes: nodes.length }));
     setFuture((f) => [{ nodes, strokes }, ...f].slice(0, 50));
     setHistory((h) => h.slice(0, -1));
     setNodes(prev.nodes);
@@ -300,7 +305,7 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     const pos = getCanvasPos(e.clientX, e.clientY);
     drawingRef.current = true;
     drawSnapshotRef.current = { nodes, strokes };
-    console.log("[WB DEBUG] startStroke snapshot", { strokesAtStart: strokes.length });
+    console.log("[WB DEBUG] startStroke snapshot " + JSON.stringify({ strokesAtStart: strokes.length }));
     const stroke: Stroke = { id: newId(), points: [pos], color: drawColor, width: drawWidth };
     currentStrokeRef.current = stroke;
     setCurrentStroke(stroke);
@@ -324,17 +329,21 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     currentStrokeRef.current = null;
     setCurrentStroke(null);
     if (finished && finished.points.length > 1) {
-      console.log("[WB DEBUG] endStroke committing", { snapshotStrokes: drawSnapshotRef.current?.strokes.length, points: finished.points.length });
+      console.log("[WB DEBUG] endStroke committing " + JSON.stringify({ snapshotStrokes: drawSnapshotRef.current?.strokes.length, points: finished.points.length }));
       if (drawSnapshotRef.current) {
         const snap = drawSnapshotRef.current;
         setHistory((h) => {
           const next = [...h.slice(-49), snap];
-          console.log("[WB DEBUG] setHistory updater", { prevLen: h.length, nextLen: next.length, pushedSnapStrokes: snap.strokes.length });
+          console.log("[WB DEBUG] setHistory updater " + JSON.stringify({ prevLen: h.length, nextLen: next.length, pushedSnapStrokes: snap.strokes.length }));
           return next;
         });
         setFuture([]);
       }
-      setStrokes((s) => [...s, finished]);
+      setStrokes((s) => {
+        const next = [...s, finished];
+        console.log("[WB DEBUG] setStrokes updater " + JSON.stringify({ prevLen: s.length, nextLen: next.length }));
+        return next;
+      });
     }
     drawSnapshotRef.current = null;
   }
