@@ -120,17 +120,26 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const user = await prisma.user.findUnique({ where: { id: params.id } });
   if (!user) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
-  const [tasksCount, projectsOwnedCount, eventsCreatedCount] = await Promise.all([
+  const [tasksCount, projectsOwnedCount, eventsCreatedCount, attachmentsCount, foldersCount] = await Promise.all([
     prisma.task.count({ where: { assigneeId: params.id } }),
     prisma.project.count({ where: { ownerId: params.id } }),
     prisma.calendarEvent.count({ where: { creatorId: params.id } }),
+    prisma.attachment.count({ where: { uploadedBy: params.id } }),
+    prisma.folder.count({ where: { createdBy: params.id } }),
   ]);
 
-  if (tasksCount > 0 || projectsOwnedCount > 0 || eventsCreatedCount > 0) {
+  if (tasksCount > 0 || projectsOwnedCount > 0 || eventsCreatedCount > 0 || attachmentsCount > 0 || foldersCount > 0) {
+    const parts = [
+      tasksCount > 0 && `${tasksCount} tarefa(s)`,
+      projectsOwnedCount > 0 && `${projectsOwnedCount} projeto(s) como responsável`,
+      eventsCreatedCount > 0 && `${eventsCreatedCount} evento(s) criado(s)`,
+      attachmentsCount > 0 && `${attachmentsCount} arquivo(s) enviado(s)`,
+      foldersCount > 0 && `${foldersCount} pasta(s) criada(s)`,
+    ].filter(Boolean);
     return NextResponse.json(
       {
         error:
-          `Essa pessoa tem ${tasksCount} tarefa(s), ${projectsOwnedCount} projeto(s) como responsável e ${eventsCreatedCount} evento(s) criado(s) vinculados. ` +
+          `Essa pessoa tem ${parts.join(", ")} vinculados. ` +
           `Transfira essas responsabilidades para outra pessoa antes de excluir, ou inative a pessoa em vez de excluir.`,
       },
       { status: 422 }

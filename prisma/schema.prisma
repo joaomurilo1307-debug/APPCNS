@@ -208,6 +208,7 @@ model User {
   auditLogs       AuditLog[]
   notifications   Notification[]
   resourceRates   ResourceRate[]
+  createdFolders  Folder[]  @relation("FolderCreator")
   approvalRequestsSent     ApprovalRequest[] @relation("ApprovalRequester")
   approvalRequestsReceived ApprovalRequest[] @relation("ApprovalApprover")
   pdisAsPessoa  PDI[] @relation("PDIPessoa")
@@ -781,8 +782,10 @@ model Folder {
   parent      Folder?      @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Cascade)
   children    Folder[]     @relation("FolderChildren")
   attachments Attachment[]
+  creator     User         @relation("FolderCreator", fields: [createdBy], references: [id])
 
   @@index([projectId])
   @@index([teamId])
   @@index([parentId])
+  @@index([createdBy])
 }
