@@ -11,8 +11,15 @@ import { resolveStatus } from "@/lib/presenceStatus";
 
 type Contact = { id: string; name: string; avatarColor: string; avatarUrl: string | null; cargo: string | null; role: string; online: boolean; statusManual: string | null };
 type Team = { id: string; name: string };
-type DirectMsg = { id: string; senderId: string; receiverId: string; body: string; createdAt: string };
-type TeamMsg = { id: string; senderId: string; body: string; createdAt: string; sender: { id: string; name: string; avatarColor: string } };
+type ChatAttachment = { id: string; fileName: string; fileSize: number };
+type DirectMsg = { id: string; senderId: string; receiverId: string; body: string; createdAt: string; attachments?: ChatAttachment[] };
+type TeamMsg = { id: string; senderId: string; body: string; createdAt: string; sender: { id: string; name: string; avatarColor: string }; attachments?: ChatAttachment[] };
+
+function fmtFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
 type Unread = { direct: Record<string, number>; team: Record<string, number> };
 
 type Selection = { type: "direct"; id: string } | { type: "team"; id: string } | null;
@@ -38,6 +45,9 @@ export default function ChatPage() {
   const [directMsgs, setDirectMsgs] = useState<DirectMsg[]>([]);
   const [teamMsgs, setTeamMsgs] = useState<TeamMsg[]>([]);
   const [draft, setDraft] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showCallLog, setShowCallLog] = useState(false);
   const [callLog, setCallLog] = useState<CallLogEntry[]>([]);
@@ -143,6 +153,25 @@ export default function ChatPage() {
     loadConversation();
   }
 
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !selected) return;
+    setUploading(true);
+    setChatError(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    const url =
+      selected.type === "direct" ? `/api/messages/direct/${selected.id}/attachment` : `/api/messages/team/${selected.id}/attachment`;
+    const res = await fetch(url, { method: "POST", body: fd });
+    setUploading(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setChatError(data?.error ?? "Não foi possível enviar o arquivo.");
+    }
+    e.target.value = "";
+    loadConversation();
+  }
+
   async function startCall() {
     if (!selected) return;
     const roomName =
@@ -207,10 +236,10 @@ export default function ChatPage() {
     }
   }
 
-  const currentMessages: { id: string; senderId: string; senderName?: string; body: string; createdAt: string }[] =
+  const currentMessages: { id: string; senderId: string; senderName?: string; body: string; createdAt: string; attachments: ChatAttachment[] }[] =
     selected?.type === "direct"
-      ? directMsgs
-      : teamMsgs.map((m) => ({ id: m.id, senderId: m.senderId, senderName: m.sender.name, body: m.body, createdAt: m.createdAt }));
+      ? directMsgs.map((m) => ({ ...m, attachments: m.attachments ?? [] }))
+      : teamMsgs.map((m) => ({ id: m.id, senderId: m.senderId, senderName: m.sender.name, body: m.body, createdAt: m.createdAt, attachments: m.attachments ?? [] }));
 
   const selectedName =
     selected?.type === "direct"
@@ -372,6 +401,17 @@ export default function ChatPage() {
                           <p className="mb-0.5 text-[11px] font-semibold opacity-70">{m.senderName}</p>
                         )}
                         <p className="whitespace-pre-wrap break-words"><LinkedText text={m.body} /></p>
+                        {m.attachments.map((a) => (
+                          <a
+                            key={a.id}
+                            href={`/api/attachments/${a.id}`}
+                            className={`mt-1 flex items-center gap-1 rounded-md px-2 py-1 text-xs hover:underline ${
+                              mine ? "bg-white/15 text-white" : "bg-white text-brand-dark"
+                            }`}
+                          >
+                            📎 {a.fileName} <span className="opacity-60">({fmtFileSize(a.fileSize)})</span>
+                          </a>
+                        ))}
                         <p className={`mt-1 text-[10px] ${mine ? "text-white/70" : "text-gray-400"}`}>
                           {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                         </p>
@@ -382,7 +422,23 @@ export default function ChatPage() {
                 {currentMessages.length === 0 && <p className="text-xs text-gray-400">Nenhuma mensagem ainda. Diga oi!</p>}
               </div>
             </div>
+            {chatError && (
+              <div className="flex items-center justify-between gap-2 border-t border-rose-100 bg-rose-50 px-3 py-1.5 text-xs text-rose-700">
+                <span>⚠️ {chatError}</span>
+                <button onClick={() => setChatError(null)} className="text-rose-400 hover:text-rose-700">✕</button>
+              </div>
+            )}
             <form onSubmit={handleSend} className="flex gap-2 border-t border-gray-100 p-3">
+              <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                title="Anexar arquivo"
+                className="shrink-0 rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+              >
+                {uploading ? "…" : "📎"}
+              </button>
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}

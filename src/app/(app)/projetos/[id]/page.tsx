@@ -10,6 +10,7 @@ import GanttChart from "@/components/GanttChart";
 import TaskListView from "@/components/TaskListView";
 import ResourcesPanel from "@/components/ResourcesPanel";
 import ProgressBar from "@/components/ProgressBar";
+import TeamChatPanel from "@/components/TeamChatPanel";
 
 type ProjectDetail = {
   id: string;
@@ -66,7 +67,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "gantt" | "lista" | "recursos">("kanban");
+  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "gantt" | "lista" | "recursos" | "chat">("kanban");
   const [ganttTasks, setGanttTasks] = useState<
     { id: string; title: string; startDate: string | null; dueDate: string | null; status: string }[]
   >([]);
@@ -364,6 +365,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         >
           Recursos
         </button>
+        <button
+          onClick={() => setTab("chat")}
+          className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+            tab === "chat" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
+          }`}
+        >
+          Chat
+        </button>
       </div>
 
       {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} />}
@@ -381,6 +390,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         />
       )}
       {tab === "recursos" && <ResourcesPanel projectId={project.id} canManage={canManage} />}
+      {tab === "chat" && <TeamChatPanel teamId={project.team.id} />}
     </div>
   );
 }
