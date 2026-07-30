@@ -30,6 +30,8 @@ const statusLabel: Record<string, string> = {
 
 const ZOOM_LEVELS = { compacto: 18, médio: 28, largo: 44 } as const;
 const LABEL_WIDTHS = { estreita: 200, larga: 320 } as const;
+const MONTH_ROW_H = 20;
+const MONTH_NAMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
@@ -93,6 +95,16 @@ export default function GanttChart({
     return d;
   });
 
+  // Cabeçalho em 2 linhas (mês + dia) — evita "25/7" ficar mais largo que a coluna e
+  // sobrepor o vizinho quando o zoom é compacto.
+  const monthGroups: { label: string; count: number }[] = [];
+  for (const d of days) {
+    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    const last = monthGroups[monthGroups.length - 1];
+    if (last && last.label === label) last.count += 1;
+    else monthGroups.push({ label, count: 1 });
+  }
+
   const totalRows = groups.reduce((sum, g) => sum + g.rows.length, 0);
   if (totalRows === 0) {
     return <p className="text-sm text-gray-400">Nenhuma tarefa neste projeto ainda.</p>;
@@ -127,24 +139,39 @@ export default function GanttChart({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white [scrollbar-width:auto] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:hover:bg-gray-400 [&::-webkit-scrollbar-track]:bg-gray-100">
         <div style={{ minWidth: totalDays * dayWidth + labelPx }}>
-          <div className="flex border-b border-gray-100">
+          <div className="flex border-b border-gray-100" style={{ height: MONTH_ROW_H + 32 }}>
             <div
-              style={{ width: labelPx }}
-              className="shrink-0 border-r border-gray-100 px-3 py-2 text-xs font-semibold text-gray-500"
+              style={{ width: labelPx, height: MONTH_ROW_H + 32 }}
+              className="flex shrink-0 items-end border-r border-gray-100 px-3 pb-2 text-xs font-semibold text-gray-500"
             >
               Projeto / Tarefa
             </div>
-            {days.map((d, i) => (
-              <div
-                key={i}
-                style={{ width: dayWidth }}
-                className="shrink-0 border-r border-gray-50 py-2 text-center text-[10px] text-gray-400"
-              >
-                {d.getDate()}/{d.getMonth() + 1}
+            <div className="flex flex-col">
+              <div className="flex" style={{ height: MONTH_ROW_H }}>
+                {monthGroups.map((g, i) => (
+                  <div
+                    key={i}
+                    style={{ width: g.count * dayWidth }}
+                    className="shrink-0 truncate border-b border-r border-gray-100 px-1.5 text-center text-[10px] font-semibold capitalize text-gray-500"
+                  >
+                    {g.label}
+                  </div>
+                ))}
               </div>
-            ))}
+              <div className="flex" style={{ height: 32 }}>
+                {days.map((d, i) => (
+                  <div
+                    key={i}
+                    style={{ width: dayWidth }}
+                    className="shrink-0 border-r border-gray-50 py-2 text-center text-[10px] text-gray-400"
+                  >
+                    {d.getDate()}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
           {groups.map((group) => (
             <div key={group.label ?? "all"}>

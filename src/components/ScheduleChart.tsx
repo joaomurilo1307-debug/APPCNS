@@ -39,10 +39,12 @@ const dependencyTypeLabel: Record<DependencyType, string> = {
   SF: "Início → Término",
 };
 
-const ZOOM_LEVELS = { compacto: 16, médio: 26, largo: 42 } as const;
+const ZOOM_LEVELS = { compacto: 18, médio: 28, largo: 44 } as const;
 const NAME_WIDTHS = { estreita: 200, larga: 320 } as const;
 const ROW_H = 36;
+const MONTH_ROW_H = 20;
 const WBS_W = 40;
+const MONTH_NAMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 const COLUMNS = [
   { key: "dur", label: "Dur.", width: 58 },
@@ -192,6 +194,16 @@ export default function ScheduleChart({
     return d;
   });
   const todayOffset = offsetDays(new Date().toISOString());
+
+  // Cabeçalho em 2 linhas (mês + dia), como Primavera/Project — evita o número do dia
+  // (ex. "25/7") ficar mais largo que a coluna e sobrepor o vizinho quando o zoom é compacto.
+  const monthGroups: { label: string; count: number }[] = [];
+  for (const d of days) {
+    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    const last = monthGroups[monthGroups.length - 1];
+    if (last && last.label === label) last.count += 1;
+    else monthGroups.push({ label, count: 1 });
+  }
 
   const rowIndex = new Map<string, number>();
   rows.forEach((r, i) => rowIndex.set(r.task.id, i));
@@ -361,10 +373,18 @@ export default function ScheduleChart({
             </div>
           )}
         </div>
-        {canManage && <span className="text-gray-400">Arraste a barra pra mover · segure a borda direita pra mudar a duração · arraste o fundo do cronograma pra navegar</span>}
+        {canManage && (
+          <span className="text-gray-400">
+            Arraste a barra pra mover · segure a borda direita pra mudar a duração · arraste o fundo do cronograma pra navegar · duração 0 = vira marco ◆
+          </span>
+        )}
       </div>
 
-      <div ref={scrollRef} className="overflow-auto rounded-xl border border-gray-200 bg-white" style={{ maxHeight: "72vh" }}>
+      <div
+        ref={scrollRef}
+        className="overflow-auto rounded-xl border border-gray-200 bg-white [scrollbar-width:auto] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar]:w-3 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:hover:bg-gray-400 [&::-webkit-scrollbar-track]:bg-gray-100"
+        style={{ maxHeight: "72vh" }}
+      >
         <div
           style={{ width: TABLE_W + totalDays * dayWidth, cursor: "grab" }}
           onPointerDown={handlePanPointerDown}
@@ -373,33 +393,46 @@ export default function ScheduleChart({
           onPointerLeave={handlePanPointerUp}
         >
           {/* cabeçalho */}
-          <div className="flex" style={{ height: ROW_H }}>
+          <div className="flex" style={{ height: MONTH_ROW_H + ROW_H }}>
             <div
-              className="sticky left-0 top-0 z-30 flex shrink-0 items-center border-b border-r border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500"
-              style={{ width: TABLE_W }}
+              className="sticky left-0 top-0 z-30 flex shrink-0 items-end border-b border-r border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500"
+              style={{ width: TABLE_W, height: MONTH_ROW_H + ROW_H, paddingBottom: 0 }}
             >
-              <div style={{ width: WBS_W }} className="px-1.5 text-center">#</div>
-              <div style={{ width: namePx }} className="px-2">Tarefa</div>
+              <div style={{ width: WBS_W, height: ROW_H }} className="flex items-center px-1.5 text-center">#</div>
+              <div style={{ width: namePx, height: ROW_H }} className="flex items-center px-2">Tarefa</div>
               {visibleCols.map((c) => (
-                <div key={c.key} style={{ width: c.width }} className="px-1.5 text-center">{c.label}</div>
+                <div key={c.key} style={{ width: c.width, height: ROW_H }} className="flex items-center px-1.5 text-center">{c.label}</div>
               ))}
             </div>
-            <div className="sticky top-0 z-20 flex shrink-0 border-b border-gray-200 bg-gray-50">
-              {days.map((d, i) => {
-                const isToday = i === todayOffset;
-                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                return (
+            <div className="sticky top-0 z-20 flex shrink-0 flex-col border-b border-gray-200 bg-gray-50">
+              <div className="flex" style={{ height: MONTH_ROW_H }}>
+                {monthGroups.map((g, i) => (
                   <div
                     key={i}
-                    style={{ width: dayWidth }}
-                    className={`shrink-0 border-r border-gray-100 py-2 text-center text-[10px] ${
-                      isToday ? "bg-brand/10 font-semibold text-brand-dark" : isWeekend ? "bg-gray-100/70 text-gray-300" : "text-gray-400"
-                    }`}
+                    style={{ width: g.count * dayWidth }}
+                    className="shrink-0 truncate border-r border-b border-gray-200 px-1.5 text-center text-[10px] font-semibold capitalize text-gray-500"
                   >
-                    {d.getDate()}/{d.getMonth() + 1}
+                    {g.label}
                   </div>
-                );
-              })}
+                ))}
+              </div>
+              <div className="flex" style={{ height: ROW_H }}>
+                {days.map((d, i) => {
+                  const isToday = i === todayOffset;
+                  const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                  return (
+                    <div
+                      key={i}
+                      style={{ width: dayWidth }}
+                      className={`shrink-0 border-r border-gray-100 py-2 text-center text-[10px] ${
+                        isToday ? "bg-brand/10 font-semibold text-brand-dark" : isWeekend ? "bg-gray-100/70 text-gray-300" : "text-gray-400"
+                      }`}
+                    >
+                      {d.getDate()}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
