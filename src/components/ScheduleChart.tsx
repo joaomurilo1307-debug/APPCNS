@@ -18,10 +18,13 @@ type Task = {
   title: string;
   startDate: string | null;
   dueDate: string | null;
+  durationDays?: number | null;
   actualStartedAt?: string | null;
   actualEndedAt?: string | null;
   status: string;
   parentTaskId?: string | null;
+  assigneeId?: string | null;
+  assignee?: { id: string; name: string } | null;
   predecessorLinks?: DependencyLink[];
 };
 
@@ -54,9 +57,11 @@ const COLUMNS = [
   { key: "realEnd", label: "Término real", width: 76 },
   { key: "pct", label: "%", width: 48 },
   { key: "float", label: "Folga", width: 60 },
+  { key: "assignee", label: "Responsável", width: 116 },
   { key: "pred", label: "Predec.", width: 92 },
 ] as const;
 type ColumnKey = (typeof COLUMNS)[number]["key"];
+const COL_W = Object.fromEntries(COLUMNS.map((c) => [c.key, c.width])) as Record<ColumnKey, number>;
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
@@ -89,10 +94,12 @@ export default function ScheduleChart({
   tasks,
   onChanged,
   canManage,
+  teamMembers = [],
 }: {
   tasks: Task[];
   onChanged?: () => void;
   canManage?: boolean;
+  teamMembers?: { id: string; name: string }[];
 }) {
   const [zoom, setZoom] = useState<keyof typeof ZOOM_LEVELS>("compacto");
   const [nameWidth, setNameWidth] = useState<keyof typeof NAME_WIDTHS>("estreita");
@@ -233,9 +240,12 @@ export default function ScheduleChart({
   }
 
   function handleDurationChange(t: Task, value: string) {
-    if (!t.startDate) return;
     const dur = Math.max(0, parseInt(value, 10) || 0);
-    patchTask(t.id, { dueDate: addDays(t.startDate, dur) });
+    patchTask(t.id, { durationDays: dur });
+  }
+
+  function handleAssigneeChange(t: Task, value: string) {
+    patchTask(t.id, { assigneeId: value || null });
   }
 
   // Arrastar a barra do Gantt pra mudar a duração (borda direita) ou mover a tarefa inteira
@@ -375,7 +385,7 @@ export default function ScheduleChart({
         </div>
         {canManage && (
           <span className="text-gray-400">
-            Arraste a barra pra mover · segure a borda direita pra mudar a duração · arraste o fundo do cronograma pra navegar · duração 0 = vira marco ◆
+            Arraste a barra pra mover · segure a borda direita pra mudar a duração · arraste o fundo do cronograma pra navegar · duração 0 = vira marco ◆ · tarefa com predecessora calcula o início sozinha, só a duração é editável
           </span>
         )}
       </div>
@@ -501,6 +511,7 @@ export default function ScheduleChart({
               const hasConflict = !!result?.hasConflict && !cpm.hasCycle;
               const pct = percentComplete(t);
               const isMilestone = hasDates && dur === 0;
+              const hasPredecessors = (t.predecessorLinks ?? []).length > 0;
               const predText = (t.predecessorLinks ?? [])
                 .map((l) => wbsById.get(l.predecessorId) ?? "?")
                 .join(", ");
@@ -539,51 +550,58 @@ export default function ScheduleChart({
                       {hasConflict && <span className="shrink-0" title="Conflito: início planejado antes do permitido pela rede">⚠️</span>}
                     </div>
                     {!hiddenCols.has("dur") && (
-                      <div style={{ width: COLUMNS[0].width }} className="shrink-0 px-1">
+                      <div style={{ width: COL_W.dur }} className="shrink-0 px-1">
                         <input
+                          key={`dur-${t.id}-${t.durationDays ?? dur ?? ""}`}
                           type="number"
                           min={0}
-                          disabled={!canManage || !t.startDate}
-                          defaultValue={dur ?? ""}
+                          disabled={!canManage}
+                          defaultValue={t.durationDays ?? dur ?? ""}
                           onBlur={(e) => e.target.value !== "" && handleDurationChange(t, e.target.value)}
-                          title={t.startDate ? "Duração em dias — preenche o término automaticamente" : "Defina o início primeiro"}
+                          title={
+                            hasPredecessors
+                              ? "Duração em dias — o início é calculado a partir da(s) predecessora(s)"
+                              : "Duração em dias — preenche o término automaticamente"
+                          }
                           className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-center hover:border-gray-200 focus:border-brand disabled:text-gray-300"
                         />
                       </div>
                     )}
                     {!hiddenCols.has("start") && (
-                      <div style={{ width: COLUMNS[1].width }} className="shrink-0 px-1">
+                      <div style={{ width: COL_W.start }} className="shrink-0 px-1">
                         <input
+                          key={`start-${t.id}-${t.startDate ?? ""}`}
                           type="date"
-                          disabled={!canManage}
+                          disabled={!canManage || hasPredecessors}
                           defaultValue={toDateInput(t.startDate)}
                           onBlur={(e) => handleStartChange(t, e.target.value)}
+                          title={hasPredecessors ? "Calculado automaticamente pela predecessora — ajuste a duração dela ou a antecedência (lag) pra mudar" : undefined}
                           className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-[10px] hover:border-gray-200 focus:border-brand disabled:text-gray-400"
                         />
                       </div>
                     )}
                     {!hiddenCols.has("end") && (
-                      <div style={{ width: COLUMNS[2].width }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
+                      <div style={{ width: COL_W.end }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
                         {t.dueDate ? fmtDate(new Date(t.dueDate)) : "—"}
                       </div>
                     )}
                     {!hiddenCols.has("realStart") && (
-                      <div style={{ width: COLUMNS[3].width }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
+                      <div style={{ width: COL_W.realStart }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
                         {t.actualStartedAt ? fmtDate(new Date(t.actualStartedAt)) : "—"}
                       </div>
                     )}
                     {!hiddenCols.has("realEnd") && (
-                      <div style={{ width: COLUMNS[4].width }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
+                      <div style={{ width: COL_W.realEnd }} className="shrink-0 truncate px-1.5 text-center text-[10px] text-gray-500">
                         {t.actualEndedAt ? fmtDate(new Date(t.actualEndedAt)) : t.actualStartedAt ? "..." : "—"}
                       </div>
                     )}
                     {!hiddenCols.has("pct") && (
-                      <div style={{ width: COLUMNS[5].width }} className="shrink-0 px-1 text-center text-[10px] font-medium text-gray-500">
+                      <div style={{ width: COL_W.pct }} className="shrink-0 px-1 text-center text-[10px] font-medium text-gray-500">
                         {pct}%
                       </div>
                     )}
                     {!hiddenCols.has("float") && (
-                      <div style={{ width: COLUMNS[6].width }} className="shrink-0 px-1 text-center text-[10px]">
+                      <div style={{ width: COL_W.float }} className="shrink-0 px-1 text-center text-[10px]">
                         {result && !cpm.hasCycle ? (
                           isCritical ? <span className="font-medium text-rose-600">crítica</span> : <span className="text-gray-400">{result.float}d</span>
                         ) : (
@@ -591,8 +609,27 @@ export default function ScheduleChart({
                         )}
                       </div>
                     )}
+                    {!hiddenCols.has("assignee") && (
+                      <div style={{ width: COL_W.assignee }} className="shrink-0 px-1">
+                        <select
+                          disabled={!canManage}
+                          value={t.assigneeId ?? ""}
+                          onChange={(e) => handleAssigneeChange(t, e.target.value)}
+                          title="Responsável"
+                          className="w-full truncate rounded border border-transparent bg-transparent px-1 py-1 text-[10px] hover:border-gray-200 focus:border-brand disabled:text-gray-500"
+                        >
+                          <option value="">— ninguém —</option>
+                          {teamMembers.map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                          {t.assignee && !teamMembers.some((m) => m.id === t.assignee!.id) && (
+                            <option value={t.assignee.id}>{t.assignee.name}</option>
+                          )}
+                        </select>
+                      </div>
+                    )}
                     {!hiddenCols.has("pred") && (
-                      <div style={{ width: COLUMNS[7].width }} className="shrink-0 px-1">
+                      <div style={{ width: COL_W.pred }} className="shrink-0 px-1">
                         <button
                           onClick={() => toggleDepPanel(t.id)}
                           title="Gerenciar dependências"

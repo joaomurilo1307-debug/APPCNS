@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canModifyTask, canDeleteTask } from "@/lib/permissions";
 import { reconcileTaskOutlook, removeTaskFromOutlook } from "@/lib/taskOutlookSync";
+import { rescheduleAndPersist } from "@/lib/reschedule";
 import { z } from "zod";
 
 const updateTaskSchema = z.object({
@@ -15,6 +16,7 @@ const updateTaskSchema = z.object({
   parentTaskId: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
   dueDate: z.string().datetime().nullable().optional(),
+  durationDays: z.number().int().min(0).max(3650).nullable().optional(),
   locked: z.boolean().optional(),
   customFieldValues: z.record(z.string().nullable()).optional(),
 });
@@ -99,6 +101,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
   }
 
+  const affectsSchedule =
+    parsed.data.durationDays !== undefined || parsed.data.startDate !== undefined || parsed.data.dueDate !== undefined;
+
   const updated = await prisma.$transaction(async (tx) => {
     const result = await tx.task.update({ where: { id: params.id }, data });
     if (customFieldValues) {
@@ -109,6 +114,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           create: { taskId: params.id, customFieldId, value },
         });
       }
+    }
+    if (affectsSchedule && result.projectId) {
+      await rescheduleAndPersist(tx, result.projectId);
     }
     return result;
   });

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam } from "@/lib/permissions";
+import { rescheduleAndPersist } from "@/lib/reschedule";
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -25,6 +26,9 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   }
   if (!allowed) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 
-  await prisma.taskDependency.delete({ where: { id: params.id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.taskDependency.delete({ where: { id: params.id } });
+    if (dependency.successor.projectId) await rescheduleAndPersist(tx, dependency.successor.projectId);
+  });
   return NextResponse.json({ ok: true });
 }

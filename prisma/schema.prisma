@@ -667,6 +667,7 @@ model Task {
   priority          TaskPriority      @default(MEDIA)
   startDate         DateTime?
   dueDate           DateTime?
+  durationDays      Int?
   isRotina          Boolean           @default(false)
   rotinaFrequencia  RotinaFrequencia?
   projectId         String?

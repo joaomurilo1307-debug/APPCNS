@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam } from "@/lib/permissions";
+import { rescheduleAndPersist } from "@/lib/reschedule";
 import { z } from "zod";
 
 async function canManageSchedule(userId: string, role: string, task: { projectId: string | null }) {
@@ -76,14 +77,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   try {
-    const dependency = await prisma.taskDependency.create({
-      data: {
-        predecessorId: parsed.data.predecessorId,
-        successorId: params.id,
-        type: parsed.data.type,
-        lagDays: parsed.data.lagDays,
-      },
-      include: { predecessor: { select: { id: true, title: true } } },
+    const dependency = await prisma.$transaction(async (tx) => {
+      const created = await tx.taskDependency.create({
+        data: {
+          predecessorId: parsed.data.predecessorId,
+          successorId: params.id,
+          type: parsed.data.type,
+          lagDays: parsed.data.lagDays,
+        },
+        include: { predecessor: { select: { id: true, title: true } } },
+      });
+      if (task.projectId) await rescheduleAndPersist(tx, task.projectId);
+      return created;
     });
     return NextResponse.json(dependency, { status: 201 });
   } catch {

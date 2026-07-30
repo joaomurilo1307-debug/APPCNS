@@ -77,10 +77,13 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       title: string;
       startDate: string | null;
       dueDate: string | null;
+      durationDays: number | null;
       actualStartedAt: string | null;
       actualEndedAt: string | null;
       status: string;
       parentTaskId: string | null;
+      assigneeId: string | null;
+      assignee: { id: string; name: string } | null;
       predecessorLinks: { id: string; predecessorId: string; type: "FS" | "SS" | "FF" | "SF"; lagDays: number; predecessor: { id: string; title: string } }[];
     }[]
   >([]);
@@ -413,7 +416,12 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} />}
       {tab === "board" && <Whiteboard projectId={project.id} />}
       {tab === "cronograma" && (
-        <ScheduleChart tasks={ganttTasks} onChanged={() => setRefreshKey((k) => k + 1)} canManage={canManage} />
+        <ScheduleChart
+          tasks={ganttTasks}
+          onChanged={() => setRefreshKey((k) => k + 1)}
+          canManage={canManage}
+          teamMembers={project.team.members.map((m) => m.user)}
+        />
       )}
       {tab === "gantt" && <GanttChart tasks={ganttTasks} onChanged={() => setRefreshKey((k) => k + 1)} />}
       {tab === "lista" && (

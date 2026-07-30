@@ -121,15 +121,16 @@ export default async function DashboardPage() {
       <p className="mb-8 text-sm italic text-brand-dark/70">{motivational}</p>
 
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card label="Projetos" value={projectCount} icon={<IconFolders className="h-5 w-5" />} tone="indigo" />
-        <Card label="A fazer" value={statusMap["A_FAZER"] ?? 0} icon={<IconTarget className="h-5 w-5" />} tone="amber" />
-        <Card label="Fazendo" value={statusMap["FAZENDO"] ?? 0} icon={<IconZap className="h-5 w-5" />} tone="sky" />
+        <Card label="Projetos" value={projectCount} icon={<IconFolders className="h-5 w-5" />} tone="indigo" index={0} />
+        <Card label="A fazer" value={statusMap["A_FAZER"] ?? 0} icon={<IconTarget className="h-5 w-5" />} tone="amber" index={1} />
+        <Card label="Fazendo" value={statusMap["FAZENDO"] ?? 0} icon={<IconZap className="h-5 w-5" />} tone="sky" index={2} />
         <Card
           label="Minhas tarefas pendentes"
           value={myTaskCount}
           icon={<IconAlertCircle className="h-5 w-5" />}
           tone="brand"
           highlight
+          index={3}
         />
       </div>
 
@@ -243,27 +244,39 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 const CARD_TONES = {
   brand: {
     border: "border-brand/30",
-    bg: "bg-gradient-to-br from-brand/10 via-white to-white",
-    badge: "bg-brand text-white",
-    ring: "ring-brand/20",
+    bg: "bg-gradient-to-br from-brand/15 via-brand/[0.03] to-white",
+    badge: "bg-gradient-to-br from-brand to-brand-dark text-white shadow-brand/30",
+    ring: "ring-brand/25",
+    blob: "bg-brand/40",
+    value: "text-brand-dark",
+    accent: "bg-gradient-to-r from-brand to-brand-dark",
   },
   indigo: {
     border: "border-indigo-200",
-    bg: "bg-gradient-to-br from-indigo-50 via-white to-white",
-    badge: "bg-indigo-500 text-white",
+    bg: "bg-gradient-to-br from-indigo-100 via-indigo-50/40 to-white",
+    badge: "bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-indigo-300",
     ring: "ring-indigo-200",
+    blob: "bg-indigo-400/40",
+    value: "text-indigo-700",
+    accent: "bg-gradient-to-r from-indigo-500 to-indigo-600",
   },
   amber: {
     border: "border-amber-200",
-    bg: "bg-gradient-to-br from-amber-50 via-white to-white",
-    badge: "bg-amber-500 text-white",
+    bg: "bg-gradient-to-br from-amber-100 via-amber-50/40 to-white",
+    badge: "bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-amber-300",
     ring: "ring-amber-200",
+    blob: "bg-amber-400/40",
+    value: "text-amber-700",
+    accent: "bg-gradient-to-r from-amber-500 to-amber-600",
   },
   sky: {
     border: "border-sky-200",
-    bg: "bg-gradient-to-br from-sky-50 via-white to-white",
-    badge: "bg-sky-500 text-white",
+    bg: "bg-gradient-to-br from-sky-100 via-sky-50/40 to-white",
+    badge: "bg-gradient-to-br from-sky-500 to-sky-600 text-white shadow-sky-300",
     ring: "ring-sky-200",
+    blob: "bg-sky-400/40",
+    value: "text-sky-700",
+    accent: "bg-gradient-to-r from-sky-500 to-sky-600",
   },
 } as const;
 
@@ -273,23 +286,36 @@ function Card({
   icon,
   tone,
   highlight,
+  index = 0,
 }: {
   label: string;
   value: number;
   icon: React.ReactNode;
   tone: keyof typeof CARD_TONES;
   highlight?: boolean;
+  index?: number;
 }) {
   const t = CARD_TONES[tone];
   return (
     <div
-      className={`card-hover shadow-soft relative overflow-hidden rounded-xl border p-5 ${t.border} ${t.bg} ${
-        highlight ? `ring-1 ${t.ring}` : ""
+      className={`card-hover shadow-soft animate-card-in group relative overflow-hidden rounded-2xl border p-5 ${t.border} ${t.bg} ${
+        highlight ? `ring-2 ${t.ring}` : ""
       }`}
+      style={{ animationDelay: `${index * 70}ms` }}
     >
-      <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${t.badge}`}>{icon}</div>
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="mt-1 text-3xl font-semibold tabular-nums">{value}</p>
+      <div className={`absolute left-0 top-0 h-1 w-full ${t.accent}`} />
+      <div className={`pointer-events-none absolute -right-6 -top-8 h-28 w-28 rounded-full blur-2xl transition-transform duration-500 group-hover:scale-125 ${t.blob}`} />
+      {highlight && value > 0 && (
+        <span className="absolute right-4 top-4 flex h-2.5 w-2.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-60" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand" />
+        </span>
+      )}
+      <div className={`relative mb-3 flex h-11 w-11 items-center justify-center rounded-xl shadow-lg transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110 ${t.badge}`}>
+        {icon}
+      </div>
+      <p className="relative text-sm font-medium text-gray-500">{label}</p>
+      <p className={`relative mt-1 text-4xl font-extrabold tabular-nums ${t.value}`}>{value}</p>
     </div>
   );
 }
