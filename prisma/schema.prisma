@@ -698,8 +698,8 @@ enum DependencyType {
   SF
 }
 
-/** Dependencia de cronograma entre duas tarefas (rede de precedencia, estilo MS Project/Primavera).
-    predecessor precisa ocorrer (conforme `type`) antes do sucessor, com `lagDays` de folga/antecedencia. */
+// Dependencia de cronograma entre duas tarefas (rede de precedencia, estilo MS Project/Primavera).
+// predecessor precisa ocorrer (conforme `type`) antes do sucessor, com `lagDays` de folga/antecedencia.
 model TaskDependency {
   id            String         @id @default(cuid())
   predecessorId String
