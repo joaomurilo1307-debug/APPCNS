@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import Avatar, { AVATAR_PALETTE } from "@/components/Avatar";
 
@@ -121,7 +122,12 @@ export default function EquipesPage() {
           const canAddToThisTeam = isAdmin || isThisTeamGestor;
           return (
             <div key={team.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <h2 className="font-semibold">{team.name}</h2>
+              <div className="flex items-start justify-between gap-2">
+                <h2 className="font-semibold">{team.name}</h2>
+                <Link href={`/equipes/${team.id}`} className="shrink-0 text-xs font-medium text-brand hover:underline">
+                  Abrir equipe →
+                </Link>
+              </div>
               {team.description && <p className="mt-1 text-sm text-gray-500">{team.description}</p>}
               <p className="mt-3 text-xs text-gray-400">{team._count.projects} projeto(s)</p>
 

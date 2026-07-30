@@ -18,7 +18,10 @@ function fmtSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function FilesPanel({ projectId, canManage }: { projectId: string; canManage?: boolean }) {
+type Scope = { type: "project" | "team"; id: string };
+
+export default function FilesPanel({ scope, canManage }: { scope: Scope; canManage?: boolean }) {
+  const basePath = scope.type === "project" ? `/api/projects/${scope.id}` : `/api/teams/${scope.id}`;
   const [folders, setFolders] = useState<FolderT[]>([]);
   const [files, setFiles] = useState<FileT[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -29,8 +32,8 @@ export default function FilesPanel({ projectId, canManage }: { projectId: string
 
   async function load() {
     const [fRes, filesRes] = await Promise.all([
-      fetch(`/api/projects/${projectId}/folders`),
-      fetch(`/api/projects/${projectId}/files`),
+      fetch(`${basePath}/folders`),
+      fetch(`${basePath}/files`),
     ]);
     if (fRes.ok) setFolders(await fRes.json());
     if (filesRes.ok) setFiles(await filesRes.json());
@@ -40,7 +43,7 @@ export default function FilesPanel({ projectId, canManage }: { projectId: string
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [scope.type, scope.id]);
 
   const childFolders = folders.filter((f) => f.parentId === currentFolderId);
   const childFiles = files.filter((f) => f.folderId === currentFolderId);
@@ -60,7 +63,7 @@ export default function FilesPanel({ projectId, canManage }: { projectId: string
   async function handleCreateFolder(e: React.FormEvent) {
     e.preventDefault();
     if (!newFolderName.trim()) return;
-    await fetch(`/api/projects/${projectId}/folders`, {
+    await fetch(`${basePath}/folders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newFolderName, parentId: currentFolderId }),
@@ -84,7 +87,7 @@ export default function FilesPanel({ projectId, canManage }: { projectId: string
     const fd = new FormData();
     fd.append("file", file);
     if (currentFolderId) fd.append("folderId", currentFolderId);
-    const res = await fetch(`/api/projects/${projectId}/files`, { method: "POST", body: fd });
+    const res = await fetch(`${basePath}/files`, { method: "POST", body: fd });
     setUploading(false);
     e.target.value = "";
     if (!res.ok) {

@@ -20,10 +20,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       teamMessage: { select: { teamId: true } },
       directMessage: { select: { senderId: true, receiverId: true } },
       project: { select: { teamId: true } },
-      folder: { select: { project: { select: { teamId: true } } } },
+      folder: { select: { teamId: true, project: { select: { teamId: true } } } },
     },
   });
   if (!attachment) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
+
+  const folderTeamId = attachment.folder?.teamId ?? attachment.folder?.project?.teamId;
 
   if (attachment.teamMessageId && attachment.teamMessage) {
     const isMember =
@@ -42,8 +44,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     if (!(await isTeamMember(userId, role, attachment.project.teamId))) {
       return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
     }
-  } else if (attachment.folderId && attachment.folder) {
-    if (!(await isTeamMember(userId, role, attachment.folder.project.teamId))) {
+  } else if (attachment.teamId) {
+    if (!(await isTeamMember(userId, role, attachment.teamId))) {
+      return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    }
+  } else if (attachment.folderId && folderTeamId) {
+    if (!(await isTeamMember(userId, role, folderTeamId))) {
       return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
     }
   } else if (!attachment.taskId) {
@@ -77,15 +83,17 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     where: { id: params.id },
     include: {
       project: { select: { teamId: true } },
-      folder: { select: { project: { select: { teamId: true } } } },
+      folder: { select: { teamId: true, project: { select: { teamId: true } } } },
     },
   });
   if (!attachment) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
-  // Por enquanto só cobre exclusão de arquivos da aba "Arquivos" do projeto (projectId/folderId).
+  // Por enquanto só cobre exclusão de arquivos da aba "Arquivos" do projeto/equipe (projectId/teamId/folderId).
   // Anexos de tarefa/chat não têm exclusão pelo mesmo motivo de sempre: sem endpoint de excluir
   // mensagem ainda, então excluir só o anexo deixaria a mensagem "quebrada".
-  const teamId = attachment.project?.teamId ?? attachment.folder?.project.teamId;
+  const teamId = attachment.projectId
+    ? attachment.project?.teamId
+    : attachment.teamId ?? attachment.folder?.teamId ?? attachment.folder?.project?.teamId;
   if (!teamId) {
     return NextResponse.json({ error: "Este tipo de anexo ainda não pode ser excluído por aqui" }, { status: 400 });
   }

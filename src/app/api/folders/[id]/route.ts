@@ -7,15 +7,24 @@ import { z } from "zod";
 
 const renameSchema = z.object({ name: z.string().min(1).max(120) });
 
+async function ownerTeamId(folderId: string) {
+  const folder = await prisma.folder.findUnique({
+    where: { id: folderId },
+    include: { project: { select: { teamId: true } } },
+  });
+  if (!folder) return null;
+  return { folder, teamId: folder.teamId ?? folder.project?.teamId ?? null };
+}
+
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
 
-  const folder = await prisma.folder.findUnique({ where: { id: params.id }, include: { project: { select: { teamId: true } } } });
-  if (!folder) return NextResponse.json({ error: "Não encontrada" }, { status: 404 });
-  if (!(await isTeamMember(userId, role, folder.project.teamId))) {
+  const owner = await ownerTeamId(params.id);
+  if (!owner || !owner.teamId) return NextResponse.json({ error: "Não encontrada" }, { status: 404 });
+  if (!(await isTeamMember(userId, role, owner.teamId))) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 
@@ -33,9 +42,9 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
 
-  const folder = await prisma.folder.findUnique({ where: { id: params.id }, include: { project: { select: { teamId: true } } } });
-  if (!folder) return NextResponse.json({ error: "Não encontrada" }, { status: 404 });
-  if (!(await isTeamMember(userId, role, folder.project.teamId))) {
+  const owner = await ownerTeamId(params.id);
+  if (!owner || !owner.teamId) return NextResponse.json({ error: "Não encontrada" }, { status: 404 });
+  if (!(await isTeamMember(userId, role, owner.teamId))) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 

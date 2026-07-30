@@ -429,7 +429,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       )}
       {tab === "recursos" && <ResourcesPanel projectId={project.id} canManage={canManage} />}
       {tab === "chat" && <TeamChatPanel teamId={project.team.id} />}
-      {tab === "arquivos" && <FilesPanel projectId={project.id} canManage={canManage} />}
+      {tab === "arquivos" && <FilesPanel scope={{ type: "project", id: project.id }} canManage={canManage} />}
     </div>
   );
 }

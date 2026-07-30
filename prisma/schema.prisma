@@ -302,6 +302,8 @@ model Team {
   messages     TeamMessage[]
   messageReads TeamMessageRead[]
   scorecardItems ScorecardItem[]
+  folders      Folder[]
+  attachments  Attachment[]
 }
 
 model Nucleo {
@@ -737,6 +739,7 @@ model Attachment {
   teamMessageId   String?
   directMessageId String?
   projectId       String?
+  teamId          String?
   folderId        String?
   fileName        String
   filePath        String
@@ -748,6 +751,7 @@ model Attachment {
   teamMessage   TeamMessage?   @relation(fields: [teamMessageId], references: [id], onDelete: Cascade)
   directMessage DirectMessage? @relation(fields: [directMessageId], references: [id], onDelete: Cascade)
   project       Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team          Team?          @relation(fields: [teamId], references: [id], onDelete: Cascade)
   folder        Folder?        @relation(fields: [folderId], references: [id], onDelete: Cascade)
   uploader      User           @relation(fields: [uploadedBy], references: [id])
 
@@ -755,24 +759,30 @@ model Attachment {
   @@index([teamMessageId])
   @@index([directMessageId])
   @@index([projectId])
+  @@index([teamId])
   @@index([folderId])
 }
 
 // Pasta de arquivos de um projeto — organizador hierárquico de documentos/contratos,
 // separado dos anexos de chat/tarefa (aba "Arquivos" do projeto).
+// projectId OU teamId (nunca os dois) define de quem e a pasta — igual Attachment,
+// mais de um dono possivel via FKs opcionais, garantido na camada de API.
 model Folder {
   id        String   @id @default(cuid())
   name      String
-  projectId String
+  projectId String?
+  teamId    String?
   parentId  String?
   createdBy String
   createdAt DateTime @default(now())
 
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team        Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
   parent      Folder?      @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Cascade)
   children    Folder[]     @relation("FolderChildren")
   attachments Attachment[]
 
   @@index([projectId])
+  @@index([teamId])
   @@index([parentId])
 }
