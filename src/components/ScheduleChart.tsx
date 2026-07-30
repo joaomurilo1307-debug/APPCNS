@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import TaskDetailModal from "./TaskDetailModal";
-import SCurveChart from "./SCurveChart";
 import { computeCPM, type DependencyType } from "@/lib/cpm";
 import { buildWbsHierarchy } from "@/lib/wbs";
 
@@ -97,7 +96,10 @@ export default function ScheduleChart({
   const [newLag, setNewLag] = useState("0");
   const [savingDep, setSavingDep] = useState(false);
   const [depError, setDepError] = useState<string | null>(null);
-  const [showCurve, setShowCurve] = useState(true);
+  const [drag, setDrag] = useState<{ taskId: string; mode: "move" | "resize"; startClientX: number; deltaDays: number } | null>(null);
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
+  const draggedRef = useRef(false);
 
   const dayWidth = ZOOM_LEVELS[zoom];
   const namePx = NAME_WIDTHS[nameWidth];
@@ -184,6 +186,49 @@ export default function ScheduleChart({
     patchTask(t.id, { dueDate: addDays(t.startDate, dur) });
   }
 
+  // Arrastar a barra do Gantt pra mudar a duração (borda direita) ou mover a tarefa inteira
+  // (corpo da barra) — a manipulação direta que Project/Primavera têm e a tabela sozinha não dá.
+  function handleBarPointerDown(e: React.PointerEvent, t: Task, mode: "move" | "resize") {
+    if (!canManage || !t.startDate || !t.dueDate) return;
+    e.preventDefault();
+    e.stopPropagation();
+    draggedRef.current = false;
+    setDrag({ taskId: t.id, mode, startClientX: e.clientX, deltaDays: 0 });
+  }
+
+  useEffect(() => {
+    if (!drag) return;
+    function onMove(e: PointerEvent) {
+      const current = dragRef.current;
+      if (!current) return;
+      const deltaDays = Math.round((e.clientX - current.startClientX) / dayWidth);
+      if (deltaDays !== current.deltaDays) {
+        if (deltaDays !== 0) draggedRef.current = true;
+        setDrag({ ...current, deltaDays });
+      }
+    }
+    function onUp() {
+      const current = dragRef.current;
+      setDrag(null);
+      if (!current || current.deltaDays === 0) return;
+      const t = byId.get(current.taskId);
+      if (!t || !t.startDate || !t.dueDate) return;
+      if (current.mode === "resize") {
+        const dur = Math.max(0, (durationOf(t) ?? 0) + current.deltaDays);
+        patchTask(t.id, { dueDate: addDays(t.startDate, dur) });
+      } else {
+        patchTask(t.id, { startDate: addDays(t.startDate, current.deltaDays), dueDate: addDays(t.dueDate, current.deltaDays) });
+      }
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!drag, dayWidth]);
+
   async function handleAddDependency(successorId: string) {
     if (!newPredId) return;
     setSavingDep(true);
@@ -243,12 +288,6 @@ export default function ScheduleChart({
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setShowCurve((v) => !v)}
-          className={`rounded-md border px-2 py-1 ${showCurve ? "border-brand bg-brand text-white" : "border-gray-300 hover:bg-gray-50"}`}
-        >
-          📈 Curva S
-        </button>
         {cpm.hasCycle ? (
           <span className="rounded-full bg-rose-100 px-2.5 py-1 font-medium text-rose-700">
             ⚠️ Ciclo de dependências detectado — caminho crítico não pôde ser calculado
@@ -264,13 +303,8 @@ export default function ScheduleChart({
             )}
           </>
         )}
+        {canManage && <span className="text-gray-400">Arraste a barra pra mover · segure a borda direita pra mudar a duração</span>}
       </div>
-
-      {showCurve && withDates.length > 0 && (
-        <div className="mb-3">
-          <SCurveChart tasks={withDates} />
-        </div>
-      )}
 
       <div className="overflow-auto rounded-xl border border-gray-200 bg-white" style={{ maxHeight: "72vh" }}>
         <div style={{ width: TABLE_W + totalDays * dayWidth }}>
@@ -378,12 +412,18 @@ export default function ScheduleChart({
                 .map((l) => wbsById.get(l.predecessorId) ?? "?")
                 .join(", ");
 
+              const isDragging = drag?.taskId === t.id;
               let start = 0;
               let width = 0;
               if (hasDates) {
                 start = offsetDays(t.startDate!);
                 const end = offsetDays(t.dueDate!);
                 width = Math.max(1, end - start + 1) * dayWidth;
+                if (isDragging && drag.mode === "move") {
+                  start += drag.deltaDays;
+                } else if (isDragging && drag.mode === "resize") {
+                  width = Math.max(dayWidth, width + drag.deltaDays * dayWidth);
+                }
               }
               const actualStart = t.actualStartedAt ? offsetDays(t.actualStartedAt) : null;
               const actualEnd = t.actualEndedAt ? offsetDays(t.actualEndedAt) : t.actualStartedAt ? offsetDays(new Date().toISOString()) : null;
@@ -460,21 +500,39 @@ export default function ScheduleChart({
                     {hasDates && !isMilestone && (
                       <>
                         <div
-                          onClick={() => setOpenTaskId(t.id)}
-                          className={`absolute top-[9px] h-[18px] cursor-pointer rounded-md border ${
-                            isCritical ? "border-rose-400 bg-rose-50" : "border-gray-300 bg-gray-100"
+                          onPointerDown={(e) => handleBarPointerDown(e, t, "move")}
+                          onClick={() => {
+                            if (draggedRef.current) return;
+                            setOpenTaskId(t.id);
+                          }}
+                          className={`group/bar absolute top-[9px] h-[18px] rounded-md border ${
+                            canManage ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+                          } ${isCritical ? "border-rose-400 bg-rose-50" : "border-gray-300 bg-gray-100"} ${
+                            isDragging ? "shadow-lg ring-2 ring-brand/40" : ""
                           }`}
                           style={{ left: start * dayWidth, width }}
                         >
                           <div
-                            className={`h-full rounded-[5px] ${isCritical ? "bg-rose-400" : "bg-brand/70"}`}
+                            className={`pointer-events-none h-full rounded-[5px] ${isCritical ? "bg-rose-400" : "bg-brand/70"}`}
                             style={{ width: `${pct}%` }}
                           />
-                          <div className="pointer-events-none absolute -top-9 left-0 z-20 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                          {canManage && (
+                            <div
+                              onPointerDown={(e) => handleBarPointerDown(e, t, "resize")}
+                              title="Arraste pra mudar a duração"
+                              className="absolute -right-1 top-0 h-full w-3 cursor-ew-resize opacity-0 group-hover/bar:opacity-100"
+                            >
+                              <div className="mx-auto h-full w-1 rounded-full bg-gray-500/60" />
+                            </div>
+                          )}
+                          <div className="pointer-events-none absolute -top-9 left-0 z-20 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover/bar:block">
                             <span className="font-medium">{t.title}</span>
                             <span className="ml-1 text-gray-300">
                               · {fmtDate(new Date(t.startDate!))} – {fmtDate(new Date(t.dueDate!))} · {statusLabel[t.status]} · {pct}%
                               {result && !cpm.hasCycle && (isCritical ? " · crítica" : ` · folga ${result.float}d`)}
+                              {isDragging && drag.deltaDays !== 0 && (
+                                <strong className="text-brand-light"> · {drag.deltaDays > 0 ? "+" : ""}{drag.deltaDays}d</strong>
+                              )}
                             </span>
                           </div>
                         </div>

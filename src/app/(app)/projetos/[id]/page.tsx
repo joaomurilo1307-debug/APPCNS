@@ -365,7 +365,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             tab === "cronograma" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
           }`}
         >
-          Cronograma
+          Planejamento
         </button>
         <button
           onClick={() => setTab("gantt")}
