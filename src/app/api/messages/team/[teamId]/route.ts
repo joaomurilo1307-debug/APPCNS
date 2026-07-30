@@ -2,13 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isTeamMember } from "@/lib/permissions";
 import { z } from "zod";
-
-export async function isMember(userId: string, role: string, teamId: string) {
-  if (role === "ADMIN") return true;
-  const membership = await prisma.userTeam.findUnique({ where: { userId_teamId: { userId, teamId } } });
-  return !!membership;
-}
 
 export async function GET(_req: Request, { params }: { params: { teamId: string } }) {
   const session = await getServerSession(authOptions);
@@ -16,7 +11,7 @@ export async function GET(_req: Request, { params }: { params: { teamId: string 
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
-  if (!(await isMember(userId, role, params.teamId))) {
+  if (!(await isTeamMember(userId, role, params.teamId))) {
     return NextResponse.json({ error: "Você não faz parte desta equipe" }, { status: 403 });
   }
 
@@ -48,7 +43,7 @@ export async function POST(req: Request, { params }: { params: { teamId: string 
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
-  if (!(await isMember(userId, role, params.teamId))) {
+  if (!(await isTeamMember(userId, role, params.teamId))) {
     return NextResponse.json({ error: "Você não faz parte desta equipe" }, { status: 403 });
   }
 

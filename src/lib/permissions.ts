@@ -104,6 +104,12 @@ export async function canManagePdiFor(userId: string, role: string, targetUserId
   return ids.includes(targetUserId);
 }
 
+export async function isTeamMember(userId: string, role: string, teamId: string): Promise<boolean> {
+  if (role === "ADMIN") return true;
+  const membership = await prisma.userTeam.findUnique({ where: { userId_teamId: { userId, teamId } } });
+  return !!membership;
+}
+
 export async function isTeamManager(userId: string, teamId: string): Promise<boolean> {
   const membership = await prisma.userTeam.findUnique({
     where: { userId_teamId: { userId, teamId } },
