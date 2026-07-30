@@ -331,7 +331,13 @@ export default function TaskDetailModal({
             <p className="mb-2 text-xs font-semibold text-gray-500">Anexos ({task.attachments.length})</p>
             <div className="mb-2 flex flex-col gap-1">
               {task.attachments.map((a) => (
-                <div key={a.id} className="rounded-md bg-gray-50 px-2 py-1.5 text-sm">{a.fileName}</div>
+                <a
+                  key={a.id}
+                  href={`/api/attachments/${a.id}`}
+                  className="rounded-md bg-gray-50 px-2 py-1.5 text-sm text-brand-dark hover:bg-gray-100 hover:underline"
+                >
+                  📎 {a.fileName}
+                </a>
               ))}
             </div>
             <input type="file" onChange={handleUpload} disabled={uploading} className="text-sm" />

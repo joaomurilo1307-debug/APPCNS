@@ -11,16 +11,18 @@ export async function GET(_req: Request, { params }: { params: { userId: string 
   const userId = (session.user as any).id;
   const otherId = params.userId;
 
-  const messages = await prisma.directMessage.findMany({
+  const recent = await prisma.directMessage.findMany({
     where: {
       OR: [
         { senderId: userId, receiverId: otherId },
         { senderId: otherId, receiverId: userId },
       ],
     },
-    orderBy: { createdAt: "asc" },
+    include: { attachments: { select: { id: true, fileName: true, fileSize: true } } },
+    orderBy: { createdAt: "desc" },
     take: 200,
   });
+  const messages = recent.reverse();
 
   await prisma.directMessage.updateMany({
     where: { senderId: otherId, receiverId: userId, readAt: null },

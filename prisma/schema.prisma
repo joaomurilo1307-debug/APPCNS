@@ -244,6 +244,7 @@ model DirectMessage {
 
   sender   User @relation("DMSender", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User @relation("DMReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
 
   @@index([senderId, receiverId])
   @@index([receiverId, senderId])
@@ -258,6 +259,7 @@ model TeamMessage {
 
   team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
   sender User @relation("TeamMessageSender", fields: [senderId], references: [id])
+  attachments Attachment[]
 
   @@index([teamId, createdAt])
 }
@@ -705,16 +707,22 @@ model TaskComment {
 }
 
 model Attachment {
-  id         String   @id @default(cuid())
-  taskId     String
-  fileName   String
-  filePath   String
-  fileSize   Int
-  uploadedBy String
-  uploadedAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  taskId          String?
+  teamMessageId   String?
+  directMessageId String?
+  fileName        String
+  filePath        String
+  fileSize        Int
+  uploadedBy      String
+  uploadedAt      DateTime @default(now())
 
-  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  uploader User @relation(fields: [uploadedBy], references: [id])
+  task          Task?          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  teamMessage   TeamMessage?   @relation(fields: [teamMessageId], references: [id], onDelete: Cascade)
+  directMessage DirectMessage? @relation(fields: [directMessageId], references: [id], onDelete: Cascade)
+  uploader      User           @relation(fields: [uploadedBy], references: [id])
 
   @@index([taskId])
+  @@index([teamMessageId])
+  @@index([directMessageId])
 }

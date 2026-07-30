@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
-async function isMember(userId: string, role: string, teamId: string) {
+export async function isMember(userId: string, role: string, teamId: string) {
   if (role === "ADMIN") return true;
   const membership = await prisma.userTeam.findUnique({ where: { userId_teamId: { userId, teamId } } });
   return !!membership;
@@ -20,12 +20,16 @@ export async function GET(_req: Request, { params }: { params: { teamId: string 
     return NextResponse.json({ error: "Você não faz parte desta equipe" }, { status: 403 });
   }
 
-  const messages = await prisma.teamMessage.findMany({
+  const recent = await prisma.teamMessage.findMany({
     where: { teamId: params.teamId },
-    include: { sender: { select: { id: true, name: true, avatarColor: true } } },
-    orderBy: { createdAt: "asc" },
+    include: {
+      sender: { select: { id: true, name: true, avatarColor: true } },
+      attachments: { select: { id: true, fileName: true, fileSize: true } },
+    },
+    orderBy: { createdAt: "desc" },
     take: 200,
   });
+  const messages = recent.reverse();
 
   await prisma.teamMessageRead.upsert({
     where: { userId_teamId: { userId, teamId: params.teamId } },
