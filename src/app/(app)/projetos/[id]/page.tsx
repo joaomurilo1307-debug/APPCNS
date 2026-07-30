@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import KanbanBoard from "@/components/KanbanBoard";
@@ -169,6 +170,12 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
   return (
     <div>
+      <Link
+        href="/projetos"
+        className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-brand-dark"
+      >
+        ← Voltar para Projetos
+      </Link>
       <div className="mb-1 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{project.name}</h1>

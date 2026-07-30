@@ -423,11 +423,11 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
     setZoom((z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round((z + delta) * 10) / 10)));
   }
 
-  function handleFitToScreen() {
+  function fitToScreen(currentNodes: MindNode[]) {
     const el = containerRef.current;
-    if (!el || nodes.length === 0) return;
-    const xs = nodes.map((n) => n.x);
-    const ys = nodes.map((n) => n.y);
+    if (!el || currentNodes.length === 0) return;
+    const xs = currentNodes.map((n) => n.x);
+    const ys = currentNodes.map((n) => n.y);
     const minX = Math.min(...xs) - 120;
     const maxX = Math.max(...xs) + 120;
     const minY = Math.min(...ys) - 80;
@@ -443,6 +443,20 @@ export default function Whiteboard({ projectId }: { projectId: string }) {
       el.scrollTop = cy * newZoom - el.clientHeight / 2;
     });
   }
+
+  function handleFitToScreen() {
+    fitToScreen(nodes);
+  }
+
+  // Centraliza a visão no conteúdo assim que o board carrega — sem isso, o container
+  // abre sempre no canto superior-esquerdo do canvas de 2400x1400, e como os nós ficam
+  // perto do centro, a tela aparece em branco (só o fundo pontilhado) até o usuário
+  // descobrir que precisa arrastar/clicar em "ajustar à tela" manualmente.
+  useEffect(() => {
+    if (!loaded) return;
+    requestAnimationFrame(() => fitToScreen(nodes));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
