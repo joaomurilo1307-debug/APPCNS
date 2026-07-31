@@ -79,8 +79,19 @@ export function rescheduleProject(
     const t = byId.get(id)!;
     const preds = predsOf.get(id) ?? [];
     if (preds.length === 0) {
-      if (t.startDate) resolvedStart.set(id, t.startDate);
-      if (t.dueDate) resolvedEnd.set(id, t.dueDate);
+      // âncora manual: nunca mexe no início, mas se já tem início + duração, o término
+      // segue a duração (mesmo pra tarefa raiz — sem isso, colocar só a duração numa
+      // tarefa sem predecessora nunca preenchia o término).
+      const rootDuration = derivedDuration(t);
+      if (t.startDate && rootDuration !== null) {
+        const newEnd = addDays(t.startDate, rootDuration);
+        resolvedStart.set(id, t.startDate);
+        resolvedEnd.set(id, newEnd);
+        result.set(id, { startDate: t.startDate, dueDate: newEnd });
+      } else {
+        if (t.startDate) resolvedStart.set(id, t.startDate);
+        if (t.dueDate) resolvedEnd.set(id, t.dueDate);
+      }
       continue;
     }
 
