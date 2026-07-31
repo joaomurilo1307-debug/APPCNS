@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { visibleProjectWhere } from "@/lib/permissions";
 import { reconcileTaskOutlook } from "@/lib/taskOutlookSync";
+import { rescheduleAndPersist } from "@/lib/reschedule";
 import { z } from "zod";
 
 async function visibilityFilterFor(userId: string, role: string) {
@@ -96,13 +97,20 @@ export async function POST(req: Request) {
   const parsed = createTaskSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
-  const task = await prisma.task.create({
+  let task = await prisma.task.create({
     data: {
       ...parsed.data,
       startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : null,
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
     },
   });
+
+  if (parsed.data.durationDays !== undefined && task.projectId) {
+    await prisma.$transaction(async (tx) => {
+      await rescheduleAndPersist(tx, task.projectId!);
+    });
+    task = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
+  }
 
   await reconcileTaskOutlook(
     { assigneeId: null, outlookEventId: null },
