@@ -88,8 +88,10 @@ const createTaskSchema = z.object({
 });
 
 async function nextOrder(projectId: string | null | undefined) {
-  if (!projectId) return Date.now();
-  const max = await prisma.task.aggregate({ where: { projectId }, _max: { order: true } });
+  const max = await prisma.task.aggregate({
+    where: projectId ? { projectId } : { projectId: null },
+    _max: { order: true },
+  });
   return (max._max.order ?? 0) + 1;
 }
 
