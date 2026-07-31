@@ -105,7 +105,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     parsed.data.durationDays !== undefined || parsed.data.startDate !== undefined || parsed.data.dueDate !== undefined;
 
   const updated = await prisma.$transaction(async (tx) => {
-    const result = await tx.task.update({ where: { id: params.id }, data });
+    let result = await tx.task.update({ where: { id: params.id }, data });
     if (customFieldValues) {
       for (const [customFieldId, value] of Object.entries(customFieldValues)) {
         await tx.taskCustomFieldValue.upsert({
@@ -117,6 +117,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     if (affectsSchedule && result.projectId) {
       await rescheduleAndPersist(tx, result.projectId);
+      result = await tx.task.findUniqueOrThrow({ where: { id: params.id } });
     }
     return result;
   });
