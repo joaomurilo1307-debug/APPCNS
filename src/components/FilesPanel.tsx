@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SpreadsheetEditor from "./SpreadsheetEditor";
 
 type FolderT = { id: string; name: string; parentId: string | null };
 type FileT = {
@@ -11,6 +12,10 @@ type FileT = {
   uploadedAt: string;
   uploader: { id: string; name: string };
 };
+
+function isSpreadsheet(fileName: string) {
+  return /\.(xlsx|xls)$/i.test(fileName);
+}
 
 function fmtSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -29,6 +34,7 @@ export default function FilesPanel({ scope, canManage }: { scope: Scope; canMana
   const [uploading, setUploading] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [sheetEditor, setSheetEditor] = useState<{ attachment: FileT | null } | null>(null);
 
   async function load() {
     const [fRes, filesRes] = await Promise.all([
@@ -136,6 +142,12 @@ export default function FilesPanel({ scope, canManage }: { scope: Scope; canMana
             >
               + Nova pasta
             </button>
+            <button
+              onClick={() => setSheetEditor({ attachment: null })}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+            >
+              + Nova planilha
+            </button>
             <label className={`cursor-pointer rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark ${uploading ? "opacity-60" : ""}`}>
               {uploading ? "Enviando..." : "+ Enviar arquivo"}
               <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
@@ -180,10 +192,24 @@ export default function FilesPanel({ scope, canManage }: { scope: Scope; canMana
           ))}
           {childFiles.map((f) => (
             <div key={f.id} className="group flex items-center justify-between px-4 py-2.5 hover:bg-gray-50/70">
-              <a href={`/api/attachments/${f.id}`} className="flex min-w-0 items-center gap-2 truncate text-sm hover:text-brand-dark hover:underline">
-                📄 {f.fileName}
-              </a>
+              {isSpreadsheet(f.fileName) ? (
+                <button
+                  onClick={() => setSheetEditor({ attachment: f })}
+                  className="flex min-w-0 items-center gap-2 truncate text-sm hover:text-brand-dark hover:underline"
+                >
+                  📊 {f.fileName}
+                </button>
+              ) : (
+                <a href={`/api/attachments/${f.id}`} className="flex min-w-0 items-center gap-2 truncate text-sm hover:text-brand-dark hover:underline">
+                  📄 {f.fileName}
+                </a>
+              )}
               <div className="flex shrink-0 items-center gap-3 text-xs text-gray-400">
+                {isSpreadsheet(f.fileName) && (
+                  <a href={`/api/attachments/${f.id}`} className="hover:text-brand-dark" title="Baixar arquivo original">
+                    ⬇
+                  </a>
+                )}
                 <span>{fmtSize(f.fileSize)}</span>
                 <span>{f.uploader.name}</span>
                 {canManage && (
@@ -195,6 +221,16 @@ export default function FilesPanel({ scope, canManage }: { scope: Scope; canMana
             </div>
           ))}
         </div>
+      )}
+
+      {sheetEditor && (
+        <SpreadsheetEditor
+          attachment={sheetEditor.attachment}
+          scope={scope}
+          folderId={currentFolderId}
+          onClose={() => setSheetEditor(null)}
+          onSaved={load}
+        />
       )}
     </div>
   );

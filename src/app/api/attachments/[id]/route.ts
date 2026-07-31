@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { UPLOAD_DIR } from "@/lib/uploadValidation";
+import { UPLOAD_DIR, validateUploadFile, saveUploadedFile } from "@/lib/uploadValidation";
 import { isTeamMember } from "@/lib/permissions";
 import { readFile } from "fs/promises";
 import { unlink } from "fs/promises";
@@ -71,6 +71,56 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       "Content-Length": String(attachment.fileSize),
     },
   });
+}
+
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  const userId = (session.user as any).id;
+  const role = (session.user as any).role;
+
+  const attachment = await prisma.attachment.findUnique({
+    where: { id: params.id },
+    include: {
+      project: { select: { teamId: true } },
+      folder: { select: { teamId: true, project: { select: { teamId: true } } } },
+    },
+  });
+  if (!attachment) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
+
+  const teamId = attachment.projectId
+    ? attachment.project?.teamId
+    : attachment.teamId ?? attachment.folder?.teamId ?? attachment.folder?.project?.teamId;
+  if (!teamId) {
+    return NextResponse.json({ error: "Este tipo de anexo ainda não pode ser substituído por aqui" }, { status: 400 });
+  }
+  if (!(await isTeamMember(userId, role, teamId))) {
+    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  }
+
+  const formData = await req.formData();
+  const file = formData.get("file") as File | null;
+  if (!file) return NextResponse.json({ error: "Arquivo é obrigatório" }, { status: 422 });
+
+  const validation = validateUploadFile(file);
+  if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: validation.status });
+
+  const subDir = attachment.projectId ? `projects/${attachment.projectId}` : `teams/${attachment.teamId}`;
+  const { filePath, fileSize } = await saveUploadedFile(file, subDir);
+
+  const oldFilePath = attachment.filePath;
+  const updated = await prisma.attachment.update({
+    where: { id: params.id },
+    data: { fileName: file.name, filePath, fileSize, uploadedAt: new Date() },
+  });
+
+  try {
+    await unlink(path.join(UPLOAD_DIR, oldFilePath));
+  } catch {
+    // arquivo antigo já pode ter sido removido — não bloqueia a troca
+  }
+
+  return NextResponse.json(updated);
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
