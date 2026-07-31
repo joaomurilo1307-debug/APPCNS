@@ -10,6 +10,7 @@ type Task = {
   startDate: string | null;
   dueDate: string | null;
   status: string;
+  isEntrega?: boolean;
   groupLabel?: string | null;
   parentTaskId?: string | null;
 };
@@ -199,12 +200,13 @@ export default function GanttChart({
                       <span className="shrink-0 font-mono text-[10px] text-gray-400">{wbs}</span>
                       {depth > 0 && <span className="shrink-0 text-gray-300">↳</span>}
                       <span className="truncate">{t.title}</span>
+                      {t.isEntrega && <span className="shrink-0" title="Entrega">🏁</span>}
                     </div>
                     <div className="relative" style={{ width: totalDays * dayWidth, height: 32 }}>
                       {hasDates ? (
                         <div
                           onClick={() => setOpenTaskId(t.id)}
-                          className={`group absolute top-1.5 h-4 cursor-pointer rounded ${statusColor[t.status]}`}
+                          className={`group absolute top-1.5 h-4 cursor-pointer rounded ${t.isEntrega ? "bg-violet-500" : statusColor[t.status]}`}
                           style={{ left: start * dayWidth, width }}
                         >
                           <div className="pointer-events-none absolute -top-9 left-0 z-10 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">

@@ -17,6 +17,7 @@ const updateTaskSchema = z.object({
   startDate: z.string().datetime().nullable().optional(),
   dueDate: z.string().datetime().nullable().optional(),
   durationDays: z.number().int().min(0).max(3650).nullable().optional(),
+  isEntrega: z.boolean().optional(),
   locked: z.boolean().optional(),
   customFieldValues: z.record(z.string().nullable()).optional(),
 });

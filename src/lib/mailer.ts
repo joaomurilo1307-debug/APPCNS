@@ -170,6 +170,59 @@ export async function sendMeetingInvite(opts: {
   });
 }
 
+export async function sendGuestInvite(opts: {
+  eventId: string;
+  sequence: number;
+  title: string;
+  description?: string | null;
+  startAt: Date;
+  endAt: Date | null;
+  allDay: boolean;
+  organizerEmail: string;
+  organizerName: string;
+  guestEmail: string;
+  guestName: string;
+  inviteLink: string;
+}) {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return;
+
+  const ics = buildIcs({
+    uid: `${opts.eventId}-guest-${opts.guestEmail}@gestao.consominas`,
+    sequence: opts.sequence,
+    method: "REQUEST",
+    title: opts.title,
+    description: opts.description,
+    startAt: opts.startAt,
+    endAt: opts.endAt,
+    allDay: opts.allDay,
+    organizerEmail: opts.organizerEmail,
+    organizerName: opts.organizerName,
+    attendees: [{ email: opts.guestEmail, name: opts.guestName }],
+  });
+  const when = formatEventWhen(opts.startAt, opts.allDay);
+
+  try {
+    await getTransporter().sendMail({
+      from: `"${opts.organizerName}" <${opts.organizerEmail}>`,
+      to: `"${opts.guestName}" <${opts.guestEmail}>`,
+      subject: `Convite: ${opts.title}`,
+      text: [
+        `${opts.organizerName} convidou você para "${opts.title}", em ${when}.`,
+        opts.description ? `\n${opts.description}` : "",
+        `\nConfirme sua presença pelo link abaixo (não precisa de login):`,
+        opts.inviteLink,
+      ].filter(Boolean).join("\n"),
+      icalEvent: {
+        method: "REQUEST",
+        filename: "convite.ics",
+        content: ics,
+      },
+    });
+  } catch (err) {
+    console.error("Falha ao enviar convite pra convidado externo:", err);
+  }
+}
+
 export async function sendMeetingCancellation(opts: {
   eventId: string;
   sequence: number;

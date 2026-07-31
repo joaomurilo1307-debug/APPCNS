@@ -15,6 +15,7 @@ type TaskDetail = {
   priority: string;
   startDate: string | null;
   dueDate: string | null;
+  isEntrega: boolean;
   locked: boolean;
   assigneeId: string | null;
   assignee: { id: string; name: string } | null;
@@ -266,6 +267,15 @@ export default function TaskDetailModal({
                 className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-50"
               />
             </div>
+            <label className="col-span-2 flex items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                disabled={!canModify}
+                checked={task.isEntrega}
+                onChange={(e) => patch({ isEntrega: e.target.checked })}
+              />
+              🏁 Marcar como entrega (aparece destacada no Planejamento e no Gantt)
+            </label>
           </div>
 
           {elapsedLabel(task) && (

@@ -4,9 +4,19 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam } from "@/lib/permissions";
 import { pushUpdateEvent, pushDeleteEvent } from "@/lib/microsoftGraph";
-import { sendMeetingInvite, sendMeetingCancellation } from "@/lib/mailer";
+import { sendMeetingInvite, sendMeetingCancellation, sendGuestInvite } from "@/lib/mailer";
 import { generateJitsiRoomUrl } from "@/lib/jitsi";
+import crypto from "crypto";
 import { z } from "zod";
+
+const ATTENDEE_SELECT = {
+  id: true,
+  status: true,
+  userId: true,
+  guestEmail: true,
+  guestName: true,
+  user: { select: { id: true, name: true, avatarColor: true } },
+} as const;
 
 async function canEditEvent(userId: string, role: string, event: { creatorId: string; projectId: string | null }) {
   if (role === "ADMIN") return true;
@@ -26,7 +36,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     include: {
       project: { select: { id: true, name: true } },
       creator: { select: { id: true, name: true, avatarColor: true } },
-      attendees: { include: { user: { select: { id: true, name: true, avatarColor: true } } } },
+      attendees: { select: ATTENDEE_SELECT },
     },
   });
   if (!event) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
@@ -45,6 +55,7 @@ const updateEventSchema = z.object({
   allDay: z.boolean().optional(),
   projectId: z.string().nullable().optional(),
   attendeeIds: z.array(z.string()).optional(),
+  guests: z.array(z.object({ email: z.string().email(), name: z.string().min(1).max(150) })).max(20).optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -63,7 +74,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const parsed = updateEventSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
-  const { attendeeIds, ...rest } = parsed.data;
+  const { attendeeIds, guests, ...rest } = parsed.data;
   const data: any = { ...rest };
   if (parsed.data.startAt !== undefined) data.startAt = new Date(parsed.data.startAt);
   if (parsed.data.endAt !== undefined) data.endAt = parsed.data.endAt ? new Date(parsed.data.endAt) : null;
@@ -71,21 +82,42 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     data.onlineMeetingUrl = generateJitsiRoomUrl(parsed.data.title ?? event.title);
   }
 
+  const attendeeWrites: any = {};
+  const deleteConditions: any[] = [];
+  const createEntries: any[] = [];
+
   if (attendeeIds !== undefined) {
     // So mexe em quem entrou/saiu da lista — preserva o status (Aceito/Recusado) de quem ja estava e ja respondeu.
     const existing = await prisma.calendarEventAttendee.findMany({
-      where: { eventId: params.id },
+      where: { eventId: params.id, userId: { not: null } },
       select: { userId: true },
     });
-    const existingIds = existing.map((a) => a.userId);
+    const existingIds = existing.map((a) => a.userId!);
     const toRemove = existingIds.filter((id) => !attendeeIds.includes(id));
     const toAdd = attendeeIds.filter((id) => !existingIds.includes(id));
-
-    data.attendees = {
-      deleteMany: toRemove.length ? { userId: { in: toRemove } } : undefined,
-      create: toAdd.map((uid) => ({ userId: uid })),
-    };
+    if (toRemove.length) deleteConditions.push({ userId: { in: toRemove } });
+    createEntries.push(...toAdd.map((uid) => ({ userId: uid })));
   }
+
+  let newGuestEntries: { email: string; name: string; token: string }[] = [];
+  if (guests !== undefined) {
+    // Convidados de fora sao reconciliados pelo e-mail (nao tem userId) — preserva status de quem ja respondeu.
+    const existingGuests = await prisma.calendarEventAttendee.findMany({
+      where: { eventId: params.id, guestEmail: { not: null } },
+      select: { guestEmail: true },
+    });
+    const existingEmails = existingGuests.map((a) => a.guestEmail!);
+    const wantedEmails = guests.map((g) => g.email);
+    const toRemoveEmails = existingEmails.filter((e) => !wantedEmails.includes(e));
+    const toAddGuests = guests.filter((g) => !existingEmails.includes(g.email));
+    if (toRemoveEmails.length) deleteConditions.push({ guestEmail: { in: toRemoveEmails } });
+    newGuestEntries = toAddGuests.map((g) => ({ email: g.email, name: g.name, token: crypto.randomBytes(24).toString("hex") }));
+    createEntries.push(...newGuestEntries.map((g) => ({ guestEmail: g.email, guestName: g.name, inviteToken: g.token })));
+  }
+
+  if (deleteConditions.length) attendeeWrites.deleteMany = deleteConditions.length === 1 ? deleteConditions[0] : { OR: deleteConditions };
+  if (createEntries.length) attendeeWrites.create = createEntries;
+  if (Object.keys(attendeeWrites).length) data.attendees = attendeeWrites;
 
   const nextSequence = event.icsSequence + 1;
   const updated = await prisma.calendarEvent.update({
@@ -94,13 +126,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     include: {
       project: { select: { id: true, name: true } },
       creator: { select: { id: true, name: true, avatarColor: true, email: true } },
-      attendees: { include: { user: { select: { id: true, name: true, avatarColor: true } } } },
+      attendees: { select: ATTENDEE_SELECT },
     },
   });
 
-  if (updated.attendees.length) {
+  const internalAttendeeIds = updated.attendees.filter((a) => a.userId).map((a) => a.userId!);
+  if (internalAttendeeIds.length) {
     const attendeeUsers = await prisma.user.findMany({
-      where: { id: { in: updated.attendees.map((a) => a.userId) } },
+      where: { id: { in: internalAttendeeIds } },
       select: { name: true, email: true },
     });
     await sendMeetingInvite({
@@ -117,11 +150,31 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     });
   }
 
+  if (newGuestEntries.length) {
+    const appUrl = process.env.APP_DOMAIN ? `https://${process.env.APP_DOMAIN}` : "";
+    for (const g of newGuestEntries) {
+      await sendGuestInvite({
+        eventId: updated.id,
+        sequence: nextSequence,
+        title: updated.title,
+        description: updated.description,
+        startAt: updated.startAt,
+        endAt: updated.endAt,
+        allDay: updated.allDay,
+        organizerEmail: updated.creator.email,
+        organizerName: updated.creator.name,
+        guestEmail: g.email,
+        guestName: g.name,
+        inviteLink: `${appUrl}/convite/${g.token}`,
+      });
+    }
+  }
+
   if (updated.outlookEventId) {
-    const attendeeEmails = updated.attendees.length
+    const attendeeEmails = internalAttendeeIds.length
       ? (
           await prisma.user.findMany({
-            where: { id: { in: updated.attendees.map((a) => a.userId) } },
+            where: { id: { in: internalAttendeeIds } },
             select: { email: true },
           })
         ).map((u) => u.email)
@@ -159,7 +212,9 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     where: { id: params.id },
     include: {
       creator: { select: { name: true, email: true } },
-      attendees: { include: { user: { select: { name: true, email: true } } } },
+      attendees: {
+        select: { userId: true, guestEmail: true, guestName: true, user: { select: { name: true, email: true } } },
+      },
     },
   });
   if (!event) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
@@ -169,7 +224,11 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const allowed = await canEditEvent(userId, role, event);
   if (!allowed) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 
-  if (event.attendees.length) {
+  const cancelRecipients = [
+    ...event.attendees.filter((a) => a.user).map((a) => ({ email: a.user!.email, name: a.user!.name })),
+    ...event.attendees.filter((a) => a.guestEmail).map((a) => ({ email: a.guestEmail!, name: a.guestName ?? a.guestEmail! })),
+  ];
+  if (cancelRecipients.length) {
     await sendMeetingCancellation({
       eventId: event.id,
       sequence: event.icsSequence + 1,
@@ -179,7 +238,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
       allDay: event.allDay,
       organizerEmail: event.creator.email,
       organizerName: event.creator.name,
-      attendees: event.attendees.map((a) => ({ email: a.user.email, name: a.user.name })),
+      attendees: cancelRecipients,
     });
   }
 

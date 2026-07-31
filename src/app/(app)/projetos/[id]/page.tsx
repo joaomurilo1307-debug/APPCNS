@@ -69,6 +69,8 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [isRotina, setIsRotina] = useState(false);
+  const [frequencia, setFrequencia] = useState("SEMANAL");
   const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<"kanban" | "board" | "metas" | "cronograma" | "gantt" | "lista" | "recursos" | "chat" | "arquivos">("kanban");
   const [ganttTasks, setGanttTasks] = useState<
@@ -78,6 +80,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       startDate: string | null;
       dueDate: string | null;
       durationDays: number | null;
+      isEntrega: boolean;
       actualStartedAt: string | null;
       actualEndedAt: string | null;
       status: string;
@@ -127,11 +130,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         projectId: params.id,
         startDate: startDate ? new Date(startDate).toISOString() : null,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        isRotina,
+        rotinaFrequencia: isRotina ? frequencia : null,
       }),
     });
     setTitle("");
     setStartDate("");
     setDueDate("");
+    setIsRotina(false);
     setShowTaskForm(false);
     setRefreshKey((k) => k + 1);
   }
@@ -332,6 +338,21 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             Prazo
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="rounded-md border border-gray-300 px-2 py-2 text-sm" />
           </label>
+          <label className="flex items-center gap-1 text-sm">
+            <input type="checkbox" checked={isRotina} onChange={(e) => setIsRotina(e.target.checked)} />
+            É rotina recorrente
+          </label>
+          {isRotina && (
+            <select
+              value={frequencia}
+              onChange={(e) => setFrequencia(e.target.value)}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="DIARIA">Diária</option>
+              <option value="SEMANAL">Semanal</option>
+              <option value="MENSAL">Mensal</option>
+            </select>
+          )}
           <button className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
             Criar
           </button>

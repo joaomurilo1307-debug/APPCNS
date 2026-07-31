@@ -77,6 +77,8 @@ const createTaskSchema = z.object({
   priority: z.enum(["BAIXA", "MEDIA", "ALTA", "URGENTE"]).optional(),
   startDate: z.string().datetime().nullable().optional(),
   dueDate: z.string().datetime().nullable().optional(),
+  durationDays: z.number().int().min(0).max(3650).nullable().optional(),
+  isEntrega: z.boolean().optional(),
   isRotina: z.boolean().optional(),
   rotinaFrequencia: z.enum(["DIARIA", "SEMANAL", "MENSAL"]).nullable().optional(),
 });

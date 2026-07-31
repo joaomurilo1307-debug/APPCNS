@@ -20,7 +20,7 @@ type EventDetail = {
   allDay: boolean;
   projectId: string | null;
   creator: { id: string; name: string };
-  attendees: { user: { id: string; name: string }; status: string }[];
+  attendees: { user: { id: string; name: string } | null; guestEmail: string | null; guestName: string | null; status: string }[];
 };
 
 const rsvpLabel: Record<string, string> = {
@@ -70,6 +70,11 @@ export default function EventModal({
   const [projectId, setProjectId] = useState("");
   const [attendeeIds, setAttendeeIds] = useState<string[]>([]);
   const [attendeeStatuses, setAttendeeStatuses] = useState<Record<string, string>>({});
+  const [guests, setGuests] = useState<{ email: string; name: string }[]>([]);
+  const [guestStatuses, setGuestStatuses] = useState<Record<string, string>>({});
+  const [guestNameInput, setGuestNameInput] = useState("");
+  const [guestEmailInput, setGuestEmailInput] = useState("");
+  const [guestError, setGuestError] = useState<string | null>(null);
   const [creatorId, setCreatorId] = useState(currentUserId);
   const [canEdit, setCanEdit] = useState(true);
   const { data: session } = useSession();
@@ -91,8 +96,12 @@ export default function EventModal({
         setEnd(e.endAt ? toLocalInput(new Date(e.endAt)) : "");
         setAllDay(e.allDay);
         setProjectId(e.projectId ?? "");
-        setAttendeeIds(e.attendees.map((a) => a.user.id));
-        setAttendeeStatuses(Object.fromEntries(e.attendees.map((a) => [a.user.id, a.status])));
+        const internal = e.attendees.filter((a) => a.user);
+        const external = e.attendees.filter((a) => a.guestEmail);
+        setAttendeeIds(internal.map((a) => a.user!.id));
+        setAttendeeStatuses(Object.fromEntries(internal.map((a) => [a.user!.id, a.status])));
+        setGuests(external.map((a) => ({ email: a.guestEmail!, name: a.guestName ?? a.guestEmail! })));
+        setGuestStatuses(Object.fromEntries(external.map((a) => [a.guestEmail!, a.status])));
         setCreatorId(e.creator.id);
         setCanEdit(e.creator.id === currentUserId || isPrivileged);
         setLoaded(true);
@@ -101,6 +110,31 @@ export default function EventModal({
 
   function toggleAttendee(id: string) {
     setAttendeeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function addGuest() {
+    setGuestError(null);
+    const email = guestEmailInput.trim().toLowerCase();
+    const name = guestNameInput.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setGuestError("Digite um e-mail válido.");
+      return;
+    }
+    if (!name) {
+      setGuestError("Digite o nome da pessoa.");
+      return;
+    }
+    if (guests.some((g) => g.email === email)) {
+      setGuestError("Esse e-mail já foi adicionado.");
+      return;
+    }
+    setGuests((prev) => [...prev, { email, name }]);
+    setGuestNameInput("");
+    setGuestEmailInput("");
+  }
+
+  function removeGuest(email: string) {
+    setGuests((prev) => prev.filter((g) => g.email !== email));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -116,6 +150,7 @@ export default function EventModal({
       allDay,
       projectId: projectId || null,
       attendeeIds,
+      guests,
     };
     if (eventId) {
       await fetch(`/api/events/${eventId}`, {
@@ -313,6 +348,56 @@ export default function EventModal({
             ))}
             {members.length === 0 && <p className="text-xs text-gray-400">Nenhum colega disponível.</p>}
           </div>
+        </div>
+
+        <div className="mb-4">
+          <p className="mb-1 text-xs text-gray-500">Convidar pessoa de fora (por e-mail)</p>
+          {canEdit && (
+            <div className="mb-2 flex gap-1.5">
+              <input
+                placeholder="Nome"
+                value={guestNameInput}
+                onChange={(e) => setGuestNameInput(e.target.value)}
+                className="w-24 flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+              />
+              <input
+                placeholder="e-mail@exemplo.com"
+                value={guestEmailInput}
+                onChange={(e) => setGuestEmailInput(e.target.value)}
+                className="w-32 flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+              />
+              <button
+                type="button"
+                onClick={addGuest}
+                className="shrink-0 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium hover:bg-gray-50"
+              >
+                + Adicionar
+              </button>
+            </div>
+          )}
+          {guestError && <p className="mb-2 text-xs text-red-600">{guestError}</p>}
+          {guests.length > 0 && (
+            <div className="flex flex-col gap-1 rounded-md border border-gray-200 p-2">
+              {guests.map((g) => (
+                <div key={g.email} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 truncate">
+                    {g.name} <span className="text-xs text-gray-400">({g.email})</span>
+                  </span>
+                  {guestStatuses[g.email] && (
+                    <span className={`text-xs ${rsvpStyle[guestStatuses[g.email]]}`}>
+                      {rsvpLabel[guestStatuses[g.email]]}
+                    </span>
+                  )}
+                  {canEdit && (
+                    <button type="button" onClick={() => removeGuest(g.email)} className="text-gray-300 hover:text-red-500">
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="mt-1 text-xs text-gray-400">A pessoa recebe um e-mail com link pra confirmar presença, sem precisar de login.</p>
         </div>
 
         <div className="flex items-center justify-between">

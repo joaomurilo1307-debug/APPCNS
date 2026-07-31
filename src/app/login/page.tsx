@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import ConsominasLogo from "@/components/ConsominasLogo";
 
 export default function LoginPage() {
@@ -53,7 +54,12 @@ export default function LoginPage() {
           placeholder="voce@consominas.com.br"
         />
 
-        <label className="mb-1 block text-sm font-medium">Senha</label>
+        <div className="mb-1 flex items-center justify-between">
+          <label className="block text-sm font-medium">Senha</label>
+          <Link href="/esqueci-senha" className="text-xs font-medium text-brand-dark hover:underline">
+            Esqueci minha senha
+          </Link>
+        </div>
         <input
           type="password"
           required

@@ -19,6 +19,7 @@ type Task = {
   startDate: string | null;
   dueDate: string | null;
   durationDays?: number | null;
+  isEntrega?: boolean;
   actualStartedAt?: string | null;
   actualEndedAt?: string | null;
   status: string;
@@ -548,6 +549,7 @@ export default function ScheduleChart({
                       </span>
                       {isCritical && <span className="shrink-0" title="No caminho crítico (folga zero)">🔴</span>}
                       {hasConflict && <span className="shrink-0" title="Conflito: início planejado antes do permitido pela rede">⚠️</span>}
+                      {t.isEntrega && <span className="shrink-0" title="Entrega">🏁</span>}
                     </div>
                     {!hiddenCols.has("dur") && (
                       <div style={{ width: COL_W.dur }} className="shrink-0 px-1">
@@ -654,13 +656,19 @@ export default function ScheduleChart({
                           }}
                           className={`group/bar absolute top-[9px] h-[18px] rounded-md border ${
                             canManage ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-                          } ${isCritical ? "border-rose-400 bg-rose-50" : "border-gray-300 bg-gray-100"} ${
-                            isDragging ? "shadow-lg ring-2 ring-brand/40" : ""
-                          }`}
+                          } ${
+                            isCritical
+                              ? "border-rose-400 bg-rose-50"
+                              : t.isEntrega
+                              ? "border-violet-400 bg-violet-50"
+                              : "border-gray-300 bg-gray-100"
+                          } ${isDragging ? "shadow-lg ring-2 ring-brand/40" : ""}`}
                           style={{ left: start * dayWidth, width }}
                         >
                           <div
-                            className={`pointer-events-none h-full rounded-[5px] ${isCritical ? "bg-rose-400" : "bg-brand/70"}`}
+                            className={`pointer-events-none h-full rounded-[5px] ${
+                              isCritical ? "bg-rose-400" : t.isEntrega ? "bg-violet-400" : "bg-brand/70"
+                            }`}
                             style={{ width: `${pct}%` }}
                           />
                           {canManage && (
@@ -695,9 +703,11 @@ export default function ScheduleChart({
                     {isMilestone && (
                       <div
                         onClick={() => setOpenTaskId(t.id)}
-                        className={`absolute top-[8px] h-4 w-4 rotate-45 cursor-pointer ${isCritical ? "bg-rose-500" : "bg-brand"}`}
+                        className={`absolute top-[8px] h-4 w-4 rotate-45 cursor-pointer ${
+                          isCritical ? "bg-rose-500" : t.isEntrega ? "bg-violet-500" : "bg-brand"
+                        }`}
                         style={{ left: start * dayWidth - 8 }}
-                        title={`${t.title} · marco`}
+                        title={`${t.title} · ${t.isEntrega ? "entrega" : "marco"}`}
                       />
                     )}
                   </div>
@@ -762,6 +772,7 @@ export default function ScheduleChart({
         <span className="flex items-center gap-1"><span className="h-1 w-4 rounded-full bg-gray-700" /> Real</span>
         <span className="flex items-center gap-1"><span className="h-3 w-4 rounded border border-rose-400 bg-rose-50" /> Crítica</span>
         <span className="flex items-center gap-1"><span className="h-3 w-3 rotate-45 bg-brand" /> Marco</span>
+        <span className="flex items-center gap-1"><span className="h-3 w-3 rotate-45 bg-violet-500" /> 🏁 Entrega</span>
         <span className="flex items-center gap-1"><span className="h-3 w-0 border-l-2 border-dashed border-indigo-400" /> Hoje</span>
       </div>
 
