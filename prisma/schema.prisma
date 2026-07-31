@@ -677,6 +677,9 @@ model Task {
   isEntrega         Boolean           @default(false)
   isRotina          Boolean           @default(false)
   rotinaFrequencia  RotinaFrequencia?
+  rotinaAteData     DateTime?
+  rotinaGroupId     String?
+  order             Int               @default(0)
   projectId         String?
   assigneeId        String?
   parentTaskId      String?
@@ -702,6 +705,7 @@ model Task {
   @@index([parentTaskId])
   @@index([status])
   @@index([dueDate])
+  @@index([rotinaGroupId])
 }
 
 enum DependencyType {

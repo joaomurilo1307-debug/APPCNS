@@ -48,6 +48,7 @@ const NAME_WIDTHS = { estreita: 200, larga: 320 } as const;
 const ROW_H = 36;
 const MONTH_ROW_H = 20;
 const WBS_W = 40;
+const MOVE_W = 24;
 const MONTH_NAMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 const COLUMNS = [
@@ -123,7 +124,7 @@ export default function ScheduleChart({
   const dayWidth = ZOOM_LEVELS[zoom];
   const namePx = NAME_WIDTHS[nameWidth];
   const visibleCols = COLUMNS.filter((c) => !hiddenCols.has(c.key));
-  const TABLE_W = WBS_W + namePx + visibleCols.reduce((sum, c) => sum + c.width, 0);
+  const TABLE_W = (canManage ? MOVE_W : 0) + WBS_W + namePx + visibleCols.reduce((sum, c) => sum + c.width, 0);
 
   function toggleCol(key: ColumnKey) {
     setHiddenCols((prev) => {
@@ -247,6 +248,15 @@ export default function ScheduleChart({
 
   function handleAssigneeChange(t: Task, value: string) {
     patchTask(t.id, { assigneeId: value || null });
+  }
+
+  async function handleMove(taskId: string, direction: "up" | "down") {
+    await fetch(`/api/tasks/${taskId}/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ direction }),
+    });
+    onChanged?.();
   }
 
   // Arrastar a barra do Gantt pra mudar a duração (borda direita) ou mover a tarefa inteira
@@ -409,6 +419,7 @@ export default function ScheduleChart({
               className="sticky left-0 top-0 z-30 flex shrink-0 items-end border-b border-r border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500"
               style={{ width: TABLE_W, height: MONTH_ROW_H + ROW_H, paddingBottom: 0 }}
             >
+              {canManage && <div style={{ width: MOVE_W, height: ROW_H }} className="shrink-0" />}
               <div style={{ width: WBS_W, height: ROW_H }} className="flex items-center px-1.5 text-center">#</div>
               <div style={{ width: namePx, height: ROW_H }} className="flex items-center px-2">Tarefa</div>
               {visibleCols.map((c) => (
@@ -539,6 +550,26 @@ export default function ScheduleChart({
                     className="sticky left-0 z-10 flex shrink-0 items-center border-r border-gray-200 bg-white text-[11px] group-hover:bg-gray-50/80"
                     style={{ width: TABLE_W }}
                   >
+                    {canManage && (
+                      <div style={{ width: MOVE_W }} className="flex shrink-0 flex-col items-center justify-center gap-px opacity-0 group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => handleMove(t.id, "up")}
+                          title="Mover pra cima"
+                          className="leading-none text-gray-300 hover:text-brand-dark"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMove(t.id, "down")}
+                          title="Mover pra baixo"
+                          className="leading-none text-gray-300 hover:text-brand-dark"
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    )}
                     <div style={{ width: WBS_W }} className="shrink-0 truncate px-1.5 text-center font-mono text-[10px] text-gray-400">
                       {wbs}
                     </div>
@@ -631,7 +662,7 @@ export default function ScheduleChart({
                       </div>
                     )}
                     {!hiddenCols.has("pred") && (
-                      <div style={{ width: COL_W.pred }} className="shrink-0 px-1">
+                      <div style={{ width: COL_W.pred }} className="relative shrink-0 px-1">
                         <button
                           onClick={() => toggleDepPanel(t.id)}
                           title="Gerenciar dependências"
@@ -641,6 +672,65 @@ export default function ScheduleChart({
                         >
                           {predText || "—"} 🔗
                         </button>
+
+                        {depPanelFor === t.id && (
+                          <div
+                            className="shadow-elevated absolute left-0 top-full z-40 w-72 border border-gray-200 bg-white p-3 text-xs"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <p className="mb-1.5 font-semibold text-gray-600">Predecessoras de "{t.title}"</p>
+                            <div className="mb-2 flex flex-col gap-1">
+                              {(t.predecessorLinks ?? []).map((link) => (
+                                <div key={link.id} className="flex items-center gap-2 rounded-md bg-gray-50 px-2 py-1.5">
+                                  <span className="flex-1 truncate">{wbsById.get(link.predecessorId)} · {link.predecessor.title}</span>
+                                  <span className="shrink-0 text-gray-400">{dependencyTypeLabel[link.type]}</span>
+                                  {link.lagDays !== 0 && <span className="shrink-0 text-gray-400">({link.lagDays > 0 ? "+" : ""}{link.lagDays}d)</span>}
+                                  <button onClick={() => handleRemoveDependency(link.id)} className="shrink-0 text-gray-300 hover:text-red-500">✕</button>
+                                </div>
+                              ))}
+                              {(t.predecessorLinks ?? []).length === 0 && <p className="text-gray-400">Nenhuma predecessora.</p>}
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <select value={newPredId} onChange={(e) => setNewPredId(e.target.value)} className="w-full rounded-md border border-gray-300 px-2 py-1">
+                                <option value="">Escolher predecessora...</option>
+                                {withDates
+                                  .filter((o) => o.id !== t.id)
+                                  .map((o) => (
+                                    <option key={o.id} value={o.id}>{wbsById.get(o.id)} · {o.title}</option>
+                                  ))}
+                              </select>
+                              <div className="flex items-center gap-1.5">
+                                <select value={newType} onChange={(e) => setNewType(e.target.value as DependencyType)} className="flex-1 rounded-md border border-gray-300 px-1.5 py-1">
+                                  {(Object.keys(dependencyTypeLabel) as DependencyType[]).map((v) => (
+                                    <option key={v} value={v}>{dependencyTypeLabel[v]}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  value={newLag}
+                                  onChange={(e) => setNewLag(e.target.value)}
+                                  title="Antecedência/folga em dias"
+                                  className="w-12 rounded-md border border-gray-300 px-1.5 py-1"
+                                />
+                                <button
+                                  onClick={() => handleAddDependency(t.id)}
+                                  disabled={!newPredId || savingDep}
+                                  className="shrink-0 rounded-md bg-brand px-2.5 py-1 font-medium text-white hover:bg-brand-dark disabled:opacity-50"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                            <p className="mt-1.5 text-gray-400">Só tarefas com início e prazo definidos entram no cálculo do caminho crítico.</p>
+                            {depError && <p className="mt-1.5 text-rose-600">{depError}</p>}
+                            <button
+                              onClick={() => setDepPanelFor(null)}
+                              className="absolute right-1.5 top-1.5 text-gray-300 hover:text-gray-600"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -712,53 +802,6 @@ export default function ScheduleChart({
                     )}
                   </div>
 
-                  {depPanelFor === t.id && (
-                    <div className="shadow-elevated absolute left-0 right-0 top-full z-30 border border-gray-100 bg-white px-4 py-3 text-xs" style={{ width: TABLE_W + totalDays * dayWidth }}>
-                      <p className="mb-1.5 font-semibold text-gray-600">Predecessoras de "{t.title}"</p>
-                      <div className="mb-2 flex flex-col gap-1">
-                        {(t.predecessorLinks ?? []).map((link) => (
-                          <div key={link.id} className="flex items-center gap-2 rounded-md bg-gray-50 px-2 py-1.5">
-                            <span className="flex-1 truncate">{wbsById.get(link.predecessorId)} · {link.predecessor.title}</span>
-                            <span className="text-gray-400">{dependencyTypeLabel[link.type]}</span>
-                            {link.lagDays !== 0 && <span className="text-gray-400">({link.lagDays > 0 ? "+" : ""}{link.lagDays}d)</span>}
-                            <button onClick={() => handleRemoveDependency(link.id)} className="text-gray-300 hover:text-red-500">✕</button>
-                          </div>
-                        ))}
-                        {(t.predecessorLinks ?? []).length === 0 && <p className="text-gray-400">Nenhuma predecessora.</p>}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select value={newPredId} onChange={(e) => setNewPredId(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1">
-                          <option value="">Escolher tarefa predecessora...</option>
-                          {withDates
-                            .filter((o) => o.id !== t.id)
-                            .map((o) => (
-                              <option key={o.id} value={o.id}>{wbsById.get(o.id)} · {o.title}</option>
-                            ))}
-                        </select>
-                        <select value={newType} onChange={(e) => setNewType(e.target.value as DependencyType)} className="rounded-md border border-gray-300 px-2 py-1">
-                          {(Object.keys(dependencyTypeLabel) as DependencyType[]).map((v) => (
-                            <option key={v} value={v}>{dependencyTypeLabel[v]}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          value={newLag}
-                          onChange={(e) => setNewLag(e.target.value)}
-                          title="Antecedência/folga em dias"
-                          className="w-16 rounded-md border border-gray-300 px-2 py-1"
-                        />
-                        <button
-                          onClick={() => handleAddDependency(t.id)}
-                          disabled={!newPredId || savingDep}
-                          className="rounded-md bg-brand px-2.5 py-1 font-medium text-white hover:bg-brand-dark disabled:opacity-50"
-                        >
-                          Adicionar
-                        </button>
-                      </div>
-                      <p className="mt-1.5 text-gray-400">Só tarefas com início e prazo definidos aparecem na lista — sem data, a dependência não entra no cálculo do caminho crítico.</p>
-                      {depError && <p className="mt-1.5 text-rose-600">{depError}</p>}
-                    </div>
-                  )}
                 </div>
               );
             })}

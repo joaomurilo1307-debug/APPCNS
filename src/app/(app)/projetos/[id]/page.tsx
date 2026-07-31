@@ -71,6 +71,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [dueDate, setDueDate] = useState("");
   const [isRotina, setIsRotina] = useState(false);
   const [frequencia, setFrequencia] = useState("SEMANAL");
+  const [rotinaAte, setRotinaAte] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<"kanban" | "board" | "metas" | "cronograma" | "gantt" | "lista" | "recursos" | "chat" | "arquivos">("kanban");
   const [ganttTasks, setGanttTasks] = useState<
@@ -132,12 +133,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
         isRotina,
         rotinaFrequencia: isRotina ? frequencia : null,
+        rotinaAteData: isRotina && rotinaAte ? new Date(rotinaAte).toISOString() : null,
       }),
     });
     setTitle("");
     setStartDate("");
     setDueDate("");
     setIsRotina(false);
+    setRotinaAte("");
     setShowTaskForm(false);
     setRefreshKey((k) => k + 1);
   }
@@ -343,15 +346,27 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             É rotina recorrente
           </label>
           {isRotina && (
-            <select
-              value={frequencia}
-              onChange={(e) => setFrequencia(e.target.value)}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="DIARIA">Diária</option>
-              <option value="SEMANAL">Semanal</option>
-              <option value="MENSAL">Mensal</option>
-            </select>
+            <>
+              <select
+                value={frequencia}
+                onChange={(e) => setFrequencia(e.target.value)}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="DIARIA">Diária</option>
+                <option value="SEMANAL">Semanal</option>
+                <option value="MENSAL">Mensal</option>
+              </select>
+              <label className="flex items-center gap-1 text-xs text-gray-500">
+                Repetir até
+                <input
+                  type="date"
+                  value={rotinaAte}
+                  onChange={(e) => setRotinaAte(e.target.value)}
+                  title="Se preenchido, gera uma tarefa pra cada ocorrência até essa data"
+                  className="rounded-md border border-gray-300 px-2 py-2 text-sm"
+                />
+              </label>
+            </>
           )}
           <button className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
             Criar
