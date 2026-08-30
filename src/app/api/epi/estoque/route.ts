@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { listaEstoqueComCalculo } from "@/lib/epi";
+import { listaEstoqueComCalculo, upsertEpiEstoque } from "@/lib/epi";
 import { z } from "zod";
 
 // Estoque atual nunca é guardado direto — é sempre estoqueInicial + entradas - saídas,
@@ -37,10 +36,9 @@ export async function POST(req: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
-  const estoque = await prisma.epiEstoque.upsert({
-    where: { contratoId_produtoId: { contratoId: parsed.data.contratoId ?? null, produtoId: parsed.data.produtoId } },
-    update: { estoqueInicial: parsed.data.estoqueInicial, estoqueMinimo: parsed.data.estoqueMinimo },
-    create: parsed.data,
+  const estoque = await upsertEpiEstoque(parsed.data.produtoId, parsed.data.contratoId ?? null, {
+    estoqueInicial: parsed.data.estoqueInicial,
+    estoqueMinimo: parsed.data.estoqueMinimo,
   });
   return NextResponse.json(estoque, { status: 201 });
 }

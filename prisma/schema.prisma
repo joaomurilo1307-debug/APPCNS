@@ -824,11 +824,16 @@ enum EpiMovimentoTipo {
 // do model Project (gestao de projetos internos); um contrato aqui e a unidade de
 // centro de custo/estoque do almoxarifado, pode ou nao ter um Project associado.
 model EpiContrato {
-  id        String   @id @default(cuid())
-  codigo    String   @unique
-  nome      String?
-  ativo     Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id                     String   @id @default(cuid())
+  codigo                 String   @unique
+  nome                   String?
+  ativo                  Boolean  @default(true)
+  // % de contingência sugerido pra calcular mínimo a partir do efetivo (editável por
+  // contrato, já que canteiros diferentes podem exigir folga diferente) — é só
+  // referência/sugestão: o mínimo que realmente vale por item fica em EpiEstoque.estoqueMinimo,
+  // sempre editável à parte, pra nunca travar num contrato que já tem número calculado por fora.
+  percentualContingencia Float    @default(0.10)
+  createdAt              DateTime @default(now())
 
   colaboradores EpiColaborador[]
   movimentacoes EpiMovimentacao[]
@@ -864,15 +869,18 @@ model EpiColaborador {
 }
 
 // Catalogo de itens (EPI/EPC/fardamento) — nome+tamanho unico, CA quando existir.
+// Totalmente editavel pela UI (Catalogo), alem do que vem da planilha importada.
 model EpiProduto {
-  id        String   @id @default(cuid())
-  nome      String
-  tipo      EpiTipo  @default(EPI)
-  categoria String?
-  ca        String?
-  tamanho   String?
-  unidade   String   @default("UNID")
-  createdAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  nome          String
+  tipo          EpiTipo  @default(EPI)
+  categoria     String?
+  ca            String?
+  tamanho       String?
+  unidade       String   @default("UNID")
+  valorUnitario Float?
+  ativo         Boolean  @default(true)
+  createdAt     DateTime @default(now())
 
   movimentacoes EpiMovimentacao[]
   estoques      EpiEstoque[]

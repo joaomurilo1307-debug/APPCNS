@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { upsertEpiEstoque, upsertEpiProdutoPorNome } from "@/lib/epi";
 import { z } from "zod";
 
 // Import estruturado a partir de uma planilha no padrão "INFORMAÇÕES GERAIS" (ex: MRN):
@@ -147,17 +148,14 @@ export async function POST(req: Request) {
   for (const e of estoque) {
     const nome = e.produto.trim();
     const ca = extractCA(nome);
-    const produto = await prisma.epiProduto.upsert({
-      where: { nome_tamanho: { nome, tamanho: null } },
-      update: { ca: ca ?? undefined, unidade: e.medida?.trim() || undefined },
-      create: { nome, ca, unidade: e.medida?.trim() || "UNID" },
-    });
+    const produto = await upsertEpiProdutoPorNome(
+      nome,
+      null,
+      { ca, unidade: e.medida?.trim() || "UNID" },
+      { ca: ca ?? undefined, unidade: e.medida?.trim() || undefined }
+    );
     const cId = e.contrato ? await contratoId(e.contrato) : null;
-    await prisma.epiEstoque.upsert({
-      where: { contratoId_produtoId: { contratoId: cId, produtoId: produto.id } },
-      update: { estoqueInicial: e.estoqueInicial, estoqueMinimo: e.estoqueMinimo },
-      create: { contratoId: cId, produtoId: produto.id, estoqueInicial: e.estoqueInicial, estoqueMinimo: e.estoqueMinimo },
-    });
+    await upsertEpiEstoque(produto.id, cId, { estoqueInicial: e.estoqueInicial, estoqueMinimo: e.estoqueMinimo });
     estoqueImportado++;
   }
 

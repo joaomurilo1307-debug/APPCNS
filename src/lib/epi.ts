@@ -1,5 +1,36 @@
 import { prisma } from "@/lib/prisma";
 
+// Prisma nao aceita `null` direto dentro do objeto de where composto de um
+// @@unique quando um dos campos e opcional (o tipo gerado exige o escalar, nao
+// aceita `| null` ali) — mesmo o banco permitindo. Por isso, pra qualquer
+// upsert onde contratoId/tamanho pode ser nulo (deposito geral, produto sem
+// tamanho), fazemos find-then-create/update manual em vez de `.upsert()`.
+
+export async function upsertEpiEstoque(
+  produtoId: string,
+  contratoId: string | null,
+  data: { estoqueInicial: number; estoqueMinimo: number }
+) {
+  const existente = await prisma.epiEstoque.findFirst({ where: { produtoId, contratoId } });
+  if (existente) {
+    return prisma.epiEstoque.update({ where: { id: existente.id }, data });
+  }
+  return prisma.epiEstoque.create({ data: { produtoId, contratoId, ...data } });
+}
+
+export async function upsertEpiProdutoPorNome(
+  nome: string,
+  tamanho: string | null,
+  create: { tipo?: "EPI" | "EPC" | "FARDAMENTO"; ca?: string | null; unidade?: string },
+  update: { ca?: string; unidade?: string }
+) {
+  const existente = await prisma.epiProduto.findFirst({ where: { nome, tamanho } });
+  if (existente) {
+    return prisma.epiProduto.update({ where: { id: existente.id }, data: update });
+  }
+  return prisma.epiProduto.create({ data: { nome, tamanho, ...create } });
+}
+
 // Estoque atual de EPI/EPC nunca fica guardado direto no banco — é sempre recalculado
 // a partir de estoqueInicial + soma de entradas - soma de saídas em EpiMovimentacao,
 // pra nunca dessincronizar do histórico real (mesmo princípio da planilha Excel que
