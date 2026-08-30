@@ -218,6 +218,7 @@ model User {
   nucleosGerenciados Nucleo[] @relation("NucleoGerente")
   projetosComoDiretor     Project[] @relation("ProjectDiretor")
   projetosComoCoordenador Project[] @relation("ProjectCoordenador")
+  epiMovimentacoesRegistradas EpiMovimentacao[] @relation("EpiMovimentacaoRegistradoPor")
 }
 
 model ApprovalRequest {
@@ -800,4 +801,139 @@ model Folder {
   @@index([teamId])
   @@index([parentId])
   @@index([createdBy])
+}
+
+// =========================================================
+// ALMOXARIFADO — controle de estoque de EPI, EPC e fardamento
+// por contrato (MRN e outros), importado de planilha e mantido
+// via movimentacoes de entrada/saida.
+// =========================================================
+
+enum EpiTipo {
+  EPI
+  EPC
+  FARDAMENTO
+}
+
+enum EpiMovimentoTipo {
+  ENTRADA
+  SAIDA
+}
+
+// Contrato administrativo (ex: 3686, 3687, 3748, 3581, 4343) — conceito diferente
+// do model Project (gestao de projetos internos); um contrato aqui e a unidade de
+// centro de custo/estoque do almoxarifado, pode ou nao ter um Project associado.
+model EpiContrato {
+  id        String   @id @default(cuid())
+  codigo    String   @unique
+  nome      String?
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  colaboradores EpiColaborador[]
+  movimentacoes EpiMovimentacao[]
+  estoques      EpiEstoque[]
+  funcaoRegras  EpiFuncaoRegra[]
+}
+
+model EpiColaborador {
+  id            String    @id @default(cuid())
+  nomeCompleto  String
+  contratoId    String
+  funcao        String
+  situacao      String    @default("ATIVO")
+  admissao      DateTime?
+  tamanhoBota   Int?
+  tamanhoCamisa String?
+  tamanhoCalca  Int?
+  cpf           String?
+  rg            String?
+  nascimento    DateTime?
+  moradia       String?
+  endereco      String?
+  numero        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  contrato      EpiContrato       @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  movimentacoes EpiMovimentacao[]
+
+  @@unique([contratoId, nomeCompleto])
+  @@index([contratoId])
+  @@index([funcao])
+}
+
+// Catalogo de itens (EPI/EPC/fardamento) — nome+tamanho unico, CA quando existir.
+model EpiProduto {
+  id        String   @id @default(cuid())
+  nome      String
+  tipo      EpiTipo  @default(EPI)
+  categoria String?
+  ca        String?
+  tamanho   String?
+  unidade   String   @default("UNID")
+  createdAt DateTime @default(now())
+
+  movimentacoes EpiMovimentacao[]
+  estoques      EpiEstoque[]
+
+  @@unique([nome, tamanho])
+}
+
+// Posicao de estoque de um produto — por contrato, ou geral (contratoId nulo,
+// ex: deposito central/ECC que abastece varios contratos). Estoque atual e
+// SEMPRE calculado (estoqueInicial + entradas - saidas via EpiMovimentacao),
+// nunca guardado direto, pra nunca dessincronizar do historico de movimentacao.
+model EpiEstoque {
+  id             String   @id @default(cuid())
+  contratoId     String?
+  produtoId      String
+  estoqueInicial Int      @default(0)
+  estoqueMinimo  Float    @default(0)
+  updatedAt      DateTime @updatedAt
+
+  contrato EpiContrato? @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  produto  EpiProduto   @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([contratoId, produtoId])
+  @@index([produtoId])
+}
+
+model EpiMovimentacao {
+  id              String           @id @default(cuid())
+  data            DateTime         @default(now())
+  tipo            EpiMovimentoTipo
+  produtoId       String
+  contratoId      String
+  colaboradorId   String?
+  quantidade      Int
+  observacao      String?
+  registradoPorId String?
+  createdAt       DateTime         @default(now())
+
+  produto       EpiProduto      @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  contrato      EpiContrato     @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  colaborador   EpiColaborador? @relation(fields: [colaboradorId], references: [id], onDelete: SetNull)
+  registradoPor User?           @relation("EpiMovimentacaoRegistradoPor", fields: [registradoPorId], references: [id], onDelete: SetNull)
+
+  @@index([produtoId, contratoId])
+  @@index([colaboradorId])
+  @@index([contratoId, data])
+}
+
+// Regra de quais EPIs cada funcao usa, por contrato (vem da matriz "EPIs por
+// Funcao"), organizada por categoria/parte do corpo. Usada pra saber quantas
+// pessoas usam cada item (via EpiColaborador.funcao) sem precisar marcar
+// Sim/Nao pessoa a pessoa.
+model EpiFuncaoRegra {
+  id         String @id @default(cuid())
+  contratoId String
+  funcao     String
+  categoria  String
+  descricao  String @db.Text
+
+  contrato EpiContrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@unique([contratoId, funcao, categoria])
+  @@index([funcao])
 }
