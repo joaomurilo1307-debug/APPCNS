@@ -158,13 +158,3 @@ export function IconShieldUser({ className }: IconProps) {
   );
 }
 
-export function IconHardHat({ className }: IconProps) {
-  return (
-    <svg {...base} className={className}>
-      <path d="M4 15.5a8 8 0 0 1 16 0" />
-      <path d="M12 4v4.2" />
-      <rect x="2.5" y="15.5" width="19" height="3" rx="1.2" />
-      <path d="M9 8.5c0-1.7 1.3-3 3-3s3 1.3 3 3" />
-    </svg>
-  );
-}
