@@ -62,6 +62,8 @@ export async function listaEstoqueComCalculo(where: { contratoId?: string | null
   return estoques.map((e) => {
     const { entradas, saidas } = movFor(e.produtoId, e.contratoId);
     const atual = e.estoqueInicial + entradas - saidas;
+    const necessidade = Math.max(0, Math.ceil(e.estoqueMinimo - atual));
+    const valorUnitario = e.produto.valorUnitario ?? null;
     return {
       id: e.id,
       produto: e.produto,
@@ -71,8 +73,11 @@ export async function listaEstoqueComCalculo(where: { contratoId?: string | null
       saidas,
       estoqueAtual: atual,
       estoqueMinimo: e.estoqueMinimo,
-      necessidade: Math.max(0, Math.ceil(e.estoqueMinimo - atual)),
+      necessidade,
       status: atual < e.estoqueMinimo ? ("COMPRAR" as const) : ("OK" as const),
+      valorUnitario,
+      valorEmEstoque: valorUnitario !== null ? Math.max(0, atual) * valorUnitario : null,
+      valorNecessidade: valorUnitario !== null ? necessidade * valorUnitario : null,
     };
   });
 }

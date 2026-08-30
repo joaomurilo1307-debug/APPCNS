@@ -25,6 +25,9 @@ export async function GET() {
 
   const abaixoMinimo = estoque.filter((e) => e.status === "COMPRAR");
   const necessidadeTotal = estoque.reduce((acc, e) => acc + e.necessidade, 0);
+  const valorEmEstoqueTotal = estoque.reduce((acc, e) => acc + (e.valorEmEstoque ?? 0), 0);
+  const valorNecessidadeTotal = estoque.reduce((acc, e) => acc + (e.valorNecessidade ?? 0), 0);
+  const itensComCusto = estoque.filter((e) => e.valorUnitario !== null).length;
 
   const porContrato = contratos.map((c) => {
     const itensContrato = estoque.filter((e) => e.contrato?.id === c.id);
@@ -34,6 +37,14 @@ export async function GET() {
       abaixoMinimo: itensContrato.filter((e) => e.status === "COMPRAR").length,
     };
   });
+  const itensGeral = estoque.filter((e) => !e.contrato);
+  if (itensGeral.length > 0) {
+    porContrato.push({
+      contrato: { id: "geral", codigo: "Geral", nome: "Depósito central / ECC", ativo: true, percentualContingencia: 0, createdAt: new Date() },
+      totalItens: itensGeral.length,
+      abaixoMinimo: itensGeral.filter((e) => e.status === "COMPRAR").length,
+    });
+  }
 
   const porTipo: Record<string, { total: number; abaixoMinimo: number }> = {};
   for (const e of estoque) {
@@ -49,6 +60,9 @@ export async function GET() {
     totalItensMonitorados: estoque.length,
     itensAbaixoMinimo: abaixoMinimo.length,
     necessidadeTotalCompra: necessidadeTotal,
+    valorEmEstoqueTotal,
+    valorNecessidadeTotal,
+    itensComCusto,
     porContrato,
     porTipo,
     criticos: abaixoMinimo
@@ -60,6 +74,7 @@ export async function GET() {
         estoqueAtual: e.estoqueAtual,
         estoqueMinimo: e.estoqueMinimo,
         necessidade: e.necessidade,
+        valorNecessidade: e.valorNecessidade,
       })),
     ultimasMovimentacoes,
   });

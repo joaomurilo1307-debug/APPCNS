@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EpiMovimentacaoForm from "@/components/EpiMovimentacaoForm";
 
 type DashboardData = {
   totalContratos: number;
@@ -8,9 +9,12 @@ type DashboardData = {
   totalItensMonitorados: number;
   itensAbaixoMinimo: number;
   necessidadeTotalCompra: number;
+  valorEmEstoqueTotal: number;
+  valorNecessidadeTotal: number;
+  itensComCusto: number;
   porContrato: { contrato: { id: string; codigo: string; nome: string | null }; totalItens: number; abaixoMinimo: number }[];
   porTipo: Record<string, { total: number; abaixoMinimo: number }>;
-  criticos: { produto: string; contrato: string; estoqueAtual: number; estoqueMinimo: number; necessidade: number }[];
+  criticos: { produto: string; contrato: string; estoqueAtual: number; estoqueMinimo: number; necessidade: number; valorNecessidade: number | null }[];
   ultimasMovimentacoes: {
     id: string;
     tipo: "ENTRADA" | "SAIDA";
@@ -32,11 +36,37 @@ function KpiCard({ label, value, accent }: { label: string; value: string | numb
   );
 }
 
+function fmtMoney(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 export default function AlmoxarifadoDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
+  const [showQuick, setShowQuick] = useState(false);
+  const [contratos, setContratos] = useState<{ id: string; codigo: string; nome: string | null }[]>([]);
+  const [produtos, setProdutos] = useState<{ id: string; nome: string }[]>([]);
+  const [colaboradores, setColaboradores] = useState<{ id: string; nomeCompleto: string; contratoId: string }[]>([]);
 
   useEffect(() => {
-    fetch("/api/epi/dashboard").then((r) => r.json()).then(setData).catch(() => {});
+    fetch("/api/epi/contratos").then((r) => r.json()).then(setContratos).catch(() => {});
+    fetch("/api/epi/produtos").then((r) => r.json()).then(setProdutos).catch(() => {});
+    fetch("/api/epi/colaboradores").then((r) => r.json()).then(setColaboradores).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    function reload() {
+      fetch("/api/epi/dashboard")
+        .then((r) => r.json())
+        .then((d) => {
+          setData(d);
+          setAtualizadoEm(new Date());
+        })
+        .catch(() => {});
+    }
+    reload();
+    const id = setInterval(reload, 20000); // ao vivo: atualiza sozinho a cada 20s
+    return () => clearInterval(id);
   }, []);
 
   if (!data) return <p className="text-sm text-gray-400">Carregando...</p>;
@@ -45,12 +75,35 @@ export default function AlmoxarifadoDashboard() {
 
   return (
     <div>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
+          </span>
+          Ao vivo · atualizado {atualizadoEm ? atualizadoEm.toLocaleTimeString("pt-BR") : "..."}
+        </div>
+        <button
+          onClick={() => setShowQuick(true)}
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
+        >
+          ⚡ Movimentação rápida
+        </button>
+      </div>
+
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Contratos monitorados" value={data.totalContratos} accent="bg-brand" />
         <KpiCard label="Colaboradores ativos" value={data.colaboradoresAtivos} accent="bg-brand-dark" />
         <KpiCard label="Itens abaixo do mínimo" value={data.itensAbaixoMinimo} accent="bg-accent" />
         <KpiCard label="Unidades a comprar (total)" value={data.necessidadeTotalCompra} accent="bg-accent-dark" />
       </div>
+
+      {data.itensComCusto > 0 && (
+        <div className="mb-6 grid gap-4 sm:grid-cols-2">
+          <KpiCard label={`Valor em estoque (${data.itensComCusto} itens com custo cadastrado)`} value={fmtMoney(data.valorEmEstoqueTotal)} accent="bg-brand" />
+          <KpiCard label="Valor estimado pra repor o que está em falta" value={fmtMoney(data.valorNecessidadeTotal)} accent="bg-accent" />
+        </div>
+      )}
 
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -108,6 +161,7 @@ export default function AlmoxarifadoDashboard() {
                   <th className="pb-2 text-right">Atual</th>
                   <th className="pb-2 text-right">Mínimo</th>
                   <th className="pb-2 text-right">Comprar</th>
+                  <th className="pb-2 text-right">Custo estimado</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,6 +172,7 @@ export default function AlmoxarifadoDashboard() {
                     <td className="py-2 text-right text-gray-500">{c.estoqueAtual}</td>
                     <td className="py-2 text-right text-gray-500">{c.estoqueMinimo}</td>
                     <td className="py-2 text-right font-semibold text-accent">{c.necessidade}</td>
+                    <td className="py-2 text-right text-gray-400">{c.valorNecessidade !== null ? fmtMoney(c.valorNecessidade) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -151,6 +206,22 @@ export default function AlmoxarifadoDashboard() {
           {data.ultimasMovimentacoes.length === 0 && <p className="text-sm text-gray-400">Nenhuma movimentação registrada ainda.</p>}
         </div>
       </div>
+
+      {showQuick && (
+        <EpiMovimentacaoForm
+          contratos={contratos}
+          produtos={produtos}
+          colaboradores={colaboradores}
+          onClose={() => setShowQuick(false)}
+          onSaved={() => {
+            setShowQuick(false);
+            fetch("/api/epi/dashboard").then((r) => r.json()).then((d) => {
+              setData(d);
+              setAtualizadoEm(new Date());
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

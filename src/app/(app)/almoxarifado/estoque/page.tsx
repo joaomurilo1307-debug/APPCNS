@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EpiMovimentacaoForm from "@/components/EpiMovimentacaoForm";
 
 type Contrato = { id: string; codigo: string; nome: string | null };
 type Colaborador = { id: string; nomeCompleto: string; contratoId: string };
 type EstoqueRow = {
   id: string;
-  produto: { id: string; nome: string; tipo: string; ca: string | null; unidade: string };
+  produto: { id: string; nome: string; tipo: string; ca: string | null; unidade: string; valorUnitario: number | null };
   contrato: Contrato | null;
   estoqueInicial: number;
   entradas: number;
@@ -15,6 +16,7 @@ type EstoqueRow = {
   estoqueMinimo: number;
   necessidade: number;
   status: "OK" | "COMPRAR";
+  valorEmEstoque: number | null;
 };
 
 function StatusBadge({ status }: { status: "OK" | "COMPRAR" }) {
@@ -29,13 +31,20 @@ function StatusBadge({ status }: { status: "OK" | "COMPRAR" }) {
   );
 }
 
+function fmtMoney(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 export default function EstoquePage() {
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
+  const [produtos, setProdutos] = useState<{ id: string; nome: string }[]>([]);
   const [rows, setRows] = useState<EstoqueRow[]>([]);
   const [contratoFiltro, setContratoFiltro] = useState<string>("");
   const [busca, setBusca] = useState("");
   const [modalRow, setModalRow] = useState<EstoqueRow | null>(null);
+  const [editandoMinimo, setEditandoMinimo] = useState<string | null>(null);
+  const [minimoRascunho, setMinimoRascunho] = useState("");
 
   function reload() {
     const qs = contratoFiltro ? `?contratoId=${contratoFiltro}` : "";
@@ -45,14 +54,34 @@ export default function EstoquePage() {
   useEffect(() => {
     fetch("/api/epi/contratos").then((r) => r.json()).then(setContratos).catch(() => {});
     fetch("/api/epi/colaboradores").then((r) => r.json()).then(setColaboradores).catch(() => {});
+    fetch("/api/epi/produtos").then((r) => r.json()).then(setProdutos).catch(() => {});
   }, []);
 
-  useEffect(reload, [contratoFiltro]);
+  useEffect(() => {
+    reload();
+    const id = setInterval(reload, 20000); // ao vivo
+    return () => clearInterval(id);
+  }, [contratoFiltro]);
 
   const filtered = useMemo(
     () => rows.filter((r) => !busca || r.produto.nome.toLowerCase().includes(busca.toLowerCase())),
     [rows, busca]
   );
+
+  async function salvarMinimo(id: string) {
+    const valor = parseFloat(minimoRascunho.replace(",", "."));
+    if (Number.isNaN(valor) || valor < 0) {
+      setEditandoMinimo(null);
+      return;
+    }
+    await fetch(`/api/epi/estoque/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estoqueMinimo: valor }),
+    });
+    setEditandoMinimo(null);
+    reload();
+  }
 
   return (
     <div>
@@ -76,7 +105,7 @@ export default function EstoquePage() {
           placeholder="Buscar produto..."
           className="w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
-        <span className="text-xs text-gray-400">{filtered.length} itens</span>
+        <span className="text-xs text-gray-400">{filtered.length} itens · mínimo é editável, clique no número</span>
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -90,6 +119,7 @@ export default function EstoquePage() {
               <th className="px-4 py-3 text-right">Saídas</th>
               <th className="px-4 py-3 text-right">Atual</th>
               <th className="px-4 py-3 text-right">Mínimo</th>
+              <th className="px-4 py-3 text-right">Valor em estoque</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3" />
             </tr>
@@ -106,7 +136,30 @@ export default function EstoquePage() {
                 <td className="px-4 py-2.5 text-right text-brand-dark">{r.entradas}</td>
                 <td className="px-4 py-2.5 text-right text-rose-500">{r.saidas}</td>
                 <td className="px-4 py-2.5 text-right font-semibold text-gray-800">{r.estoqueAtual}</td>
-                <td className="px-4 py-2.5 text-right text-gray-500">{r.estoqueMinimo}</td>
+                <td className="px-4 py-2.5 text-right">
+                  {editandoMinimo === r.id ? (
+                    <input
+                      autoFocus
+                      value={minimoRascunho}
+                      onChange={(e) => setMinimoRascunho(e.target.value)}
+                      onBlur={() => salvarMinimo(r.id)}
+                      onKeyDown={(e) => e.key === "Enter" && salvarMinimo(r.id)}
+                      className="w-16 rounded border border-brand px-1 py-0.5 text-right text-sm"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setEditandoMinimo(r.id);
+                        setMinimoRascunho(String(r.estoqueMinimo));
+                      }}
+                      className="rounded px-1 text-gray-500 underline decoration-dotted hover:text-brand-dark"
+                      title="Clique para editar o mínimo"
+                    >
+                      {r.estoqueMinimo}
+                    </button>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-right text-gray-400">{r.valorEmEstoque !== null ? fmtMoney(r.valorEmEstoque) : "—"}</td>
                 <td className="px-4 py-2.5">
                   <StatusBadge status={r.status} />
                 </td>
@@ -122,7 +175,7 @@ export default function EstoquePage() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">
+                <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400">
                   Nenhum item encontrado. Importe uma planilha em "Importar planilha".
                 </td>
               </tr>
@@ -132,9 +185,12 @@ export default function EstoquePage() {
       </div>
 
       {modalRow && (
-        <MovimentacaoModal
-          row={modalRow}
+        <EpiMovimentacaoForm
+          contratos={contratos}
+          produtos={produtos}
           colaboradores={colaboradores.filter((c) => !modalRow.contrato || c.contratoId === modalRow.contrato.id)}
+          produtoFixo={modalRow.produto}
+          contratoFixo={modalRow.contrato ?? undefined}
           onClose={() => setModalRow(null)}
           onSaved={() => {
             setModalRow(null);
@@ -142,134 +198,6 @@ export default function EstoquePage() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function MovimentacaoModal({
-  row,
-  colaboradores,
-  onClose,
-  onSaved,
-}: {
-  row: EstoqueRow;
-  colaboradores: Colaborador[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [tipo, setTipo] = useState<"ENTRADA" | "SAIDA">("SAIDA");
-  const [quantidade, setQuantidade] = useState(1);
-  const [colaboradorId, setColaboradorId] = useState("");
-  const [observacao, setObservacao] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  async function salvar() {
-    if (!row.contrato) {
-      setErro("Este item é do depósito geral — associe um contrato a ele antes de movimentar (edite em Estoque).");
-      return;
-    }
-    setSaving(true);
-    setErro(null);
-    const res = await fetch("/api/epi/movimentacoes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tipo,
-        produtoId: row.produto.id,
-        contratoId: row.contrato.id,
-        colaboradorId: colaboradorId || null,
-        quantidade,
-        observacao: observacao || null,
-      }),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setErro(data.error ? JSON.stringify(data.error) : "Erro ao salvar movimentação.");
-      return;
-    }
-    onSaved();
-  }
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-elevated" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-1 text-lg font-semibold text-ink">{row.produto.nome}</h3>
-        <p className="mb-4 text-xs text-gray-400">{row.contrato?.codigo ?? "Geral"} · Estoque atual: {row.estoqueAtual}</p>
-
-        <div className="mb-3 flex gap-2">
-          <button
-            onClick={() => setTipo("SAIDA")}
-            className={`flex-1 rounded-lg py-2 text-sm font-semibold ${
-              tipo === "SAIDA" ? "bg-rose-500 text-white" : "bg-gray-100 text-gray-500"
-            }`}
-          >
-            Saída (retirada)
-          </button>
-          <button
-            onClick={() => setTipo("ENTRADA")}
-            className={`flex-1 rounded-lg py-2 text-sm font-semibold ${
-              tipo === "ENTRADA" ? "bg-brand text-white" : "bg-gray-100 text-gray-500"
-            }`}
-          >
-            Entrada
-          </button>
-        </div>
-
-        <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-500">Quantidade</span>
-          <input
-            type="number"
-            min={1}
-            value={quantidade}
-            onChange={(e) => setQuantidade(parseInt(e.target.value, 10) || 1)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          />
-        </label>
-
-        {tipo === "SAIDA" && (
-          <label className="mb-3 block text-sm">
-            <span className="mb-1 block text-xs font-medium text-gray-500">Colaborador (opcional)</span>
-            <select
-              value={colaboradorId}
-              onChange={(e) => setColaboradorId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2"
-            >
-              <option value="">— não associar —</option>
-              {colaboradores.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nomeCompleto}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        <label className="mb-4 block text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-500">Observação (opcional)</span>
-          <input
-            value={observacao}
-            onChange={(e) => setObservacao(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          />
-        </label>
-
-        {erro && <p className="mb-3 text-xs text-rose-600">{erro}</p>}
-
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600">
-            Cancelar
-          </button>
-          <button
-            onClick={salvar}
-            disabled={saving}
-            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? "Salvando..." : "Registrar"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
