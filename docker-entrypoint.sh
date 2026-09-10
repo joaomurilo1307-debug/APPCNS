@@ -34,5 +34,10 @@ if [ "$RUN_MERGE_FIN" = "true" ]; then
   npx tsx prisma/merge-financeiro-analise.ts || true
 fi
 
+if [ "$RUN_SEED_NUCLEOS" = "true" ]; then
+  echo "Reestruturando nucleos (setores ADM + Engenharia Ambiental/Civil)..."
+  npx tsx prisma/seed-nucleos-v2.ts || true
+fi
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000
