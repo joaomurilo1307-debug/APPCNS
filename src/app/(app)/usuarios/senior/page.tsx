@@ -66,6 +66,12 @@ export default function UsuariosSeniorPage() {
     });
   }
 
+  async function remover(codigo: string) {
+    if (!confirm(`Remover o código ${codigo} do de-para?`)) return;
+    setLinhas((cur) => cur.filter((l) => l.codigo !== codigo));
+    await fetch(`/api/senior/usuarios?codigo=${encodeURIComponent(codigo)}`, { method: "DELETE" });
+  }
+
   const filtradas = useMemo(() => {
     const t = busca.trim().toLowerCase();
     if (!t) return linhas;
@@ -131,6 +137,7 @@ export default function UsuariosSeniorPage() {
               <th className="px-4 py-2.5">Código Senior</th>
               <th className="px-4 py-2.5">Nome no Senior</th>
               <th className="px-4 py-2.5">Conta no consominas-gestao</th>
+              <th className="px-4 py-2.5"></th>
             </tr>
           </thead>
           <tbody>
@@ -154,11 +161,19 @@ export default function UsuariosSeniorPage() {
                     ))}
                   </select>
                 </td>
+                <td className="px-4 py-2 text-right">
+                  <button
+                    onClick={() => remover(l.codigo)}
+                    className="text-xs text-gray-400 hover:text-rose-600"
+                  >
+                    remover
+                  </button>
+                </td>
               </tr>
             ))}
             {filtradas.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={4} className="px-4 py-6 text-center text-gray-400">
                   {linhas.length === 0 ? "Nenhum usuário importado ainda." : "Nada encontrado."}
                 </td>
               </tr>

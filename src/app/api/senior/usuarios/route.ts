@@ -87,6 +87,20 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, reconhecidos: itens.length, casadosAutomaticamente: casados });
 }
 
+export async function DELETE(req: Request) {
+  const { erro } = await exigeAdmin();
+  if (erro) return erro;
+  const codigo = new URL(req.url).searchParams.get("codigo");
+  if (!codigo) return NextResponse.json({ error: "Informe ?codigo=" }, { status: 422 });
+
+  await prisma.aprovacaoSenior.updateMany({
+    where: { proximoAprovadorCod: codigo },
+    data: { proximoAprovadorUserId: null, proximoAprovadorNome: null },
+  });
+  await prisma.usuarioSenior.deleteMany({ where: { codigo } });
+  return NextResponse.json({ ok: true });
+}
+
 const patchSchema = z.object({ codigo: z.string().min(1), userId: z.string().nullable() });
 
 export async function PATCH(req: Request) {
