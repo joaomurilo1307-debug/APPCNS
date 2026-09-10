@@ -39,5 +39,10 @@ if [ "$RUN_SEED_NUCLEOS" = "true" ]; then
   npx tsx prisma/seed-nucleos-v2.ts || true
 fi
 
+if [ "$RUN_WIPE_PROJ" = "true" ]; then
+  echo "Apagando todos os projetos e tarefas (reconfiguracao)..."
+  npx tsx prisma/wipe-projetos-tarefas.ts || true
+fi
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000

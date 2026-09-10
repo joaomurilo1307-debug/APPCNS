@@ -17,8 +17,6 @@ import {
   IconBarChart,
   IconCalendar,
   IconChat,
-  IconUsers,
-  IconNetwork,
   IconTarget,
   IconReport,
   IconTrendingUp,
@@ -34,8 +32,8 @@ const baseLinks = [
   { href: "/gantt", label: "Gantt", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"] },
   { href: "/calendario", label: "Calendário", icon: IconCalendar, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/chat", label: "Chat", icon: IconChat, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/equipes", label: "Equipes", icon: IconUsers, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
-  { href: "/nucleos", label: "Núcleos", icon: IconNetwork, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  // Equipes e Núcleos escondidos da navegação (Joao vai reconfigurar) --
+  // as páginas /equipes e /nucleos continuam existindo, só saíram do menu
   { href: "/metas", label: "Metas", icon: IconTarget, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/relatorios", label: "Relatórios", icon: IconReport, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/pdi", label: "PDI", icon: IconTrendingUp, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
