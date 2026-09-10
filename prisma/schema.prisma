@@ -182,6 +182,14 @@ model User {
   gestorImediatoId String?
   anonymizedAt DateTime?
   createdAt    DateTime  @default(now())
+  // true para contas criadas em massa a partir do Senior (email placeholder
+  // nome.sobrenome@consominas.com.br, senha temporaria) -- forca a pessoa a
+  // confirmar o email real e trocar a senha no primeiro login.
+  primeiroAcesso Boolean @default(false)
+  // origem do cadastro: "MANUAL" (criado pela tela de usuarios) ou "SENIOR"
+  // (importado em massa da folha, ainda sem email/CPF confirmado pela pessoa)
+  origemCadastro String  @default("MANUAL")
+  matriculaSenior String? @unique
 
   gestorImediato  User?      @relation("GestorImediato", fields: [gestorImediatoId], references: [id], onDelete: SetNull)
   subordinados    User[]     @relation("GestorImediato")

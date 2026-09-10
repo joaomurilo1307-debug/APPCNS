@@ -80,15 +80,26 @@ export const authOptions: AuthOptions = {
           name: user.name,
           email: user.email,
           role: user.role,
+          primeiroAcesso: user.primeiroAcesso,
         } as any;
       },
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = (user as any).id;
         token.role = (user as any).role;
+        token.primeiroAcesso = (user as any).primeiroAcesso;
+      }
+      // depois de completar o cadastro, o front chama update() da sessao --
+      // reconsulta o banco pra refletir primeiroAcesso=false sem exigir novo login
+      if (trigger === "update" && token.id) {
+        const fresh = await prisma.user.findUnique({ where: { id: token.id as string } });
+        if (fresh) {
+          token.primeiroAcesso = fresh.primeiroAcesso;
+          token.email = fresh.email;
+        }
       }
       return token;
     },
@@ -96,6 +107,8 @@ export const authOptions: AuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
+        (session.user as any).primeiroAcesso = token.primeiroAcesso;
+        session.user.email = token.email as string;
       }
       return session;
     },
