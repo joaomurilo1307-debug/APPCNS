@@ -130,6 +130,11 @@ export default function UsuariosSeniorPage() {
         />
       </div>
 
+      <datalist id="contas-consominas">
+        {usuarios.map((u) => (
+          <option key={u.id} value={`${u.name} (${u.email})`} />
+        ))}
+      </datalist>
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
@@ -146,20 +151,22 @@ export default function UsuariosSeniorPage() {
                 <td className="px-4 py-2 font-mono text-xs">{l.codigo}</td>
                 <td className="px-4 py-2">{l.nome}</td>
                 <td className="px-4 py-2">
-                  <select
-                    value={l.userId ?? ""}
-                    onChange={(e) => ajustar(l.codigo, e.target.value || null)}
+                  <input
+                    key={`${l.codigo}-${l.userId ?? ""}`}
+                    list="contas-consominas"
+                    defaultValue={l.user ? `${l.user.name} (${l.user.email})` : ""}
+                    placeholder="digite o nome..."
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (!v) return ajustar(l.codigo, null);
+                      const achou = usuarios.find((u) => `${u.name} (${u.email})` === v);
+                      if (achou && achou.id !== l.userId) ajustar(l.codigo, achou.id);
+                      else if (!achou) e.target.value = l.user ? `${l.user.name} (${l.user.email})` : "";
+                    }}
                     className={`w-full max-w-xs rounded-md border px-2 py-1 text-sm focus:outline-none ${
                       l.userId ? "border-gray-200" : "border-amber-300 bg-amber-50"
                     }`}
-                  >
-                    <option value="">— não vinculado —</option>
-                    {usuarios.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.email})
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </td>
                 <td className="px-4 py-2 text-right">
                   <button
