@@ -430,8 +430,13 @@ function MapaOC({
                       <tr key={i} className="border-t border-gray-100 [&>td]:px-3 [&>td]:py-1.5">
                         <td>{r.contaFinanceira || r.nome || "—"}</td>
                         <td>
-                          {r.ccuNome || `CCU ${r.codccu}`}
-                          <span className="ml-1 text-xs text-gray-400">{r.codccu}</span>
+                          {r.ccuNome ? (
+                            <>
+                              {r.ccuNome} <span className="text-xs text-gray-400">({r.codccu})</span>
+                            </>
+                          ) : (
+                            `CC ${r.codccu}`
+                          )}
                         </td>
                         <td className="text-right tabular-nums">{r.perc != null ? `${r.perc}%` : "—"}</td>
                         <td className="text-right tabular-nums">{r.valor != null ? formatMoeda(r.valor) : "—"}</td>
