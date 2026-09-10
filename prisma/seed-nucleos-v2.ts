@@ -16,6 +16,16 @@ import path from "path";
 
 const prisma = new PrismaClient();
 
+function chaveNome(bruto: string): string {
+  return bruto
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 type Assign = { matricula: string; nome: string; codccu: string; nucleo: string };
 
 async function log(action: string, metadata: Record<string, unknown>) {
@@ -43,11 +53,31 @@ async function main() {
     nucleoPorNome.set(nome, n.id);
   }
 
-  // 2) poe cada pessoa no nucleo dela (match por matriculaSenior)
-  let atribuidos = 0;
+  // indice de nome normalizado -> [userIds] (pra fallback quando a
+  // matricula nao bate -- ex: recontratacao com matricula nova)
+  const todosUsers = await prisma.user.findMany({ select: { id: true, name: true, matriculaSenior: true } });
+  const porNome = new Map<string, string[]>();
+  for (const u of todosUsers) {
+    const k = chaveNome(u.name);
+    if (!k) continue;
+    (porNome.get(k) ?? porNome.set(k, []).get(k)!).push(u.id);
+  }
+
+  // 2) poe cada pessoa no nucleo dela: match por matriculaSenior, senao
+  // por nome normalizado (so quando o nome e unico)
+  let atribuidosPorMatricula = 0;
+  let atribuidosPorNome = 0;
   const semUser: string[] = [];
   for (const a of assigns) {
-    const user = await prisma.user.findFirst({ where: { matriculaSenior: a.matricula } });
+    let user = await prisma.user.findFirst({ where: { matriculaSenior: a.matricula } });
+    let via = "matricula";
+    if (!user) {
+      const ids = porNome.get(chaveNome(a.nome)) ?? [];
+      if (ids.length === 1) {
+        user = await prisma.user.findUnique({ where: { id: ids[0] } });
+        via = "nome";
+      }
+    }
     if (!user) {
       semUser.push(`${a.matricula} ${a.nome}`);
       continue;
@@ -56,8 +86,10 @@ async function main() {
     if (user.nucleoId !== nucId) {
       await prisma.user.update({ where: { id: user.id }, data: { nucleoId: nucId } });
     }
-    atribuidos++;
+    if (via === "matricula") atribuidosPorMatricula++;
+    else atribuidosPorNome++;
   }
+  const atribuidos = atribuidosPorMatricula + atribuidosPorNome;
 
   // 3) nucleos que sobraram vazios (nao canonicos) -- so lista, nao apaga
   const todos = await prisma.nucleo.findMany({ include: { _count: { select: { membros: true } } } });
@@ -71,8 +103,10 @@ async function main() {
   const resumo = {
     nucleosCanonicos: nomesCanonicos.length,
     atribuidos,
+    atribuidosPorMatricula,
+    atribuidosPorNome,
     semUserNoSistema: semUser.length,
-    exemplosSemUser: semUser.slice(0, 10),
+    exemplosSemUser: semUser.slice(0, 15),
     nucleosAntigosVazios: orfaos,
     nucleosAntigosComGente: naoCanonicosComGente,
   };
