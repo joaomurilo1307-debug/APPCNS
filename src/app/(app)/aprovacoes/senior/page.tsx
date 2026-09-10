@@ -147,58 +147,63 @@ export default function AprovacoesSeniorPage() {
 
       <h2 className="mb-2 text-sm font-semibold text-gray-700">Pendentes</h2>
       <div className="mb-8 overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-            <tr>
-              <th className="px-4 py-2.5">OC</th>
-              <th className="px-4 py-2.5">Fornecedor</th>
-              <th className="px-4 py-2.5">Contrato / CC</th>
-              <th className="px-4 py-2.5 text-right">Valor</th>
-              <th className="px-4 py-2.5">Quem falta aprovar</th>
-              <th className="px-4 py-2.5 text-center">Rateio</th>
-              <th className="px-4 py-2.5 text-center">Parada há</th>
+        <table className="w-full min-w-[960px] border-collapse text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-500">
+            <tr className="[&>th]:whitespace-nowrap [&>th]:px-4 [&>th]:py-3">
+              <th>OC</th>
+              <th>Situação</th>
+              <th>Fornecedor</th>
+              <th>Contrato / Centro de custo</th>
+              <th className="text-right">Valor</th>
+              <th>Quem falta aprovar</th>
+              <th className="text-center">Rateio</th>
+              <th className="text-center">Dias parada</th>
             </tr>
           </thead>
           <tbody>
             {pendentes.map((a) => (
               <tr
                 key={a.id}
-                className="cursor-pointer border-t border-gray-50 hover:bg-brand/[0.04]"
+                className="cursor-pointer border-t border-gray-100 align-middle hover:bg-brand/[0.04] [&>td]:px-4 [&>td]:py-3"
                 onClick={() => setAberta(a)}
               >
-                <td className="px-4 py-2.5 font-medium">
-                  {a.numOcp}
+                <td className="whitespace-nowrap font-medium">{a.numOcp}</td>
+                <td className="whitespace-nowrap">
                   <span
-                    className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${situacaoStyle[a.situacaoAtual]}`}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.situacaoAtual]}`}
                   >
-                    {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · nv {a.nivelAtual}
+                    {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · nível {a.nivelAtual}
                   </span>
                 </td>
-                <td className="px-4 py-2.5">{a.fornecedorNome || a.fornecedorCodigo}</td>
-                <td className="px-4 py-2.5 text-gray-600">{contratoDe(a)}</td>
-                <td className="px-4 py-2.5 text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
-                <td className="px-4 py-2.5">
+                <td className="max-w-[240px] truncate" title={a.fornecedorNome || a.fornecedorCodigo}>
+                  {a.fornecedorNome || a.fornecedorCodigo}
+                </td>
+                <td className="max-w-[240px] truncate text-gray-600" title={contratoDe(a)}>
+                  {contratoDe(a)}
+                </td>
+                <td className="whitespace-nowrap text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
+                <td className="whitespace-nowrap">
                   <span className={a.proximoAprovador || a.proximoAprovadorNome ? "" : "text-gray-400"}>
                     {aprovadorDe(a)}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 text-center">
+                <td className="whitespace-nowrap text-center">
                   {a.temRateio ? (
                     <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">Sim</span>
                   ) : (
                     <span className="text-gray-300">—</span>
                   )}
                 </td>
-                <td className="px-4 py-2.5 text-center">
+                <td className="whitespace-nowrap text-center">
                   <span className={diasParado(a.dataEmissao) > 7 ? "font-semibold text-rose-600" : "text-gray-500"}>
-                    {diasParado(a.dataEmissao)}d
+                    {diasParado(a.dataEmissao)} dias
                   </span>
                 </td>
               </tr>
             ))}
             {pendentes.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={8} className="px-4 py-6 text-center text-gray-400">
                   Nenhuma OC pendente de aprovação no momento.
                 </td>
               </tr>
@@ -209,16 +214,16 @@ export default function AprovacoesSeniorPage() {
 
       <h2 className="mb-2 text-sm font-semibold text-gray-700">Resolvidas recentemente</h2>
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-            <tr>
-              <th className="px-4 py-2.5">OC</th>
-              <th className="px-4 py-2.5">Fornecedor</th>
-              <th className="px-4 py-2.5 text-right">Valor</th>
-              <th className="px-4 py-2.5">Resultado</th>
-              <th className="px-4 py-2.5">Detectada em</th>
-              <th className="px-4 py-2.5">Resolvida em</th>
-              <th className="px-4 py-2.5 text-center">Tempo até decisão</th>
+        <table className="w-full min-w-[880px] border-collapse text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-500">
+            <tr className="[&>th]:whitespace-nowrap [&>th]:px-4 [&>th]:py-3">
+              <th>OC</th>
+              <th>Fornecedor</th>
+              <th className="text-right">Valor</th>
+              <th>Resultado</th>
+              <th>Detectada em</th>
+              <th>Resolvida em</th>
+              <th className="text-center">Tempo até decisão</th>
             </tr>
           </thead>
           <tbody>
@@ -229,26 +234,28 @@ export default function AprovacoesSeniorPage() {
               return (
                 <tr
                   key={a.id}
-                  className="cursor-pointer border-t border-gray-50 hover:bg-brand/[0.04]"
+                  className="cursor-pointer border-t border-gray-100 hover:bg-brand/[0.04] [&>td]:px-4 [&>td]:py-3"
                   onClick={() => setAberta(a)}
                 >
-                  <td className="px-4 py-2.5 font-medium">{a.numOcp}</td>
-                  <td className="px-4 py-2.5">{a.fornecedorNome || a.fornecedorCodigo}</td>
-                  <td className="px-4 py-2.5 text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
-                  <td className="px-4 py-2.5">
+                  <td className="whitespace-nowrap font-medium">{a.numOcp}</td>
+                  <td className="max-w-[240px] truncate" title={a.fornecedorNome || a.fornecedorCodigo}>
+                    {a.fornecedorNome || a.fornecedorCodigo}
+                  </td>
+                  <td className="whitespace-nowrap text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
+                  <td className="whitespace-nowrap">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.resolvidoComo || ""]}`}
                     >
                       {situacaoLabel[a.resolvidoComo || ""] || a.resolvidoComo}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-gray-500">
+                  <td className="whitespace-nowrap text-xs text-gray-500">
                     {new Date(a.primeiraDeteccaoEm).toLocaleDateString("pt-BR")}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-gray-500">
+                  <td className="whitespace-nowrap text-xs text-gray-500">
                     {a.resolvidoEm ? new Date(a.resolvidoEm).toLocaleDateString("pt-BR") : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-center">{dias !== null ? `${dias}d` : "—"}</td>
+                  <td className="whitespace-nowrap text-center">{dias !== null ? `${dias} dias` : "—"}</td>
                 </tr>
               );
             })}

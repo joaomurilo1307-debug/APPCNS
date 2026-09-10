@@ -22,15 +22,34 @@ export async function GET() {
   const { erro } = await exigeAdmin();
   if (erro) return erro;
 
-  const [linhas, usuarios] = await Promise.all([
+  const [linhas, usuarios, ocs] = await Promise.all([
     prisma.usuarioSenior.findMany({
       orderBy: { nome: "asc" },
       include: { user: { select: { id: true, name: true, email: true } } },
     }),
     prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
+    // pra dar contexto de qual codigo aprova o que: contratos/niveis onde
+    // cada codigo aparece como proximo aprovador nas OCs pendentes
+    prisma.aprovacaoSenior.findMany({
+      where: { situacaoAtual: { in: ["ANA", "PRE"] }, proximoAprovadorCod: { not: null } },
+      select: { proximoAprovadorCod: true, contratoNome: true, contratoTexto: true, codccu: true, nivelAtual: true },
+    }),
   ]);
 
-  return NextResponse.json({ linhas, usuarios });
+  const contexto = new Map<string, Set<string>>();
+  for (const o of ocs) {
+    const cod = o.proximoAprovadorCod as string;
+    const nome = o.contratoNome || o.contratoTexto || (o.codccu ? `CCU ${o.codccu}` : "sem contrato");
+    if (!contexto.has(cod)) contexto.set(cod, new Set());
+    contexto.get(cod)!.add(`${nome} (nv ${o.nivelAtual})`);
+  }
+
+  const linhasComContexto = linhas.map((l) => ({
+    ...l,
+    aprovaEm: Array.from(contexto.get(l.codigo) ?? []).slice(0, 6),
+  }));
+
+  return NextResponse.json({ linhas: linhasComContexto, usuarios });
 }
 
 const pasteSchema = z.object({ texto: z.string().min(1).max(200_000) });

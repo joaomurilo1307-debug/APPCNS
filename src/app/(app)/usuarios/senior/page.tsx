@@ -9,6 +9,7 @@ type Linha = {
   userId: string | null;
   user: Conta | null;
   atualizadoEm: string;
+  aprovaEm?: string[];
 };
 
 export default function UsuariosSeniorPage() {
@@ -148,9 +149,16 @@ export default function UsuariosSeniorPage() {
           <tbody>
             {filtradas.map((l) => (
               <tr key={l.codigo} className="border-t border-gray-50">
-                <td className="px-4 py-2 font-mono text-xs">{l.codigo}</td>
-                <td className="px-4 py-2">{l.nome}</td>
-                <td className="px-4 py-2">
+                <td className="px-4 py-2 align-top font-mono text-xs">{l.codigo}</td>
+                <td className="px-4 py-2 align-top">
+                  <div>{l.nome}</div>
+                  {l.aprovaEm && l.aprovaEm.length > 0 && (
+                    <div className="mt-0.5 text-[11px] text-gray-400">
+                      aprova: {l.aprovaEm.join(" · ")}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-2 align-top">
                   <input
                     key={`${l.codigo}-${l.userId ?? ""}`}
                     list="contas-consominas"
@@ -168,7 +176,7 @@ export default function UsuariosSeniorPage() {
                     }`}
                   />
                 </td>
-                <td className="px-4 py-2 text-right">
+                <td className="px-4 py-2 text-right align-top">
                   <button
                     onClick={() => remover(l.codigo)}
                     className="text-xs text-gray-400 hover:text-rose-600"
