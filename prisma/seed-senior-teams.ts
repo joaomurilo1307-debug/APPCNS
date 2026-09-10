@@ -20,9 +20,30 @@ const SENHA_TEMPORARIA = process.env.SEED_SENHA_TEMPORARIA || "Consominas@2026";
 type Pessoa = { matricula: string; nome: string; email: string };
 type CcuInfo = { nome: string; classificacao: string; pessoas: Pessoa[] };
 
+async function log(action: string, metadata: Record<string, unknown>) {
+  try {
+    await prisma.auditLog.create({ data: { action, entityType: "SeedSeniorTeams", metadata: JSON.stringify(metadata) } });
+  } catch {
+    // nunca deixa o log quebrar o seed
+  }
+}
+
 async function main() {
-  const caminho = path.join(__dirname, "data", "roster_ccu_senior.json");
+  await log("seed.senior.iniciado", { cwd: process.cwd(), dirname: __dirname });
+
+  const caminhosPossiveis = [
+    path.join(__dirname, "data", "roster_ccu_senior.json"),
+    path.join(process.cwd(), "prisma", "data", "roster_ccu_senior.json"),
+  ];
+  const caminho = caminhosPossiveis.find((p) => fs.existsSync(p));
+  if (!caminho) {
+    await log("seed.senior.erro", { motivo: "arquivo de dados nao encontrado", tentativas: caminhosPossiveis });
+    throw new Error(`roster_ccu_senior.json nao encontrado em: ${caminhosPossiveis.join(", ")}`);
+  }
+  await log("seed.senior.arquivo_encontrado", { caminho });
+
   const dados: Record<string, CcuInfo> = JSON.parse(fs.readFileSync(caminho, "utf-8"));
+  await log("seed.senior.dados_carregados", { totalCcus: Object.keys(dados).length });
 
   const senhaHash = await bcrypt.hash(SENHA_TEMPORARIA, 10);
 
@@ -31,8 +52,12 @@ async function main() {
   let usuariosExistentes = 0;
   let vinculosCriados = 0;
 
+  let ccuIndex = 0;
+  const totalCcus = Object.keys(dados).length;
   for (const [codccu, info] of Object.entries(dados)) {
+    ccuIndex++;
     if (!info.nome) continue;
+    await log("seed.senior.progresso", { ccuIndex, totalCcus, codccu, nome: info.nome, pessoas: info.pessoas.length });
 
     const nomeEquipe = `${info.nome} [${codccu}]`;
     const team = await prisma.team.upsert({
@@ -86,16 +111,15 @@ async function main() {
     }
   }
 
-  console.log(
-    `Seed Senior concluido: ${equipesCriadas} equipes, ${usuariosCriados} usuarios novos, ` +
-    `${usuariosExistentes} ja existentes (reaproveitados), ${vinculosCriados} vinculos equipe-usuario.`
-  );
-  console.log(`Senha temporaria de todos os novos: ${SENHA_TEMPORARIA} (troca obrigatoria no primeiro login).`);
+  const resumo = { equipesCriadas, usuariosCriados, usuariosExistentes, vinculosCriados };
+  console.log(`Seed Senior concluido: ${JSON.stringify(resumo)}`);
+  await log("seed.senior.concluido", resumo);
 }
 
 main()
-  .catch((e) => {
+  .catch(async (e) => {
     console.error(e);
+    await log("seed.senior.erro_fatal", { mensagem: String(e?.message || e), stack: String(e?.stack || "") });
     process.exit(1);
   })
   .finally(async () => {
