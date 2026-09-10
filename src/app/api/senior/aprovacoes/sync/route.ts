@@ -34,6 +34,9 @@ const itemSchema = z.object({
   rateioDetalhe: z.string().optional().nullable(),
   mapaCotacao: z.string().optional().nullable(),
   proximoAprovadorCod: z.string().optional().nullable(),
+  criadorCod: z.string().optional().nullable(),
+  previsaoPagamento: z.string().optional().nullable(),
+  pago: z.boolean().optional().default(false),
 });
 
 const bodySchema = z.object({ itens: z.array(itemSchema) });
@@ -65,23 +68,24 @@ export async function POST(req: Request) {
   });
 
   // de-para de usuarios do Senior (codigo -> nome/conta), pra resolver o
-  // "proximo aprovador". Se a tabela estiver vazia, os codigos ficam sem nome.
-  const codsAprovador = Array.from(
-    new Set(parsed.data.itens.map((i) => i.proximoAprovadorCod).filter((c): c is string => !!c))
+  // proximo aprovador e o criador da OC
+  const codsUsados = Array.from(
+    new Set(
+      parsed.data.itens.flatMap((i) => [i.proximoAprovadorCod, i.criadorCod]).filter((c): c is string => !!c)
+    )
   );
-  const usuariosSenior = codsAprovador.length
-    ? await prisma.usuarioSenior.findMany({ where: { codigo: { in: codsAprovador } } })
+  const usuariosSenior = codsUsados.length
+    ? await prisma.usuarioSenior.findMany({
+        where: { codigo: { in: codsUsados } },
+        include: { user: { select: { name: true } } },
+      })
     : [];
   const deParaSenior = new Map(usuariosSenior.map((u) => [u.codigo, u]));
 
-  // cria stub pra cada codigo de aprovador ainda sem cadastro -- assim o
-  // admin abre /usuarios/senior e ja ve quais codigos precisam de nome
-  const codsSemCadastro = codsAprovador.filter((c) => !deParaSenior.has(c));
-  if (codsSemCadastro.length > 0) {
-    await prisma.usuarioSenior.createMany({
-      data: codsSemCadastro.map((c) => ({ codigo: c, nome: `(sem nome — código Senior ${c})` })),
-      skipDuplicates: true,
-    });
+  function nomeSenior(cod: string | null | undefined) {
+    if (!cod) return null;
+    const u = deParaSenior.get(cod);
+    return u?.user?.name ?? u?.nome ?? null;
   }
 
   function resolverProximo(cod: string | null | undefined) {
@@ -112,6 +116,10 @@ export async function POST(req: Request) {
       contratoTexto: item.contratoTexto || null,
       codccu: item.codccu || existente?.codccu || null,
       contratoNome: item.contratoNome || null,
+      criadorCod: item.criadorCod || null,
+      criadorNome: nomeSenior(item.criadorCod),
+      previsaoPagamento: item.previsaoPagamento ? new Date(item.previsaoPagamento) : null,
+      pago: item.pago ?? false,
       rotNap: item.rotNap || null,
       historicoNiveis: item.historicoNiveis || null,
       temRateio: item.temRateio,

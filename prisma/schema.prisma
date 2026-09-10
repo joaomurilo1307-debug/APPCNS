@@ -555,9 +555,13 @@ model AprovacaoSenior {
   fornecedorNome  String?   // USU_NOMFOR da OC (nome livre digitado); cai pro codigo se vazio
   valor           Float
   descricao       String?   @db.Text
-  contratoTexto   String?   // extraido do texto da OC (ex: "MRN CT 3748/2023"), nao normalizado
-  codccu          String?   // quando identificado com confianca (ex: via CCUAPR do nivel ja aprovado)
-  contratoNome    String?   // nome do CC/contrato resolvido de rito_financeiro.centros_custo
+  contratoTexto   String?   // texto "C/C:" que o comprador escreveu na OC (bate com a aba Rateios do Senior)
+  codccu          String?   // centro de custo real, da tabela E420RAT (aba Rateios da OC)
+  contratoNome    String?   // nome do CC resolvido de rito_financeiro.centros_custo (secundario -- a base tem erros)
+  criadorCod      String?   // CODUSU do Senior de quem gerou a OC (E420OCP.USUGER)
+  criadorNome     String?   // resolvido via UsuarioSenior
+  previsaoPagamento DateTime? // E420OCP.USU_DATVECT
+  pago            Boolean   @default(false) // OC pendente de aprovacao nunca esta paga
   numApr          String
   rotNap          String?
   situacaoAtual   String    // ANA / PRE / APR / REP / CAN

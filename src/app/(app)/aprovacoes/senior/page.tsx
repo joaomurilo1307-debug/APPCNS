@@ -39,6 +39,10 @@ type Aprovacao = {
   contratoTexto: string | null;
   codccu: string | null;
   contratoNome: string | null;
+  criadorCod: string | null;
+  criadorNome: string | null;
+  previsaoPagamento: string | null;
+  pago: boolean;
   situacaoAtual: string;
   nivelAtual: number;
   temRateio: boolean;
@@ -359,10 +363,31 @@ function MapaOC({
               <dd className="font-medium">{a.contratoTexto || a.contratoNome || "—"}</dd>
               {a.codccu && (
                 <dd className="text-xs text-gray-400">
-                  CCU {a.codccu}
+                  CC {a.codccu}
                   {a.contratoNome && a.contratoNome !== a.contratoTexto ? ` · ${a.contratoNome}` : ""}
                 </dd>
               )}
+            </div>
+            <div>
+              <dt className="text-xs text-gray-500">Criada por</dt>
+              <dd className="font-medium">{a.criadorNome || (a.criadorCod ? `Usuário Senior #${a.criadorCod}` : "—")}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-gray-500">Pagamento</dt>
+              <dd>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    a.pago ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {a.pago ? "Pago" : "Não pago"}
+                </span>
+                {a.previsaoPagamento && (
+                  <span className="ml-2 text-xs text-gray-500">
+                    previsão {new Date(a.previsaoPagamento).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
+                  </span>
+                )}
+              </dd>
             </div>
             <div>
               <dt className="text-xs text-gray-500">Emissão</dt>
