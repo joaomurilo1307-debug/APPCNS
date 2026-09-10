@@ -137,7 +137,12 @@ function contratoDe(a: Aprovacao) {
   return a.contratoNome || rateio[0]?.ccuNome || (a.codccu ? `CC ${a.codccu}` : a.contratoTexto || "—");
 }
 
+function resolvida(a: Aprovacao) {
+  return !!a.resolvidoEm || ["APR", "REP", "CAN"].includes(a.situacaoAtual);
+}
+
 function aprovadorDe(a: Aprovacao) {
+  if (resolvida(a)) return situacaoLabel[a.resolvidoComo || a.situacaoAtual] || "Resolvido";
   return a.aprovadoresPendentes || a.proximoAprovador?.name || a.proximoAprovadorNome || `Aguardando · ${niveisLabel(a)}`;
 }
 
@@ -422,8 +427,14 @@ function MapaOC({
               <p className="text-xl font-semibold">{formatMoeda(a.valor)}</p>
             </div>
             <div className="rounded-xl bg-gray-50 p-3">
-              <p className="text-xs text-gray-500">Quem falta aprovar</p>
-              <p className="text-sm font-semibold">{a.aprovadoresPendentes || aprovadorDe(a)}</p>
+              <p className="text-xs text-gray-500">{resolvida(a) ? "Resultado" : "Quem falta aprovar"}</p>
+              <p className="text-sm font-semibold">
+                {resolvida(a)
+                  ? `${situacaoLabel[a.resolvidoComo || a.situacaoAtual] || a.situacaoAtual}${
+                      a.resolvidoEm ? ` em ${new Date(a.resolvidoEm).toLocaleDateString("pt-BR")}` : ""
+                    }`
+                  : a.aprovadoresPendentes || aprovadorDe(a)}
+              </p>
               <p className="mt-0.5 text-[11px] text-gray-400">
                 {niveisLabel(a)} · alçada multinível do Senior (E068CNA)
               </p>
