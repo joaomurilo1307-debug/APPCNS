@@ -44,5 +44,10 @@ if [ "$RUN_WIPE_PROJ" = "true" ]; then
   npx tsx prisma/wipe-projetos-tarefas.ts || true
 fi
 
+if [ "$RUN_WIPE_EQ" = "true" ]; then
+  echo "Apagando todas as equipes e nucleos (clean slate)..."
+  npx tsx prisma/wipe-equipes-nucleos.ts || true
+fi
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000
