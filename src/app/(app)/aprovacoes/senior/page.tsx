@@ -84,17 +84,24 @@ function contratoDe(a: Aprovacao) {
   return a.contratoNome || a.contratoTexto || (a.codccu ? `CCU ${a.codccu}` : "—");
 }
 
-function aprovadorDe(a: Aprovacao) {
+function aprovadorDe(a: Aprovacao, codToNome: Record<string, string> = {}) {
   return (
     a.proximoAprovador?.name ||
     a.proximoAprovadorNome ||
+    (a.proximoAprovadorCod && codToNome[a.proximoAprovadorCod]) ||
     (a.proximoAprovadorCod ? `Usuário Senior #${a.proximoAprovadorCod}` : "A identificar")
   );
+}
+
+function nomeUsuSenior(cod: string | undefined, codToNome: Record<string, string>) {
+  if (!cod || cod === "0") return null;
+  return codToNome[cod] || `Usuário Senior #${cod}`;
 }
 
 export default function AprovacoesSeniorPage() {
   const [pendentes, setPendentes] = useState<Aprovacao[]>([]);
   const [resolvidas, setResolvidas] = useState<Aprovacao[]>([]);
+  const [codToNome, setCodToNome] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [aberta, setAberta] = useState<Aprovacao | null>(null);
@@ -111,6 +118,7 @@ export default function AprovacoesSeniorPage() {
       .then((data) => {
         setPendentes(data.pendentes);
         setResolvidas(data.resolvidasRecentes);
+        setCodToNome(data.codToNome ?? {});
       })
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false));
@@ -183,8 +191,14 @@ export default function AprovacoesSeniorPage() {
                 </td>
                 <td className="whitespace-nowrap text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
                 <td className="whitespace-nowrap">
-                  <span className={a.proximoAprovador || a.proximoAprovadorNome ? "" : "text-gray-400"}>
-                    {aprovadorDe(a)}
+                  <span
+                    className={
+                      a.proximoAprovador || a.proximoAprovadorNome || (a.proximoAprovadorCod && codToNome[a.proximoAprovadorCod])
+                        ? ""
+                        : "text-gray-400"
+                    }
+                  >
+                    {aprovadorDe(a, codToNome)}
                   </span>
                 </td>
                 <td className="whitespace-nowrap text-center">
@@ -270,12 +284,20 @@ export default function AprovacoesSeniorPage() {
         </table>
       </div>
 
-      {aberta && <MapaOC aprovacao={aberta} onClose={() => setAberta(null)} />}
+      {aberta && <MapaOC aprovacao={aberta} codToNome={codToNome} onClose={() => setAberta(null)} />}
     </div>
   );
 }
 
-function MapaOC({ aprovacao: a, onClose }: { aprovacao: Aprovacao; onClose: () => void }) {
+function MapaOC({
+  aprovacao: a,
+  codToNome,
+  onClose,
+}: {
+  aprovacao: Aprovacao;
+  codToNome: Record<string, string>;
+  onClose: () => void;
+}) {
   const niveis = parseJSON<NivelHist[]>(a.historicoNiveis) ?? [];
   const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
   const cotacao = parseJSON<any>(a.mapaCotacao);
@@ -317,12 +339,15 @@ function MapaOC({ aprovacao: a, onClose }: { aprovacao: Aprovacao; onClose: () =
             </div>
             <div className="rounded-xl bg-gray-50 p-3">
               <p className="text-xs text-gray-500">Quem falta aprovar</p>
-              <p className="text-sm font-semibold">{aprovadorDe(a)}</p>
-              {a.proximoAprovadorCod && !a.proximoAprovadorNome && !a.proximoAprovador && (
-                <p className="mt-0.5 text-[11px] text-gray-400">
-                  nome pendente do de-para de usuários do Senior
-                </p>
-              )}
+              <p className="text-sm font-semibold">{aprovadorDe(a, codToNome)}</p>
+              {a.proximoAprovadorCod &&
+                !a.proximoAprovadorNome &&
+                !a.proximoAprovador &&
+                !codToNome[a.proximoAprovadorCod] && (
+                  <p className="mt-0.5 text-[11px] text-gray-400">
+                    nome pendente do de-para de usuários do Senior
+                  </p>
+                )}
             </div>
           </div>
 
@@ -391,7 +416,7 @@ function MapaOC({ aprovacao: a, onClose }: { aprovacao: Aprovacao; onClose: () =
                     {n.NIVAPR}
                   </span>
                   <span className="text-gray-700">
-                    Aprovado por <span className="font-medium">Usuário Senior #{n.USUAPR}</span>
+                    Aprovado por <span className="font-medium">{nomeUsuSenior(n.USUAPR, codToNome)}</span>
                     {n.DATAPR ? ` em ${n.DATAPR}` : ""}
                     {n.CCUAPR && n.CCUAPR !== "0" ? ` · CCU ${n.CCUAPR}` : ""}
                   </span>
@@ -402,7 +427,7 @@ function MapaOC({ aprovacao: a, onClose }: { aprovacao: Aprovacao; onClose: () =
                   {nivelMax + 1}
                 </span>
                 <span className="font-medium text-amber-700">
-                  Aguardando aprovação de {aprovadorDe(a)}
+                  Aguardando aprovação de {aprovadorDe(a, codToNome)}
                 </span>
               </li>
             </ol>

@@ -22,7 +22,7 @@ export async function GET() {
     return NextResponse.json({ error: "Sem permissão para ver aprovações do Senior" }, { status: 403 });
   }
 
-  const [pendentes, resolvidasRecentes] = await Promise.all([
+  const [pendentes, resolvidasRecentes, usuariosSenior] = await Promise.all([
     prisma.aprovacaoSenior.findMany({
       where: { situacaoAtual: { in: ["ANA", "PRE"] } },
       orderBy: { dataEmissao: "desc" },
@@ -40,7 +40,17 @@ export async function GET() {
         proximoAprovador: { select: { id: true, name: true } },
       },
     }),
+    prisma.usuarioSenior.findMany({
+      include: { user: { select: { name: true } } },
+    }),
   ]);
 
-  return NextResponse.json({ pendentes, resolvidasRecentes });
+  // {codigoSenior: nome} pra resolver os codigos que aparecem no historico
+  // de niveis (E614USU) dentro do mapa da OC
+  const codToNome: Record<string, string> = {};
+  for (const u of usuariosSenior) {
+    codToNome[u.codigo] = u.user?.name || u.nome;
+  }
+
+  return NextResponse.json({ pendentes, resolvidasRecentes, codToNome });
 }
