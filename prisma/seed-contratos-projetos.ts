@@ -83,11 +83,14 @@ async function main() {
 
   for (const contrato of CONTRATOS_ATIVOS) {
     const nomeEquipe = `${contrato.nome} [${contrato.codccu}]`;
-    const team = await prisma.team.findUnique({ where: { name: nomeEquipe } });
-    if (!team) {
-      semEquipe.push(nomeEquipe);
-      continue;
-    }
+    // contrato ativo financeiramente mas sem ninguem alocado no Senior/Rubi
+    // (ex: 100% terceirizado, ou pequeno demais pra ter equipe dedicada) --
+    // cria a equipe vazia mesmo assim, pra ninguem ficar sem projeto
+    const team = await prisma.team.upsert({
+      where: { name: nomeEquipe },
+      update: {},
+      create: { name: nomeEquipe, description: "Contrato de cliente (Senior) -- sem pessoal CLT alocado hoje." },
+    });
 
     const existente = await prisma.project.findFirst({ where: { teamId: team.id, name: contrato.nome } });
     if (existente) continue;
