@@ -29,5 +29,10 @@ if [ "$RUN_BACKFILL_CODCCU" = "true" ]; then
   npx tsx prisma/backfill-codccu-teams.ts || true
 fi
 
+if [ "$RUN_MERGE_FIN" = "true" ]; then
+  echo "Fundindo Analise e Estrategia dentro de Financeiro (equipe + nucleo)..."
+  npx tsx prisma/merge-financeiro-analise.ts || true
+fi
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000

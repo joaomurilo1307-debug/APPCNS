@@ -85,5 +85,9 @@ export async function GET() {
     }))
     .sort((a, b) => b.totalGeral - a.totalGeral);
 
-  return NextResponse.json({ contratos });
+  // lista de competencias disponiveis (pro seletor de mes no front),
+  // da mais recente pra mais antiga
+  const meses = Array.from(new Set(registros.map((r) => r.competencia.toISOString()))).sort((a, b) => b.localeCompare(a));
+
+  return NextResponse.json({ contratos, meses });
 }

@@ -99,6 +99,9 @@ export const authOptions: AuthOptions = {
         if (fresh) {
           token.primeiroAcesso = fresh.primeiroAcesso;
           token.email = fresh.email;
+          // o primeiro acesso define o cargo -> role; refletir na hora,
+          // sem exigir novo login
+          token.role = fresh.role;
         }
       }
       return token;
