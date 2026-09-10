@@ -200,7 +200,11 @@ export async function GET(req: Request) {
   if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
-  const pendentes = await prisma.aprovacaoSenior.count({ where: { situacaoAtual: { in: ["ANA", "PRE"] } } });
+  const pendentesRows = await prisma.aprovacaoSenior.findMany({
+    where: { situacaoAtual: { in: ["ANA", "PRE"] } },
+    select: { numOcp: true },
+  });
+  const pendentes = pendentesRows.length;
   const total = await prisma.aprovacaoSenior.count();
-  return NextResponse.json({ pendentes, total });
+  return NextResponse.json({ pendentes, total, pendentesNumOcp: pendentesRows.map((r) => r.numOcp) });
 }
