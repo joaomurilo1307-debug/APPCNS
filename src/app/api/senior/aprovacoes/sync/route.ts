@@ -74,6 +74,16 @@ export async function POST(req: Request) {
     : [];
   const deParaSenior = new Map(usuariosSenior.map((u) => [u.codigo, u]));
 
+  // cria stub pra cada codigo de aprovador ainda sem cadastro -- assim o
+  // admin abre /usuarios/senior e ja ve quais codigos precisam de nome
+  const codsSemCadastro = codsAprovador.filter((c) => !deParaSenior.has(c));
+  if (codsSemCadastro.length > 0) {
+    await prisma.usuarioSenior.createMany({
+      data: codsSemCadastro.map((c) => ({ codigo: c, nome: `(sem nome — código Senior ${c})` })),
+      skipDuplicates: true,
+    });
+  }
+
   function resolverProximo(cod: string | null | undefined) {
     if (!cod) return { proximoAprovadorCod: null, proximoAprovadorNome: null, proximoAprovadorUserId: null };
     const u = deParaSenior.get(cod);

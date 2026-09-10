@@ -66,6 +66,14 @@ export default function AprovacoesPage() {
   const [reqApproverId, setReqApproverId] = useState("");
   const [reqError, setReqError] = useState<string | null>(null);
   const [reqSaving, setReqSaving] = useState(false);
+  const [ocsSenior, setOcsSenior] = useState<
+    { id: string; numOcp: string; valor: number; fornecedorNome: string | null; fornecedorCodigo: string; contratoNome: string | null; contratoTexto: string | null; codccu: string | null; nivelAtual: number; dataEmissao: string }[]
+  >([]);
+
+  async function loadOcsSenior() {
+    const res = await fetch("/api/senior/aprovacoes/minhas");
+    if (res.ok) setOcsSenior((await res.json()).ocs ?? []);
+  }
 
   async function loadProjects() {
     if (!canApproveProjects) return;
@@ -93,6 +101,7 @@ export default function AprovacoesPage() {
     loadInvites();
     loadRequests();
     loadPeople();
+    loadOcsSenior();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canApproveProjects, myId]);
 
@@ -176,6 +185,41 @@ export default function AprovacoesPage() {
           </button>
         )}
       </div>
+
+      {ocsSenior.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold text-gray-600">
+            Ordens de compra do Senior aguardando você ({ocsSenior.length})
+          </h2>
+          <div className="grid gap-2">
+            {ocsSenior.map((o) => (
+              <a
+                key={o.id}
+                href="/aprovacoes/senior"
+                className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/60 p-4 hover:bg-amber-50"
+              >
+                <div>
+                  <p className="font-medium">
+                    OC {o.numOcp}
+                    <span className="ml-2 text-xs font-normal text-gray-500">nível {o.nivelAtual}</span>
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {o.fornecedorNome || o.fornecedorCodigo}
+                    {" · "}
+                    {o.contratoNome || o.contratoTexto || (o.codccu ? `CCU ${o.codccu}` : "sem contrato")}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold tabular-nums">
+                  {o.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </span>
+              </a>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-400">
+            Clique para abrir o mapa completo em Aprovações (OC Senior).
+          </p>
+        </div>
+      )}
 
       {showRequestForm && (
         <form onSubmit={handleCreateRequest} className="mb-8 flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-4">
