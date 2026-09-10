@@ -19,7 +19,14 @@ type NivelHist = {
   DATAPR?: string;
 };
 
-type RateioItem = { codccu: string; nome: string };
+type RateioItem = {
+  codccu: string;
+  ccuNome?: string;
+  contaFinanceira?: string;
+  perc?: number;
+  valor?: number;
+  nome?: string; // compat com formato antigo
+};
 
 type Aprovacao = {
   id: string;
@@ -81,16 +88,14 @@ function parseJSON<T>(s: string | null): T | null {
 }
 
 function contratoDe(a: Aprovacao) {
-  return a.contratoNome || a.contratoTexto || (a.codccu ? `CCU ${a.codccu}` : "—");
+  // o texto "C/C:" que o comprador escreveu na OC e o que bate com a aba
+  // Rateios do Senior; o nome do centros_custo entra so como apoio
+  if (a.temRateio) return "Rateio (vários CC)";
+  return a.contratoTexto || a.contratoNome || (a.codccu ? `CCU ${a.codccu}` : "—");
 }
 
-function aprovadorDe(a: Aprovacao, codToNome: Record<string, string> = {}) {
-  return (
-    a.proximoAprovador?.name ||
-    a.proximoAprovadorNome ||
-    (a.proximoAprovadorCod && codToNome[a.proximoAprovadorCod]) ||
-    (a.proximoAprovadorCod ? `Usuário Senior #${a.proximoAprovadorCod}` : "A identificar")
-  );
+function aprovadorDe(a: Aprovacao) {
+  return a.proximoAprovador?.name || a.proximoAprovadorNome || `Aguardando · nível ${a.nivelAtual}`;
 }
 
 function nomeUsuSenior(cod: string | undefined, codToNome: Record<string, string>) {
@@ -191,14 +196,8 @@ export default function AprovacoesSeniorPage() {
                 </td>
                 <td className="whitespace-nowrap text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
                 <td className="whitespace-nowrap">
-                  <span
-                    className={
-                      a.proximoAprovador || a.proximoAprovadorNome || (a.proximoAprovadorCod && codToNome[a.proximoAprovadorCod])
-                        ? ""
-                        : "text-gray-400"
-                    }
-                  >
-                    {aprovadorDe(a, codToNome)}
+                  <span className={a.proximoAprovador || a.proximoAprovadorNome ? "" : "text-gray-400"}>
+                    {aprovadorDe(a)}
                   </span>
                 </td>
                 <td className="whitespace-nowrap text-center">
@@ -339,15 +338,12 @@ function MapaOC({
             </div>
             <div className="rounded-xl bg-gray-50 p-3">
               <p className="text-xs text-gray-500">Quem falta aprovar</p>
-              <p className="text-sm font-semibold">{aprovadorDe(a, codToNome)}</p>
-              {a.proximoAprovadorCod &&
-                !a.proximoAprovadorNome &&
-                !a.proximoAprovador &&
-                !codToNome[a.proximoAprovadorCod] && (
-                  <p className="mt-0.5 text-[11px] text-gray-400">
-                    nome pendente do de-para de usuários do Senior
-                  </p>
-                )}
+              <p className="text-sm font-semibold">{aprovadorDe(a)}</p>
+              {!a.proximoAprovador && !a.proximoAprovadorNome && (
+                <p className="mt-0.5 text-[11px] text-gray-400">
+                  próximo aprovador definido pela alçada multinível do Senior
+                </p>
+              )}
             </div>
           </div>
 
@@ -359,9 +355,14 @@ function MapaOC({
               <dd className="text-xs text-gray-400">código {a.fornecedorCodigo}</dd>
             </div>
             <div>
-              <dt className="text-xs text-gray-500">Contrato / centro de custo</dt>
-              <dd className="font-medium">{contratoDe(a)}</dd>
-              {a.codccu && <dd className="text-xs text-gray-400">CCU {a.codccu}</dd>}
+              <dt className="text-xs text-gray-500">Centro de custo (da OC)</dt>
+              <dd className="font-medium">{a.contratoTexto || a.contratoNome || "—"}</dd>
+              {a.codccu && (
+                <dd className="text-xs text-gray-400">
+                  CCU {a.codccu}
+                  {a.contratoNome && a.contratoNome !== a.contratoTexto ? ` · ${a.contratoNome}` : ""}
+                </dd>
+              )}
             </div>
             <div>
               <dt className="text-xs text-gray-500">Emissão</dt>
@@ -383,26 +384,37 @@ function MapaOC({
             </div>
           )}
 
-          {/* rateio */}
-          {a.temRateio && (
+          {/* rateio (aba Rateios da OC no Senior) */}
+          {rateio.length > 0 && (
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Rateio {rateio.length > 0 && `— ${rateio.length} contratos`}
+                Rateio {rateio.length > 1 ? `— ${rateio.length} linhas` : ""}
               </p>
-              {rateio.length > 0 ? (
-                <ul className="divide-y divide-gray-100 rounded-xl border border-gray-100">
-                  {rateio.map((r) => (
-                    <li key={r.codccu} className="flex items-center justify-between px-3 py-2 text-sm">
-                      <span>{r.nome || `CCU ${r.codccu}`}</span>
-                      <span className="text-xs text-gray-400">CCU {r.codccu}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-gray-500">
-                  OC marcada como rateio; a lista de contratos não veio nesta sincronização.
-                </p>
-              )}
+              <div className="overflow-x-auto rounded-xl border border-gray-100">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-left text-xs text-gray-500">
+                    <tr className="[&>th]:px-3 [&>th]:py-1.5">
+                      <th>Conta financeira</th>
+                      <th>Centro de custo</th>
+                      <th className="text-right">%</th>
+                      <th className="text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rateio.map((r, i) => (
+                      <tr key={i} className="border-t border-gray-100 [&>td]:px-3 [&>td]:py-1.5">
+                        <td>{r.contaFinanceira || r.nome || "—"}</td>
+                        <td>
+                          {r.ccuNome || `CCU ${r.codccu}`}
+                          <span className="ml-1 text-xs text-gray-400">{r.codccu}</span>
+                        </td>
+                        <td className="text-right tabular-nums">{r.perc != null ? `${r.perc}%` : "—"}</td>
+                        <td className="text-right tabular-nums">{r.valor != null ? formatMoeda(r.valor) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -418,7 +430,6 @@ function MapaOC({
                   <span className="text-gray-700">
                     Aprovado por <span className="font-medium">{nomeUsuSenior(n.USUAPR, codToNome)}</span>
                     {n.DATAPR ? ` em ${n.DATAPR}` : ""}
-                    {n.CCUAPR && n.CCUAPR !== "0" ? ` · CCU ${n.CCUAPR}` : ""}
                   </span>
                 </li>
               ))}
@@ -427,7 +438,9 @@ function MapaOC({
                   {nivelMax + 1}
                 </span>
                 <span className="font-medium text-amber-700">
-                  Aguardando aprovação de {aprovadorDe(a, codToNome)}
+                  {a.proximoAprovador || a.proximoAprovadorNome
+                    ? `Aguardando aprovação de ${aprovadorDe(a)}`
+                    : `Aguardando aprovação — nível ${nivelMax + 1} (alçada do Senior)`}
                 </span>
               </li>
             </ol>
