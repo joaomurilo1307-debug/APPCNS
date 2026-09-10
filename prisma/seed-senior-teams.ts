@@ -17,6 +17,25 @@ const prisma = new PrismaClient();
 
 const SENHA_TEMPORARIA = process.env.SEED_SENHA_TEMPORARIA || "Consominas@2026";
 
+// Senior guarda nome em CAIXA ALTA pra algumas pessoas -- normaliza pro
+// mesmo padrao (Nome Proprio) antes de gravar, pra nao gerar equipe com
+// nomes inconsistentes.
+const CONECTIVOS = new Set(["de", "da", "do", "das", "dos", "e"]);
+function normalizarNome(nome: string): string {
+  return nome
+    .toLowerCase()
+    .split(" ")
+    .filter((p) => p.length > 0)
+    .map((palavra, i) => {
+      if (i > 0 && CONECTIVOS.has(palavra)) return palavra;
+      return palavra
+        .split("-")
+        .map((parte) => parte.charAt(0).toUpperCase() + parte.slice(1))
+        .join("-");
+    })
+    .join(" ");
+}
+
 type Pessoa = { matricula: string; nome: string; email: string };
 type CcuInfo = { nome: string; classificacao: string; pessoas: Pessoa[] };
 
@@ -86,7 +105,7 @@ async function main() {
         } else {
           user = await prisma.user.create({
             data: {
-              name: pessoa.nome,
+              name: normalizarNome(pessoa.nome),
               email: pessoa.email,
               passwordHash: senhaHash,
               role: "COLABORADOR",

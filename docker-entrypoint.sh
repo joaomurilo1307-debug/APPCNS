@@ -14,5 +14,10 @@ if [ "$RUN_SEED_SENIOR" = "true" ]; then
   npx tsx prisma/seed-senior-teams.ts || true
 fi
 
+if [ "$RUN_FIX_NOMES" = "true" ]; then
+  echo "Normalizando caixa dos nomes de usuario..."
+  npx tsx prisma/fix-nomes-caixa.ts || true
+fi
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000
