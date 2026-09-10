@@ -19,5 +19,10 @@ if [ "$RUN_FIX_NOMES" = "true" ]; then
   npx tsx prisma/fix-nomes-caixa.ts || true
 fi
 
+if [ "$RUN_SEED_CONTRATOS" = "true" ]; then
+  echo "Substituindo projetos antigos pelos contratos ativos do Senior..."
+  npx tsx prisma/seed-contratos-projetos.ts || true
+fi
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000
