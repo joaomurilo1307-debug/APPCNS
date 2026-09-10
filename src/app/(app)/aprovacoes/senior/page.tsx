@@ -118,9 +118,11 @@ function parseNiveis(csv: string | null): number[] {
 
 function niveisLabel(a: Aprovacao) {
   const exig = parseNiveis(a.niveisExigidos);
-  const aprv = parseNiveis(a.niveisAprovados);
+  const aprv = new Set(parseNiveis(a.niveisAprovados));
   if (!exig.length) return `nível ${a.nivelAtual}`;
-  return `nível ${aprv.length} de ${exig.length}`;
+  const pendentes = exig.filter((n) => !aprv.has(n));
+  if (!pendentes.length) return `${exig.length}/${exig.length} níveis`;
+  return `nível ${pendentes[0]}/${exig.length}`;
 }
 
 function contratoDe(a: Aprovacao) {
@@ -236,8 +238,8 @@ export default function AprovacoesSeniorPage() {
                   {contratoDe(a)}
                 </td>
                 <td className="whitespace-nowrap text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
-                <td className="whitespace-nowrap">
-                  <span className={a.proximoAprovador || a.proximoAprovadorNome ? "" : "text-gray-400"}>
+                <td className="max-w-[220px] truncate" title={aprovadorDe(a)}>
+                  <span className={a.aprovadoresPendentes || a.proximoAprovador || a.proximoAprovadorNome ? "" : "text-gray-400"}>
                     {aprovadorDe(a)}
                   </span>
                 </td>
