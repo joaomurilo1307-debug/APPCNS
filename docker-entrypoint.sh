@@ -24,5 +24,10 @@ if [ "$RUN_SEED_CONTRATOS" = "true" ]; then
   npx tsx prisma/seed-contratos-projetos.ts || true
 fi
 
+if [ "$RUN_BACKFILL_CODCCU" = "true" ]; then
+  echo "Preenchendo Team.codccu a partir do nome das equipes..."
+  npx tsx prisma/backfill-codccu-teams.ts || true
+fi
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000

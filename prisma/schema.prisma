@@ -306,6 +306,11 @@ model Team {
   name        String   @unique
   description String?
   createdAt   DateTime @default(now())
+  // CCU (centro de custo) da Senior que essa equipe representa -- preenchido
+  // pelo seed a partir do roster real; usado pra ligar o custo por plano de
+  // contas (CustoContaFinanceira) a equipe/contrato certo sem depender de
+  // parsear o nome.
+  codccu String? @unique
 
   members  UserTeam[]
   projects Project[]
@@ -315,6 +320,28 @@ model Team {
   scorecardItems ScorecardItem[]
   folders      Folder[]
   attachments  Attachment[]
+  custosContaFinanceira CustoContaFinanceira[]
+}
+
+// Custo por plano de contas (conta_financeira), agregado por CCU/mes, vindo
+// do Rito de Gestao (rito_financeiro.composicao_custo_financeiro). Sincronizado
+// pelo mesmo mecanismo das aprovacoes (chave SENIOR_SYNC_KEY), mas disparado
+// junto com a cascata MENSAL do Rito (o dado fonte so muda uma vez por mes).
+model CustoContaFinanceira {
+  id              String   @id @default(cuid())
+  codccu          String
+  contrato        String
+  contaFinanceira String
+  competencia     DateTime // dia 1 do mes de competencia
+  valor           Float
+  teamId          String?
+  atualizadoEm    DateTime @updatedAt
+
+  team Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@unique([codccu, contaFinanceira, competencia])
+  @@index([teamId])
+  @@index([competencia])
 }
 
 model Nucleo {
