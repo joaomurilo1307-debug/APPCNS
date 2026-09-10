@@ -226,6 +226,8 @@ model User {
   nucleosGerenciados Nucleo[] @relation("NucleoGerente")
   projetosComoDiretor     Project[] @relation("ProjectDiretor")
   projetosComoCoordenador Project[] @relation("ProjectCoordenador")
+  aprovacoesSeniorComoProximo AprovacaoSenior[] @relation("AprovacaoSeniorProximo")
+  usuarioSenior              UsuarioSenior[]    @relation("UsuarioSeniorConta")
 }
 
 model ApprovalRequest {
@@ -550,17 +552,24 @@ model AprovacaoSenior {
   numOcp          String    @unique
   dataEmissao     DateTime
   fornecedorCodigo String
-  fornecedorNome  String?
+  fornecedorNome  String?   // USU_NOMFOR da OC (nome livre digitado); cai pro codigo se vazio
   valor           Float
   descricao       String?   @db.Text
   contratoTexto   String?   // extraido do texto da OC (ex: "MRN CT 3748/2023"), nao normalizado
   codccu          String?   // quando identificado com confianca (ex: via CCUAPR do nivel ja aprovado)
+  contratoNome    String?   // nome do CC/contrato resolvido de rito_financeiro.centros_custo
   numApr          String
   rotNap          String?
   situacaoAtual   String    // ANA / PRE / APR / REP / CAN
   nivelAtual      Int       @default(1)
   historicoNiveis String?   @db.Text // JSON: [{seqApr, nivApr, usuAprSenior, situacao, data, ccu}]
   temRateio       Boolean   @default(false) // texto da OC menciona "RATEIO" ou tem >1 CCU nos niveis
+  rateioDetalhe   String?   @db.Text // JSON: [{codccu, nome}] dos contratos que entram no rateio
+  mapaCotacao     String?   @db.Text // JSON do mapa de cotacao, quando a OC tem cotacao vinculada
+  proximoAprovadorCod  String?  // CODUSU do Senior que provavelmente aprova o nivel atual (do historico E614USU)
+  proximoAprovadorNome String?  // resolvido via UsuarioSenior quando o de-para existir
+  proximoAprovadorUserId String? // match no consominas-gestao -> alimenta a pagina pessoal de aprovacoes
+  proximoAprovador     User?    @relation("AprovacaoSeniorProximo", fields: [proximoAprovadorUserId], references: [id], onDelete: SetNull)
   primeiraDeteccaoEm DateTime @default(now())
   ultimaSincEm    DateTime  @updatedAt
   resolvidoEm     DateTime?
@@ -570,6 +579,18 @@ model AprovacaoSenior {
 
   @@index([situacaoAtual])
   @@index([codccu])
+  @@index([proximoAprovadorUserId])
+}
+
+// De-para dos usuarios do Senior (CODUSU numerico -> nome, e opcionalmente
+// -> conta no consominas-gestao). Preenchido a partir de um export do
+// Senior (tela Cadastros > Usuarios). Sem isso, so da pra mostrar o codigo.
+model UsuarioSenior {
+  codigo       String   @id // CODUSU do Senior (ex: "177")
+  nome         String
+  userId       String?
+  user         User?    @relation("UsuarioSeniorConta", fields: [userId], references: [id], onDelete: SetNull)
+  atualizadoEm DateTime @updatedAt
 }
 
 model AprovacaoSeniorEvento {

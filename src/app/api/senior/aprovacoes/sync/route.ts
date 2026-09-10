@@ -7,12 +7,13 @@ import { prisma } from "@/lib/prisma";
 // Gestao (tem acesso ao GetDBInfo do Senior), autenticado por chave
 // compartilhada -- nao expoe nenhum dado do Senior sem essa chave.
 //
-// Efeitos: (1) upsert em AprovacaoSenior por numOcp; (2) toda mudanca de
-// situacaoAtual vira 1 linha em AprovacaoSeniorEvento (alimenta o
-// relatorio de aprovacao: quem aprovou, quando, tempo parado); (3) OC nova
-// e ainda pendente -> Notification pra aprovadores/coordenadores/gerentes/
-// diretores; (4) OC que estava pendente e virou APR/REP/CAN -> marca
-// resolvidoEm/resolvidoComo.
+// Efeitos: (1) upsert em AprovacaoSenior por numOcp (campos descritivos
+// -- fornecedor, contrato, rateio, historico -- sempre atualizados);
+// (2) toda mudanca de situacaoAtual vira 1 linha em AprovacaoSeniorEvento;
+// (3) OC nova e pendente -> Notification pros aprovadores; (4) OC que
+// estava pendente e virou APR/REP/CAN -> marca resolvidoEm/resolvidoComo.
+// O "proximo aprovador" vem como codigo do Senior e e resolvido pra nome/
+// conta via a tabela UsuarioSenior (de-para), quando ela estiver populada.
 
 const itemSchema = z.object({
   numOcp: z.string(),
@@ -23,17 +24,19 @@ const itemSchema = z.object({
   descricao: z.string().optional().nullable(),
   contratoTexto: z.string().optional().nullable(),
   codccu: z.string().optional().nullable(),
+  contratoNome: z.string().optional().nullable(),
   numApr: z.string(),
   rotNap: z.string().optional().nullable(),
   situacaoAtual: z.string(),
   nivelAtual: z.number().int().default(1),
   historicoNiveis: z.string().optional().nullable(),
   temRateio: z.boolean().default(false),
+  rateioDetalhe: z.string().optional().nullable(),
+  mapaCotacao: z.string().optional().nullable(),
+  proximoAprovadorCod: z.string().optional().nullable(),
 });
 
-const bodySchema = z.object({
-  itens: z.array(itemSchema),
-});
+const bodySchema = z.object({ itens: z.array(itemSchema) });
 
 const SITUACOES_PENDENTES = new Set(["ANA", "PRE"]);
 const SITUACOES_RESOLVIDAS = new Set(["APR", "REP", "CAN"]);
@@ -61,6 +64,26 @@ export async function POST(req: Request) {
     select: { id: true },
   });
 
+  // de-para de usuarios do Senior (codigo -> nome/conta), pra resolver o
+  // "proximo aprovador". Se a tabela estiver vazia, os codigos ficam sem nome.
+  const codsAprovador = Array.from(
+    new Set(parsed.data.itens.map((i) => i.proximoAprovadorCod).filter((c): c is string => !!c))
+  );
+  const usuariosSenior = codsAprovador.length
+    ? await prisma.usuarioSenior.findMany({ where: { codigo: { in: codsAprovador } } })
+    : [];
+  const deParaSenior = new Map(usuariosSenior.map((u) => [u.codigo, u]));
+
+  function resolverProximo(cod: string | null | undefined) {
+    if (!cod) return { proximoAprovadorCod: null, proximoAprovadorNome: null, proximoAprovadorUserId: null };
+    const u = deParaSenior.get(cod);
+    return {
+      proximoAprovadorCod: cod,
+      proximoAprovadorNome: u?.nome ?? null,
+      proximoAprovadorUserId: u?.userId ?? null,
+    };
+  }
+
   let novas = 0;
   let atualizadas = 0;
   let resolvidas = 0;
@@ -68,24 +91,34 @@ export async function POST(req: Request) {
 
   for (const item of parsed.data.itens) {
     const existente = await prisma.aprovacaoSenior.findUnique({ where: { numOcp: item.numOcp } });
+    const prox = resolverProximo(item.proximoAprovadorCod);
+
+    // campos descritivos -- reescritos a cada sync (dado do Senior manda)
+    const descritivos = {
+      fornecedorCodigo: item.fornecedorCodigo,
+      fornecedorNome: item.fornecedorNome || null,
+      valor: item.valor,
+      descricao: item.descricao || null,
+      contratoTexto: item.contratoTexto || null,
+      codccu: item.codccu || existente?.codccu || null,
+      contratoNome: item.contratoNome || null,
+      rotNap: item.rotNap || null,
+      historicoNiveis: item.historicoNiveis || null,
+      temRateio: item.temRateio,
+      rateioDetalhe: item.rateioDetalhe || null,
+      mapaCotacao: item.mapaCotacao || null,
+      nivelAtual: item.nivelAtual,
+      ...prox,
+    };
 
     if (!existente) {
       const criada = await prisma.aprovacaoSenior.create({
         data: {
           numOcp: item.numOcp,
           dataEmissao: new Date(item.dataEmissao),
-          fornecedorCodigo: item.fornecedorCodigo,
-          fornecedorNome: item.fornecedorNome,
-          valor: item.valor,
-          descricao: item.descricao,
-          contratoTexto: item.contratoTexto,
-          codccu: item.codccu,
           numApr: item.numApr,
-          rotNap: item.rotNap,
           situacaoAtual: item.situacaoAtual,
-          nivelAtual: item.nivelAtual,
-          historicoNiveis: item.historicoNiveis,
-          temRateio: item.temRateio,
+          ...descritivos,
           ...(SITUACOES_RESOLVIDAS.has(item.situacaoAtual)
             ? { resolvidoEm: new Date(), resolvidoComo: item.situacaoAtual }
             : {}),
@@ -98,8 +131,10 @@ export async function POST(req: Request) {
 
       if (SITUACOES_PENDENTES.has(item.situacaoAtual)) {
         const valorFmt = item.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        // se ja sabemos quem e a pessoa, notifica so ela; senao, o grupo
+        const destinatarios = prox.proximoAprovadorUserId ? [{ id: prox.proximoAprovadorUserId }] : aprovadores;
         await prisma.notification.createMany({
-          data: aprovadores.map((a) => ({
+          data: destinatarios.map((a) => ({
             userId: a.id,
             type: "APROVACAO_PENDENTE" as const,
             title: `OC ${item.numOcp} aguardando aprovação (${valorFmt})`,
@@ -107,12 +142,16 @@ export async function POST(req: Request) {
             link: "/aprovacoes/senior",
           })),
         });
-        notificacoesCriadas += aprovadores.length;
+        notificacoesCriadas += destinatarios.length;
       }
       continue;
     }
 
-    if (existente.situacaoAtual !== item.situacaoAtual) {
+    const mudouSituacao = existente.situacaoAtual !== item.situacaoAtual;
+    const foiResolvidaAgora =
+      mudouSituacao && SITUACOES_PENDENTES.has(existente.situacaoAtual) && SITUACOES_RESOLVIDAS.has(item.situacaoAtual);
+
+    if (mudouSituacao) {
       await prisma.aprovacaoSeniorEvento.create({
         data: {
           aprovacaoSeniorId: existente.id,
@@ -121,21 +160,18 @@ export async function POST(req: Request) {
           observacao: `Mudou de ${existente.situacaoAtual} para ${item.situacaoAtual}`,
         },
       });
-
-      const foiResolvidaAgora = SITUACOES_PENDENTES.has(existente.situacaoAtual) && SITUACOES_RESOLVIDAS.has(item.situacaoAtual);
-      await prisma.aprovacaoSenior.update({
-        where: { id: existente.id },
-        data: {
-          situacaoAtual: item.situacaoAtual,
-          nivelAtual: item.nivelAtual,
-          historicoNiveis: item.historicoNiveis,
-          codccu: item.codccu ?? existente.codccu,
-          ...(foiResolvidaAgora ? { resolvidoEm: new Date(), resolvidoComo: item.situacaoAtual } : {}),
-        },
-      });
       if (foiResolvidaAgora) resolvidas++;
       else atualizadas++;
     }
+
+    await prisma.aprovacaoSenior.update({
+      where: { id: existente.id },
+      data: {
+        situacaoAtual: item.situacaoAtual,
+        ...descritivos,
+        ...(foiResolvidaAgora ? { resolvidoEm: new Date(), resolvidoComo: item.situacaoAtual } : {}),
+      },
+    });
   }
 
   return NextResponse.json({ ok: true, novas, atualizadas, resolvidas, notificacoesCriadas, totalRecebido: parsed.data.itens.length });

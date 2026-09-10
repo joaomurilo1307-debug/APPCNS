@@ -26,13 +26,19 @@ export async function GET() {
     prisma.aprovacaoSenior.findMany({
       where: { situacaoAtual: { in: ["ANA", "PRE"] } },
       orderBy: { dataEmissao: "desc" },
-      include: { eventos: { orderBy: { detectadoEm: "asc" } } },
+      include: {
+        eventos: { orderBy: { detectadoEm: "asc" } },
+        proximoAprovador: { select: { id: true, name: true } },
+      },
     }),
     prisma.aprovacaoSenior.findMany({
       where: { resolvidoEm: { not: null } },
       orderBy: { resolvidoEm: "desc" },
       take: 50,
-      include: { eventos: { orderBy: { detectadoEm: "asc" } } },
+      include: {
+        eventos: { orderBy: { detectadoEm: "asc" } },
+        proximoAprovador: { select: { id: true, name: true } },
+      },
     }),
   ]);
 

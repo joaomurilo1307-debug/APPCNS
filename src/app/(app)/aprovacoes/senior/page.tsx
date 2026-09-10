@@ -10,6 +10,17 @@ type Evento = {
   detectadoEm: string;
 };
 
+type NivelHist = {
+  SEQAPR?: string;
+  NIVAPR?: string;
+  USUAPR?: string;
+  SITAPR?: string;
+  CCUAPR?: string;
+  DATAPR?: string;
+};
+
+type RateioItem = { codccu: string; nome: string };
+
 type Aprovacao = {
   id: string;
   numOcp: string;
@@ -20,9 +31,16 @@ type Aprovacao = {
   descricao: string | null;
   contratoTexto: string | null;
   codccu: string | null;
+  contratoNome: string | null;
   situacaoAtual: string;
   nivelAtual: number;
   temRateio: boolean;
+  rateioDetalhe: string | null;
+  mapaCotacao: string | null;
+  historicoNiveis: string | null;
+  proximoAprovadorCod: string | null;
+  proximoAprovadorNome: string | null;
+  proximoAprovador: { id: string; name: string } | null;
   primeiraDeteccaoEm: string;
   resolvidoEm: string | null;
   resolvidoComo: string | null;
@@ -30,7 +48,7 @@ type Aprovacao = {
 };
 
 const situacaoLabel: Record<string, string> = {
-  ANA: "Em Análise",
+  ANA: "Em análise",
   PRE: "Pré-aprovado",
   APR: "Aprovado",
   REP: "Reprovado",
@@ -38,10 +56,10 @@ const situacaoLabel: Record<string, string> = {
 };
 
 const situacaoStyle: Record<string, string> = {
-  ANA: "bg-yellow-100 text-yellow-700",
-  PRE: "bg-blue-100 text-blue-700",
-  APR: "bg-green-100 text-green-700",
-  REP: "bg-red-100 text-red-700",
+  ANA: "bg-amber-100 text-amber-800",
+  PRE: "bg-sky-100 text-sky-800",
+  APR: "bg-emerald-100 text-emerald-800",
+  REP: "bg-rose-100 text-rose-800",
   CAN: "bg-gray-100 text-gray-500",
 };
 
@@ -50,8 +68,28 @@ function formatMoeda(v: number) {
 }
 
 function diasParado(dataEmissao: string) {
-  const dias = Math.floor((Date.now() - new Date(dataEmissao).getTime()) / (1000 * 60 * 60 * 24));
-  return dias;
+  return Math.floor((Date.now() - new Date(dataEmissao).getTime()) / 86400000);
+}
+
+function parseJSON<T>(s: string | null): T | null {
+  if (!s) return null;
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    return null;
+  }
+}
+
+function contratoDe(a: Aprovacao) {
+  return a.contratoNome || a.contratoTexto || (a.codccu ? `CCU ${a.codccu}` : "—");
+}
+
+function aprovadorDe(a: Aprovacao) {
+  return (
+    a.proximoAprovador?.name ||
+    a.proximoAprovadorNome ||
+    (a.proximoAprovadorCod ? `Usuário Senior #${a.proximoAprovadorCod}` : "A identificar")
+  );
 }
 
 export default function AprovacoesSeniorPage() {
@@ -59,7 +97,7 @@ export default function AprovacoesSeniorPage() {
   const [resolvidas, setResolvidas] = useState<Aprovacao[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [expandido, setExpandido] = useState<string | null>(null);
+  const [aberta, setAberta] = useState<Aprovacao | null>(null);
 
   useEffect(() => {
     fetch("/api/senior/aprovacoes")
@@ -86,12 +124,13 @@ export default function AprovacoesSeniorPage() {
   return (
     <div className="p-6">
       <h1 className="mb-1 text-xl font-semibold">Aprovações — Ordens de Compra (Senior)</h1>
-      <p className="mb-6 text-sm text-gray-500">
-        Sincronizado automaticamente do Senior. Mostra ordens de compra aguardando aprovação (multinível) e o
-        histórico de decisões, para alimentar o relatório de eficiência dos aprovadores.
+      <p className="mb-6 max-w-3xl text-sm text-gray-500">
+        Ordens de compra aguardando aprovação, sincronizadas do Senior. A lista mostra quem precisa aprovar e se há
+        rateio; clique numa linha para ver o mapa completo da OC (fornecedor, valor, descrição, contratos do rateio,
+        histórico de níveis e cotação).
       </p>
 
-      <div className="mb-6 grid grid-cols-3 gap-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
           <p className="text-xs text-gray-500">Pendentes agora</p>
           <p className="text-2xl font-semibold">{pendentes.length}</p>
@@ -109,65 +148,57 @@ export default function AprovacoesSeniorPage() {
       <h2 className="mb-2 text-sm font-semibold text-gray-700">Pendentes</h2>
       <div className="mb-8 overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
             <tr>
-              <th className="px-4 py-2">OC</th>
-              <th className="px-4 py-2">Emissão</th>
-              <th className="px-4 py-2">Fornecedor</th>
-              <th className="px-4 py-2">Valor</th>
-              <th className="px-4 py-2">Contrato / CC</th>
-              <th className="px-4 py-2">Situação</th>
-              <th className="px-4 py-2">Dias parado</th>
-              <th className="px-4 py-2">Rateio</th>
+              <th className="px-4 py-2.5">OC</th>
+              <th className="px-4 py-2.5">Fornecedor</th>
+              <th className="px-4 py-2.5">Contrato / CC</th>
+              <th className="px-4 py-2.5 text-right">Valor</th>
+              <th className="px-4 py-2.5">Quem falta aprovar</th>
+              <th className="px-4 py-2.5 text-center">Rateio</th>
+              <th className="px-4 py-2.5 text-center">Parada há</th>
             </tr>
           </thead>
           <tbody>
             {pendentes.map((a) => (
-              <>
-                <tr
-                  key={a.id}
-                  className="cursor-pointer border-t border-gray-50 hover:bg-gray-50"
-                  onClick={() => setExpandido(expandido === a.id ? null : a.id)}
-                >
-                  <td className="px-4 py-2 font-medium">{a.numOcp}</td>
-                  <td className="px-4 py-2">{new Date(a.dataEmissao).toLocaleDateString("pt-BR")}</td>
-                  <td className="px-4 py-2">{a.fornecedorNome || a.fornecedorCodigo}</td>
-                  <td className="px-4 py-2">{formatMoeda(a.valor)}</td>
-                  <td className="px-4 py-2 text-xs text-gray-600">{a.contratoTexto || a.codccu || "—"}</td>
-                  <td className="px-4 py-2">
-                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${situacaoStyle[a.situacaoAtual]}`}>
-                      {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · nível {a.nivelAtual}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className={diasParado(a.dataEmissao) > 7 ? "font-semibold text-red-600" : ""}>
-                      {diasParado(a.dataEmissao)}d
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">{a.temRateio ? "Sim" : "—"}</td>
-                </tr>
-                {expandido === a.id && (
-                  <tr className="border-t border-gray-50 bg-gray-50/50">
-                    <td colSpan={8} className="px-4 py-3">
-                      <p className="mb-2 text-xs text-gray-600">{a.descricao}</p>
-                      <p className="mb-1 text-xs font-semibold text-gray-500">Histórico de níveis:</p>
-                      <ul className="space-y-1 text-xs text-gray-600">
-                        {a.eventos.map((e) => (
-                          <li key={e.id}>
-                            {new Date(e.detectadoEm).toLocaleString("pt-BR")} — nível {e.nivel ?? "?"} —{" "}
-                            <span className={situacaoStyle[e.situacao]}>{situacaoLabel[e.situacao] || e.situacao}</span>
-                            {e.observacao ? ` (${e.observacao})` : ""}
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
-                  </tr>
-                )}
-              </>
+              <tr
+                key={a.id}
+                className="cursor-pointer border-t border-gray-50 hover:bg-brand/[0.04]"
+                onClick={() => setAberta(a)}
+              >
+                <td className="px-4 py-2.5 font-medium">
+                  {a.numOcp}
+                  <span
+                    className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${situacaoStyle[a.situacaoAtual]}`}
+                  >
+                    {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · nv {a.nivelAtual}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5">{a.fornecedorNome || a.fornecedorCodigo}</td>
+                <td className="px-4 py-2.5 text-gray-600">{contratoDe(a)}</td>
+                <td className="px-4 py-2.5 text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
+                <td className="px-4 py-2.5">
+                  <span className={a.proximoAprovador || a.proximoAprovadorNome ? "" : "text-gray-400"}>
+                    {aprovadorDe(a)}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-center">
+                  {a.temRateio ? (
+                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">Sim</span>
+                  ) : (
+                    <span className="text-gray-300">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={diasParado(a.dataEmissao) > 7 ? "font-semibold text-rose-600" : "text-gray-500"}>
+                    {diasParado(a.dataEmissao)}d
+                  </span>
+                </td>
+              </tr>
             ))}
             {pendentes.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={7} className="px-4 py-6 text-center text-gray-400">
                   Nenhuma OC pendente de aprovação no momento.
                 </td>
               </tr>
@@ -179,15 +210,15 @@ export default function AprovacoesSeniorPage() {
       <h2 className="mb-2 text-sm font-semibold text-gray-700">Resolvidas recentemente</h2>
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
             <tr>
-              <th className="px-4 py-2">OC</th>
-              <th className="px-4 py-2">Fornecedor</th>
-              <th className="px-4 py-2">Valor</th>
-              <th className="px-4 py-2">Resultado</th>
-              <th className="px-4 py-2">Detectada em</th>
-              <th className="px-4 py-2">Resolvida em</th>
-              <th className="px-4 py-2">Tempo até decisão</th>
+              <th className="px-4 py-2.5">OC</th>
+              <th className="px-4 py-2.5">Fornecedor</th>
+              <th className="px-4 py-2.5 text-right">Valor</th>
+              <th className="px-4 py-2.5">Resultado</th>
+              <th className="px-4 py-2.5">Detectada em</th>
+              <th className="px-4 py-2.5">Resolvida em</th>
+              <th className="px-4 py-2.5 text-center">Tempo até decisão</th>
             </tr>
           </thead>
           <tbody>
@@ -196,22 +227,28 @@ export default function AprovacoesSeniorPage() {
                 ? Math.floor((new Date(a.resolvidoEm).getTime() - new Date(a.primeiraDeteccaoEm).getTime()) / 86400000)
                 : null;
               return (
-                <tr key={a.id} className="border-t border-gray-50">
-                  <td className="px-4 py-2 font-medium">{a.numOcp}</td>
-                  <td className="px-4 py-2">{a.fornecedorNome || a.fornecedorCodigo}</td>
-                  <td className="px-4 py-2">{formatMoeda(a.valor)}</td>
-                  <td className="px-4 py-2">
-                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${situacaoStyle[a.resolvidoComo || ""]}`}>
+                <tr
+                  key={a.id}
+                  className="cursor-pointer border-t border-gray-50 hover:bg-brand/[0.04]"
+                  onClick={() => setAberta(a)}
+                >
+                  <td className="px-4 py-2.5 font-medium">{a.numOcp}</td>
+                  <td className="px-4 py-2.5">{a.fornecedorNome || a.fornecedorCodigo}</td>
+                  <td className="px-4 py-2.5 text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
+                  <td className="px-4 py-2.5">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.resolvidoComo || ""]}`}
+                    >
                       {situacaoLabel[a.resolvidoComo || ""] || a.resolvidoComo}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-xs text-gray-500">
+                  <td className="px-4 py-2.5 text-xs text-gray-500">
                     {new Date(a.primeiraDeteccaoEm).toLocaleDateString("pt-BR")}
                   </td>
-                  <td className="px-4 py-2 text-xs text-gray-500">
+                  <td className="px-4 py-2.5 text-xs text-gray-500">
                     {a.resolvidoEm ? new Date(a.resolvidoEm).toLocaleDateString("pt-BR") : "—"}
                   </td>
-                  <td className="px-4 py-2">{dias !== null ? `${dias}d` : "—"}</td>
+                  <td className="px-4 py-2.5 text-center">{dias !== null ? `${dias}d` : "—"}</td>
                 </tr>
               );
             })}
@@ -224,6 +261,176 @@ export default function AprovacoesSeniorPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {aberta && <MapaOC aprovacao={aberta} onClose={() => setAberta(null)} />}
+    </div>
+  );
+}
+
+function MapaOC({ aprovacao: a, onClose }: { aprovacao: Aprovacao; onClose: () => void }) {
+  const niveis = parseJSON<NivelHist[]>(a.historicoNiveis) ?? [];
+  const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
+  const cotacao = parseJSON<any>(a.mapaCotacao);
+  const nivelMax = niveis.reduce((m, n) => Math.max(m, Number(n.NIVAPR) || 0), 0);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="my-8 w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* header */}
+        <div className="flex items-start justify-between gap-4 border-b border-gray-100 bg-gradient-to-r from-brand/10 to-transparent px-6 py-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Ordem de compra</p>
+            <p className="text-lg font-semibold">
+              OC {a.numOcp}
+              <span
+                className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.situacaoAtual]}`}
+              >
+                {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · nível {a.nivelAtual}
+              </span>
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-5 px-6 py-5">
+          {/* linha de topo: valor + quem falta */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-xl bg-gray-50 p-3">
+              <p className="text-xs text-gray-500">Valor</p>
+              <p className="text-xl font-semibold">{formatMoeda(a.valor)}</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-3">
+              <p className="text-xs text-gray-500">Quem falta aprovar</p>
+              <p className="text-sm font-semibold">{aprovadorDe(a)}</p>
+              {a.proximoAprovadorCod && !a.proximoAprovadorNome && !a.proximoAprovador && (
+                <p className="mt-0.5 text-[11px] text-gray-400">
+                  nome pendente do de-para de usuários do Senior
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* fornecedor + contrato */}
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+            <div>
+              <dt className="text-xs text-gray-500">Fornecedor</dt>
+              <dd className="font-medium">{a.fornecedorNome || "—"}</dd>
+              <dd className="text-xs text-gray-400">código {a.fornecedorCodigo}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-gray-500">Contrato / centro de custo</dt>
+              <dd className="font-medium">{contratoDe(a)}</dd>
+              {a.codccu && <dd className="text-xs text-gray-400">CCU {a.codccu}</dd>}
+            </div>
+            <div>
+              <dt className="text-xs text-gray-500">Emissão</dt>
+              <dd>{new Date(a.dataEmissao).toLocaleDateString("pt-BR")}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-gray-500">Parada há</dt>
+              <dd className={diasParado(a.dataEmissao) > 7 ? "font-semibold text-rose-600" : ""}>
+                {diasParado(a.dataEmissao)} dias
+              </dd>
+            </div>
+          </dl>
+
+          {/* descricao */}
+          {a.descricao && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Descrição</p>
+              <p className="whitespace-pre-wrap rounded-xl bg-gray-50 p-3 text-sm text-gray-700">{a.descricao}</p>
+            </div>
+          )}
+
+          {/* rateio */}
+          {a.temRateio && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Rateio {rateio.length > 0 && `— ${rateio.length} contratos`}
+              </p>
+              {rateio.length > 0 ? (
+                <ul className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+                  {rateio.map((r) => (
+                    <li key={r.codccu} className="flex items-center justify-between px-3 py-2 text-sm">
+                      <span>{r.nome || `CCU ${r.codccu}`}</span>
+                      <span className="text-xs text-gray-400">CCU {r.codccu}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  OC marcada como rateio; a lista de contratos não veio nesta sincronização.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* cadeia de aprovacao */}
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Cadeia de aprovação</p>
+            <ol className="space-y-1.5">
+              {niveis.map((n, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700">
+                    {n.NIVAPR}
+                  </span>
+                  <span className="text-gray-700">
+                    Aprovado por <span className="font-medium">Usuário Senior #{n.USUAPR}</span>
+                    {n.DATAPR ? ` em ${n.DATAPR}` : ""}
+                    {n.CCUAPR && n.CCUAPR !== "0" ? ` · CCU ${n.CCUAPR}` : ""}
+                  </span>
+                </li>
+              ))}
+              <li className="flex items-start gap-2 text-sm">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[11px] font-semibold text-amber-700">
+                  {nivelMax + 1}
+                </span>
+                <span className="font-medium text-amber-700">
+                  Aguardando aprovação de {aprovadorDe(a)}
+                </span>
+              </li>
+            </ol>
+          </div>
+
+          {/* mapa de cotacao */}
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Mapa de cotação</p>
+            {cotacao ? (
+              <pre className="overflow-x-auto rounded-xl bg-gray-50 p-3 text-xs text-gray-700">
+                {JSON.stringify(cotacao, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-sm text-gray-500">Esta OC não tem cotação vinculada no Senior.</p>
+            )}
+          </div>
+
+          {/* eventos (auditoria) */}
+          {a.eventos.length > 0 && (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Histórico de mudanças ({a.eventos.length})
+              </summary>
+              <ul className="mt-2 space-y-1 text-xs text-gray-600">
+                {a.eventos.map((e) => (
+                  <li key={e.id}>
+                    {new Date(e.detectadoEm).toLocaleString("pt-BR")} — {situacaoLabel[e.situacao] || e.situacao}
+                    {e.nivel ? ` (nível ${e.nivel})` : ""}
+                    {e.observacao ? ` — ${e.observacao}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
       </div>
     </div>
   );
