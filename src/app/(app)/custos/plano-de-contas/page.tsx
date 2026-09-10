@@ -20,8 +20,10 @@ function formatMoeda(v: number) {
 }
 
 function formatMesAno(iso: string) {
+  // competencia sempre e dia 1 as 00:00Z -- formata em UTC pra nao "voltar"
+  // um mes em fuso negativo (ex: 2026-07-01Z virava "junho" em GMT-3)
   const d = new Date(iso);
-  return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 export default function CustoPlanoDeContasPage() {
