@@ -237,7 +237,19 @@ export async function GET(req: Request) {
     where: { situacaoAtual: { in: ["ANA", "PRE"] } },
     select: { numOcp: true },
   });
+  // resolvidas nos ultimos 30 dias -- o sync re-puxa elas uma vez pra
+  // corrigir dados que foram gravados antes de um ajuste na regra
+  const trintaDiasAtras = new Date(Date.now() - 30 * 86400000);
+  const resolvidasRows = await prisma.aprovacaoSenior.findMany({
+    where: { resolvidoEm: { gte: trintaDiasAtras } },
+    select: { numOcp: true },
+  });
   const pendentes = pendentesRows.length;
   const total = await prisma.aprovacaoSenior.count();
-  return NextResponse.json({ pendentes, total, pendentesNumOcp: pendentesRows.map((r) => r.numOcp) });
+  return NextResponse.json({
+    pendentes,
+    total,
+    pendentesNumOcp: pendentesRows.map((r) => r.numOcp),
+    resolvidosRecentesNumOcp: resolvidasRows.map((r) => r.numOcp),
+  });
 }
