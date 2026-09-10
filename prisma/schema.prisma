@@ -511,6 +511,54 @@ model AuditLog {
   @@index([createdAt])
 }
 
+// Espelho das Ordens de Compra do Senior que precisam de aprovacao
+// (E420OCP, SITAPR). Sincronizado periodicamente via
+// POST /api/senior/aprovacoes/sync (script roda no VPS do Rito de
+// Gestao, que tem acesso ao Senior via GetDBInfo). Cada mudanca de
+// situacao vira uma linha em AprovacaoSeniorHistorico -- e a fonte do
+// "relatorio de aprovacao" (quem aprovou, quando, quanto tempo ficou
+// parado).
+model AprovacaoSenior {
+  id              String    @id @default(cuid())
+  numOcp          String    @unique
+  dataEmissao     DateTime
+  fornecedorCodigo String
+  fornecedorNome  String?
+  valor           Float
+  descricao       String?   @db.Text
+  contratoTexto   String?   // extraido do texto da OC (ex: "MRN CT 3748/2023"), nao normalizado
+  codccu          String?   // quando identificado com confianca (ex: via CCUAPR do nivel ja aprovado)
+  numApr          String
+  rotNap          String?
+  situacaoAtual   String    // ANA / PRE / APR / REP / CAN
+  nivelAtual      Int       @default(1)
+  historicoNiveis String?   @db.Text // JSON: [{seqApr, nivApr, usuAprSenior, situacao, data, ccu}]
+  temRateio       Boolean   @default(false) // texto da OC menciona "RATEIO" ou tem >1 CCU nos niveis
+  primeiraDeteccaoEm DateTime @default(now())
+  ultimaSincEm    DateTime  @updatedAt
+  resolvidoEm     DateTime?
+  resolvidoComo   String?   // situacaoAtual no momento da resolucao (APR/REP/CAN)
+
+  eventos AprovacaoSeniorEvento[]
+
+  @@index([situacaoAtual])
+  @@index([codccu])
+}
+
+model AprovacaoSeniorEvento {
+  id                String   @id @default(cuid())
+  aprovacaoSeniorId String
+  situacao          String
+  nivel             Int?
+  usuAprSenior      String?
+  observacao        String?
+  detectadoEm       DateTime @default(now())
+
+  aprovacaoSenior AprovacaoSenior @relation(fields: [aprovacaoSeniorId], references: [id], onDelete: Cascade)
+
+  @@index([aprovacaoSeniorId])
+}
+
 model Notification {
   id        String           @id @default(cuid())
   userId    String

@@ -40,6 +40,7 @@ const baseLinks = [
   { href: "/relatorios", label: "Relatórios", icon: IconReport, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/pdi", label: "PDI", icon: IconTrendingUp, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/aprovacoes", label: "Aprovações", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/aprovacoes/senior", label: "Aprovações (OC Senior)", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
   { href: "/usuarios", label: "Usuários", icon: IconShieldUser, roles: ["ADMIN"] },
 ];
 
