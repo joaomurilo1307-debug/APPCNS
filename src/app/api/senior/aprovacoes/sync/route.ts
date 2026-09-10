@@ -28,12 +28,16 @@ const itemSchema = z.object({
   numApr: z.string(),
   rotNap: z.string().optional().nullable(),
   situacaoAtual: z.string(),
+  niveisExigidos: z.string().optional().nullable(),
+  niveisAprovados: z.string().optional().nullable(),
   nivelAtual: z.number().int().default(1),
   historicoNiveis: z.string().optional().nullable(),
   temRateio: z.boolean().default(false),
   rateioDetalhe: z.string().optional().nullable(),
   mapaCotacao: z.string().optional().nullable(),
   proximoAprovadorCod: z.string().optional().nullable(),
+  aprovadoresPendentes: z.string().optional().nullable(),
+  aprovadoresPendentesCod: z.string().optional().nullable(),
   criadorCod: z.string().optional().nullable(),
   previsaoPagamento: z.string().optional().nullable(),
   pago: z.boolean().optional().default(false),
@@ -68,10 +72,17 @@ export async function POST(req: Request) {
   });
 
   // de-para de usuarios do Senior (codigo -> nome/conta), pra resolver o
-  // proximo aprovador e o criador da OC
+  // proximo aprovador, os aprovadores pendentes de cada nivel e o criador da OC
   const codsUsados = Array.from(
     new Set(
-      parsed.data.itens.flatMap((i) => [i.proximoAprovadorCod, i.criadorCod]).filter((c): c is string => !!c)
+      parsed.data.itens
+        .flatMap((i) => [
+          i.proximoAprovadorCod,
+          i.criadorCod,
+          ...(i.aprovadoresPendentesCod?.split(",") ?? []),
+        ])
+        .map((c) => c?.trim())
+        .filter((c): c is string => !!c)
     )
   );
   const usuariosSenior = codsUsados.length
@@ -98,6 +109,18 @@ export async function POST(req: Request) {
     };
   }
 
+  // userIds do consominas-gestao pros codigos Senior de quem falta aprovar
+  // (todos os niveis pendentes de todas as linhas de rateio)
+  function userIdsPendentes(codsCsv: string | null | undefined): string[] {
+    if (!codsCsv) return [];
+    const ids = new Set<string>();
+    for (const cod of codsCsv.split(",").map((c) => c.trim()).filter(Boolean)) {
+      const uid = deParaSenior.get(cod)?.userId;
+      if (uid) ids.add(uid);
+    }
+    return [...ids];
+  }
+
   let novas = 0;
   let atualizadas = 0;
   let resolvidas = 0;
@@ -121,11 +144,15 @@ export async function POST(req: Request) {
       previsaoPagamento: item.previsaoPagamento ? new Date(item.previsaoPagamento) : null,
       pago: item.pago ?? false,
       rotNap: item.rotNap || null,
+      niveisExigidos: item.niveisExigidos || null,
+      niveisAprovados: item.niveisAprovados || null,
       historicoNiveis: item.historicoNiveis || null,
       temRateio: item.temRateio,
       rateioDetalhe: item.rateioDetalhe || null,
       mapaCotacao: item.mapaCotacao || null,
       nivelAtual: item.nivelAtual,
+      aprovadoresPendentes: item.aprovadoresPendentes || null,
+      aprovadoresPendentesCod: item.aprovadoresPendentesCod || null,
       ...prox,
     };
 
@@ -149,8 +176,14 @@ export async function POST(req: Request) {
 
       if (SITUACOES_PENDENTES.has(item.situacaoAtual)) {
         const valorFmt = item.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-        // se ja sabemos quem e a pessoa, notifica so ela; senao, o grupo
-        const destinatarios = prox.proximoAprovadorUserId ? [{ id: prox.proximoAprovadorUserId }] : aprovadores;
+        // notifica quem a alcada aponta como pendente (todos os niveis que
+        // faltam, de todas as linhas de rateio); se nao casou ninguem, o grupo
+        const idsPendentes = userIdsPendentes(item.aprovadoresPendentesCod);
+        const destinatarios = idsPendentes.length
+          ? idsPendentes.map((id) => ({ id }))
+          : prox.proximoAprovadorUserId
+            ? [{ id: prox.proximoAprovadorUserId }]
+            : aprovadores;
         await prisma.notification.createMany({
           data: destinatarios.map((a) => ({
             userId: a.id,

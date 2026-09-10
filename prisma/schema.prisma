@@ -565,10 +565,14 @@ model AprovacaoSenior {
   numApr          String
   rotNap          String?
   situacaoAtual   String    // ANA / PRE / APR / REP / CAN
-  nivelAtual      Int       @default(1)
+  niveisExigidos  String?   // ex "1,2,3" -- niveis que a alcada exige (E614APR.NIVEXI)
+  niveisAprovados String?   // ex "1" -- niveis ja aprovados (E614USU)
+  nivelAtual      Int       @default(1) // menor nivel ainda pendente
   historicoNiveis String?   @db.Text // JSON: [{seqApr, nivApr, usuAprSenior, situacao, data, ccu}]
-  temRateio       Boolean   @default(false) // texto da OC menciona "RATEIO" ou tem >1 CCU nos niveis
-  rateioDetalhe   String?   @db.Text // JSON: [{codccu, nome}] dos contratos que entram no rateio
+  temRateio       Boolean   @default(false) // >1 linha de rateio ou >1 CCU
+  rateioDetalhe   String?   @db.Text // JSON: [{seq, codccu, ccuNome, contaFinanceira, perc, valor, niveis:[{nivel,grupo,status,aprovadoresCod,aprovadores}]}]
+  aprovadoresPendentes    String?  // nomes (login Senior) de quem falta aprovar, unidos por ", "
+  aprovadoresPendentesCod String?  // CODUSU do Senior de quem falta aprovar, unidos por ","
   mapaCotacao     String?   @db.Text // JSON do mapa de cotacao, quando a OC tem cotacao vinculada
   proximoAprovadorCod  String?  // CODUSU do Senior que provavelmente aprova o nivel atual (do historico E614USU)
   proximoAprovadorNome String?  // resolvido via UsuarioSenior quando o de-para existir

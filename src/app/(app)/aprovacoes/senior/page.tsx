@@ -19,13 +19,23 @@ type NivelHist = {
   DATAPR?: string;
 };
 
+type NivelRateio = {
+  nivel: number;
+  grupo: string;
+  status: "aprovado" | "pendente";
+  aprovadoresCod: string[];
+  aprovadores: string[];
+};
+
 type RateioItem = {
+  seq?: number;
   codccu: string;
   ccuNome?: string;
   contaFinanceira?: string;
   perc?: number;
   valor?: number;
   nome?: string; // compat com formato antigo
+  niveis?: NivelRateio[];
 };
 
 type Aprovacao = {
@@ -44,11 +54,15 @@ type Aprovacao = {
   previsaoPagamento: string | null;
   pago: boolean;
   situacaoAtual: string;
+  niveisExigidos: string | null;
+  niveisAprovados: string | null;
   nivelAtual: number;
   temRateio: boolean;
   rateioDetalhe: string | null;
   mapaCotacao: string | null;
   historicoNiveis: string | null;
+  aprovadoresPendentes: string | null;
+  aprovadoresPendentesCod: string | null;
   proximoAprovadorCod: string | null;
   proximoAprovadorNome: string | null;
   proximoAprovador: { id: string; name: string } | null;
@@ -65,6 +79,9 @@ const situacaoLabel: Record<string, string> = {
   REP: "Reprovado",
   CAN: "Cancelado",
 };
+
+// nível da alçada de OC do Senior (E068CNA.CODNAP) -> grupo aprovador
+const GRUPO_LABEL: Record<number, string> = { 1: "Coordenação", 2: "Gerência", 3: "Diretoria" };
 
 const situacaoStyle: Record<string, string> = {
   ANA: "bg-amber-100 text-amber-800",
@@ -91,15 +108,35 @@ function parseJSON<T>(s: string | null): T | null {
   }
 }
 
+function parseNiveis(csv: string | null): number[] {
+  if (!csv) return [];
+  return csv
+    .split(",")
+    .map((n) => Number(n.trim()))
+    .filter((n) => Number.isFinite(n));
+}
+
+function niveisLabel(a: Aprovacao) {
+  const exig = parseNiveis(a.niveisExigidos);
+  const aprv = parseNiveis(a.niveisAprovados);
+  if (!exig.length) return `nível ${a.nivelAtual}`;
+  return `nível ${aprv.length} de ${exig.length}`;
+}
+
 function contratoDe(a: Aprovacao) {
-  // o texto "C/C:" que o comprador escreveu na OC e o que bate com a aba
-  // Rateios do Senior; o nome do centros_custo entra so como apoio
-  if (a.temRateio) return "Rateio (vários CC)";
-  return a.contratoTexto || a.contratoNome || (a.codccu ? `CCU ${a.codccu}` : "—");
+  // centro de custo REAL da OC vem da aba Rateios (E420RAT) -> nome pelo
+  // cadastro mestre E044CCU; com rateio, cada linha tem o seu (ver mapa)
+  const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
+  if (a.temRateio) {
+    const ccs = Array.from(new Set(rateio.map((r) => r.ccuNome || `CC ${r.codccu}`)));
+    if (ccs.length === 1) return `${ccs[0]} · rateio ${rateio.length} linhas`;
+    return `Rateio · ${ccs.length} centros de custo`;
+  }
+  return a.contratoNome || rateio[0]?.ccuNome || (a.codccu ? `CC ${a.codccu}` : a.contratoTexto || "—");
 }
 
 function aprovadorDe(a: Aprovacao) {
-  return a.proximoAprovador?.name || a.proximoAprovadorNome || `Aguardando · nível ${a.nivelAtual}`;
+  return a.aprovadoresPendentes || a.proximoAprovador?.name || a.proximoAprovadorNome || `Aguardando · ${niveisLabel(a)}`;
 }
 
 function nomeUsuSenior(cod: string | undefined, codToNome: Record<string, string>) {
@@ -189,7 +226,7 @@ export default function AprovacoesSeniorPage() {
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.situacaoAtual]}`}
                   >
-                    {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · nível {a.nivelAtual}
+                    {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · {niveisLabel(a)}
                   </span>
                 </td>
                 <td className="max-w-[240px] truncate" title={a.fornecedorNome || a.fornecedorCodigo}>
@@ -304,7 +341,49 @@ function MapaOC({
   const niveis = parseJSON<NivelHist[]>(a.historicoNiveis) ?? [];
   const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
   const cotacao = parseJSON<any>(a.mapaCotacao);
-  const nivelMax = niveis.reduce((m, n) => Math.max(m, Number(n.NIVAPR) || 0), 0);
+
+  const niveisExig = parseNiveis(a.niveisExigidos);
+  const niveisAprv = parseNiveis(a.niveisAprovados);
+  // {nivApr -> {usuAprSenior, data}} do historico E614USU, pra anotar quem aprovou
+  const aprovadoPor = new Map<number, NivelHist>();
+  for (const n of niveis) {
+    const lvl = Number(n.NIVAPR);
+    if ((n.SITAPR || "").toUpperCase() === "APR" && Number.isFinite(lvl)) aprovadoPor.set(lvl, n);
+  }
+  // aprovadores por nivel (agregado das linhas de rateio): nivel -> Set<nome>
+  const aprovadoresNivel = new Map<number, Set<string>>();
+  for (const r of rateio) {
+    for (const nv of r.niveis ?? []) {
+      const s = aprovadoresNivel.get(nv.nivel) ?? new Set<string>();
+      (nv.aprovadores ?? []).forEach((x) => s.add(x));
+      aprovadoresNivel.set(nv.nivel, s);
+    }
+  }
+  const nivelLista = niveisExig.length ? niveisExig : [a.nivelAtual];
+
+  // a alcada e por centro de custo, entao agrupo as linhas de rateio por CC
+  // (uma OC pode ter N linhas no mesmo CC) -- soma valor, lista as contas
+  type GrupoCC = {
+    codccu: string;
+    ccuNome?: string;
+    linhas: number;
+    valor: number;
+    contas: Set<string>;
+    niveis: NivelRateio[];
+  };
+  const mapaCC = new Map<string, GrupoCC>();
+  for (const r of rateio) {
+    let g = mapaCC.get(r.codccu);
+    if (!g) {
+      g = { codccu: r.codccu, ccuNome: r.ccuNome, linhas: 0, valor: 0, contas: new Set<string>(), niveis: r.niveis ?? [] };
+      mapaCC.set(r.codccu, g);
+    }
+    g.linhas += 1;
+    g.valor += r.valor ?? 0;
+    const conta = r.contaFinanceira || r.nome;
+    if (conta) g.contas.add(conta);
+  }
+  const rateioPorCC = Array.from(mapaCC.values());
 
   return (
     <div
@@ -324,7 +403,7 @@ function MapaOC({
               <span
                 className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.situacaoAtual]}`}
               >
-                {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · nível {a.nivelAtual}
+                {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · {niveisLabel(a)}
               </span>
             </p>
           </div>
@@ -342,12 +421,10 @@ function MapaOC({
             </div>
             <div className="rounded-xl bg-gray-50 p-3">
               <p className="text-xs text-gray-500">Quem falta aprovar</p>
-              <p className="text-sm font-semibold">{aprovadorDe(a)}</p>
-              {!a.proximoAprovador && !a.proximoAprovadorNome && (
-                <p className="mt-0.5 text-[11px] text-gray-400">
-                  próximo aprovador definido pela alçada multinível do Senior
-                </p>
-              )}
+              <p className="text-sm font-semibold">{a.aprovadoresPendentes || aprovadorDe(a)}</p>
+              <p className="mt-0.5 text-[11px] text-gray-400">
+                {niveisLabel(a)} · alçada multinível do Senior (E068CNA)
+              </p>
             </div>
           </div>
 
@@ -360,12 +437,21 @@ function MapaOC({
             </div>
             <div>
               <dt className="text-xs text-gray-500">Centro de custo (da OC)</dt>
-              <dd className="font-medium">{a.contratoTexto || a.contratoNome || "—"}</dd>
-              {a.codccu && (
-                <dd className="text-xs text-gray-400">
-                  CC {a.codccu}
-                  {a.contratoNome && a.contratoNome !== a.contratoTexto ? ` · ${a.contratoNome}` : ""}
-                </dd>
+              {a.temRateio ? (
+                <>
+                  <dd className="font-medium">Rateio — {rateio.length} linhas</dd>
+                  <dd className="text-xs text-gray-400">detalhe por centro de custo abaixo</dd>
+                </>
+              ) : (
+                <>
+                  <dd className="font-medium">
+                    {a.contratoNome || rateio[0]?.ccuNome || (a.codccu ? `CC ${a.codccu}` : "—")}
+                  </dd>
+                  {a.codccu && <dd className="text-xs text-gray-400">CC {a.codccu} · cadastro Senior (E044CCU)</dd>}
+                </>
+              )}
+              {a.contratoTexto && a.contratoTexto !== a.contratoNome && (
+                <dd className="mt-0.5 text-xs text-gray-400">texto do comprador: “{a.contratoTexto}”</dd>
               )}
             </div>
             <div>
@@ -409,70 +495,92 @@ function MapaOC({
             </div>
           )}
 
-          {/* rateio (aba Rateios da OC no Senior) */}
+          {/* rateio (aba Rateios da OC no Senior), agrupado por centro de custo —
+              cada CC com a sua pendência por nível (a alçada é por CC) */}
           {rateio.length > 0 && (
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Rateio {rateio.length > 1 ? `— ${rateio.length} linhas` : ""}
+                Rateio — {rateio.length} {rateio.length === 1 ? "linha" : "linhas"}
+                {rateioPorCC.length > 1 ? ` em ${rateioPorCC.length} centros de custo` : ""} · pendência por nível
               </p>
-              <div className="overflow-x-auto rounded-xl border border-gray-100">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-left text-xs text-gray-500">
-                    <tr className="[&>th]:px-3 [&>th]:py-1.5">
-                      <th>Conta financeira</th>
-                      <th>Centro de custo</th>
-                      <th className="text-right">%</th>
-                      <th className="text-right">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rateio.map((r, i) => (
-                      <tr key={i} className="border-t border-gray-100 [&>td]:px-3 [&>td]:py-1.5">
-                        <td>{r.contaFinanceira || r.nome || "—"}</td>
-                        <td>
-                          {r.ccuNome ? (
-                            <>
-                              {r.ccuNome} <span className="text-xs text-gray-400">({r.codccu})</span>
-                            </>
-                          ) : (
-                            `CC ${r.codccu}`
-                          )}
-                        </td>
-                        <td className="text-right tabular-nums">{r.perc != null ? `${r.perc}%` : "—"}</td>
-                        <td className="text-right tabular-nums">{r.valor != null ? formatMoeda(r.valor) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-2">
+                {rateioPorCC.map((g) => (
+                  <div key={g.codccu} className="rounded-xl border border-gray-100 p-3">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                      <p className="text-sm font-medium">
+                        {g.ccuNome || `CC ${g.codccu}`}{" "}
+                        <span className="text-xs font-normal text-gray-400">
+                          CC {g.codccu}
+                          {g.linhas > 1 ? ` · ${g.linhas} linhas` : ""}
+                        </span>
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {Array.from(g.contas).join(", ") || "—"} ·{" "}
+                        <span className="tabular-nums font-medium text-gray-700">{formatMoeda(g.valor)}</span>
+                      </p>
+                    </div>
+                    {g.niveis.length > 0 ? (
+                      <ul className="mt-2 space-y-1">
+                        {g.niveis.map((nv) => (
+                          <li key={nv.nivel} className="flex items-start gap-2 text-xs">
+                            <span
+                              className={`mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                                nv.status === "aprovado"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-amber-100 text-amber-700"
+                              }`}
+                            >
+                              {nv.status === "aprovado" ? "✓" : nv.nivel}
+                            </span>
+                            <span className={nv.status === "aprovado" ? "text-gray-400 line-through" : "text-gray-700"}>
+                              <span className="font-medium">{nv.grupo}</span>
+                              {": "}
+                              {nv.aprovadores.length ? nv.aprovadores.join(" · ") : "sem aprovador na alçada"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1.5 text-xs text-gray-400">alçada não cadastrada para este centro de custo</p>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          {/* cadeia de aprovacao */}
+          {/* cadeia de aprovacao — todos os niveis exigidos, aprovado x pendente */}
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Cadeia de aprovação</p>
             <ol className="space-y-1.5">
-              {niveis.map((n, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700">
-                    {n.NIVAPR}
-                  </span>
-                  <span className="text-gray-700">
-                    Aprovado por <span className="font-medium">{nomeUsuSenior(n.USUAPR, codToNome)}</span>
-                    {n.DATAPR ? ` em ${n.DATAPR}` : ""}
-                  </span>
-                </li>
-              ))}
-              <li className="flex items-start gap-2 text-sm">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[11px] font-semibold text-amber-700">
-                  {nivelMax + 1}
-                </span>
-                <span className="font-medium text-amber-700">
-                  {a.proximoAprovador || a.proximoAprovadorNome
-                    ? `Aguardando aprovação de ${aprovadorDe(a)}`
-                    : `Aguardando aprovação — nível ${nivelMax + 1} (alçada do Senior)`}
-                </span>
-              </li>
+              {nivelLista.map((lvl) => {
+                const feito = niveisAprv.includes(lvl);
+                const hist = aprovadoPor.get(lvl);
+                const quem = Array.from(aprovadoresNivel.get(lvl) ?? []);
+                return (
+                  <li key={lvl} className="flex items-start gap-2 text-sm">
+                    <span
+                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                        feito ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {feito ? "✓" : lvl}
+                    </span>
+                    {feito ? (
+                      <span className="text-gray-700">
+                        <span className="font-medium">{GRUPO_LABEL[lvl] || `Nível ${lvl}`}</span> — aprovado
+                        {hist?.USUAPR ? ` por ${nomeUsuSenior(hist.USUAPR, codToNome)}` : ""}
+                        {hist?.DATAPR ? ` em ${hist.DATAPR}` : ""}
+                      </span>
+                    ) : (
+                      <span className="font-medium text-amber-700">
+                        {GRUPO_LABEL[lvl] || `Nível ${lvl}`} — aguardando
+                        {quem.length ? `: ${quem.join(" · ")}` : " (alçada do Senior)"}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           </div>
 
