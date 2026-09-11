@@ -9,9 +9,17 @@ import { prisma } from "@/lib/prisma";
 // muda quando o mes fecha, nao precisa de sync frequente feito o de OC.
 //
 // Cada item ja vem agregado (SUM(valor_rateado) por codccu+conta_financeira
-// +mes) do lado do script Python -- aqui e so upsert, e a gente tenta ligar
-// o item a uma Team existente via Team.codccu pra habilitar o filtro de
-// visibilidade "só quem está no contrato ou é gestor da equipe".
+// +mes) do lado do script Python, sempre para a MESMA janela rolante (13
+// meses) -- e a gente tenta ligar o item a uma Team existente via
+// Team.codccu pra habilitar o filtro de visibilidade "só quem está no
+// contrato ou é gestor da equipe".
+//
+// Semantica de JANELA, nao so upsert: se uma linha (codccu+conta+mes) que
+// existia numa sincronizacao anterior PAROU de vir (porque a fonte no Rito
+// mudou -- ex: uma conta que passou a ser excluida do calculo, tipo "IRRF
+// Colaboradores" em 10/09/2026), ela precisa ser APAGADA daqui tambem, senao
+// fica orfa pra sempre (upsert nunca remove o que sumiu). Por isso: dentro
+// da janela coberta pelo payload, tudo que nao veio de novo e' deletado.
 
 const itemSchema = z.object({
   codccu: z.string(),
@@ -37,13 +45,35 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Payload invalido", detalhes: parsed.error.flatten() }, { status: 422 });
   }
 
+  const itens = parsed.data.itens;
+  if (itens.length === 0) {
+    return NextResponse.json({ ok: true, processados: 0, totalRecebido: 0, removidos: 0, ccusSemEquipe: [] });
+  }
+
   const times = await prisma.team.findMany({ where: { codccu: { not: null } }, select: { id: true, codccu: true } });
   const teamPorCcu = new Map(times.map((t) => [t.codccu as string, t.id]));
 
   let processados = 0;
   const semEquipe = new Set<string>();
 
-  for (const item of parsed.data.itens) {
+  // janela coberta por este sync = do mes mais antigo do payload pra frente
+  const competencias = itens.map((i) => new Date(i.competencia).getTime());
+  const inicioJanela = new Date(Math.min(...competencias));
+  const chavesRecebidas = new Set(itens.map((i) => `${i.codccu}|${i.contaFinanceira}|${i.competencia}`));
+
+  const existentesNaJanela = await prisma.custoContaFinanceira.findMany({
+    where: { competencia: { gte: inicioJanela } },
+    select: { id: true, codccu: true, contaFinanceira: true, competencia: true },
+  });
+  const idsParaRemover = existentesNaJanela
+    .filter((r) => !chavesRecebidas.has(`${r.codccu}|${r.contaFinanceira}|${r.competencia.toISOString().slice(0, 10)}`))
+    .map((r) => r.id);
+
+  if (idsParaRemover.length > 0) {
+    await prisma.custoContaFinanceira.deleteMany({ where: { id: { in: idsParaRemover } } });
+  }
+
+  for (const item of itens) {
     const teamId = teamPorCcu.get(item.codccu) ?? null;
     if (!teamId) semEquipe.add(item.codccu);
 
@@ -71,7 +101,8 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true,
     processados,
-    totalRecebido: parsed.data.itens.length,
+    totalRecebido: itens.length,
+    removidos: idsParaRemover.length,
     ccusSemEquipe: Array.from(semEquipe),
   });
 }
