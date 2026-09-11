@@ -25,6 +25,9 @@ type NivelRateio = {
   status: "aprovado" | "pendente";
   aprovadoresCod: string[];
   aprovadores: string[];
+  aprovadoPor?: string | null; // quem assinou (login Senior), quando status = aprovado
+  aprovadoPorCod?: string | null;
+  aprovadoEm?: string | null; // data da assinatura (dd/mm/aaaa)
 };
 
 type RateioItem = {
@@ -349,27 +352,9 @@ function MapaOC({
   const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
   const cotacao = parseJSON<any>(a.mapaCotacao);
 
-  const niveisExig = parseNiveis(a.niveisExigidos);
-  const niveisAprv = parseNiveis(a.niveisAprovados);
-  // {nivApr -> {usuAprSenior, data}} do historico E614USU, pra anotar quem aprovou
-  const aprovadoPor = new Map<number, NivelHist>();
-  for (const n of niveis) {
-    const lvl = Number(n.NIVAPR);
-    if ((n.SITAPR || "").toUpperCase() === "APR" && Number.isFinite(lvl)) aprovadoPor.set(lvl, n);
-  }
-  // aprovadores por nivel (agregado das linhas de rateio): nivel -> Set<nome>
-  const aprovadoresNivel = new Map<number, Set<string>>();
-  for (const r of rateio) {
-    for (const nv of r.niveis ?? []) {
-      const s = aprovadoresNivel.get(nv.nivel) ?? new Set<string>();
-      (nv.aprovadores ?? []).forEach((x) => s.add(x));
-      aprovadoresNivel.set(nv.nivel, s);
-    }
-  }
-  const nivelLista = niveisExig.length ? niveisExig : [a.nivelAtual];
-
-  // a alcada e por centro de custo, entao agrupo as linhas de rateio por CC
-  // (uma OC pode ter N linhas no mesmo CC) -- soma valor, lista as contas
+  // a alcada e a assinatura sao POR centro de custo -- agrupo as linhas de
+  // rateio por CC (uma OC pode ter N linhas no mesmo CC), somo valor, junto
+  // as contas; os niveis (status/quem aprovou) vem da 1a linha do CC (iguais)
   type GrupoCC = {
     codccu: string;
     ccuNome?: string;
@@ -545,11 +530,18 @@ function MapaOC({
                             >
                               {nv.status === "aprovado" ? "✓" : nv.nivel}
                             </span>
-                            <span className={nv.status === "aprovado" ? "text-gray-400 line-through" : "text-gray-700"}>
-                              <span className="font-medium">{nv.grupo}</span>
-                              {": "}
-                              {nv.aprovadores.length ? nv.aprovadores.join(" · ") : "sem aprovador na alçada"}
-                            </span>
+                            {nv.status === "aprovado" ? (
+                              <span className="text-gray-500">
+                                <span className="font-medium text-gray-600">{nv.grupo}</span> — aprovado
+                                {nv.aprovadoPor ? ` por ${nv.aprovadoPor}` : ""}
+                                {nv.aprovadoEm ? ` em ${nv.aprovadoEm}` : ""}
+                              </span>
+                            ) : (
+                              <span className="text-gray-700">
+                                <span className="font-medium">{nv.grupo}</span> — aguardando:{" "}
+                                {nv.aprovadores.length ? nv.aprovadores.join(" · ") : "sem aprovador na alçada"}
+                              </span>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -559,43 +551,34 @@ function MapaOC({
                   </div>
                 ))}
               </div>
+              <p className="mt-1.5 text-[11px] text-gray-400">
+                cada centro de custo é aprovado pela sua própria alçada (Senior E068CNA); assinaturas vêm do E614USU
+              </p>
             </div>
           )}
 
-          {/* cadeia de aprovacao — todos os niveis exigidos, aprovado x pendente */}
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Cadeia de aprovação</p>
-            <ol className="space-y-1.5">
-              {nivelLista.map((lvl) => {
-                const feito = niveisAprv.includes(lvl);
-                const hist = aprovadoPor.get(lvl);
-                const quem = Array.from(aprovadoresNivel.get(lvl) ?? []);
-                return (
-                  <li key={lvl} className="flex items-start gap-2 text-sm">
-                    <span
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-                        feito ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {feito ? "✓" : lvl}
-                    </span>
-                    {feito ? (
-                      <span className="text-gray-700">
-                        <span className="font-medium">{GRUPO_LABEL[lvl] || `Nível ${lvl}`}</span> — aprovado
-                        {hist?.USUAPR ? ` por ${nomeUsuSenior(hist.USUAPR, codToNome)}` : ""}
-                        {hist?.DATAPR ? ` em ${hist.DATAPR}` : ""}
+          {/* fallback: OC sem rateio detalhado -> cadeia simples pelo historico */}
+          {rateio.length === 0 && niveis.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Cadeia de aprovação</p>
+              <ol className="space-y-1.5">
+                {niveis
+                  .filter((n) => (n.SITAPR || "").toUpperCase() === "APR")
+                  .map((n, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700">
+                        ✓
                       </span>
-                    ) : (
-                      <span className="font-medium text-amber-700">
-                        {GRUPO_LABEL[lvl] || `Nível ${lvl}`} — aguardando
-                        {quem.length ? `: ${quem.join(" · ")}` : " (alçada do Senior)"}
+                      <span>
+                        {GRUPO_LABEL[Number(n.NIVAPR)] || `Nível ${n.NIVAPR}`} — aprovado por{" "}
+                        {nomeUsuSenior(n.USUAPR, codToNome)}
+                        {n.DATAPR ? ` em ${n.DATAPR}` : ""}
                       </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
+                    </li>
+                  ))}
+              </ol>
+            </div>
+          )}
 
           {/* mapa de cotacao */}
           <div>
