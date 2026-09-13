@@ -7,6 +7,10 @@ import { prisma } from "@/lib/prisma";
 // Semantica de JANELA (igual custos-conta): dentro do que o payload cobre,
 // tudo que não veio de novo foi liquidado/cancelado/removido no Senior e
 // devia sumir daqui também -- upsert sozinho nunca limpa isso.
+//
+// Chave: numTit sozinho NÃO identifica um título (nem +codFil, nem +codFor
+// -- achado 13/09/2026, 101 pares repetidos, 161 títulos se perderiam).
+// (numTit,codFil,codFor,tipo,dataEmissao) é a chave real, 100% única.
 
 const itemSchema = z.object({
   numTit: z.string(),
@@ -16,7 +20,7 @@ const itemSchema = z.object({
   tipo: z.string(),
   situacao: z.string(),
   pago: z.boolean(),
-  dataEmissao: z.string().nullable(),
+  dataEmissao: z.string(), // sempre presente na base real
   vencimentoOriginal: z.string().nullable(),
   vencimentoProgramado: z.string().nullable(),
   valorOriginal: z.number(),
@@ -27,6 +31,10 @@ const itemSchema = z.object({
 });
 
 const bodySchema = z.object({ itens: z.array(itemSchema) });
+
+function chaveDe(i: { numTit: string; codFil: string; codFor: string; tipo: string; dataEmissao: string }) {
+  return `${i.numTit}|${i.codFil}|${i.codFor}|${i.tipo}|${i.dataEmissao}`;
+}
 
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
@@ -45,24 +53,34 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, processados: 0, totalRecebido: 0, removidos: 0 });
   }
 
-  const chavesRecebidas = new Set(itens.map((i) => `${i.numTit}|${i.codFil}`));
-  const existentes = await prisma.tituloContasAPagar.findMany({ select: { id: true, numTit: true, codFil: true } });
-  const idsParaRemover = existentes.filter((e) => !chavesRecebidas.has(`${e.numTit}|${e.codFil}`)).map((e) => e.id);
+  const chavesRecebidas = new Set(itens.map(chaveDe));
+  const existentes = await prisma.tituloContasAPagar.findMany({
+    select: { id: true, numTit: true, codFil: true, codFor: true, tipo: true, dataEmissao: true },
+  });
+  const idsParaRemover = existentes
+    .filter((e) => !chavesRecebidas.has(`${e.numTit}|${e.codFil}|${e.codFor}|${e.tipo}|${e.dataEmissao.toISOString().slice(0, 10)}`))
+    .map((e) => e.id);
   if (idsParaRemover.length > 0) {
     await prisma.tituloContasAPagar.deleteMany({ where: { id: { in: idsParaRemover } } });
   }
 
   let processados = 0;
   for (const item of itens) {
+    const dataEmissao = new Date(item.dataEmissao);
     await prisma.tituloContasAPagar.upsert({
-      where: { numTit_codFil: { numTit: item.numTit, codFil: item.codFil } },
+      where: {
+        numTit_codFil_codFor_tipo_dataEmissao: {
+          numTit: item.numTit,
+          codFil: item.codFil,
+          codFor: item.codFor,
+          tipo: item.tipo,
+          dataEmissao,
+        },
+      },
       update: {
-        codFor: item.codFor,
         fornecedorNome: item.fornecedorNome,
-        tipo: item.tipo,
         situacao: item.situacao,
         pago: item.pago,
-        dataEmissao: item.dataEmissao ? new Date(item.dataEmissao) : null,
         vencimentoOriginal: item.vencimentoOriginal ? new Date(item.vencimentoOriginal) : null,
         vencimentoProgramado: item.vencimentoProgramado ? new Date(item.vencimentoProgramado) : null,
         valorOriginal: item.valorOriginal,
@@ -75,11 +93,11 @@ export async function POST(req: Request) {
         numTit: item.numTit,
         codFil: item.codFil,
         codFor: item.codFor,
-        fornecedorNome: item.fornecedorNome,
         tipo: item.tipo,
+        dataEmissao,
+        fornecedorNome: item.fornecedorNome,
         situacao: item.situacao,
         pago: item.pago,
-        dataEmissao: item.dataEmissao ? new Date(item.dataEmissao) : null,
         vencimentoOriginal: item.vencimentoOriginal ? new Date(item.vencimentoOriginal) : null,
         vencimentoProgramado: item.vencimentoProgramado ? new Date(item.vencimentoProgramado) : null,
         valorOriginal: item.valorOriginal,

@@ -379,6 +379,12 @@ model HistoricoCcuColaborador {
 // uma OC aprovada já foi paga ou ainda está em aberto. "pago" é derivado
 // de VLRABE (valor em aberto) == 0 -- o próprio campo já diz se sobrou
 // saldo a pagar, não precisa decifrar os códigos de SITTIT.
+//
+// Chave única: NUMTIT sozinho (nem +codFil, nem +codFor) NÃO identifica um
+// título -- confirmado 13/09/2026, achamos 101 pares (numTit+codFil)
+// repetidos (inclusive dentro do MESMO fornecedor) somando 161 títulos que
+// se perderiam num upsert simples. (numTit,codFil,codFor,tipo,dataEmissao)
+// é 100% único na base real (checado título a título antes de assumir).
 model TituloContasAPagar {
   id                  String    @id @default(cuid())
   numTit              String
@@ -388,7 +394,7 @@ model TituloContasAPagar {
   tipo                String // CODTPT
   situacao            String // SITTIT (AB, LQ, CA, etc. -- cru, so' referencia)
   pago                Boolean // valorAberto == 0
-  dataEmissao         DateTime?
+  dataEmissao         DateTime // sempre presente na base real (checado); faz parte da chave unica
   vencimentoOriginal  DateTime?
   vencimentoProgramado DateTime?
   valorOriginal       Float
@@ -398,7 +404,7 @@ model TituloContasAPagar {
   numOcp              String? // liga com AprovacaoSenior.numOcp quando a OC gerou este titulo
   atualizadoEm        DateTime  @updatedAt
 
-  @@unique([numTit, codFil])
+  @@unique([numTit, codFil, codFor, tipo, dataEmissao])
   @@index([numOcp])
   @@index([pago])
   @@index([codFor])
