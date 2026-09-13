@@ -19,6 +19,8 @@ export async function GET() {
 
   const totalAberto = titulos.filter((t) => !t.pago).reduce((s, t) => s + t.valorAberto, 0);
   const qtdAberto = titulos.filter((t) => !t.pago).length;
+  const qtdPagos = titulos.filter((t) => t.pago).length;
+  const totalPago = titulos.filter((t) => t.pago).reduce((s, t) => s + t.valorOriginal, 0);
   const qtdComOcp = titulos.filter((t) => t.numOcp).length;
 
   return NextResponse.json({
@@ -34,11 +36,14 @@ export async function GET() {
       vencimentoProgramado: t.vencimentoProgramado,
       valorOriginal: t.valorOriginal,
       valorAberto: t.valorAberto,
+      dataPagamento: t.dataPagamento,
       ccuNome: t.ccuNome ?? t.codccu,
       numOcp: t.numOcp,
     })),
     totalAberto,
     qtdAberto,
+    qtdPagos,
+    totalPago,
     qtdComOcp,
     totalTitulos: titulos.length,
   });

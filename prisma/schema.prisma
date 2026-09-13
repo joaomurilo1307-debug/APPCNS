@@ -399,9 +399,12 @@ model TituloContasAPagar {
   vencimentoProgramado DateTime?
   valorOriginal       Float
   valorAberto         Float
+  dataPagamento       DateTime? // ULTPGT -- so' preenchido quando pago=true
   codccu              String?
   ccuNome             String?
-  numOcp              String? // liga com AprovacaoSenior.numOcp quando a OC gerou este titulo
+  numOcp              String? // liga com AprovacaoSenior.numOcp quando a OC gerou este titulo -- NUNCA
+  // populado nesta implantacao do Senior (checado 13/09/2026: zero em toda a base,
+  // abertos e pagos) -- fica guardado pra quando/se isso mudar, mas nao cruza nada hoje.
   atualizadoEm        DateTime  @updatedAt
 
   @@unique([numTit, codFil, codFor, tipo, dataEmissao])
