@@ -323,6 +323,7 @@ model Team {
   folders      Folder[]
   attachments  Attachment[]
   custosContaFinanceira CustoContaFinanceira[]
+  historicoCcuColaborador HistoricoCcuColaborador[]
 }
 
 // Custo por plano de contas (conta_financeira), agregado por CCU/mes, vindo
@@ -344,6 +345,32 @@ model CustoContaFinanceira {
   @@unique([codccu, contaFinanceira, competencia])
   @@index([teamId])
   @@index([competencia])
+}
+
+// Ledger IMUTAVEL de qual centro de custo cada colaborador CLT tinha em
+// cada mes -- vem de rito_financeiro.historico_ccu_colaborador (Postgres
+// do Rito, VPS 2.25.191.135), capturado la TODO MES pela cascata (nunca
+// sobrescrito). Existe pq R034FUN.CODCCU no Senior so guarda o valor
+// ATUAL do colaborador (achado 11/09/2026, caso Elisangela/ALCOA: um
+// contrato ja encerrado aparecia com margem otima porque o custo da
+// pessoa tinha ido pro CC novo dela nos meses seguintes). Aqui e' so
+// LEITURA (espelho de consulta) -- a fonte da verdade e o Postgres do
+// Rito; upsert simples, nunca apaga linha antiga.
+model HistoricoCcuColaborador {
+  id          String   @id @default(cuid())
+  matricula   String
+  competencia DateTime // dia 1 do mes
+  codccu      String
+  colaborador String
+  teamId      String?
+  atualizadoEm DateTime @updatedAt
+
+  team Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@unique([matricula, competencia])
+  @@index([teamId])
+  @@index([competencia])
+  @@index([codccu])
 }
 
 model Nucleo {

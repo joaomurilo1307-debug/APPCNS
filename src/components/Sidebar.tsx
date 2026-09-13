@@ -40,6 +40,7 @@ const baseLinks = [
   { href: "/aprovacoes", label: "Aprovações", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/aprovacoes/senior", label: "Aprovações (OC Senior)", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
   { href: "/custos/plano-de-contas", label: "Custo por Plano de Contas", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/custos/historico-centro-custo", label: "Histórico de CC por Colaborador", icon: IconBarChart, roles: ["ADMIN", "DIRETOR"] },
   { href: "/usuarios", label: "Usuários", icon: IconShieldUser, roles: ["ADMIN"] },
   { href: "/usuarios/senior", label: "Usuários do Senior", icon: IconShieldUser, roles: ["ADMIN"] },
 ];
