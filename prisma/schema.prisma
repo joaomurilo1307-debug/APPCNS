@@ -373,6 +373,37 @@ model HistoricoCcuColaborador {
   @@index([codccu])
 }
 
+// Programação de Contas a Pagar por título -- espelho de E501TCP (Senior),
+// pedido do João em 13/09/2026 pra cruzar com Aprovações OC: cada título
+// carrega o NÚMERO DA OC de origem (NUMOCP) quando existe, pra bater se
+// uma OC aprovada já foi paga ou ainda está em aberto. "pago" é derivado
+// de VLRABE (valor em aberto) == 0 -- o próprio campo já diz se sobrou
+// saldo a pagar, não precisa decifrar os códigos de SITTIT.
+model TituloContasAPagar {
+  id                  String    @id @default(cuid())
+  numTit              String
+  codFil              String
+  codFor              String
+  fornecedorNome      String?
+  tipo                String // CODTPT
+  situacao            String // SITTIT (AB, LQ, CA, etc. -- cru, so' referencia)
+  pago                Boolean // valorAberto == 0
+  dataEmissao         DateTime?
+  vencimentoOriginal  DateTime?
+  vencimentoProgramado DateTime?
+  valorOriginal       Float
+  valorAberto         Float
+  codccu              String?
+  ccuNome             String?
+  numOcp              String? // liga com AprovacaoSenior.numOcp quando a OC gerou este titulo
+  atualizadoEm        DateTime  @updatedAt
+
+  @@unique([numTit, codFil])
+  @@index([numOcp])
+  @@index([pago])
+  @@index([codFor])
+}
+
 model Nucleo {
   id          String   @id @default(cuid())
   name        String   @unique
