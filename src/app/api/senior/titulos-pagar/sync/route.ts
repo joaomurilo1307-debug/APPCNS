@@ -2,27 +2,28 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
-// Programação de Contas a Pagar por título (E501TCP, Senior). Traz TUDO —
-// abertos (SITTIT='AB') e o histórico completo de pagos (SITTIT='LQ',
-// 17.136 títulos) — pedido do João 13/09/2026: ele quer ver o histórico de
-// pagos e a programação da semana, não só o que está em aberto.
+// Programação de Contas a Pagar por título (E501TCP, Senior). Traz abertos
+// (SITTIT='AB') e pagos (SITTIT='LQ') -- pedido do João 13/09/2026: ver o
+// histórico de pagos e a programação da semana, não só o que está aberto.
+//
+// Escopo FECHADO desde 14/09/2026 (pedido do João, "não precisa olhar os
+// antigos, só os de 2026"): o script Python só manda título com DATEMI em
+// 2026 -- o payload representa o universo COMPLETO de 2026 a cada sync,
+// então a limpeza de "sumiu da fonte" roda sobre TUDO (aberto e pago), não
+// só sobre os abertos -- qualquer coisa de fora de 2026 (ou removida no
+// Senior) que ainda esteja aqui é órfã e sai.
 //
 // Chave: numTit sozinho NÃO identifica um título (nem +codFil, nem +codFor
 // -- achado 13/09/2026, 101 pares repetidos, 161 títulos se perderiam).
-// (numTit,codFil,codFor,tipo,dataEmissao) é a chave real, 100% única —
-// checada nos 19.602 títulos reais (abertos + pagos) antes de assumir.
+// (numTit,codFil,codFor,tipo,dataEmissao) é a chave real, 100% única.
 //
 // Quando um título MUDA de aberto pra pago no Senior, a chave continua a
-// MESMA (numTit/codFor/tipo/dataEmissao não mudam) -- o upsert atualiza a
-// linha existente (pago:true, dataPagamento preenchida) em vez de duplicar.
-// Por isso a limpeza de "sumiu da fonte" só precisa rodar dentro do
-// conjunto ABERTO (que pode encolher quando algo é pago ou cancelado);
-// o histórico de pagos só cresce, nunca precisa de limpeza.
+// MESMA -- o upsert atualiza a linha existente (pago:true, dataPagamento
+// preenchida) em vez de duplicar.
 //
-// Envio em lote único (não em paginas) -- a limpeza de "sumiu" (janela)
-// só funciona corretamente com o conjunto completo dos abertos numa
-// chamada só. Upserts rodam em paralelo limitado (50 por vez) porque
-// 19 mil upserts sequenciais um a um demoraria demais.
+// Envio em lote único (não em páginas) -- a limpeza de janela só funciona
+// certa com o conjunto completo numa chamada só. Upserts em paralelo
+// limitado (50 por vez), bem mais rápido que um a um.
 
 const itemSchema = z.object({
   numTit: z.string(),
@@ -72,16 +73,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, processados: 0, totalRecebido: 0, removidos: 0 });
   }
 
-  // limpeza: so' entre os que o payload manda como ABERTOS -- um titulo
-  // aberto que sumiu do Senior (pago/cancelado fora deste sync) fica orfao
-  // senao. Titulos ja pagos no banco nunca sao removidos por aqui.
-  const abertosRecebidos = new Set(itens.filter((i) => !i.pago).map(chaveDe));
-  const abertosExistentes = await prisma.tituloContasAPagar.findMany({
-    where: { pago: false },
+  // limpeza: o payload representa o universo COMPLETO de 2026 (aberto +
+  // pago) a cada sync -- qualquer linha existente que nao veio de novo
+  // (de fora de 2026, ou removida/cancelada no Senior) e' orfa e sai.
+  const chavesRecebidas = new Set(itens.map(chaveDe));
+  const existentes = await prisma.tituloContasAPagar.findMany({
     select: { id: true, numTit: true, codFil: true, codFor: true, tipo: true, dataEmissao: true },
   });
-  const idsParaRemover = abertosExistentes
-    .filter((e) => !abertosRecebidos.has(`${e.numTit}|${e.codFil}|${e.codFor}|${e.tipo}|${e.dataEmissao.toISOString().slice(0, 10)}`))
+  const idsParaRemover = existentes
+    .filter((e) => !chavesRecebidas.has(`${e.numTit}|${e.codFil}|${e.codFor}|${e.tipo}|${e.dataEmissao.toISOString().slice(0, 10)}`))
     .map((e) => e.id);
   if (idsParaRemover.length > 0) {
     await prisma.tituloContasAPagar.deleteMany({ where: { id: { in: idsParaRemover } } });

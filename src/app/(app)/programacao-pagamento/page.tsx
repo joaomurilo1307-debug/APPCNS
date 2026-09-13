@@ -16,7 +16,6 @@ type Titulo = {
   valorAberto: number;
   dataPagamento: string | null;
   ccuNome: string | null;
-  numOcp: string | null;
 };
 
 function formatMoeda(v: number) {
@@ -47,6 +46,13 @@ function dentroDaSemana(iso: string | null, inicio: Date, fim: Date) {
 }
 
 type Filtro = "semana" | "aberto" | "pagos" | "todos";
+
+const ABAS: [Filtro, string][] = [
+  ["semana", "Semana atual"],
+  ["aberto", "Em aberto"],
+  ["pagos", "Histórico (pagos)"],
+  ["todos", "Todos"],
+];
 
 export default function ProgramacaoPagamentoPage() {
   const [titulos, setTitulos] = useState<Titulo[]>([]);
@@ -97,134 +103,134 @@ export default function ProgramacaoPagamentoPage() {
       })
       .filter((t) => !termo || t.numTit.toLowerCase().includes(termo) || t.fornecedorNome.toLowerCase().includes(termo))
       .sort((a, b) => {
-        const da = (filtro === "pagos" ? a.dataPagamento : a.vencimentoProgramado) || "";
-        const db = (filtro === "pagos" ? b.dataPagamento : b.vencimentoProgramado) || "";
-        return filtro === "pagos" ? db.localeCompare(da) : da.localeCompare(db); // pagos: mais recente primeiro
+        if (filtro === "semana") return (a.vencimentoProgramado || "").localeCompare(b.vencimentoProgramado || "");
+        if (filtro === "pagos") return (b.dataPagamento || "").localeCompare(a.dataPagamento || ""); // pago mais recente primeiro
+        return (b.dataEmissao || "").localeCompare(a.dataEmissao || ""); // aberto/todos: criado mais recente primeiro
       });
   }, [titulos, busca, filtro, inicioSemana, fimSemana]);
 
-  // "Pagos"/"Todos" podem ter dezenas de milhares de linhas (histórico completo) --
-  // renderiza só as N mais relevantes de cada vez (a busca ainda filtra sobre tudo).
+  // "Pagos"/"Todos" podem ter milhares de linhas -- renderiza só as N mais
+  // relevantes por vez (a busca ainda filtra sobre o conjunto inteiro).
   const LIMITE_LINHAS = 500;
   const totalFiltrado = filtrados.length;
   const filtradosMostrados = filtrados.slice(0, LIMITE_LINHAS);
+  const mostrarColunaPagamento = filtro === "pagos" || filtro === "todos";
 
   if (loading) return <div className="p-6 text-sm text-gray-500">Carregando...</div>;
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
 
   return (
     <div className="p-6">
-      <h1 className="mb-1 text-xl font-semibold">Programação de Pagamento</h1>
-      <p className="mb-1 max-w-3xl text-sm text-gray-500">
-        Contas a pagar por título, sincronizado do Senior (E501TCP): o que vence esta semana, tudo que ainda está em
-        aberto (qualquer data) e o histórico do que já foi pago.
-      </p>
-      <p className="mb-5 max-w-3xl text-xs text-amber-700">
-        O Senior não guarda o vínculo de qual Ordem de Compra originou cada título nesta base (campo sempre vazio,
-        conferido) — não dá pra cruzar automaticamente com Aprovações OC; a comparação hoje é manual, por fornecedor e
-        valor.
-      </p>
-
-      <div className="mb-5 flex flex-wrap items-end gap-4">
+      <div className="mb-5 flex items-start justify-between gap-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">Ver</label>
-          <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 text-sm">
-            {(
-              [
-                ["semana", `Semana atual (${qtdSemana})`],
-                ["aberto", "Em aberto"],
-                ["pagos", "Histórico (pagos)"],
-                ["todos", "Todos"],
-              ] as [Filtro, string][]
-            ).map(([v, label]) => (
-              <button
-                key={v}
-                onClick={() => setFiltro(v)}
-                className={`px-3 py-2 whitespace-nowrap ${filtro === v ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <h1 className="text-xl font-semibold">Programação de Pagamento</h1>
+          <p className="mt-0.5 text-sm text-gray-500">
+            Contas a pagar por título (2026), sincronizado do Senior — o que vence esta semana, o que segue em aberto
+            e o histórico de pagos.
+          </p>
         </div>
-        <input
-          type="text"
-          placeholder="Buscar por título ou fornecedor..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="w-72 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-        />
-        {filtro === "semana" && (
-          <span className="pb-2 text-xs text-gray-400">
-            {formatData(inicioSemana.toISOString())} a {formatData(fimSemana.toISOString())}
-          </span>
-        )}
+        <span className="mt-1 shrink-0 text-right text-[11px] leading-tight text-gray-400">
+          Sem vínculo de OC no Senior nesta base
+          <br />— comparação com Aprovações OC é manual, por fornecedor/valor.
+        </span>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 text-sm">
+          {ABAS.map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setFiltro(v)}
+              className={`px-3 py-1.5 whitespace-nowrap transition-colors ${
+                filtro === v ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {label}
+              {v === "semana" ? ` (${qtdSemana})` : ""}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          {filtro === "semana" && (
+            <span className="text-xs text-gray-400">
+              {formatData(inicioSemana.toISOString())} – {formatData(fimSemana.toISOString())}
+            </span>
+          )}
+          <input
+            type="text"
+            placeholder="Buscar título ou fornecedor..."
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="w-64 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
           <p className="text-xs text-gray-500">Vence esta semana</p>
-          <p className="text-2xl font-semibold">{qtdSemana}</p>
+          <p className="text-xl font-semibold tabular-nums">{qtdSemana}</p>
         </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <p className="text-xs text-gray-500">Em aberto (todas as datas)</p>
-          <p className="text-2xl font-semibold">
-            {qtdAberto} · {formatMoeda(totalAberto)}
+        <div className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
+          <p className="text-xs text-gray-500">Em aberto</p>
+          <p className="text-xl font-semibold tabular-nums">
+            {qtdAberto} <span className="text-sm font-normal text-gray-400">· {formatMoeda(totalAberto)}</span>
           </p>
         </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <p className="text-xs text-gray-500">Pagos no histórico</p>
-          <p className="text-2xl font-semibold">
-            {qtdPagos} · {formatMoeda(totalPago)}
+        <div className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
+          <p className="text-xs text-gray-500">Pagos (histórico 2026)</p>
+          <p className="text-xl font-semibold tabular-nums">
+            {qtdPagos} <span className="text-sm font-normal text-gray-400">· {formatMoeda(totalPago)}</span>
           </p>
         </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
           <p className="text-xs text-gray-500">Mostrando</p>
-          <p className="text-2xl font-semibold">
+          <p className="text-xl font-semibold tabular-nums">
             {filtradosMostrados.length}
-            {totalFiltrado > LIMITE_LINHAS ? ` de ${totalFiltrado}` : ""}
+            {totalFiltrado > LIMITE_LINHAS && <span className="text-sm font-normal text-gray-400"> de {totalFiltrado}</span>}
           </p>
         </div>
       </div>
 
       {totalFiltrado > LIMITE_LINHAS && (
-        <p className="mb-3 text-xs text-gray-400">
-          Mostrando as {LIMITE_LINHAS} linhas mais {filtro === "pagos" ? "recentes" : "próximas do vencimento"} de{" "}
-          {totalFiltrado} — use a busca pra achar um título específico.
+        <p className="mb-2 text-xs text-gray-400">
+          {LIMITE_LINHAS} de {totalFiltrado} linhas — use a busca pra achar um título específico.
         </p>
       )}
 
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+        <table className="w-full text-[13px]">
+          <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
             <tr>
-              <th className="px-4 py-2">Título</th>
-              <th className="px-4 py-2">Fornecedor</th>
-              <th className="px-4 py-2">Centro de custo</th>
-              <th className="px-4 py-2">Vencto programado</th>
-              {filtro === "pagos" || filtro === "todos" ? <th className="px-4 py-2">Pago em</th> : null}
-              <th className="px-4 py-2 text-right">Valor original</th>
-              <th className="px-4 py-2 text-right">Valor em aberto</th>
-              <th className="px-4 py-2">Pago?</th>
+              <th className="px-3 py-2 font-medium">Título</th>
+              <th className="px-3 py-2 font-medium">Criação</th>
+              <th className="px-3 py-2 font-medium">Fornecedor</th>
+              <th className="px-3 py-2 font-medium">Centro de custo</th>
+              <th className="px-3 py-2 font-medium">Vencto programado</th>
+              {mostrarColunaPagamento && <th className="px-3 py-2 font-medium">Pago em</th>}
+              <th className="px-3 py-2 text-right font-medium">Valor original</th>
+              <th className="px-3 py-2 text-right font-medium">Valor em aberto</th>
+              <th className="px-3 py-2 font-medium">Situação</th>
             </tr>
           </thead>
           <tbody>
-            {filtradosMostrados.map((t) => (
-              <tr key={`${t.numTit}-${t.codFil}-${t.dataEmissao}`} className="border-t border-gray-50">
-                <td className="px-4 py-2 font-medium">{t.numTit}</td>
-                <td className="px-4 py-2 max-w-[220px] truncate" title={t.fornecedorNome}>
+            {filtradosMostrados.map((t, i) => (
+              <tr key={`${t.numTit}-${t.codFil}-${t.dataEmissao}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
+                <td className="px-3 py-1.5 font-medium text-gray-800">{t.numTit}</td>
+                <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataEmissao)}</td>
+                <td className="max-w-[200px] truncate px-3 py-1.5" title={t.fornecedorNome}>
                   {t.fornecedorNome}
                 </td>
-                <td className="px-4 py-2 text-xs text-gray-500">{t.ccuNome || "—"}</td>
-                <td className="px-4 py-2 text-xs text-gray-500">{formatData(t.vencimentoProgramado)}</td>
-                {filtro === "pagos" || filtro === "todos" ? (
-                  <td className="px-4 py-2 text-xs text-gray-500">{formatData(t.dataPagamento)}</td>
-                ) : null}
-                <td className="px-4 py-2 text-right">{formatMoeda(t.valorOriginal)}</td>
-                <td className="px-4 py-2 text-right font-medium">{formatMoeda(t.valorAberto)}</td>
-                <td className="px-4 py-2">
+                <td className="px-3 py-1.5 text-gray-500">{t.ccuNome || "—"}</td>
+                <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.vencimentoProgramado)}</td>
+                {mostrarColunaPagamento && (
+                  <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataPagamento)}</td>
+                )}
+                <td className="px-3 py-1.5 text-right tabular-nums">{formatMoeda(t.valorOriginal)}</td>
+                <td className="px-3 py-1.5 text-right font-medium tabular-nums">{formatMoeda(t.valorAberto)}</td>
+                <td className="px-3 py-1.5">
                   <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                       t.pago ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
                     }`}
                   >
@@ -233,9 +239,9 @@ export default function ProgramacaoPagamentoPage() {
                 </td>
               </tr>
             ))}
-            {filtrados.length === 0 && (
+            {filtradosMostrados.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-6 text-center text-gray-400">
                   Nenhum título encontrado com esse filtro.
                 </td>
               </tr>

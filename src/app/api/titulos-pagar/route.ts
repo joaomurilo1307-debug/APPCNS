@@ -3,8 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-// Programação de Contas a Pagar por título -- pra cruzar com Aprovações OC
-// (via numOcp). Mesmo nível de acesso das Aprovações OC do Senior.
+// Programação de Contas a Pagar por título, escopo 2026. Mesmo nível de
+// acesso das Aprovações OC do Senior.
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
@@ -21,7 +21,6 @@ export async function GET() {
   const qtdAberto = titulos.filter((t) => !t.pago).length;
   const qtdPagos = titulos.filter((t) => t.pago).length;
   const totalPago = titulos.filter((t) => t.pago).reduce((s, t) => s + t.valorOriginal, 0);
-  const qtdComOcp = titulos.filter((t) => t.numOcp).length;
 
   return NextResponse.json({
     titulos: titulos.map((t) => ({
@@ -38,13 +37,11 @@ export async function GET() {
       valorAberto: t.valorAberto,
       dataPagamento: t.dataPagamento,
       ccuNome: t.ccuNome ?? t.codccu,
-      numOcp: t.numOcp,
     })),
     totalAberto,
     qtdAberto,
     qtdPagos,
     totalPago,
-    qtdComOcp,
     totalTitulos: titulos.length,
   });
 }
