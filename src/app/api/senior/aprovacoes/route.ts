@@ -67,7 +67,14 @@ export async function GET() {
     }),
     prisma.aprovacaoSenior.findMany({
       where: { situacaoAtual: { in: ["APR", "REP", "CAN"] } },
-      orderBy: [{ resolvidoEm: "desc" }, { dataEmissao: "desc" }],
+      // Bug real corrigido 14/09/2026: ordenar por resolvidoEm primeiro
+      // empurrava as ~8.700 OCs históricas (sem resolvidoEm, só o backfill
+      // sabe que já foram resolvidas) pro final da lista -- como o front só
+      // renderiza um recorte por padrão, elas ficavam PERMANENTEMENTE fora
+      // de vista (só apareciam buscando o número exato). dataEmissao é
+      // preenchida em toda linha (rastreada ou histórica), então ordenar só
+      // por ela mistura recente com antigo de forma justa.
+      orderBy: { dataEmissao: "desc" },
       select: camposLista,
     }),
     prisma.usuarioSenior.findMany({

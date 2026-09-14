@@ -300,6 +300,10 @@ export default function ProgramacaoPagamentoPage() {
             <li><span className="font-medium text-gray-700">sem OC (investigar):</span> título de fornecedor comum, sem nenhuma das exclusões acima, mas sem vínculo encontrado — candidato real a checar no Senior.</li>
             <li><span className="font-medium text-gray-700">sem OC justificada:</span> não achou vínculo, mas o motivo já é conhecido e aceito (tipo por natureza, ou uma exceção confirmada manualmente no Senior — ex. um título específico que realmente não teve OC gerada).</li>
           </ul>
+          <p className="mt-4 text-xs text-gray-500">
+            <span className="font-semibold text-gray-700">Dica:</span> pra ver título não pago com OC já aprovada (útil pra cobrar pagamento atrasado), combine o filtro
+            de Situação = “Não pago” com o filtro de OC = “vínculo exato” ou “por parcela” e confira a cor do badge na coluna OC (verde = aprovada).
+          </p>
         </div>
       )}
 
