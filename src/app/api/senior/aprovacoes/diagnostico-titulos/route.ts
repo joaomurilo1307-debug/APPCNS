@@ -48,7 +48,7 @@ export async function GET(req: Request) {
   // natureza do lancamento). Marca por padrao de nome do fornecedor + tipo
   // de titulo (CODTPT), pra medir cobertura so' do universo que DEVERIA ter
   // OC (compra de fornecedor de verdade).
-  const PADRAO_NAO_OC = /SECRETARIA DE (ESTADO|FAZENDA)|GOVERNO FEDERAL|MINISTERIO DA FAZENDA|RECEITA FEDERAL|PREFEITURA|INSS\b|FGTS\b|CAIXA ECON.MICA|FOPAG|FORNECEDORES DIVERSOS|SALARIO|INPS/i;
+  const PADRAO_NAO_OC = /SECRETARIA DE (ESTADO|FAZENDA)|GOVERNO FEDERAL|MINISTERIO DA FAZENDA|RECEITA FEDERAL|PREFEITURA|MUNICIPIO DE|INSS\b|FGTS\b|CAIXA ECON.MICA|FOPAG|FORNECEDORES DIVERSOS|SALARIO|INPS/i;
 
   function provavelNaoOC(t: (typeof titulos)[number]) {
     if (PADRAO_NAO_OC.test(t.fornecedorNome || "")) return true;
@@ -62,6 +62,8 @@ export async function GET(req: Request) {
   let semNenhumAddressavel = 0;
   let naoAplicavel = 0;
   const semNenhumAmostra: any[] = [];
+  const semNenhumAmostraNaoPRV: any[] = [];
+  const semNenhumPorTipo: Record<string, number> = {};
 
   for (const t of titulos) {
     const r = ocPorTituloReal.get(`${t.codFor}|${t.numTit}`);
@@ -79,6 +81,17 @@ export async function GET(req: Request) {
       continue;
     }
     semNenhumAddressavel++;
+    semNenhumPorTipo[t.tipo] = (semNenhumPorTipo[t.tipo] || 0) + 1;
+    if (t.tipo !== "PRV" && semNenhumAmostraNaoPRV.length < 40) {
+      semNenhumAmostraNaoPRV.push({
+        numTit: t.numTit,
+        codFor: t.codFor,
+        tipo: t.tipo,
+        fornecedorNome: t.fornecedorNome,
+        valorOriginal: t.valorOriginal,
+        dataEmissao: t.dataEmissao,
+      });
+    }
     if (semNenhumAmostra.length < 40) {
       semNenhumAmostra.push({
         numTit: t.numTit,
@@ -101,6 +114,8 @@ export async function GET(req: Request) {
     real,
     aproximado,
     semNenhumAddressavel,
+    semNenhumPorTipo,
+    semNenhumAmostraNaoPRV,
     pctRealDoUniversoAddressavel: ((real / universoAddressavel) * 100).toFixed(1),
     pctComAlgumVinculoDoAddressavel: (((real + aproximado) / universoAddressavel) * 100).toFixed(1),
     semNenhumAmostra,
