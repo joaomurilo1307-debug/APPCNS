@@ -287,6 +287,7 @@ export default function ProgramacaoPagamentoPage() {
           <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
             <tr>
               <th className="px-3 py-2 font-medium">Título</th>
+              <th className="px-3 py-2 font-medium">Tipo</th>
               <th className="px-3 py-2 font-medium">Criação</th>
               <th className="px-3 py-2 font-medium">Fornecedor</th>
               <th className="px-3 py-2 font-medium">Centro de custo</th>
@@ -302,6 +303,7 @@ export default function ProgramacaoPagamentoPage() {
             {filtradosMostrados.map((t, i) => (
               <tr key={`${t.numTit}-${t.codFil}-${t.dataEmissao}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
                 <td className="px-3 py-1.5 font-medium text-gray-800">{t.numTit}</td>
+                <td className="px-3 py-1.5 text-gray-500">{t.tipo}</td>
                 <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataEmissao)}</td>
                 <td className="max-w-[200px] truncate px-3 py-1.5" title={t.fornecedorNome}>
                   {t.fornecedorNome}
@@ -353,7 +355,7 @@ export default function ProgramacaoPagamentoPage() {
             ))}
             {filtradosMostrados.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={11} className="px-4 py-6 text-center text-gray-400">
                   Nenhum título encontrado com esse filtro.
                 </td>
               </tr>
