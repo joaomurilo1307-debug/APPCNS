@@ -22,7 +22,7 @@ type Task = {
   dueDate: string | null;
   assigneeId: string | null;
   assignee: { id: string; name: string; avatarColor: string } | null;
-  project: { id: string; name: string } | null;
+  project: { id: string; name: string; teamId?: string } | null;
   _count?: { subtasks: number; attachments: number; comments: number };
 };
 
@@ -76,23 +76,34 @@ const priorityColor: Record<string, string> = {
   URGENTE: "bg-red-100 text-red-700",
 };
 
-function canModify(role: string | undefined, task: Task, userId: string | undefined) {
+// `souGestorDaEquipe(task)` = usuario e' Gestor (UserTeam.role="GESTOR") da
+// equipe dona do PROJETO DAQUELA TAREFA -- checado por tarefa (nao um flag
+// unico) porque este board tambem roda sem projectId (pagina "Tarefas todas",
+// mistura tarefas de varias equipes). Sem isso, alguem como um Aprovador que
+// gerencia uma equipe (ex: Claudia Moreira) via as tarefas mas nao conseguia
+// arrastar/editar nada (achado 14/09/2026).
+function canModify(role: string | undefined, task: Task, userId: string | undefined, souGestorDaEquipe: boolean) {
   if (!role) return false;
   if (task.locked) return role === "ADMIN" || role === "GESTOR_PROJETO";
-  if (role === "ADMIN" || role === "GESTOR_PROJETO") return true;
+  if (role === "ADMIN" || role === "GESTOR_PROJETO" || souGestorDaEquipe) return true;
   if (role === "COLABORADOR") return task.assigneeId === userId;
   return false;
 }
 
-function canDelete(role: string | undefined, task: Task) {
-  return (role === "ADMIN" || role === "GESTOR_PROJETO") && !task.locked;
+function canDelete(role: string | undefined, task: Task, souGestorDaEquipe: boolean) {
+  return (role === "ADMIN" || role === "GESTOR_PROJETO" || souGestorDaEquipe) && !task.locked;
 }
 
-export default function KanbanBoard({ projectId }: { projectId?: string }) {
+export default function KanbanBoard({ projectId, canManage: canManageEquipeProp }: { projectId?: string; canManage?: boolean }) {
   const { data: session } = useSession();
   const role = (session?.user as any)?.role;
   const userId = (session?.user as any)?.id;
-  const canManage = role === "ADMIN" || role === "GESTOR_PROJETO";
+  const [equipesGestor, setEquipesGestor] = useState<Set<string>>(new Set());
+  const canManage = role === "ADMIN" || role === "GESTOR_PROJETO" || !!canManageEquipeProp;
+
+  function souGestorDaEquipeDe(task: Task) {
+    return !!canManageEquipeProp || !!(task.project?.teamId && equipesGestor.has(task.project.teamId));
+  }
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
@@ -116,11 +127,21 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
     setColumns(parseColumns(project.kanbanColumns));
   }
 
+  async function loadEquipesGestor() {
+    if (canManageEquipeProp || !userId) return; // ja sabido pelo pai (contexto de 1 projeto so)
+    const res = await fetch("/api/teams");
+    if (!res.ok) return;
+    const teams: { id: string; members: { role: string; user: { id: string } }[] }[] = await res.json();
+    const geridas = teams.filter((t) => t.members.some((m) => m.user.id === userId && m.role === "GESTOR"));
+    setEquipesGestor(new Set(geridas.map((t) => t.id)));
+  }
+
   useEffect(() => {
     load();
     loadColumns();
+    loadEquipesGestor();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, userId]);
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -128,7 +149,7 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
     const newStatus = over.id as string;
     const task = tasks.find((t) => t.id === active.id);
     if (!task || task.status === newStatus) return;
-    if (!canModify(role, task, userId)) return;
+    if (!canModify(role, task, userId, souGestorDaEquipeDe(task))) return;
 
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t)));
     await fetch(`/api/tasks/${task.id}`, {
@@ -238,9 +259,9 @@ export default function KanbanBoard({ projectId }: { projectId?: string }) {
                   <TaskCard
                     key={task.id}
                     task={task}
-                    draggable={canModify(role, task, userId)}
-                    canEditPriority={canModify(role, task, userId)}
-                    showDelete={canDelete(role, task)}
+                    draggable={canModify(role, task, userId, souGestorDaEquipeDe(task))}
+                    canEditPriority={canModify(role, task, userId, souGestorDaEquipeDe(task))}
+                    showDelete={canDelete(role, task, souGestorDaEquipeDe(task))}
                     onOpen={() => setOpenTaskId(task.id)}
                     onDelete={() => handleQuickDelete(task.id)}
                     onPriorityChange={(priority) => handlePriorityChange(task.id, priority)}

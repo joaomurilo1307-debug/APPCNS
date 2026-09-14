@@ -66,6 +66,7 @@ export default function TaskDetailModal({
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [teamMembers, setTeamMembers] = useState<{ id: string; name: string }[]>([]);
+  const [souGestorDaEquipe, setSouGestorDaEquipe] = useState(false);
   const [allPeople, setAllPeople] = useState<{ id: string; name: string; nucleo: { name: string } | null }[]>([]);
   const [newComment, setNewComment] = useState("");
   const [newSubtask, setNewSubtask] = useState("");
@@ -89,8 +90,13 @@ export default function TaskDetailModal({
       .then((teams: any[]) => {
         const team = teams.find((t) => t.id === task?.project?.teamId);
         setTeamMembers(team ? team.members.map((m: any) => m.user) : []);
+        // Gestor (UserTeam.role="GESTOR") da equipe dona do projeto tambem
+        // pode editar a tarefa, mesmo sem ser ADMIN/GESTOR_PROJETO globalmente
+        // -- achado 14/09/2026 (ex: Claudia Moreira, Aprovador que gerencia
+        // uma equipe, nao conseguia editar nada aqui).
+        setSouGestorDaEquipe(!!team?.members.some((m: any) => m.user.id === userId && m.role === "GESTOR"));
       });
-  }, [task?.project?.teamId]);
+  }, [task?.project?.teamId, userId]);
 
   useEffect(() => {
     fetch("/api/organograma")
@@ -104,8 +110,9 @@ export default function TaskDetailModal({
   const canModify =
     role === "ADMIN" ||
     role === "GESTOR_PROJETO" ||
+    (!task.locked && souGestorDaEquipe) ||
     (role === "COLABORADOR" && task.assigneeId === userId && !task.locked);
-  const canDelete = (role === "ADMIN" || role === "GESTOR_PROJETO") && !task.locked;
+  const canDelete = (role === "ADMIN" || role === "GESTOR_PROJETO" || souGestorDaEquipe) && !task.locked;
   const canLock = role === "ADMIN" || role === "GESTOR_PROJETO";
 
   async function patch(data: any) {

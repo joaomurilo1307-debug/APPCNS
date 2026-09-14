@@ -25,7 +25,7 @@ type Task = {
   dueDate: string | null;
   assigneeId: string | null;
   assignee: { id: string; name: string; avatarColor: string } | null;
-  project: { name: string } | null;
+  project: { name: string; teamId?: string } | null;
 };
 
 const columns = [
@@ -62,9 +62,27 @@ export default function SprintPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState<"kanban" | "gantt">("kanban");
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [equipesGestor, setEquipesGestor] = useState<Set<string>>(new Set());
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  const isManager = role === "ADMIN" || role === "DIRETOR" || role === "GESTOR_PROJETO";
+  // Gestor (UserTeam.role="GESTOR") de pelo menos 1 equipe tambem conta como
+  // "gerente" aqui, mesmo sem ADMIN/DIRETOR/GESTOR_PROJETO globalmente --
+  // achado 14/09/2026: sem isso, alguem como a Claudia Moreira (Aprovador)
+  // so via as proprias tarefas no Sprint, nunca as da equipe que ela gerencia.
+  const isManager = role === "ADMIN" || role === "DIRETOR" || role === "GESTOR_PROJETO" || equipesGestor.size > 0;
+
+  function souGestorDaEquipeDe(task: Task) {
+    return !!(task.project?.teamId && equipesGestor.has(task.project.teamId));
+  }
+
+  async function loadEquipesGestor() {
+    if (!userId) return;
+    const res = await fetch("/api/teams");
+    if (!res.ok) return;
+    const teams: { id: string; members: { role: string; user: { id: string } }[] }[] = await res.json();
+    const geridas = teams.filter((t) => t.members.some((m) => m.user.id === userId && m.role === "GESTOR"));
+    setEquipesGestor(new Set(geridas.map((t) => t.id)));
+  }
 
   async function load() {
     if (!userId) return;
@@ -72,6 +90,11 @@ export default function SprintPage() {
     const res = await fetch(url);
     setTasks(await res.json());
   }
+
+  useEffect(() => {
+    loadEquipesGestor();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => {
     load();
@@ -92,7 +115,7 @@ export default function SprintPage() {
 
   function canModify(task: Task) {
     if (task.locked) return role === "ADMIN" || role === "GESTOR_PROJETO";
-    if (role === "ADMIN" || role === "GESTOR_PROJETO") return true;
+    if (role === "ADMIN" || role === "GESTOR_PROJETO" || souGestorDaEquipeDe(task)) return true;
     return task.assigneeId === userId;
   }
 

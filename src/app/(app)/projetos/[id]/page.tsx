@@ -20,7 +20,7 @@ type ProjectDetail = {
   name: string;
   description: string | null;
   status: string;
-  team: { id: string; name: string; members: { user: { id: string; name: string } }[] };
+  team: { id: string; name: string; members: { role: string; user: { id: string; name: string } }[] };
   owner: { id: string; name: string };
   approver: { id: string; name: string } | null;
   approvalStatus: string;
@@ -57,10 +57,18 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const { data: session } = useSession();
   const router = useRouter();
   const role = (session?.user as any)?.role;
-  const canManage = role === "ADMIN" || role === "GESTOR_PROJETO";
+  const myUserId = (session?.user as any)?.id;
   const canCreateTask = role && role !== "CLIENTE" && role !== "VISUALIZADOR";
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
+  // Admin/Gestor de Projeto sempre podem gerenciar; alem disso, quem e' Gestor
+  // (UserTeam.role="GESTOR") da equipe DONA deste projeto tambem pode --
+  // achado 14/09/2026: sem isso, um Aprovador que gerencia uma equipe (ex:
+  // Claudia Moreira) via' o Kanban mas nao conseguia arrastar/editar nada,
+  // porque este flag so olhava o papel GLOBAL, igual ja tinha sido corrigido
+  // no backend (canModifyTaskScoped) mas nao aqui no front.
+  const souGestorDaEquipe = !!project?.team.members.some((m) => m.user.id === myUserId && m.role === "GESTOR");
+  const canManage = role === "ADMIN" || role === "GESTOR_PROJETO" || souGestorDaEquipe;
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [nucleosList, setNucleosList] = useState<{ id: string; name: string }[]>([]);
   const [peopleList, setPeopleList] = useState<{ id: string; name: string; nivelHierarquico: string | null }[]>([]);
@@ -449,7 +457,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         </button>
       </div>
 
-      {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} />}
+      {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} canManage={canManage} />}
       {tab === "board" && <Whiteboard projectId={project.id} />}
       {tab === "cronograma" && (
         <ScheduleChart
