@@ -22,12 +22,16 @@ export async function GET() {
     return NextResponse.json({ error: "Sem permissão para ver aprovações do Senior" }, { status: 403 });
   }
 
-  // O histórico era limitado a 50 OCs, o que fazia a tela parecer perder
-  // vínculos antigos. Mantemos um limite para não trazer eventos ilimitados
-  // de uma vez, mas agora entregamos um histórico útil (500 registros).
-  const historicoLimit = 500;
-
-  const [pendentes, resolvidasRecentes, usuariosSenior] = await Promise.all([
+  // Pedido do João 14/09/2026: "todas", buscável igual no Senior -- não
+  // mais um recorte de 50/500. Traz TODA OC resolvida (situacaoAtual, não
+  // resolvidoEm -- esse campo só existe pra quem foi resolvida enquanto
+  // rastreada aqui; OC histórica trazida pelo backfill nunca teve
+  // resolvidoEm, senão viraria "resolvida hoje" -- bug real corrigido em
+  // 14/09/2026, ver corrigir-resolvidoem-backfill). O front renderiza só um
+  // recorte por padrão (milhares de linhas travariam o navegador) mas a
+  // busca filtra sobre o conjunto inteiro recebido, mesmo padrão já usado
+  // em /api/titulos-pagar.
+  const [pendentes, resolvidas, usuariosSenior] = await Promise.all([
     prisma.aprovacaoSenior.findMany({
       where: { situacaoAtual: { in: ["ANA", "PRE"] } },
       orderBy: { dataEmissao: "desc" },
@@ -37,9 +41,8 @@ export async function GET() {
       },
     }),
     prisma.aprovacaoSenior.findMany({
-      where: { resolvidoEm: { not: null } },
-      orderBy: { resolvidoEm: "desc" },
-      take: historicoLimit,
+      where: { situacaoAtual: { in: ["APR", "REP", "CAN"] } },
+      orderBy: [{ resolvidoEm: "desc" }, { dataEmissao: "desc" }],
       include: {
         eventos: { orderBy: { detectadoEm: "asc" } },
         proximoAprovador: { select: { id: true, name: true } },
@@ -57,5 +60,5 @@ export async function GET() {
     codToNome[u.codigo] = u.user?.name || u.nome;
   }
 
-  return NextResponse.json({ pendentes, resolvidasRecentes, codToNome, historicoLimit });
+  return NextResponse.json({ pendentes, resolvidasRecentes: resolvidas, codToNome });
 }

@@ -19,6 +19,15 @@ function diasParado(dataEmissao: string) {
 }
 
 const SITUACOES_FILTRO = ["ANA", "PRE", "APR", "REP", "CAN"] as const;
+const LIMITE_LINHAS = 500;
+
+const LEGENDA_SITUACAO: { sit: (typeof SITUACOES_FILTRO)[number]; desc: string }[] = [
+  { sit: "ANA", desc: "Em análise — ainda não passou por nenhum nível de aprovação da alçada." },
+  { sit: "PRE", desc: "Pré-aprovado — passou por uma etapa inicial (ex. empenho/orçamento), mas ainda não é a aprovação final da alçada." },
+  { sit: "APR", desc: "Aprovado — todos os níveis exigidos pela alçada (Coordenação/Gerência/Diretoria, conforme o valor) já assinaram." },
+  { sit: "REP", desc: "Reprovado — algum nível da alçada recusou a OC." },
+  { sit: "CAN", desc: "Cancelado — a OC foi cancelada no Senior antes de concluir o fluxo de aprovação." },
+];
 
 export default function AprovacoesSeniorPage() {
   const [pendentes, setPendentes] = useState<Aprovacao[]>([]);
@@ -69,8 +78,11 @@ export default function AprovacoesSeniorPage() {
     return true;
   }
 
+  const [mostrarLegenda, setMostrarLegenda] = useState(false);
+
   const pendentesFiltradas = useMemo(() => pendentes.filter(passaFiltro), [pendentes, busca, situacoesAtivas, somenteRateio]);
   const resolvidasFiltradas = useMemo(() => resolvidas.filter(passaFiltro), [resolvidas, busca, situacoesAtivas, somenteRateio]);
+  const resolvidasMostradas = resolvidasFiltradas.slice(0, LIMITE_LINHAS);
 
   if (loading) return <div className="p-6 text-sm text-gray-500">Carregando...</div>;
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
@@ -80,12 +92,45 @@ export default function AprovacoesSeniorPage() {
 
   return (
     <div className="p-6">
-      <h1 className="mb-1 text-xl font-semibold">Aprovações — Ordens de Compra (Senior)</h1>
-      <p className="mb-4 max-w-3xl text-sm text-gray-500">
-        Ordens de compra aguardando aprovação, sincronizadas do Senior. A lista mostra quem precisa aprovar e se há
-        rateio; clique numa linha para ver o mapa completo da OC (fornecedor, valor, descrição, contratos do rateio,
-        histórico de níveis e cotação).
-      </p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="mb-1 text-xl font-semibold">Aprovações — Ordens de Compra (Senior)</h1>
+          <p className="max-w-3xl text-sm text-gray-500">
+            Ordens de compra aguardando aprovação, sincronizadas do Senior. A lista mostra quem precisa aprovar e se há
+            rateio; clique numa linha para ver o mapa completo da OC (fornecedor, valor, descrição, contratos do rateio,
+            histórico de níveis e cotação).
+          </p>
+        </div>
+        <button
+          onClick={() => setMostrarLegenda((v) => !v)}
+          className="shrink-0 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+        >
+          {mostrarLegenda ? "Ocultar" : "O que significa cada situação?"}
+        </button>
+      </div>
+
+      {mostrarLegenda && (
+        <div className="mb-5 rounded-xl border border-gray-100 bg-white p-4 text-sm shadow-sm">
+          <p className="mb-2 font-semibold text-gray-700">Situação da OC</p>
+          <ul className="mb-4 space-y-1.5">
+            {LEGENDA_SITUACAO.map(({ sit, desc }) => (
+              <li key={sit} className="flex items-start gap-2">
+                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[sit]}`}>
+                  {situacaoLabel[sit]}
+                </span>
+                <span className="text-gray-600">{desc}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mb-1 font-semibold text-gray-700">Outros termos</p>
+          <ul className="space-y-1 text-gray-600">
+            <li><span className="font-medium text-gray-700">Nível X/Y:</span> a alçada exige Y níveis pra essa OC (pelo valor); X é o próximo nível ainda pendente. Os níveis são sempre Coordenação → Gerência → Diretoria, na ordem.</li>
+            <li><span className="font-medium text-gray-700">Rateio: Sim:</span> a OC tem despesa dividida entre mais de um centro de custo — o mapa da OC mostra o detalhe por CC.</li>
+            <li><span className="font-medium text-gray-700">"(desligado)":</span> a pessoa configurada como aprovador na alçada do Senior não está mais na folha ativa — mostrado só quando ninguém mais daquele nível está ativo (senão a pessoa desligada é omitida e some da lista, já que há quem aprovar).</li>
+            <li><span className="font-medium text-gray-700">"alçada não informada":</span> o Senior não trouxe os níveis exigidos (E614APR.NIVEXI) nem histórico de aprovação pra essa OC no sincronismo — não inventamos um nível, mostramos que falta o dado.</li>
+          </ul>
+        </div>
+      )}
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <input
@@ -206,7 +251,14 @@ export default function AprovacoesSeniorPage() {
         </table>
       </div>
 
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">Histórico de OCs resolvidas (últimas 500)</h2>
+      <h2 className="mb-2 text-sm font-semibold text-gray-700">
+        Histórico de OCs resolvidas
+        {resolvidasFiltradas.length > LIMITE_LINHAS && (
+          <span className="ml-2 font-normal text-gray-400">
+            mostrando {LIMITE_LINHAS} de {resolvidasFiltradas.length} — use a busca pra achar uma OC específica
+          </span>
+        )}
+      </h2>
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
         <table className="w-full min-w-[880px] border-collapse text-sm">
           <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-500">
@@ -221,7 +273,7 @@ export default function AprovacoesSeniorPage() {
             </tr>
           </thead>
           <tbody>
-            {resolvidasFiltradas.map((a) => {
+            {resolvidasMostradas.map((a) => {
               const dias = a.resolvidoEm
                 ? Math.floor((new Date(a.resolvidoEm).getTime() - new Date(a.primeiraDeteccaoEm).getTime()) / 86400000)
                 : null;

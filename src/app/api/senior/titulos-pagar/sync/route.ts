@@ -6,12 +6,12 @@ import { prisma } from "@/lib/prisma";
 // (SITTIT='AB') e pagos (SITTIT='LQ') -- pedido do João 13/09/2026: ver o
 // histórico de pagos e a programação da semana, não só o que está aberto.
 //
-// Escopo FECHADO desde 14/09/2026 (pedido do João, "não precisa olhar os
-// antigos, só os de 2026"): o script Python só manda título com DATEMI em
-// 2026 -- o payload representa o universo COMPLETO de 2026 a cada sync,
-// então a limpeza de "sumiu da fonte" roda sobre TUDO (aberto e pago), não
-// só sobre os abertos -- qualquer coisa de fora de 2026 (ou removida no
-// Senior) que ainda esteja aqui é órfã e sai.
+// Escopo: histórico COMPLETO (todo ano), sem corte de data -- pedido do
+// João 14/09/2026 à noite ("aumente o histórico, buscar todas igual no
+// Senior"), revertendo um corte pra só-2026 pedido mais cedo no MESMO dia.
+// O payload representa o universo COMPLETO a cada sync, então a limpeza de
+// "sumiu da fonte" roda sobre TUDO (aberto e pago) -- qualquer coisa que não
+// veio de novo (removida/cancelada no Senior) é órfã e sai.
 //
 // Chave: numTit sozinho NÃO identifica um título (nem +codFil, nem +codFor
 // -- achado 13/09/2026, 101 pares repetidos, 161 títulos se perderiam).

@@ -131,6 +131,7 @@ export default function ProgramacaoPagamentoPage() {
   const [dataDe, setDataDe] = useState("");
   const [dataAte, setDataAte] = useState("");
   const [somenteComOC, setSomenteComOC] = useState(false);
+  const [mostrarRegras, setMostrarRegras] = useState(false);
   const [filtrosColuna, setFiltrosColuna] = useState<FiltrosColuna>(FILTROS_COLUNA_VAZIOS);
   const [ocAberta, setOcAberta] = useState<Aprovacao | null>(null);
   const [codToNomeOC, setCodToNomeOC] = useState<Record<string, string>>({});
@@ -267,16 +268,40 @@ export default function ProgramacaoPagamentoPage() {
         <div>
           <h1 className="text-xl font-semibold">Programação de Pagamento</h1>
           <p className="mt-0.5 max-w-3xl text-sm text-gray-500">
-            Contas a pagar por título (2026), sincronizado do Senior. O vínculo com OC é demonstrado por número exato,
+            Contas a pagar por título (histórico completo), sincronizado do Senior. O vínculo com OC é demonstrado por número exato,
             parcela confirmada ou conciliação única — quando não houver OC, o motivo aparece no campo “OC”.
           </p>
         </div>
-        <span className="mt-1 shrink-0 text-right text-[11px] leading-tight text-gray-400">
-          A cor representa somente a situação da OC (verde = aprovada, azul = em análise, vermelho = reprovada/cancelada).
-          <br />“Parcela” ou “exata” identifica como o título foi conciliado; não é uma situação diferente.
-          <br />Fornecedor + valor sem data/referência não basta: o registro fica para investigação para não mostrar OC errada.
-        </span>
+        <button
+          onClick={() => setMostrarRegras((v) => !v)}
+          className="shrink-0 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+        >
+          {mostrarRegras ? "Ocultar regras" : "Quando um título tem (ou não) OC?"}
+        </button>
       </div>
+
+      {mostrarRegras && (
+        <div className="mb-5 rounded-xl border border-gray-100 bg-white p-4 text-sm shadow-sm">
+          <p className="mb-2 font-semibold text-gray-700">Como o vínculo com a OC é decidido (em ordem de prioridade)</p>
+          <ol className="mb-4 list-decimal space-y-1.5 pl-5 text-gray-600">
+            <li><span className="font-medium text-gray-700">Vínculo direto:</span> o próprio título traz o número da OC (E501TCP.NUMOCP) — quando o Senior grava essa relação, é a mais confiável.</li>
+            <li><span className="font-medium text-gray-700">Vínculo exato:</span> a OC tem, num campo de texto livre preenchido pelo comprador (USU_NUMTIT ou USU_NUMNFC), o mesmo número do título ou da nota fiscal, para o mesmo fornecedor.</li>
+            <li><span className="font-medium text-gray-700">Vínculo por parcela:</span> o título é uma parcela de uma NF (ex. “8327785$08”) e a OC referencia a mesma base numérica (ex. “8327785$01”) — o comprador só costuma anotar a 1ª parcela.</li>
+            <li><span className="font-medium text-gray-700">Fornecedor + valor + data, sozinhos, nunca criam vínculo</span> — isso não existe como relação no Senior; serve só para explicar a pendência (mostrado no motivo de “Sem OC”), nunca vira uma OC vinculada.</li>
+          </ol>
+          <p className="mb-2 font-semibold text-gray-700">Quando um título não deveria ter OC (por natureza)</p>
+          <ul className="mb-4 list-disc space-y-1 pl-5 text-gray-600">
+            <li>Tipo <span className="font-medium">PRV</span> (previsão/provisão) — lançamento recorrente (contas de consumo, assinaturas, impostos previstos) sem compra de fornecedor por trás.</li>
+            <li>Tipo <span className="font-medium">IMP</span> (imposto) e títulos <span className="font-medium">FOPAG</span> (folha de pagamento) — pagamento a governo ou colaborador, nunca passa por Ordem de Compra.</li>
+            <li>Fornecedor claramente governo/folha (Receita Federal, INSS, FGTS, prefeitura, Caixa Econômica, fornecedores diversos de folha, etc.).</li>
+          </ul>
+          <p className="mb-2 font-semibold text-gray-700">Filtros da coluna “OC”</p>
+          <ul className="list-disc space-y-1 pl-5 text-gray-600">
+            <li><span className="font-medium text-gray-700">sem OC (investigar):</span> título de fornecedor comum, sem nenhuma das exclusões acima, mas sem vínculo encontrado — candidato real a checar no Senior.</li>
+            <li><span className="font-medium text-gray-700">sem OC justificada:</span> não achou vínculo, mas o motivo já é conhecido e aceito (tipo por natureza, ou uma exceção confirmada manualmente no Senior — ex. um título específico que realmente não teve OC gerada).</li>
+          </ul>
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 text-sm">
@@ -357,7 +382,7 @@ export default function ProgramacaoPagamentoPage() {
           </p>
         </div>
         <div className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
-          <p className="text-xs text-gray-500">Pagos (histórico 2026)</p>
+          <p className="text-xs text-gray-500">Pagos (histórico completo)</p>
           <p className="text-xl font-semibold tabular-nums">
             {qtdPagos} <span className="text-sm font-normal text-gray-400">· {formatMoeda(totalPago)}</span>
           </p>
