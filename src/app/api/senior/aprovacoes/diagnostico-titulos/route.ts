@@ -57,18 +57,25 @@ export async function GET(req: Request) {
     return false;
   }
 
-  // Hipotese parcela (14/09/2026): varios titulos sem vinculo repetem o mesmo
-  // fornecedor + um prefixo numerico antes de "$NN" (ex DELL: 8327785$08,
-  // 8327785$09... 8327785$12 -- mesmo numero base, parcelas diferentes).
-  // Testa se o comprador tende a digitar na OC so' a 1a parcela (ex
-  // "8327785$01") e as demais parcelas viram titulos "orfaos" -- so' conta
-  // pra medir, nao aplica ainda na producao.
+  // Parcela (14/09/2026, ja confirmado e aplicado na producao em
+  // titulos-pagar/route.ts): titulos que sao PARCELAS de uma mesma NF/OC --
+  // mesmo fornecedor + numero base, sufixo de 1-3 digitos separado por "$" ou
+  // "_" (ex "8327785$08".."$12", "005424_09".."_12"). O comprador so digita a
+  // 1a parcela na OC. Mantido aqui so' pra medir cobertura honesta, na mesma
+  // ordem de prioridade da producao (real > parcela > aproximado).
+  const SEPARADOR_PARCELA = /[$_](\d{1,3})$/;
+  function prefixoParcela(bruto: string): string | null {
+    const m = bruto.match(SEPARADOR_PARCELA);
+    if (!m) return null;
+    const prefixo = bruto.slice(0, m.index).trim();
+    return prefixo || null;
+  }
+
   const ocPorPrefixoParcela = new Map<string, (typeof ocs)[number]>();
   for (const oc of ocs) {
     if (!oc.usuNumTit) continue;
     for (const cand of new Set<string>([oc.usuNumTit.trim(), ...oc.usuNumTit.split(/[\n\r;,]+/).map((p) => p.trim())])) {
-      if (!cand.includes("$")) continue;
-      const prefixo = cand.split("$")[0].trim();
+      const prefixo = prefixoParcela(cand);
       if (!prefixo) continue;
       const chaveMap = `${oc.fornecedorCodigo}|${prefixo}`;
       if (!ocPorPrefixoParcela.has(chaveMap)) ocPorPrefixoParcela.set(chaveMap, oc);
@@ -91,6 +98,24 @@ export async function GET(req: Request) {
       real++;
       continue;
     }
+
+    const prefixo = prefixoParcela(t.numTit);
+    const ocParcela = prefixo ? ocPorPrefixoParcela.get(`${t.codFor}|${prefixo}`) : undefined;
+    if (ocParcela) {
+      parcelaHipotese++;
+      if (parcelaAmostra.length < 40) {
+        parcelaAmostra.push({
+          numTit: t.numTit,
+          codFor: t.codFor,
+          fornecedorNome: t.fornecedorNome,
+          valorOriginal: t.valorOriginal,
+          ocNumOcp: ocParcela.numOcp,
+          ocUsuNumTit: ocParcela.usuNumTit,
+        });
+      }
+      continue;
+    }
+
     const candidatas = ocsPorChaveValor.get(`${t.codFor}|${t.valorOriginal.toFixed(2)}`);
     if (candidatas && candidatas.length > 0) {
       aproximado++;
@@ -99,25 +124,6 @@ export async function GET(req: Request) {
     if (provavelNaoOC(t)) {
       naoAplicavel++;
       continue;
-    }
-
-    if (t.numTit.includes("$")) {
-      const prefixo = t.numTit.split("$")[0].trim();
-      const ocParcela = prefixo ? ocPorPrefixoParcela.get(`${t.codFor}|${prefixo}`) : undefined;
-      if (ocParcela) {
-        parcelaHipotese++;
-        if (parcelaAmostra.length < 40) {
-          parcelaAmostra.push({
-            numTit: t.numTit,
-            codFor: t.codFor,
-            fornecedorNome: t.fornecedorNome,
-            valorOriginal: t.valorOriginal,
-            ocNumOcp: ocParcela.numOcp,
-            ocUsuNumTit: ocParcela.usuNumTit,
-          });
-        }
-        continue;
-      }
     }
 
     semNenhumAddressavel++;

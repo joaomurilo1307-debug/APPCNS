@@ -85,11 +85,20 @@ export async function GET() {
   }
 
   // 2º nível (parcela, achado 14/09/2026): muitos títulos são PARCELAS de uma
-  // mesma NF/OC -- mesmo fornecedor + mesmo número base antes de "$", sufixo
-  // incrementando (ex "8327785$08".."8327785$12"). O comprador só digita a
-  // 1ª parcela na OC (ex "8327785$01"); as demais ficavam sem vínculo. Testado
-  // empiricamente: toda amostra bateu fornecedor + valor idêntico à 1ª parcela
-  // -- trata como vínculo real (não é aproximação por chute de valor).
+  // mesma NF/OC -- mesmo fornecedor + mesmo número base, com sufixo de 1-3
+  // dígitos separado por "$" ou "_" incrementando (ex "8327785$08".."$12",
+  // "005424_09".."_12"). O comprador só digita a 1ª parcela na OC (ex
+  // "8327785$01"); as demais ficavam sem vínculo. Testado empiricamente pro
+  // separador "$": toda amostra bateu fornecedor + valor idêntico à 1ª
+  // parcela -- trata como vínculo real (não é aproximação por chute de valor).
+  const SEPARADOR_PARCELA = /[$_](\d{1,3})$/;
+  function prefixoParcela(bruto: string): string | null {
+    const m = bruto.match(SEPARADOR_PARCELA);
+    if (!m) return null;
+    const prefixo = bruto.slice(0, m.index).trim();
+    return prefixo || null;
+  }
+
   const ocPorPrefixoParcela = new Map<string, (typeof ocs)[number]>();
   for (const oc of ocs) {
     if (!oc.usuNumTit) continue;
@@ -97,8 +106,7 @@ export async function GET() {
       oc.usuNumTit.trim(),
       ...oc.usuNumTit.split(/[\n\r;,]+/).map((p) => p.trim()),
     ])) {
-      if (!cand.includes("$")) continue;
-      const prefixo = cand.split("$")[0].trim();
+      const prefixo = prefixoParcela(cand);
       if (!prefixo) continue;
       const chave = `${oc.fornecedorCodigo}|${prefixo}`;
       if (!ocPorPrefixoParcela.has(chave)) ocPorPrefixoParcela.set(chave, oc);
@@ -126,8 +134,8 @@ export async function GET() {
       };
     }
 
-    if (numTit.includes("$")) {
-      const prefixo = numTit.split("$")[0].trim();
+    {
+      const prefixo = prefixoParcela(numTit);
       const porParcela = prefixo ? ocPorPrefixoParcela.get(`${codFor}|${prefixo}`) : undefined;
       if (porParcela) {
         return {
