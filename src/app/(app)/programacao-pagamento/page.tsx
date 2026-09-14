@@ -412,6 +412,7 @@ export default function ProgramacaoPagamentoPage() {
           <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
             <tr>
               <th className="px-3 py-2 font-medium">Título</th>
+              <th className="px-3 py-2 font-medium">OC</th>
               <th className="px-3 py-2 font-medium">Tipo</th>
               <th className="px-3 py-2 font-medium">Criação</th>
               <th className="px-3 py-2 font-medium">Fornecedor</th>
@@ -421,7 +422,6 @@ export default function ProgramacaoPagamentoPage() {
               <th className="px-3 py-2 text-right font-medium">Valor original</th>
               <th className="px-3 py-2 text-right font-medium">Valor em aberto</th>
               <th className="px-3 py-2 font-medium">Situação</th>
-              <th className="px-3 py-2 font-medium">OC</th>
             </tr>
             <tr className="border-t border-gray-200 bg-white align-top">
               <th className="px-2 py-2">
@@ -433,6 +433,22 @@ export default function ProgramacaoPagamentoPage() {
                   onChange={(e) => atualizarFiltroColuna("titulo", e.target.value)}
                   className="w-full min-w-[90px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
+              </th>
+              <th className="px-2 py-2">
+                <select
+                  aria-label="Filtrar vínculo com OC"
+                  value={filtrosColuna.oc}
+                  onChange={(e) => atualizarFiltroColuna("oc", e.target.value as FiltrosColuna["oc"])}
+                  className="w-full min-w-[125px] rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                >
+                  <option value="">todos</option>
+                  <option value="com">com OC</option>
+                  <option value="sem">sem OC</option>
+                  <option value="sem-investigar">sem OC (investigar)</option>
+                  <option value="justificada">sem OC justificada</option>
+                  <option value="exata">vínculo exato</option>
+                  <option value="parcela">por parcela</option>
+                </select>
               </th>
               <th className="px-2 py-2">
                 <input
@@ -525,28 +541,43 @@ export default function ProgramacaoPagamentoPage() {
                   <option value="pago">Pago</option>
                 </select>
               </th>
-              <th className="px-2 py-2">
-                <select
-                  aria-label="Filtrar vínculo com OC"
-                  value={filtrosColuna.oc}
-                  onChange={(e) => atualizarFiltroColuna("oc", e.target.value as FiltrosColuna["oc"])}
-                  className="w-full min-w-[125px] rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
-                >
-                  <option value="">todos</option>
-                  <option value="com">com OC</option>
-                  <option value="sem">sem OC</option>
-                  <option value="sem-investigar">sem OC (investigar)</option>
-                  <option value="justificada">sem OC justificada</option>
-                  <option value="exata">vínculo exato</option>
-                  <option value="parcela">por parcela</option>
-                </select>
-              </th>
             </tr>
           </thead>
           <tbody>
             {filtradosMostrados.map((t, i) => (
               <tr key={`${t.numTit}-${t.codFil}-${t.dataEmissao}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
                 <td className="px-3 py-1.5 font-medium text-gray-800">{t.numTit}</td>
+                <td className="px-3 py-1.5">
+                  {t.ocRelacionada ? (
+                    <button
+                      onClick={() => abrirOC(t.ocRelacionada!.numOcp)}
+                      disabled={carregandoOC === t.ocRelacionada.numOcp}
+                      title={
+                        `${t.ocRelacionada.motivo} Clique para ver o descritivo da OC.`
+                      }
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium underline decoration-dotted underline-offset-2 hover:brightness-95 disabled:opacity-50 ${
+                        t.ocRelacionada.situacao === "APR"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-sky-100 text-sky-800"
+                      }`}
+                    >
+                      OC {t.ocRelacionada.numOcp} · {t.ocRelacionada.situacaoLabel} ·{" "}
+                      {t.ocRelacionada.parcela ? "parcela" : "exata"}
+                      {carregandoOC === t.ocRelacionada.numOcp && "…"}
+                    </button>
+                  ) : (
+                    <details className="max-w-[230px]">
+                      <summary className="cursor-help rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500 underline decoration-dotted underline-offset-2">
+                        Sem OC · por quê?
+                      </summary>
+                      <p className="mt-1 text-[10px] leading-tight text-gray-500">
+                        {t.motivoSemOC || "Sem motivo de vínculo informado."}
+                      </p>
+                    </details>
+                  )}
+                </td>
                 <td className="px-3 py-1.5 text-gray-500">{t.tipo}</td>
                 <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataEmissao)}</td>
                 <td className="max-w-[200px] truncate px-3 py-1.5" title={t.fornecedorNome}>
@@ -578,37 +609,6 @@ export default function ProgramacaoPagamentoPage() {
                   >
                     {t.pago ? "Pago" : "Não pago"}
                   </span>
-                </td>
-                <td className="px-3 py-1.5">
-                  {t.ocRelacionada ? (
-                    <button
-                      onClick={() => abrirOC(t.ocRelacionada!.numOcp)}
-                      disabled={carregandoOC === t.ocRelacionada.numOcp}
-                      title={
-                        `${t.ocRelacionada.motivo} Clique para ver o descritivo da OC.`
-                      }
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium underline decoration-dotted underline-offset-2 hover:brightness-95 disabled:opacity-50 ${
-                        t.ocRelacionada.situacao === "APR"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-sky-100 text-sky-800"
-                      }`}
-                    >
-                      OC {t.ocRelacionada.numOcp} · {t.ocRelacionada.situacaoLabel} ·{" "}
-                      {t.ocRelacionada.parcela ? "parcela" : "exata"}
-                      {carregandoOC === t.ocRelacionada.numOcp && "…"}
-                    </button>
-                  ) : (
-                    <details className="max-w-[230px]">
-                      <summary className="cursor-help rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500 underline decoration-dotted underline-offset-2">
-                        Sem OC · por quê?
-                      </summary>
-                      <p className="mt-1 text-[10px] leading-tight text-gray-500">
-                        {t.motivoSemOC || "Sem motivo de vínculo informado."}
-                      </p>
-                    </details>
-                  )}
                 </td>
               </tr>
             ))}
