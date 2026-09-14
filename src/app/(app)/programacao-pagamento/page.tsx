@@ -8,6 +8,7 @@ type OcRelacionada = {
   situacao: string;
   situacaoLabel: string;
   aproximado: boolean;
+  parcela: boolean;
 };
 
 type Titulo = {
@@ -183,7 +184,8 @@ export default function ProgramacaoPagamentoPage() {
           </p>
         </div>
         <span className="mt-1 shrink-0 text-right text-[11px] leading-tight text-gray-400">
-          OC verde = vínculo real (a própria OC referencia esse título no Senior).
+          OC verde/azul = vínculo real (a própria OC referencia esse título no Senior); a cor muda com a situação da OC (verde = aprovada, azul = em análise, vermelho = reprovada/cancelada).
+          <br />OC roxa = parcela de uma NF que a OC referencia (mesmo vínculo real, título é outra parcela).
           <br />OC âmbar = aproximada por fornecedor + valor, confira antes de decidir por ela.
         </span>
       </div>
@@ -332,16 +334,20 @@ export default function ProgramacaoPagamentoPage() {
                       title={
                         t.ocRelacionada.aproximado
                           ? "Aproximado por fornecedor + valor (Senior não grava o vínculo aqui) — clique pra ver o descritivo da OC"
-                          : "Vínculo real: a própria OC referencia esse título no Senior — clique pra ver o descritivo"
+                          : t.ocRelacionada.parcela
+                            ? "Parcela de uma NF vinculada à OC (a OC referencia só a 1ª parcela, esse título é outra parcela do mesmo número) — clique pra ver o descritivo"
+                            : "Vínculo real: a própria OC referencia esse título no Senior — clique pra ver o descritivo"
                       }
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium underline decoration-dotted underline-offset-2 hover:brightness-95 disabled:opacity-50 ${
                         t.ocRelacionada.aproximado
                           ? "bg-amber-100 text-amber-800"
-                          : t.ocRelacionada.situacao === "APR"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
-                              ? "bg-red-100 text-red-700"
-                              : "bg-sky-100 text-sky-800"
+                          : t.ocRelacionada.parcela
+                            ? "bg-violet-100 text-violet-800"
+                            : t.ocRelacionada.situacao === "APR"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-sky-100 text-sky-800"
                       }`}
                     >
                       OC {t.ocRelacionada.numOcp} · {t.ocRelacionada.situacaoLabel}

@@ -15,9 +15,11 @@ import { prisma } from "@/lib/prisma";
 // (fornecedor + NUMTIT) com um título real em E501TCP -- os outros 5 são
 // provavelmente erro de digitação de quem preencheu (campo é texto livre).
 // Por isso o vínculo por usuNumTit é tratado como REAL (aproximado: false);
-// só cai pra aproximação por fornecedor+valor quando não há usuNumTit que
-// bata -- e mesmo assim só entre as OCs que a base de Aprovações Senior tem
-// carregadas (pendentes + resolvidas recentes, não é histórico completo).
+// depois entra o nível "parcela" (achado 14/09/2026): muitos títulos são
+// parcelas de uma mesma NF (numTit tipo "8327785$08"), o comprador só digita
+// a 1ª parcela na OC ("8327785$01") -- casa pelo prefixo antes do "$", também
+// tratado como vínculo real (não é chute). Só cai pra aproximação por
+// fornecedor+valor quando nada acima bate.
 function situacaoLabel(situacao: string) {
   switch (situacao) {
     case "APR":
@@ -82,7 +84,28 @@ export async function GET() {
     }
   }
 
-  // fallback: aproximação por fornecedor + valor (só quando não achou vínculo real)
+  // 2º nível (parcela, achado 14/09/2026): muitos títulos são PARCELAS de uma
+  // mesma NF/OC -- mesmo fornecedor + mesmo número base antes de "$", sufixo
+  // incrementando (ex "8327785$08".."8327785$12"). O comprador só digita a
+  // 1ª parcela na OC (ex "8327785$01"); as demais ficavam sem vínculo. Testado
+  // empiricamente: toda amostra bateu fornecedor + valor idêntico à 1ª parcela
+  // -- trata como vínculo real (não é aproximação por chute de valor).
+  const ocPorPrefixoParcela = new Map<string, (typeof ocs)[number]>();
+  for (const oc of ocs) {
+    if (!oc.usuNumTit) continue;
+    for (const cand of new Set<string>([
+      oc.usuNumTit.trim(),
+      ...oc.usuNumTit.split(/[\n\r;,]+/).map((p) => p.trim()),
+    ])) {
+      if (!cand.includes("$")) continue;
+      const prefixo = cand.split("$")[0].trim();
+      if (!prefixo) continue;
+      const chave = `${oc.fornecedorCodigo}|${prefixo}`;
+      if (!ocPorPrefixoParcela.has(chave)) ocPorPrefixoParcela.set(chave, oc);
+    }
+  }
+
+  // fallback: aproximação por fornecedor + valor (só quando não achou vínculo real nem parcela)
   const ocsPorChave = new Map<string, typeof ocs>();
   for (const oc of ocs) {
     const chave = `${oc.fornecedorCodigo}|${oc.valor.toFixed(2)}`;
@@ -99,7 +122,22 @@ export async function GET() {
         situacao: real.situacaoAtual,
         situacaoLabel: situacaoLabel(real.situacaoAtual),
         aproximado: false,
+        parcela: false,
       };
+    }
+
+    if (numTit.includes("$")) {
+      const prefixo = numTit.split("$")[0].trim();
+      const porParcela = prefixo ? ocPorPrefixoParcela.get(`${codFor}|${prefixo}`) : undefined;
+      if (porParcela) {
+        return {
+          numOcp: porParcela.numOcp,
+          situacao: porParcela.situacaoAtual,
+          situacaoLabel: situacaoLabel(porParcela.situacaoAtual),
+          aproximado: false,
+          parcela: true,
+        };
+      }
     }
 
     const candidatas = ocsPorChave.get(`${codFor}|${valorOriginal.toFixed(2)}`);
@@ -115,6 +153,7 @@ export async function GET() {
       situacao: maisProxima.situacaoAtual,
       situacaoLabel: situacaoLabel(maisProxima.situacaoAtual),
       aproximado: true,
+      parcela: false,
     };
   }
 
