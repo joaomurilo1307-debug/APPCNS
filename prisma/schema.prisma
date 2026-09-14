@@ -165,6 +165,11 @@ model User {
   passwordHash String
   role         UserRole  @default(COLABORADOR)
   active       Boolean   @default(true)
+  // excecao de acesso, independente do papel -- pra gente como gerentes
+  // (ex: Claudia/APROVADOR) que precisa ver o custo de TODA a empresa em
+  // Custo por Plano de Contas sem virar DIRETOR (que traria outros
+  // privilegios junto). So o ADMIN liga isso, pela tela de Usuarios.
+  verTodosCustos Boolean @default(false)
   avatarColor  String    @default("#0f766e")
   avatarUrl    String?   @db.Text
   lastSeenAt   DateTime?

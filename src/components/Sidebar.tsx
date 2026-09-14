@@ -22,6 +22,7 @@ import {
   IconTrendingUp,
   IconCheckCircle,
   IconShieldUser,
+  IconUsers,
 } from "./NavIcons";
 
 const baseLinks = [
@@ -32,8 +33,11 @@ const baseLinks = [
   { href: "/gantt", label: "Gantt", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"] },
   { href: "/calendario", label: "Calendário", icon: IconCalendar, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/chat", label: "Chat", icon: IconChat, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  // Equipes e Núcleos escondidos da navegação (Joao vai reconfigurar) --
-  // as páginas /equipes e /nucleos continuam existindo, só saíram do menu
+  // Equipes restaurado no menu em 14/09/2026 (pedido do Joao: admin precisa
+  // conseguir cadastrar pessoas nos projetos/equipes) -- a pagina e a API
+  // ja existiam prontas, so estavam fora do menu desde antes. Nucleos
+  // continua escondido (Joao ainda nao pediu).
+  { href: "/equipes", label: "Equipes", icon: IconUsers, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
   { href: "/metas", label: "Metas", icon: IconTarget, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/relatorios", label: "Relatórios", icon: IconReport, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/pdi", label: "PDI", icon: IconTrendingUp, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },

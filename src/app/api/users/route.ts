@@ -20,6 +20,7 @@ export async function GET() {
       email: true,
       role: true,
       active: true,
+      verTodosCustos: true,
       avatarColor: true,
       avatarUrl: true,
       createdAt: true,

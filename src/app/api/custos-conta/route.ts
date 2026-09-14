@@ -6,13 +6,22 @@ import { prisma } from "@/lib/prisma";
 // Custo por plano de contas (conta_financeira), por contrato/CCU e mes.
 // Visibilidade: ADMIN/DIRETOR veem todos os contratos; qualquer outro
 // usuario ve so os contratos (equipes) das quais participa -- membro ou
-// gestor, tanto faz, o que importa e estar na equipe daquele CCU.
+// gestor, tanto faz, o que importa e estar na equipe daquele CCU. Excecao:
+// `verTodosCustos` (ligado pelo ADMIN na tela de Usuarios) da a mesma
+// visao total pra alguem sem precisar virar DIRETOR (ex: gerente que
+// precisa ver o custo de toda a empresa, mas continua com o resto do
+// acesso do papel dela) -- checado sempre fresco no banco, nao no JWT da
+// sessao, pra o ADMIN poder ligar/desligar sem a pessoa ter que logar de novo.
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const user = session.user as any;
-  const vePodeTudo = ["ADMIN", "DIRETOR"].includes(user.role);
+  let vePodeTudo = ["ADMIN", "DIRETOR"].includes(user.role);
+  if (!vePodeTudo) {
+    const eu = await prisma.user.findUnique({ where: { id: user.id }, select: { verTodosCustos: true } });
+    vePodeTudo = !!eu?.verTodosCustos;
+  }
 
   let teamIdsPermitidos: string[] | null = null; // null = sem restricao
   if (!vePodeTudo) {

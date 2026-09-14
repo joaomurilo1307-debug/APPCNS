@@ -11,6 +11,7 @@ type UserRow = {
   email: string;
   role: string;
   active: boolean;
+  verTodosCustos: boolean;
   avatarColor: string;
   avatarUrl?: string | null;
   cargo?: string | null;
@@ -222,6 +223,15 @@ export default function UsuariosPage() {
     load();
   }
 
+  async function toggleVerTodosCustos(u: UserRow) {
+    await fetch(`/api/users/${u.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verTodosCustos: !u.verTodosCustos }),
+    });
+    load();
+  }
+
   async function handleDelete(u: UserRow) {
     if (!confirm(`Excluir "${u.name}" permanentemente? Isso não pode ser desfeito.`)) return;
     const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
@@ -352,6 +362,7 @@ export default function UsuariosPage() {
               <th className="px-4 py-3">Nome</th>
               <th className="px-4 py-3">E-mail</th>
               <th className="px-4 py-3">Papel</th>
+              <th className="px-4 py-3">Vê todos os custos?</th>
               <th className="px-4 py-3">Cargo</th>
               <th className="px-4 py-3">Diretoria</th>
               <th className="px-4 py-3">Ramal</th>
@@ -386,6 +397,23 @@ export default function UsuariosPage() {
                       <option key={value} value={value}>{label}</option>
                     ))}
                   </select>
+                </td>
+                <td className="px-4 py-3">
+                  {["ADMIN", "DIRETOR"].includes(u.role) ? (
+                    <span className="text-xs text-gray-400" title="Admin e Diretor já veem tudo por causa do papel">
+                      já vê tudo
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => toggleVerTodosCustos(u)}
+                      title="Custo por Plano de Contas mostra os custos de TODA a empresa pra essa pessoa, mesmo sem ela ser Diretor"
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        u.verTodosCustos ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {u.verTodosCustos ? "Sim, tudo" : "Só das equipes"}
+                    </button>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <input

@@ -9,6 +9,7 @@ import { logAudit } from "@/lib/auditLog";
 const updateUserSchema = z.object({
   role: z.enum(["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR"]).optional(),
   active: z.boolean().optional(),
+  verTodosCustos: z.boolean().optional(),
   name: z.string().min(2).max(150).optional(),
   avatarColor: z.string().optional(),
   cargo: z.string().optional(),
@@ -77,6 +78,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         email: true,
         role: true,
         active: true,
+        verTodosCustos: true,
         avatarColor: true,
         cargo: true,
         setor: true,
