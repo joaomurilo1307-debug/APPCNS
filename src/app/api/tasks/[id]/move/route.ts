@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canModifyTask } from "@/lib/permissions";
+import { canModifyTaskScoped } from "@/lib/permissions";
 import { z } from "zod";
 
 const moveSchema = z.object({ direction: z.enum(["up", "down"]) });
@@ -11,13 +11,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const task = await prisma.task.findUnique({ where: { id: params.id } });
+  const task = await prisma.task.findUnique({
+    where: { id: params.id },
+    include: { project: { select: { teamId: true } } },
+  });
   if (!task) return NextResponse.json({ error: "Não encontrada" }, { status: 404 });
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
   const isAssignee = task.assigneeId === userId;
-  if (!canModifyTask(role, isAssignee, task.locked)) {
+  if (!(await canModifyTaskScoped(userId, role, isAssignee, task.locked, task.project?.teamId))) {
     return NextResponse.json({ error: "Sem permissão para alterar esta tarefa" }, { status: 403 });
   }
 

@@ -122,12 +122,34 @@ export async function canManageTeam(userId: string, role: string, teamId: string
   return isTeamManager(userId, teamId);
 }
 
-/** Quem pode excluir/mover uma tarefa: Admin e Gestor de Projeto sempre (se não travada); Colaborador só se não travada e for responsável; Cliente/Visualizador/Aprovador nunca. */
+/** Quem pode excluir/mover uma tarefa: Admin e Gestor de Projeto sempre (se não travada); Colaborador só se não travada e for responsável; Cliente/Visualizador/Aprovador nunca -- SALVO se for Gestor da equipe dona do projeto (ver canModifyTaskScoped). */
 export function canModifyTask(role: string, isAssignee: boolean, locked: boolean) {
   if (locked) return role === "ADMIN" || role === "GESTOR_PROJETO";
   if (role === "ADMIN" || role === "GESTOR_PROJETO") return true;
   if (role === "COLABORADOR") return isAssignee;
   return false;
+}
+
+/**
+ * Mesma regra de `canModifyTask`, mais uma exceção por equipe: quem é Gestor
+ * (UserTeam.role="GESTOR") da equipe dona do projeto da tarefa também pode
+ * mover/editar/atribuir -- pra gente como um Aprovador que também gerencia um
+ * núcleo/equipe (ex: Claudia Moreira), sem abrir isso pra qualquer Aprovador
+ * em qualquer tarefa do sistema (achado 14/09/2026: ela não conseguia trocar
+ * status nem atribuir responsável em nenhuma tarefa, porque APROVADOR nunca
+ * passava em `canModifyTask`, mesmo sendo gerente da equipe do projeto).
+ * Tarefa travada continua só pra Admin/Gestor de Projeto, igual antes.
+ */
+export async function canModifyTaskScoped(
+  userId: string,
+  role: string,
+  isAssignee: boolean,
+  locked: boolean,
+  teamId: string | null | undefined
+): Promise<boolean> {
+  if (canModifyTask(role, isAssignee, locked)) return true;
+  if (locked || !teamId) return false;
+  return isTeamManager(userId, teamId);
 }
 
 export function canDeleteTask(role: string) {

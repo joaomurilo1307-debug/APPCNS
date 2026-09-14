@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canModifyTask } from "@/lib/permissions";
+import { canModifyTaskScoped } from "@/lib/permissions";
 import { validateUploadFile, saveUploadedFile } from "@/lib/uploadValidation";
 
 export async function POST(req: Request) {
@@ -22,12 +22,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: validation.error }, { status: validation.status });
   }
 
-  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    include: { project: { select: { teamId: true } } },
+  });
   if (!task) return NextResponse.json({ error: "Tarefa não encontrada" }, { status: 404 });
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
-  if (!canModifyTask(role, task.assigneeId === userId, task.locked)) {
+  if (!(await canModifyTaskScoped(userId, role, task.assigneeId === userId, task.locked, task.project?.teamId))) {
     return NextResponse.json({ error: "Sem permissão para anexar arquivos nesta tarefa" }, { status: 403 });
   }
 
