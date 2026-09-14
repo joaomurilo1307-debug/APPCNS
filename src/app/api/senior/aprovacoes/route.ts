@@ -27,10 +27,35 @@ export async function GET() {
   // resolvidoEm -- esse campo só existe pra quem foi resolvida enquanto
   // rastreada aqui; OC histórica trazida pelo backfill nunca teve
   // resolvidoEm, senão viraria "resolvida hoje" -- bug real corrigido em
-  // 14/09/2026, ver corrigir-resolvidoem-backfill). O front renderiza só um
-  // recorte por padrão (milhares de linhas travariam o navegador) mas a
-  // busca filtra sobre o conjunto inteiro recebido, mesmo padrão já usado
-  // em /api/titulos-pagar.
+  // 14/09/2026, ver corrigir-resolvidoem-backfill).
+  //
+  // Bug real corrigido 14/09/2026 (a tela travou/ficou lentíssima assim que
+  // isso foi ao ar): "todas" passou de ~500 pra ~9 mil linhas, e cada linha
+  // trazia rateioDetalhe/historicoNiveis (JSON grande) + eventos completos
+  // -- um payload de dezenas de MB numa página só. A LISTA só precisa dos
+  // campos escalares (pra exibir e buscar); o detalhe completo (rateio,
+  // níveis, eventos) é buscado sob demanda, 1 OC por vez, quando o usuário
+  // clica numa linha resolvida -- reaproveita a rota /aprovacoes/[numOcp]
+  // que já existia exatamente pra isso.
+  const camposLista = {
+    id: true,
+    numOcp: true,
+    dataEmissao: true,
+    fornecedorCodigo: true,
+    fornecedorNome: true,
+    valor: true,
+    descricao: true,
+    contratoTexto: true,
+    codccu: true,
+    contratoNome: true,
+    usuNumTit: true,
+    situacaoAtual: true,
+    temRateio: true,
+    primeiraDeteccaoEm: true,
+    resolvidoEm: true,
+    resolvidoComo: true,
+  } as const;
+
   const [pendentes, resolvidas, usuariosSenior] = await Promise.all([
     prisma.aprovacaoSenior.findMany({
       where: { situacaoAtual: { in: ["ANA", "PRE"] } },
@@ -43,10 +68,7 @@ export async function GET() {
     prisma.aprovacaoSenior.findMany({
       where: { situacaoAtual: { in: ["APR", "REP", "CAN"] } },
       orderBy: [{ resolvidoEm: "desc" }, { dataEmissao: "desc" }],
-      include: {
-        eventos: { orderBy: { detectadoEm: "asc" } },
-        proximoAprovador: { select: { id: true, name: true } },
-      },
+      select: camposLista,
     }),
     prisma.usuarioSenior.findMany({
       include: { user: { select: { name: true } } },

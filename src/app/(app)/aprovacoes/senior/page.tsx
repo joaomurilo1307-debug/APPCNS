@@ -21,6 +21,28 @@ function diasParado(dataEmissao: string) {
 const SITUACOES_FILTRO = ["ANA", "PRE", "APR", "REP", "CAN"] as const;
 const LIMITE_LINHAS = 500;
 
+// Lista de resolvidas: só campos escalares (leve, dá pra trazer todas de
+// uma vez). O detalhe completo (rateio/níveis/eventos) é buscado sob
+// demanda quando o usuário clica numa linha -- ver abrirResolvida().
+type ResolvidaResumo = {
+  id: string;
+  numOcp: string;
+  dataEmissao: string;
+  fornecedorCodigo: string;
+  fornecedorNome: string | null;
+  valor: number;
+  descricao: string | null;
+  contratoTexto: string | null;
+  codccu: string | null;
+  contratoNome: string | null;
+  usuNumTit?: string | null;
+  situacaoAtual: string;
+  temRateio: boolean;
+  primeiraDeteccaoEm: string;
+  resolvidoEm: string | null;
+  resolvidoComo: string | null;
+};
+
 const LEGENDA_SITUACAO: { sit: (typeof SITUACOES_FILTRO)[number]; desc: string }[] = [
   { sit: "ANA", desc: "Em análise — ainda não passou por nenhum nível de aprovação da alçada." },
   { sit: "PRE", desc: "Pré-aprovado — passou por uma etapa inicial (ex. empenho/orçamento), mas ainda não é a aprovação final da alçada." },
@@ -31,7 +53,7 @@ const LEGENDA_SITUACAO: { sit: (typeof SITUACOES_FILTRO)[number]; desc: string }
 
 export default function AprovacoesSeniorPage() {
   const [pendentes, setPendentes] = useState<Aprovacao[]>([]);
-  const [resolvidas, setResolvidas] = useState<Aprovacao[]>([]);
+  const [resolvidas, setResolvidas] = useState<ResolvidaResumo[]>([]);
   const [codToNome, setCodToNome] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -39,6 +61,27 @@ export default function AprovacoesSeniorPage() {
   const [busca, setBusca] = useState("");
   const [situacoesAtivas, setSituacoesAtivas] = useState<Set<string>>(new Set());
   const [somenteRateio, setSomenteRateio] = useState(false);
+  const [carregandoResolvida, setCarregandoResolvida] = useState<string | null>(null);
+  const [erroResolvida, setErroResolvida] = useState<string | null>(null);
+
+  function abrirResolvida(numOcp: string) {
+    setCarregandoResolvida(numOcp);
+    setErroResolvida(null);
+    fetch(`/api/senior/aprovacoes/${numOcp}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Erro ao carregar a OC");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setAberta(data.aprovacao);
+        setCodToNome((prev) => ({ ...prev, ...(data.codToNome ?? {}) }));
+      })
+      .catch((e) => setErroResolvida(e.message))
+      .finally(() => setCarregandoResolvida(null));
+  }
 
   useEffect(() => {
     fetch("/api/senior/aprovacoes")
@@ -67,10 +110,15 @@ export default function AprovacoesSeniorPage() {
     });
   }
 
-  function passaFiltro(a: Aprovacao) {
+  // Aceita Aprovacao (pendentes, já tem o rateio completo) ou ResolvidaResumo
+  // (lista leve) -- contratoDe() precisa de rateioDetalhe, que a lista leve
+  // não tem, então usa os campos escalares (contratoNome/codccu/
+  // contratoTexto) direto pra busca nesse caso, sem o detalhe do rateio.
+  function passaFiltro(a: Aprovacao | ResolvidaResumo) {
     const termo = busca.trim().toLowerCase();
     if (termo) {
-      const alvo = `${a.numOcp} ${a.fornecedorNome ?? ""} ${a.fornecedorCodigo} ${a.descricao ?? ""} ${contratoDe(a)} ${a.usuNumTit ?? ""}`.toLowerCase();
+      const contrato = "rateioDetalhe" in a ? contratoDe(a) : a.contratoNome || a.contratoTexto || (a.codccu ? `CC ${a.codccu}` : "");
+      const alvo = `${a.numOcp} ${a.fornecedorNome ?? ""} ${a.fornecedorCodigo} ${a.descricao ?? ""} ${contrato} ${a.usuNumTit ?? ""}`.toLowerCase();
       if (!alvo.includes(termo)) return false;
     }
     if (situacoesAtivas.size > 0 && !situacoesAtivas.has(a.situacaoAtual)) return false;
@@ -281,9 +329,12 @@ export default function AprovacoesSeniorPage() {
                 <tr
                   key={a.id}
                   className="cursor-pointer border-t border-gray-100 hover:bg-brand/[0.04] [&>td]:px-4 [&>td]:py-3"
-                  onClick={() => setAberta(a)}
+                  onClick={() => abrirResolvida(a.numOcp)}
                 >
-                  <td className="whitespace-nowrap font-medium">{a.numOcp}</td>
+                  <td className="whitespace-nowrap font-medium">
+                    {a.numOcp}
+                    {carregandoResolvida === a.numOcp && "…"}
+                  </td>
                   <td className="max-w-[240px] truncate" title={a.fornecedorNome || a.fornecedorCodigo}>
                     {a.fornecedorNome || a.fornecedorCodigo}
                   </td>
@@ -313,6 +364,12 @@ export default function AprovacoesSeniorPage() {
           </tbody>
         </table>
       </div>
+
+      {erroResolvida && (
+        <div className="fixed inset-x-0 bottom-4 z-50 mx-auto w-fit rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700 shadow-lg">
+          {erroResolvida}
+        </div>
+      )}
 
       {aberta && <MapaOC aprovacao={aberta} codToNome={codToNome} onClose={() => setAberta(null)} />}
     </div>
