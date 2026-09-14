@@ -57,12 +57,32 @@ export async function GET(req: Request) {
     return false;
   }
 
+  // Hipotese parcela (14/09/2026): varios titulos sem vinculo repetem o mesmo
+  // fornecedor + um prefixo numerico antes de "$NN" (ex DELL: 8327785$08,
+  // 8327785$09... 8327785$12 -- mesmo numero base, parcelas diferentes).
+  // Testa se o comprador tende a digitar na OC so' a 1a parcela (ex
+  // "8327785$01") e as demais parcelas viram titulos "orfaos" -- so' conta
+  // pra medir, nao aplica ainda na producao.
+  const ocPorPrefixoParcela = new Map<string, (typeof ocs)[number]>();
+  for (const oc of ocs) {
+    if (!oc.usuNumTit) continue;
+    for (const cand of new Set<string>([oc.usuNumTit.trim(), ...oc.usuNumTit.split(/[\n\r;,]+/).map((p) => p.trim())])) {
+      if (!cand.includes("$")) continue;
+      const prefixo = cand.split("$")[0].trim();
+      if (!prefixo) continue;
+      const chaveMap = `${oc.fornecedorCodigo}|${prefixo}`;
+      if (!ocPorPrefixoParcela.has(chaveMap)) ocPorPrefixoParcela.set(chaveMap, oc);
+    }
+  }
+
   let real = 0;
   let aproximado = 0;
   let semNenhumAddressavel = 0;
   let naoAplicavel = 0;
+  let parcelaHipotese = 0;
   const semNenhumAmostra: any[] = [];
   const semNenhumAmostraNaoPRV: any[] = [];
+  const parcelaAmostra: any[] = [];
   const semNenhumPorTipo: Record<string, number> = {};
 
   for (const t of titulos) {
@@ -80,6 +100,26 @@ export async function GET(req: Request) {
       naoAplicavel++;
       continue;
     }
+
+    if (t.numTit.includes("$")) {
+      const prefixo = t.numTit.split("$")[0].trim();
+      const ocParcela = prefixo ? ocPorPrefixoParcela.get(`${t.codFor}|${prefixo}`) : undefined;
+      if (ocParcela) {
+        parcelaHipotese++;
+        if (parcelaAmostra.length < 40) {
+          parcelaAmostra.push({
+            numTit: t.numTit,
+            codFor: t.codFor,
+            fornecedorNome: t.fornecedorNome,
+            valorOriginal: t.valorOriginal,
+            ocNumOcp: ocParcela.numOcp,
+            ocUsuNumTit: ocParcela.usuNumTit,
+          });
+        }
+        continue;
+      }
+    }
+
     semNenhumAddressavel++;
     semNenhumPorTipo[t.tipo] = (semNenhumPorTipo[t.tipo] || 0) + 1;
     if (t.tipo !== "PRV" && semNenhumAmostraNaoPRV.length < 40) {
@@ -113,11 +153,14 @@ export async function GET(req: Request) {
     totalOCsComUsuNumTit: ocs.filter((o) => o.usuNumTit).length,
     real,
     aproximado,
+    parcelaHipotese,
+    parcelaAmostra,
     semNenhumAddressavel,
     semNenhumPorTipo,
     semNenhumAmostraNaoPRV,
     pctRealDoUniversoAddressavel: ((real / universoAddressavel) * 100).toFixed(1),
     pctComAlgumVinculoDoAddressavel: (((real + aproximado) / universoAddressavel) * 100).toFixed(1),
+    pctComParcelaDoUniversoAddressavel: (((real + aproximado + parcelaHipotese) / universoAddressavel) * 100).toFixed(1),
     semNenhumAmostra,
   });
 }
