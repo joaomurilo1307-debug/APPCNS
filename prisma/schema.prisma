@@ -3,6 +3,7 @@ generator client {
   binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl"]
 }
 
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -407,13 +408,15 @@ model TituloContasAPagar {
   dataPagamento       DateTime? // ULTPGT -- so' preenchido quando pago=true
   codccu              String?
   ccuNome             String?
-  numOcp              String? // liga com AprovacaoSenior.numOcp quando a OC gerou este titulo -- NUNCA
-  // populado nesta implantacao do Senior (checado 13/09/2026: zero em toda a base,
-  // abertos e pagos) -- fica guardado pra quando/se isso mudar, mas nao cruza nada hoje.
+  numOcp              String? // E501TCP.NUMOCP, quando o Senior gravar a OC de origem
+  filOcp              String? // E501TCP.FILOCP, filial da OC quando vier no sincronismo
+  numNfc              String? // E501TCP.NUMNFC, NF de entrada relacionada ao título
   atualizadoEm        DateTime  @updatedAt
 
   @@unique([numTit, codFil, codFor, tipo, dataEmissao])
   @@index([numOcp])
+  @@index([filOcp, numOcp])
+  @@index([codFor, numNfc])
   @@index([pago])
   @@index([codFor])
 }
@@ -622,6 +625,7 @@ model AuditLog {
 model AprovacaoSenior {
   id              String    @id @default(cuid())
   numOcp          String    @unique
+  codFil          String?   // E420OCP.CODFIL, quando o export da OC o informar
   dataEmissao     DateTime
   fornecedorCodigo String
   fornecedorNome  String?   // USU_NOMFOR da OC (nome livre digitado); cai pro codigo se vazio
@@ -636,7 +640,8 @@ model AprovacaoSenior {
   usuNumTit       String?   @db.Text // E420OCP.USU_NUMTIT -- texto livre digitado pelo comprador com o(s)
   // NUMTIT do titulo gerado por essa OC (separados por -/;/quebra de linha/virgula). Testado empiricamente
   // 14/09/2026: 8.780 das 11.682 OCs preenchidas, 83% (25/30 amostra) casam exato com E501TCP.NUMTIT pro
-  // mesmo fornecedor -- e o vinculo OC->titulo REAL desse tenant (NUMOCP no titulo nunca e populado).
+  // mesmo fornecedor. Neste tenant, NUMOCP veio zerado no historico analisado;
+  // se o export passar a informar a relacao direta, ela tem prioridade.
   usuNumNfc       String?   // E420OCP.USU_NUMNFC -- numero da nota fiscal de compra, mesma logica, preenchido em 42%
   pago            Boolean   @default(false) // OC pendente de aprovacao nunca esta paga
   numApr          String
@@ -663,6 +668,7 @@ model AprovacaoSenior {
   eventos AprovacaoSeniorEvento[]
 
   @@index([situacaoAtual])
+  @@index([codFil, numOcp])
   @@index([codccu])
   @@index([proximoAprovadorUserId])
 }
@@ -990,4 +996,3 @@ model Folder {
   @@index([parentId])
   @@index([createdBy])
 }
-

@@ -7,8 +7,9 @@ type OcRelacionada = {
   numOcp: string;
   situacao: string;
   situacaoLabel: string;
-  aproximado: boolean;
   parcela: boolean;
+  motivo: string;
+  centroCusto?: string | null;
 };
 
 type Titulo = {
@@ -26,6 +27,36 @@ type Titulo = {
   dataPagamento: string | null;
   ccuNome: string | null;
   ocRelacionada: OcRelacionada | null;
+  motivoSemOC: string | null;
+  ocEsperada: boolean;
+};
+
+type FiltrosColuna = {
+  titulo: string;
+  tipo: string;
+  criacao: string;
+  fornecedor: string;
+  centroCusto: string;
+  vencimento: string;
+  pagamento: string;
+  valorOriginal: string;
+  valorAberto: string;
+  situacao: "" | "pago" | "aberto";
+  oc: "" | "com" | "sem" | "sem-investigar" | "justificada" | "exata" | "parcela";
+};
+
+const FILTROS_COLUNA_VAZIOS: FiltrosColuna = {
+  titulo: "",
+  tipo: "",
+  criacao: "",
+  fornecedor: "",
+  centroCusto: "",
+  vencimento: "",
+  pagamento: "",
+  valorOriginal: "",
+  valorAberto: "",
+  situacao: "",
+  oc: "",
 };
 
 // yyyy-mm-dd (valor de <input type="date">) comparado com um ISO -- ambos
@@ -45,6 +76,23 @@ function formatMoeda(v: number) {
 function formatData(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+}
+
+function textoContem(valor: string | null | undefined, filtro: string) {
+  return !filtro || (valor ?? "").toLocaleLowerCase().includes(filtro.trim().toLocaleLowerCase());
+}
+
+function valorContem(valor: number, filtro: string) {
+  if (!filtro.trim()) return true;
+  const termo = filtro.trim().toLocaleLowerCase();
+  return (
+    formatMoeda(valor).toLocaleLowerCase().includes(termo) ||
+    valor.toFixed(2).includes(termo.replace(",", "."))
+  );
+}
+
+function dataIgual(iso: string | null, filtro: string) {
+  return !filtro || (!!iso && iso.slice(0, 10) === filtro);
 }
 
 // Semana atual (segunda a domingo), no fuso do navegador -- usada só pro
@@ -83,6 +131,7 @@ export default function ProgramacaoPagamentoPage() {
   const [dataDe, setDataDe] = useState("");
   const [dataAte, setDataAte] = useState("");
   const [somenteComOC, setSomenteComOC] = useState(false);
+  const [filtrosColuna, setFiltrosColuna] = useState<FiltrosColuna>(FILTROS_COLUNA_VAZIOS);
   const [ocAberta, setOcAberta] = useState<Aprovacao | null>(null);
   const [codToNomeOC, setCodToNomeOC] = useState<Record<string, string>>({});
   const [carregandoOC, setCarregandoOC] = useState<string | null>(null);
@@ -137,6 +186,7 @@ export default function ProgramacaoPagamentoPage() {
     () => titulos.filter((t) => !t.pago && dentroDaSemana(t.vencimentoProgramado, inicioSemana, fimSemana)).length,
     [titulos, inicioSemana, fimSemana]
   );
+  const mostrarColunaPagamento = filtro === "pagos" || filtro === "todos";
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -152,23 +202,61 @@ export default function ProgramacaoPagamentoPage() {
           !termo ||
           t.numTit.toLowerCase().includes(termo) ||
           t.fornecedorNome.toLowerCase().includes(termo) ||
-          (t.ocRelacionada?.numOcp ?? "").toLowerCase().includes(termo)
+          (t.ccuNome ?? "").toLowerCase().includes(termo) ||
+          (t.tipo ?? "").toLowerCase().includes(termo) ||
+          (t.ocRelacionada?.numOcp ?? "").toLowerCase().includes(termo) ||
+          (t.motivoSemOC ?? "").toLowerCase().includes(termo)
       )
       .filter((t) => (!dataDe && !dataAte) || dataDentroDoIntervalo(t.vencimentoProgramado, dataDe, dataAte))
       .filter((t) => !somenteComOC || !!t.ocRelacionada)
+      .filter((t) => {
+        const f = filtrosColuna;
+        if (!textoContem(t.numTit, f.titulo)) return false;
+        if (!textoContem(t.tipo, f.tipo)) return false;
+        if (!dataIgual(t.dataEmissao, f.criacao)) return false;
+        if (!textoContem(t.fornecedorNome, f.fornecedor)) return false;
+        if (!textoContem(t.ccuNome, f.centroCusto)) return false;
+        if (!dataIgual(t.vencimentoProgramado, f.vencimento)) return false;
+        if (mostrarColunaPagamento && !dataIgual(t.dataPagamento, f.pagamento)) return false;
+        if (!valorContem(t.valorOriginal, f.valorOriginal)) return false;
+        if (!valorContem(t.valorAberto, f.valorAberto)) return false;
+        if (f.situacao === "pago" && !t.pago) return false;
+        if (f.situacao === "aberto" && t.pago) return false;
+        if (f.oc === "com" && !t.ocRelacionada) return false;
+        if (f.oc === "sem" && t.ocRelacionada) return false;
+        if (f.oc === "sem-investigar" && (t.ocRelacionada || !t.ocEsperada)) return false;
+        if (f.oc === "justificada" && (t.ocRelacionada || t.ocEsperada)) return false;
+        if (f.oc === "exata" && (!t.ocRelacionada || t.ocRelacionada.parcela)) return false;
+        if (f.oc === "parcela" && (!t.ocRelacionada || !t.ocRelacionada.parcela)) return false;
+        return true;
+      })
       .sort((a, b) => {
         if (filtro === "semana") return (a.vencimentoProgramado || "").localeCompare(b.vencimentoProgramado || "");
         if (filtro === "pagos") return (b.dataPagamento || "").localeCompare(a.dataPagamento || ""); // pago mais recente primeiro
         return (b.dataEmissao || "").localeCompare(a.dataEmissao || ""); // aberto/todos: criado mais recente primeiro
       });
-  }, [titulos, busca, filtro, inicioSemana, fimSemana, dataDe, dataAte, somenteComOC]);
+  }, [titulos, busca, filtro, inicioSemana, fimSemana, dataDe, dataAte, somenteComOC, filtrosColuna, mostrarColunaPagamento]);
 
   // "Pagos"/"Todos" podem ter milhares de linhas -- renderiza só as N mais
   // relevantes por vez (a busca ainda filtra sobre o conjunto inteiro).
   const LIMITE_LINHAS = 500;
   const totalFiltrado = filtrados.length;
   const filtradosMostrados = filtrados.slice(0, LIMITE_LINHAS);
-  const mostrarColunaPagamento = filtro === "pagos" || filtro === "todos";
+  const filtrosPorColunaAtivos = Object.values(filtrosColuna).some(Boolean);
+  const qtdSemOCEsperada = titulos.filter((t) => !t.ocRelacionada && !t.ocEsperada).length;
+  const qtdSemOCInvestigar = titulos.filter((t) => !t.ocRelacionada && t.ocEsperada).length;
+
+  function atualizarFiltroColuna<K extends keyof FiltrosColuna>(campo: K, valor: FiltrosColuna[K]) {
+    setFiltrosColuna((anterior) => ({ ...anterior, [campo]: valor }));
+  }
+
+  function limparFiltros() {
+    setBusca("");
+    setDataDe("");
+    setDataAte("");
+    setSomenteComOC(false);
+    setFiltrosColuna(FILTROS_COLUNA_VAZIOS);
+  }
 
   if (loading) return <div className="p-6 text-sm text-gray-500">Carregando...</div>;
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
@@ -178,15 +266,15 @@ export default function ProgramacaoPagamentoPage() {
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Programação de Pagamento</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Contas a pagar por título (2026), sincronizado do Senior — o que vence esta semana, o que segue em aberto
-            e o histórico de pagos.
+          <p className="mt-0.5 max-w-3xl text-sm text-gray-500">
+            Contas a pagar por título (2026), sincronizado do Senior. O vínculo com OC é demonstrado por número exato,
+            parcela confirmada ou conciliação única — quando não houver OC, o motivo aparece no campo “OC”.
           </p>
         </div>
         <span className="mt-1 shrink-0 text-right text-[11px] leading-tight text-gray-400">
-          OC verde/azul = vínculo real (a própria OC referencia esse título no Senior); a cor muda com a situação da OC (verde = aprovada, azul = em análise, vermelho = reprovada/cancelada).
-          <br />OC roxa = parcela de uma NF que a OC referencia (mesmo vínculo real, título é outra parcela).
-          <br />OC âmbar = aproximada por fornecedor + valor, confira antes de decidir por ela.
+          A cor representa somente a situação da OC (verde = aprovada, azul = em análise, vermelho = reprovada/cancelada).
+          <br />“Parcela” ou “exata” identifica como o título foi conciliado; não é uma situação diferente.
+          <br />Fornecedor + valor sem data/referência não basta: o registro fica para investigação para não mostrar OC errada.
         </span>
       </div>
 
@@ -249,10 +337,15 @@ export default function ProgramacaoPagamentoPage() {
             onChange={(e) => setBusca(e.target.value)}
             className="w-64 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
           />
+          {(busca || dataDe || dataAte || somenteComOC || filtrosPorColunaAtivos) && (
+            <button onClick={limparFiltros} className="text-xs text-gray-400 underline hover:text-gray-600">
+              limpar todos os filtros
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
           <p className="text-xs text-gray-500">Vence esta semana</p>
           <p className="text-xl font-semibold tabular-nums">{qtdSemana}</p>
@@ -275,6 +368,11 @@ export default function ProgramacaoPagamentoPage() {
             {filtradosMostrados.length}
             {totalFiltrado > LIMITE_LINHAS && <span className="text-sm font-normal text-gray-400"> de {totalFiltrado}</span>}
           </p>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
+          <p className="text-xs text-gray-500">Sem OC a investigar</p>
+          <p className="text-xl font-semibold tabular-nums">{qtdSemOCInvestigar}</p>
+          <p className="mt-0.5 text-[10px] text-gray-400">Sem OC justificada: {qtdSemOCEsperada}</p>
         </div>
       </div>
 
@@ -300,6 +398,125 @@ export default function ProgramacaoPagamentoPage() {
               <th className="px-3 py-2 font-medium">Situação</th>
               <th className="px-3 py-2 font-medium">OC</th>
             </tr>
+            <tr className="border-t border-gray-200 bg-white align-top">
+              <th className="px-2 py-2">
+                <input
+                  aria-label="Filtrar título"
+                  type="text"
+                  placeholder="filtrar..."
+                  value={filtrosColuna.titulo}
+                  onChange={(e) => atualizarFiltroColuna("titulo", e.target.value)}
+                  className="w-full min-w-[90px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-2 py-2">
+                <input
+                  aria-label="Filtrar tipo"
+                  type="text"
+                  placeholder="tipo..."
+                  value={filtrosColuna.tipo}
+                  onChange={(e) => atualizarFiltroColuna("tipo", e.target.value)}
+                  className="w-full min-w-[65px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-2 py-2">
+                <input
+                  aria-label="Filtrar data de criação"
+                  type="date"
+                  value={filtrosColuna.criacao}
+                  onChange={(e) => atualizarFiltroColuna("criacao", e.target.value)}
+                  className="w-full min-w-[125px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-2 py-2">
+                <input
+                  aria-label="Filtrar fornecedor"
+                  type="text"
+                  placeholder="fornecedor..."
+                  value={filtrosColuna.fornecedor}
+                  onChange={(e) => atualizarFiltroColuna("fornecedor", e.target.value)}
+                  className="w-full min-w-[150px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-2 py-2">
+                <input
+                  aria-label="Filtrar centro de custo"
+                  type="text"
+                  placeholder="centro..."
+                  value={filtrosColuna.centroCusto}
+                  onChange={(e) => atualizarFiltroColuna("centroCusto", e.target.value)}
+                  className="w-full min-w-[120px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-2 py-2">
+                <input
+                  aria-label="Filtrar vencimento programado"
+                  type="date"
+                  value={filtrosColuna.vencimento}
+                  onChange={(e) => atualizarFiltroColuna("vencimento", e.target.value)}
+                  className="w-full min-w-[125px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              {mostrarColunaPagamento && (
+                <th className="px-2 py-2">
+                  <input
+                    aria-label="Filtrar data de pagamento"
+                    type="date"
+                    value={filtrosColuna.pagamento}
+                    onChange={(e) => atualizarFiltroColuna("pagamento", e.target.value)}
+                    className="w-full min-w-[125px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  />
+                </th>
+              )}
+              <th className="px-2 py-2">
+                <input
+                  aria-label="Filtrar valor original"
+                  type="text"
+                  placeholder="valor..."
+                  value={filtrosColuna.valorOriginal}
+                  onChange={(e) => atualizarFiltroColuna("valorOriginal", e.target.value)}
+                  className="w-full min-w-[100px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-2 py-2">
+                <input
+                  aria-label="Filtrar valor em aberto"
+                  type="text"
+                  placeholder="valor..."
+                  value={filtrosColuna.valorAberto}
+                  onChange={(e) => atualizarFiltroColuna("valorAberto", e.target.value)}
+                  className="w-full min-w-[100px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-2 py-2">
+                <select
+                  aria-label="Filtrar situação"
+                  value={filtrosColuna.situacao}
+                  onChange={(e) => atualizarFiltroColuna("situacao", e.target.value as FiltrosColuna["situacao"])}
+                  className="w-full min-w-[100px] rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                >
+                  <option value="">todas</option>
+                  <option value="aberto">Não pago</option>
+                  <option value="pago">Pago</option>
+                </select>
+              </th>
+              <th className="px-2 py-2">
+                <select
+                  aria-label="Filtrar vínculo com OC"
+                  value={filtrosColuna.oc}
+                  onChange={(e) => atualizarFiltroColuna("oc", e.target.value as FiltrosColuna["oc"])}
+                  className="w-full min-w-[125px] rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                >
+                  <option value="">todos</option>
+                  <option value="com">com OC</option>
+                  <option value="sem">sem OC</option>
+                  <option value="sem-investigar">sem OC (investigar)</option>
+                  <option value="justificada">sem OC justificada</option>
+                  <option value="exata">vínculo exato</option>
+                  <option value="parcela">por parcela</option>
+                </select>
+              </th>
+            </tr>
           </thead>
           <tbody>
             {filtradosMostrados.map((t, i) => (
@@ -310,7 +527,18 @@ export default function ProgramacaoPagamentoPage() {
                 <td className="max-w-[200px] truncate px-3 py-1.5" title={t.fornecedorNome}>
                   {t.fornecedorNome}
                 </td>
-                <td className="px-3 py-1.5 text-gray-500">{t.ccuNome || "—"}</td>
+                <td className="px-3 py-1.5 text-gray-500">
+                  {t.ccuNome ? (
+                    t.ccuNome
+                  ) : (
+                    <span className="cursor-help underline decoration-dotted underline-offset-2" title="O título não trouxe CC no sincronismo do rateio E501RAT.">
+                      Sem CC
+                    </span>
+                  )}
+                  {!t.ccuNome && t.ocRelacionada?.centroCusto && (
+                    <span className="mt-0.5 block text-[10px] text-gray-400">OC: {t.ocRelacionada.centroCusto}</span>
+                  )}
+                </td>
                 <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.vencimentoProgramado)}</td>
                 {mostrarColunaPagamento && (
                   <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataPagamento)}</td>
@@ -332,36 +560,36 @@ export default function ProgramacaoPagamentoPage() {
                       onClick={() => abrirOC(t.ocRelacionada!.numOcp)}
                       disabled={carregandoOC === t.ocRelacionada.numOcp}
                       title={
-                        t.ocRelacionada.aproximado
-                          ? "Aproximado por fornecedor + valor (Senior não grava o vínculo aqui) — clique pra ver o descritivo da OC"
-                          : t.ocRelacionada.parcela
-                            ? "Parcela de uma NF vinculada à OC (a OC referencia só a 1ª parcela, esse título é outra parcela do mesmo número) — clique pra ver o descritivo"
-                            : "Vínculo real: a própria OC referencia esse título no Senior — clique pra ver o descritivo"
+                        `${t.ocRelacionada.motivo} Clique para ver o descritivo da OC.`
                       }
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium underline decoration-dotted underline-offset-2 hover:brightness-95 disabled:opacity-50 ${
-                        t.ocRelacionada.aproximado
-                          ? "bg-amber-100 text-amber-800"
-                          : t.ocRelacionada.parcela
-                            ? "bg-violet-100 text-violet-800"
-                            : t.ocRelacionada.situacao === "APR"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
-                                ? "bg-red-100 text-red-700"
-                                : "bg-sky-100 text-sky-800"
+                        t.ocRelacionada.situacao === "APR"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-sky-100 text-sky-800"
                       }`}
                     >
-                      OC {t.ocRelacionada.numOcp} · {t.ocRelacionada.situacaoLabel}
+                      OC {t.ocRelacionada.numOcp} · {t.ocRelacionada.situacaoLabel} ·{" "}
+                      {t.ocRelacionada.parcela ? "parcela" : "exata"}
                       {carregandoOC === t.ocRelacionada.numOcp && "…"}
                     </button>
                   ) : (
-                    <span className="text-gray-300">—</span>
+                    <details className="max-w-[230px]">
+                      <summary className="cursor-help rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500 underline decoration-dotted underline-offset-2">
+                        Sem OC · por quê?
+                      </summary>
+                      <p className="mt-1 text-[10px] leading-tight text-gray-500">
+                        {t.motivoSemOC || "Sem motivo de vínculo informado."}
+                      </p>
+                    </details>
                   )}
                 </td>
               </tr>
             ))}
             {filtradosMostrados.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={mostrarColunaPagamento ? 12 : 11} className="px-4 py-6 text-center text-gray-400">
                   Nenhum título encontrado com esse filtro.
                 </td>
               </tr>

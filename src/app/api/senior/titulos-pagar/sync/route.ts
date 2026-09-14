@@ -42,6 +42,8 @@ const itemSchema = z.object({
   codccu: z.string().nullable(),
   ccuNome: z.string().nullable(),
   numOcp: z.string().nullable(),
+  filOcp: z.string().nullable().optional(),
+  numNfc: z.string().nullable().optional(),
 });
 
 const bodySchema = z.object({ itens: z.array(itemSchema) });
@@ -112,6 +114,8 @@ export async function POST(req: Request) {
         codccu: item.codccu,
         ccuNome: item.ccuNome,
         numOcp: item.numOcp,
+        ...(item.filOcp !== undefined ? { filOcp: item.filOcp } : {}),
+        ...(item.numNfc !== undefined ? { numNfc: item.numNfc } : {}),
       },
       create: {
         numTit: item.numTit,
@@ -130,6 +134,8 @@ export async function POST(req: Request) {
         codccu: item.codccu,
         ccuNome: item.ccuNome,
         numOcp: item.numOcp,
+        filOcp: item.filOcp ?? null,
+        numNfc: item.numNfc ?? null,
       },
     });
     processados++;

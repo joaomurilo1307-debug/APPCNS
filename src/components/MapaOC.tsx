@@ -128,10 +128,34 @@ function parseNiveis(csv: string | null): number[] {
 export function niveisLabel(a: Aprovacao) {
   const exig = parseNiveis(a.niveisExigidos);
   const aprv = new Set(parseNiveis(a.niveisAprovados));
-  if (!exig.length) return `nível ${a.nivelAtual}`;
-  const pendentes = exig.filter((n) => !aprv.has(n));
-  if (!pendentes.length) return `${exig.length}/${exig.length} níveis`;
-  return `nível ${pendentes[0]}/${exig.length}`;
+  if (exig.length) {
+    const pendentes = exig.filter((n) => !aprv.has(n));
+    if (!pendentes.length) return `${exig.length}/${exig.length} níveis`;
+    return `nível ${pendentes[0]}/${exig.length}`;
+  }
+
+  // Algumas OCs antigas não têm NIVEXI/NIVAPR preenchidos. Não inventar
+  // "nível 1" nesses casos: usa o histórico registrado ou informa que a
+  // alçada não veio no sincronismo.
+  const historico = parseJSON<NivelHist[]>(a.historicoNiveis) ?? [];
+  const niveisHistorico = Array.from(
+    new Set(historico.map((n) => Number(n.NIVAPR)).filter((n) => Number.isFinite(n)))
+  );
+  if (niveisHistorico.length) {
+    return a.situacaoAtual === "APR"
+      ? `${niveisHistorico.length}/${niveisHistorico.length} níveis registrados`
+      : `nível ${a.nivelAtual} · ${niveisHistorico.length} registrados`;
+  }
+
+  const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
+  const niveisRateio = Array.from(new Set(rateio.flatMap((r) => (r.niveis ?? []).map((n) => n.nivel))));
+  if (niveisRateio.length) {
+    return a.situacaoAtual === "APR"
+      ? `${niveisRateio.length}/${niveisRateio.length} níveis registrados`
+      : `nível ${a.nivelAtual} · ${niveisRateio.length} registrados`;
+  }
+
+  return a.situacaoAtual === "APR" ? "aprovada · alçada não informada" : "alçada não informada";
 }
 
 export function contratoDe(a: Aprovacao) {
@@ -294,6 +318,12 @@ export default function MapaOC({
                 <dd className="font-medium">{a.usuNumTit}</dd>
               </div>
             )}
+            {a.usuNumNfc && (
+              <div className="col-span-2">
+                <dt className="text-xs text-gray-500">NF(s) de compra vinculada(s) (digitada na OC)</dt>
+                <dd className="font-medium">{a.usuNumNfc}</dd>
+              </div>
+            )}
           </dl>
 
           {a.descricao && (
@@ -367,19 +397,35 @@ export default function MapaOC({
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Cadeia de aprovação</p>
               <ol className="space-y-1.5">
-                {niveis
-                  .filter((n) => (n.SITAPR || "").toUpperCase() === "APR")
-                  .map((n, i) => (
+                {niveis.map((n, i) => {
+                  const situacaoNivel = (n.SITAPR || "").toUpperCase();
+                  const aprovado = situacaoNivel === "APR";
+                  const reprovado = ["REP", "CAN"].includes(situacaoNivel);
+                  return (
                     <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700">
-                        ✓
+                      <span
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                          aprovado
+                            ? "bg-emerald-100 text-emerald-700"
+                            : reprovado
+                              ? "bg-rose-100 text-rose-700"
+                              : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {aprovado ? "✓" : reprovado ? "!" : n.NIVAPR || "?"}
                       </span>
                       <span>
-                        {GRUPO_LABEL[Number(n.NIVAPR)] || `Nível ${n.NIVAPR}`} — aprovado por {nomeUsuSenior(n.USUAPR, codToNome)}
+                        {GRUPO_LABEL[Number(n.NIVAPR)] || `Nível ${n.NIVAPR || "não informado"}`} —{" "}
+                        {aprovado
+                          ? `aprovado por ${nomeUsuSenior(n.USUAPR, codToNome)}`
+                          : reprovado
+                            ? `${situacaoLabel[situacaoNivel] || situacaoNivel.toLowerCase()}`
+                            : "pendente ou sem situação registrada"}
                         {n.DATAPR ? ` em ${n.DATAPR}` : ""}
                       </span>
                     </li>
-                  ))}
+                  );
+                })}
               </ol>
             </div>
           )}

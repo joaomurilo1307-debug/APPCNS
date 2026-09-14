@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 
 const itemSchema = z.object({
   numOcp: z.string(),
+  codFil: z.string().optional().nullable(),
   dataEmissao: z.string(), // ISO
   fornecedorCodigo: z.string(),
   fornecedorNome: z.string().optional().nullable(),
@@ -135,6 +136,7 @@ export async function POST(req: Request) {
     // campos descritivos -- reescritos a cada sync (dado do Senior manda)
     const descritivos = {
       fornecedorCodigo: item.fornecedorCodigo,
+      codFil: item.codFil || existente?.codFil || null,
       fornecedorNome: item.fornecedorNome || null,
       valor: item.valor,
       descricao: item.descricao || null,

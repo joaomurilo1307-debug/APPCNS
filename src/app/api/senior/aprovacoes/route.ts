@@ -22,6 +22,11 @@ export async function GET() {
     return NextResponse.json({ error: "Sem permissão para ver aprovações do Senior" }, { status: 403 });
   }
 
+  // O histórico era limitado a 50 OCs, o que fazia a tela parecer perder
+  // vínculos antigos. Mantemos um limite para não trazer eventos ilimitados
+  // de uma vez, mas agora entregamos um histórico útil (500 registros).
+  const historicoLimit = 500;
+
   const [pendentes, resolvidasRecentes, usuariosSenior] = await Promise.all([
     prisma.aprovacaoSenior.findMany({
       where: { situacaoAtual: { in: ["ANA", "PRE"] } },
@@ -34,7 +39,7 @@ export async function GET() {
     prisma.aprovacaoSenior.findMany({
       where: { resolvidoEm: { not: null } },
       orderBy: { resolvidoEm: "desc" },
-      take: 50,
+      take: historicoLimit,
       include: {
         eventos: { orderBy: { detectadoEm: "asc" } },
         proximoAprovador: { select: { id: true, name: true } },
@@ -52,5 +57,5 @@ export async function GET() {
     codToNome[u.codigo] = u.user?.name || u.nome;
   }
 
-  return NextResponse.json({ pendentes, resolvidasRecentes, codToNome });
+  return NextResponse.json({ pendentes, resolvidasRecentes, codToNome, historicoLimit });
 }

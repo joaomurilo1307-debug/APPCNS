@@ -6,33 +6,11 @@ import { prisma } from "@/lib/prisma";
 // Programação de Contas a Pagar por título, escopo 2026. Mesmo nível de
 // acesso das Aprovações OC do Senior.
 //
-// Cruzamento com OC (pedido do João 14/09/2026): o Senior não grava NUMOCP
-// nos títulos (confirmado 13/09/2026, zerado em 100% da base) -- mas achamos
-// o vínculo real do OUTRO lado: E420OCP.USU_NUMTIT é um campo customizado,
-// texto livre digitado pelo comprador na própria OC, com o NUMTIT do título
-// gerado por ela. Testado empiricamente 14/09/2026 contra o Senior ao vivo:
-// 8.780 de 11.682 OCs preenchidas, e numa amostra de 30, 25 (83%) casam EXATO
-// (fornecedor + NUMTIT) com um título real em E501TCP -- os outros 5 são
-// provavelmente erro de digitação de quem preencheu (campo é texto livre).
-// Por isso o vínculo por usuNumTit é tratado como REAL (aproximado: false);
-// depois entra o nível "parcela" (achado 14/09/2026): muitos títulos são
-// parcelas de uma mesma NF (numTit tipo "8327785$08"), o comprador só digita
-// a 1ª parcela na OC ("8327785$01") -- casa pelo prefixo antes do "$", também
-// tratado como vínculo real (não é chute). Só cai pra aproximação por
-// fornecedor+valor quando nada acima bate.
-//
-// Bug real achado pelo João 14/09/2026: título "FORTE PNEUS_02".."_28" (tipo
-// PRV, sem nota fiscal real, provisão semanal de manutenção) caíam TODOS na
-// mesma OC 4133 -- que no Senior é de 15/04/2025, serviço mecânico de 2
-// veículos, contrato MRN CT 3484/2022, ZERO relação com esses títulos de
-// 2026. Causa: só existe 1 OC histórica com fornecedor=FORTE PNEUS e
-// valor=R$3.000 -- o fallback não tinha limite de distância de data, então
-// caía nela sempre, não importa o quão velha. Corrigido: título tipo PRV
-// nunca tenta o fallback (provisão não tem OC real por trás, tentar só cria
-// vínculo falso); pros demais tipos, o fallback só aceita a OC candidata se
-// estiver dentro de ~90 dias da emissão do título -- fora disso, sem vínculo
-// (null) é mais honesto que mostrar uma OC de 400+ dias de distância como se
-// fosse provável.
+// Cruzamento com OC (pedido do João 14/09/2026): o vínculo só é exibido como
+// confirmado quando existe uma relação identificável na origem do Senior:
+// NUMOCP/FILOCP no título, USU_NUMTIT/USU_NUMNFC digitado na OC ou parcela
+// confirmável pela referência-base. Fornecedor + valor + data serve apenas
+// para explicar uma possível candidata; nunca cria um vínculo por si só.
 function situacaoLabel(situacao: string) {
   switch (situacao) {
     case "APR":
@@ -64,137 +42,383 @@ export async function GET() {
     prisma.aprovacaoSenior.findMany({
       select: {
         numOcp: true,
+        codFil: true,
         fornecedorCodigo: true,
+        fornecedorNome: true,
         valor: true,
         dataEmissao: true,
         situacaoAtual: true,
         usuNumTit: true,
+        usuNumNfc: true,
+        codccu: true,
+        contratoNome: true,
+        temRateio: true,
+        previsaoPagamento: true,
       },
     }),
   ]);
 
-  // vínculo REAL: fornecedor + NUMTIT (bruto, do jeito que foi digitado na
-  // OC) -- ver nota no topo do arquivo. Cada OC pode ter mais de um título
-  // (comprador separa por quebra de linha/;/,) -- NUNCA separa por "-",
-  // porque NUMTIT real usa "-" dentro do próprio número (ex "51841-103"),
-  // então splitar por "-" quebraria esse caso. Tenta o texto inteiro primeiro
-  // (é o que bateu nos 25/30 testados), só separa como fallback.
-  const ocPorTituloReal = new Map<string, (typeof ocs)[number]>();
-  for (const oc of ocs) {
-    if (!oc.usuNumTit) continue;
-    const bruto = oc.usuNumTit.trim();
-    if (!bruto) continue;
-    const candidatos = new Set<string>([bruto]);
-    for (const parte of bruto.split(/[\n\r;,]+/)) {
-      const p = parte.trim();
-      if (p) candidatos.add(p);
-    }
-    for (const cand of candidatos) {
-      const chave = `${oc.fornecedorCodigo}|${cand}`;
-      // se mais de uma OC reivindica o mesmo (fornecedor,numTit), fica com a
-      // primeira -- caso raro, não vale complicar
-      if (!ocPorTituloReal.has(chave)) ocPorTituloReal.set(chave, oc);
-    }
+  type OcLinha = (typeof ocs)[number];
+  type TituloLinha = (typeof titulos)[number];
+
+  // O Senior traz fornecedor e referências em formatos diferentes conforme a
+  // tela/rotina que gerou o registro. A normalização abaixo corrige espaços,
+  // acentos, caixa e zeros à esquerda sem quebrar títulos como 51841-103.
+  function normalizarReferencia(valor: string | null | undefined) {
+    return (valor ?? "").normalize("NFKC").replace(/\u00a0/g, " ").trim().replace(/\s+/g, " ").toUpperCase();
   }
 
-  // 2º nível (parcela, achado 14/09/2026): muitos títulos são PARCELAS de uma
-  // mesma NF/OC -- mesmo fornecedor + mesmo número base, com sufixo de 1-3
-  // dígitos separado por "$" ou "_" incrementando (ex "8327785$08".."$12",
-  // "005424_09".."_12"). O comprador só digita a 1ª parcela na OC (ex
-  // "8327785$01"); as demais ficavam sem vínculo. Testado empiricamente pro
-  // separador "$": toda amostra bateu fornecedor + valor idêntico à 1ª
-  // parcela -- trata como vínculo real (não é aproximação por chute de valor).
-  const SEPARADOR_PARCELA = /[$_](\d{1,3})$/;
-  function prefixoParcela(bruto: string): string | null {
-    const m = bruto.match(SEPARADOR_PARCELA);
-    if (!m) return null;
-    const prefixo = bruto.slice(0, m.index).trim();
-    return prefixo || null;
+  function referenciaPreenchida(valor: string | null | undefined) {
+    const texto = normalizarReferencia(valor);
+    return !!texto && !/^0+$/.test(texto);
   }
 
-  const ocPorPrefixoParcela = new Map<string, (typeof ocs)[number]>();
-  for (const oc of ocs) {
-    if (!oc.usuNumTit) continue;
-    for (const cand of new Set<string>([
-      oc.usuNumTit.trim(),
-      ...oc.usuNumTit.split(/[\n\r;,]+/).map((p) => p.trim()),
-    ])) {
-      const prefixo = prefixoParcela(cand);
-      if (!prefixo) continue;
-      const chave = `${oc.fornecedorCodigo}|${prefixo}`;
-      if (!ocPorPrefixoParcela.has(chave)) ocPorPrefixoParcela.set(chave, oc);
-    }
+  function normalizarNomeFornecedor(valor: string | null | undefined) {
+    return (valor ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Za-z0-9]+/g, " ")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toUpperCase();
   }
 
-  // fallback: aproximação por fornecedor + valor (só quando não achou vínculo real nem parcela)
-  const ocsPorChave = new Map<string, typeof ocs>();
-  for (const oc of ocs) {
-    const chave = `${oc.fornecedorCodigo}|${oc.valor.toFixed(2)}`;
-    const lista = ocsPorChave.get(chave) ?? [];
-    lista.push(oc);
-    ocsPorChave.set(chave, lista);
-  }
-
-  // Achado 14/09/2026 (Joao apontou 27 titulos FORTE PNEUS_NN, tipo PRV, todos
-  // caindo na mesma OC 4133 -- que no Senior eh de 15/04/2025, servico mecanico
-  // de 2 veiculos sem nenhuma relacao real com esses titulos de 2026). Causa:
-  // o fallback por fornecedor+valor nao tinha limite de distancia de data, e
-  // so existe 1 OC historica pra aquele fornecedor+valor -- caia nela sempre,
-  // por mais velha/desconexa que fosse. Titulos tipo PRV (previsao/provisao,
-  // sem numero de nota fiscal real) nunca tem OC de verdade por tras -- nao
-  // tenta nem o fallback pra eles. Pros demais tipos, so aceita o fallback se
-  // a OC candidata estiver dentro de ~90 dias da emissao do titulo -- fora
-  // disso eh mais provavel ser coincidencia de fornecedor+valor do que vinculo
-  // real, e mostrar teria virado "sujeira" (erro apontado pelo Joao).
-  const JANELA_FALLBACK_DIAS = 90;
-
-  function ocRelacionadaDe(codFor: string, numTit: string, valorOriginal: number, dataEmissaoTitulo: Date, tipoTitulo: string) {
-    const real = ocPorTituloReal.get(`${codFor}|${numTit}`);
-    if (real) {
-      return {
-        numOcp: real.numOcp,
-        situacao: real.situacaoAtual,
-        situacaoLabel: situacaoLabel(real.situacaoAtual),
-        aproximado: false,
-        parcela: false,
-      };
-    }
-
-    {
-      const prefixo = prefixoParcela(numTit);
-      const porParcela = prefixo ? ocPorPrefixoParcela.get(`${codFor}|${prefixo}`) : undefined;
-      if (porParcela) {
-        return {
-          numOcp: porParcela.numOcp,
-          situacao: porParcela.situacaoAtual,
-          situacaoLabel: situacaoLabel(porParcela.situacaoAtual),
-          aproximado: false,
-          parcela: true,
-        };
+  function variantesReferencia(valor: string | null | undefined) {
+    const texto = normalizarReferencia(valor);
+    if (!referenciaPreenchida(texto)) return [];
+    const partes = new Set<string>([texto]);
+    // Não dividir por hífen sem espaços, cifrão ou sublinhado: eles fazem
+    // parte de muitos NUMTIT/parcela reais. Hífen com espaços e os demais
+    // separadores são usados quando o comprador registra mais de uma
+    // referência no mesmo campo.
+    for (const bloco of texto.split(/[\n\r;,|/]+|\s+-\s+/)) {
+      const parte = normalizarReferencia(bloco);
+      if (!referenciaPreenchida(parte)) continue;
+      partes.add(parte);
+      for (const palavra of parte.split(/\s+/)) {
+        if (palavra.length >= 2) partes.add(palavra);
       }
     }
 
-    // titulo tipo PRV (previsao/provisao) nunca tem OC real por tras -- nem
-    // tenta o fallback por coincidencia de fornecedor+valor pra ele.
-    if (tipoTitulo === "PRV") return null;
+    const resultado = new Set<string>();
+    for (const parte of partes) {
+      resultado.add(parte);
+      if (/^\d+$/.test(parte)) resultado.add(parte.replace(/^0+(?=\d)/, ""));
+    }
+    return [...resultado];
+  }
 
-    const candidatas = ocsPorChave.get(`${codFor}|${valorOriginal.toFixed(2)}`);
-    if (!candidatas || candidatas.length === 0) return null;
-    const maisProxima = candidatas.reduce((a, b) =>
-      Math.abs(a.dataEmissao.getTime() - dataEmissaoTitulo.getTime()) <=
-      Math.abs(b.dataEmissao.getTime() - dataEmissaoTitulo.getTime())
-        ? a
-        : b
+  function chavesFornecedor(codFor: string | null | undefined, nome: string | null | undefined) {
+    const chaves = new Set<string>();
+    const codigo = normalizarReferencia(codFor);
+    if (codigo) {
+      chaves.add(`C:${codigo}`);
+      if (/^\d+$/.test(codigo)) chaves.add(`C:${codigo.replace(/^0+(?=\d)/, "")}`);
+    }
+    const nomeNormalizado = normalizarNomeFornecedor(nome);
+    if (nomeNormalizado) chaves.add(`N:${nomeNormalizado}`);
+    return [...chaves];
+  }
+
+  const SEPARADOR_PARCELA = /[$_](\d{1,3})$/;
+  function prefixoParcela(valor: string | null | undefined) {
+    const texto = normalizarReferencia(valor);
+    const m = texto.match(SEPARADOR_PARCELA);
+    if (!m || m.index === undefined) return null;
+    const prefixo = texto.slice(0, m.index).trim();
+    return prefixo || null;
+  }
+
+  function adicionarIndice(mapa: Map<string, OcLinha[]>, chave: string, oc: OcLinha) {
+    const lista = mapa.get(chave) ?? [];
+    if (!lista.some((item) => item.numOcp === oc.numOcp)) lista.push(oc);
+    mapa.set(chave, lista);
+  }
+
+  const ocPorNumero = new Map<string, OcLinha>();
+  const ocPorReferenciaFornecedor = new Map<string, OcLinha[]>();
+  const ocPorPrefixoParcelaFornecedor = new Map<string, OcLinha[]>();
+  const ocPorBaseFornecedor = new Map<string, OcLinha[]>();
+  const ocPorBaseParcelaFornecedor = new Map<string, OcLinha[]>();
+  const ocsPorFornecedor = new Map<string, OcLinha[]>();
+
+  for (const oc of ocs) {
+    ocPorNumero.set(normalizarReferencia(oc.numOcp), oc);
+    const fornecedores = chavesFornecedor(oc.fornecedorCodigo, oc.fornecedorNome);
+    for (const fornecedor of fornecedores) {
+      adicionarIndice(ocsPorFornecedor, fornecedor, oc);
+    }
+
+    // USU_NUMNFC era ignorado pelo cruzamento. Para títulos NFC/NFS ele pode
+    // ser justamente a única referência que o comprador preencheu na OC.
+    for (const campo of [oc.usuNumTit, oc.usuNumNfc]) {
+      for (const referencia of variantesReferencia(campo)) {
+        for (const fornecedor of fornecedores) {
+          adicionarIndice(ocPorReferenciaFornecedor, `${fornecedor}|${referencia}`, oc);
+        }
+        const prefixo = prefixoParcela(referencia);
+        const bases = prefixo ? variantesReferencia(prefixo) : [referencia];
+        for (const fornecedor of fornecedores) {
+          for (const base of bases) adicionarIndice(ocPorBaseFornecedor, `${fornecedor}|${base}`, oc);
+          if (!prefixo) continue;
+          for (const base of bases) {
+            adicionarIndice(ocPorPrefixoParcelaFornecedor, `${fornecedor}|${base}`, oc);
+            adicionarIndice(ocPorBaseParcelaFornecedor, `${fornecedor}|${base}`, oc);
+          }
+        }
+      }
+    }
+  }
+
+  function buscarIndice(mapa: Map<string, OcLinha[]>, fornecedores: string[], referencias: string[]) {
+    const resultado = new Map<string, OcLinha>();
+    for (const fornecedor of fornecedores) {
+      for (const referencia of referencias) {
+        for (const oc of mapa.get(`${fornecedor}|${referencia}`) ?? []) resultado.set(oc.numOcp, oc);
+      }
+    }
+    return [...resultado.values()];
+  }
+
+  function fornecedorCompativel(titulo: TituloLinha, oc: OcLinha) {
+    const doTitulo = chavesFornecedor(titulo.codFor, titulo.fornecedorNome);
+    const daOC = chavesFornecedor(oc.fornecedorCodigo, oc.fornecedorNome);
+    return doTitulo.some((chave) => daOC.includes(chave));
+  }
+
+  function filialCompativel(titulo: TituloLinha, oc: OcLinha) {
+    const filialTitulo = normalizarReferencia(titulo.filOcp);
+    const filialOC = normalizarReferencia(oc.codFil);
+    // Se uma das fontes ainda não trouxer a filial, não transformamos a
+    // ausência desse campo em falso negativo. Quando as duas trazem, a
+    // filial passa a ser parte obrigatória da relação.
+    return !referenciaPreenchida(filialTitulo) || !referenciaPreenchida(filialOC) || filialTitulo === filialOC;
+  }
+
+  function filtrarCandidatasValidas(titulo: TituloLinha, candidatas: OcLinha[]) {
+    return candidatas.filter((oc) => fornecedorCompativel(titulo, oc) && filialCompativel(titulo, oc));
+  }
+
+  function distanciaDias(a: Date | null | undefined, b: Date | null | undefined) {
+    if (!a || !b) return null;
+    return Math.abs(a.getTime() - b.getTime()) / 86400000;
+  }
+
+  function mesmoValor(a: number, b: number) {
+    return Math.abs(a - b) < 0.01;
+  }
+
+  function dataCompativel(oc: OcLinha, titulo: TituloLinha) {
+    const previsao = distanciaDias(oc.previsaoPagamento, titulo.vencimentoProgramado);
+    const emissao = distanciaDias(oc.dataEmissao, titulo.dataEmissao);
+    return (previsao !== null && previsao <= 3) || (emissao !== null && emissao <= 45);
+  }
+
+  // Uma referência pode aparecer em mais de uma OC (reprocessamento, compra
+  // parcial ou preenchimento repetido). Só escolhemos automaticamente quando
+  // outra evidência independente deixa uma única candidata. Situação APR não
+  // desempata relação: uma OC aprovada não vira "a certa" só por estar verde.
+  function escolherCandidata(candidatas: OcLinha[], titulo: TituloLinha) {
+    const unicas = [...new Map(candidatas.map((oc) => [oc.numOcp, oc])).values()];
+    if (unicas.length === 1) return unicas[0];
+
+    const porValor = unicas.filter((oc) => mesmoValor(oc.valor, titulo.valorOriginal));
+    if (porValor.length === 1) return porValor[0];
+
+    const porData = unicas.filter((oc) => dataCompativel(oc, titulo));
+    if (porData.length === 1) return porData[0];
+
+    return null;
+  }
+
+  function centroCustoDaOC(oc: OcLinha) {
+    if (oc.temRateio) return "Rateio por múltiplos centros";
+    return oc.contratoNome || (oc.codccu ? `CC ${oc.codccu}` : null);
+  }
+
+  const PADRAO_NAO_OC = /SECRETARIA DE (ESTADO|FAZENDA)|GOVERNO FEDERAL|MINISTERIO DA FAZENDA|RECEITA FEDERAL|PREFEITURA|MUNICIPIO DE|INSS\b|FGTS\b|CAIXA ECON.MICA|FOPAG|FORNECEDORES DIVERSOS|SALARIO|INPS/i;
+
+  // Exceção confirmada pelo João diretamente no Senior em 14/09/2026.
+  // Chaveia pelo título e pelo fornecedor, não por todos os lançamentos da
+  // BEF: outro título só poderá ser liberado quando tiver sua própria prova.
+  const SEM_OC_CONFIRMADAS = [
+    {
+      numTit: "633A1",
+      fornecedorPrefixo: "BEF LAVAGEM AUTOMOTIVA",
+      motivo: "Sem OC confirmada no Senior: o título 633A1 da BEF foi conferido e não há OC criada para ele.",
+    },
+  ];
+
+  function excecaoSemOCConfirmada(titulo: TituloLinha) {
+    const numTit = normalizarReferencia(titulo.numTit);
+    const fornecedor = normalizarNomeFornecedor(titulo.fornecedorNome);
+    return SEM_OC_CONFIRMADAS.find(
+      (excecao) => numTit === excecao.numTit && fornecedor.startsWith(excecao.fornecedorPrefixo)
     );
-    const diasDeDistancia = Math.abs(maisProxima.dataEmissao.getTime() - dataEmissaoTitulo.getTime()) / 86400000;
-    if (diasDeDistancia > JANELA_FALLBACK_DIAS) return null;
+  }
+
+  function tituloPodeTerOC(titulo: TituloLinha) {
+    if (titulo.tipo === "PRV") return false;
+    if (titulo.tipo === "IMP") return false;
+    if (PADRAO_NAO_OC.test(titulo.fornecedorNome ?? "")) return false;
+    if (/^FOPAG/i.test(titulo.numTit)) return false;
+    return true;
+  }
+
+  type ResultadoVinculo = {
+    ocRelacionada: {
+      numOcp: string;
+      situacao: string;
+      situacaoLabel: string;
+      parcela: boolean;
+      motivo: string;
+      centroCusto?: string | null;
+    } | null;
+    motivoSemOC: string | null;
+    ocEsperada: boolean;
+  };
+
+  function resultadoComOC(oc: OcLinha, titulo: TituloLinha, parcela: boolean, motivo: string): ResultadoVinculo {
     return {
-      numOcp: maisProxima.numOcp,
-      situacao: maisProxima.situacaoAtual,
-      situacaoLabel: situacaoLabel(maisProxima.situacaoAtual),
-      aproximado: true,
-      parcela: false,
+      ocRelacionada: {
+        numOcp: oc.numOcp,
+        situacao: oc.situacaoAtual,
+        situacaoLabel: situacaoLabel(oc.situacaoAtual),
+        parcela,
+        motivo,
+        centroCusto: centroCustoDaOC(oc),
+      },
+      motivoSemOC: null,
+      ocEsperada: tituloPodeTerOC(titulo),
     };
+  }
+
+  function semOC(titulo: TituloLinha, detalhe?: string): ResultadoVinculo {
+    const excecao = excecaoSemOCConfirmada(titulo);
+    if (excecao) {
+      return {
+        ocRelacionada: null,
+        motivoSemOC: excecao.motivo,
+        ocEsperada: false,
+      };
+    }
+    if (!tituloPodeTerOC(titulo)) {
+      if (titulo.tipo === "PRV") {
+        return {
+          ocRelacionada: null,
+          motivoSemOC: "Título tipo PRV (provisão/previsão): não há uma OC real esperada para este lançamento.",
+          ocEsperada: false,
+        };
+      }
+      return {
+        ocRelacionada: null,
+        motivoSemOC: "Lançamento sem OC por natureza (imposto, governo, folha ou fornecedor genérico).",
+        ocEsperada: false,
+      };
+    }
+    return {
+      ocRelacionada: null,
+      motivoSemOC: detalhe || "Não foi possível identificar a OC. Verifique a referência do título/NF na própria OC e o histórico sincronizado.",
+      ocEsperada: true,
+    };
+  }
+
+  function ocRelacionadaDe(titulo: TituloLinha): ResultadoVinculo {
+    if (!tituloPodeTerOC(titulo)) return semOC(titulo);
+
+    const fornecedores = chavesFornecedor(titulo.codFor, titulo.fornecedorNome);
+    const referenciasTitulo = [
+      ...new Set([...variantesReferencia(titulo.numTit), ...variantesReferencia(titulo.numNfc)]),
+    ];
+
+    // 1) Se a origem gravou NUMOCP no título, esse é o vínculo mais forte.
+    if (referenciaPreenchida(titulo.numOcp)) {
+      const direta = ocPorNumero.get(normalizarReferencia(titulo.numOcp));
+      if (!direta) {
+        return semOC(titulo, `O título informa a OC ${titulo.numOcp}, mas essa OC não foi sincronizada para o sistema.`);
+      }
+      if (!fornecedorCompativel(titulo, direta)) {
+        return semOC(titulo, `Conflito: o título informa a OC ${titulo.numOcp}, mas o fornecedor da OC não é o mesmo do título.`);
+      }
+      if (!filialCompativel(titulo, direta)) {
+        return semOC(titulo, `Conflito: o título informa a OC ${titulo.numOcp}, mas a filial da OC não é a mesma do título.`);
+      }
+      return resultadoComOC(direta, titulo, false, "Vínculo direto: o título informa esta OC.");
+    }
+
+    // 2) Referência exata em qualquer campo de origem: número do título ou NF.
+    const exatas = filtrarCandidatasValidas(titulo, buscarIndice(ocPorReferenciaFornecedor, fornecedores, referenciasTitulo));
+    if (exatas.length > 0) {
+      const escolhida = escolherCandidata(exatas, titulo);
+      if (escolhida) {
+        return resultadoComOC(escolhida, titulo, false, "Vínculo exato: a OC referencia o número do título/NF e o fornecedor.");
+      }
+      return semOC(titulo, `A referência do título/NF aparece em ${exatas.length} OCs; não vinculei nenhuma sem a filial, valor ou data confirmar a OC certa.`);
+    }
+
+    // 3) Parcelas: o comprador costuma informar $01/_01 na OC e o contas a
+    // pagar recebe $02, $03... Como o valor de cada parcela pode ser diferente
+    // do total da OC, o número-base é a evidência principal. Se houver uma
+    // única OC para o número-base, ela é vinculada mesmo com valor diferente.
+    const prefixo = prefixoParcela(titulo.numTit);
+    if (prefixo) {
+      const candidatasParcelaMap = new Map<string, OcLinha>();
+      for (const oc of [
+        ...buscarIndice(ocPorPrefixoParcelaFornecedor, fornecedores, variantesReferencia(prefixo)),
+        ...buscarIndice(ocPorBaseFornecedor, fornecedores, variantesReferencia(prefixo)),
+      ]) {
+        if (fornecedorCompativel(titulo, oc) && filialCompativel(titulo, oc)) candidatasParcelaMap.set(oc.numOcp, oc);
+      }
+      const candidatasParcela = [...candidatasParcelaMap.values()];
+      if (candidatasParcela.length > 0) {
+        const escolhida = escolherCandidata(candidatasParcela, titulo);
+        if (!escolhida) {
+          return semOC(titulo, `O número-base da parcela aparece em ${candidatasParcela.length} OCs; falta a referência completa para escolher a certa.`);
+        }
+        const motivo = mesmoValor(escolhida.valor, titulo.valorOriginal)
+          ? "Vínculo por parcela: fornecedor, número-base e valor conferem."
+          : "Vínculo por parcela: fornecedor e número-base conferem; o valor é o da parcela, não o total da OC.";
+        return resultadoComOC(escolhida, titulo, true, motivo);
+      }
+    }
+
+    // 4) O título pode não ter sufixo, enquanto a OC registra a primeira
+    // parcela. Procuramos a mesma base somente entre referências parceladas.
+    const basesParceladas = filtrarCandidatasValidas(titulo, buscarIndice(ocPorBaseParcelaFornecedor, fornecedores, referenciasTitulo));
+    if (basesParceladas.length > 0) {
+      const escolhida = escolherCandidata(basesParceladas, titulo);
+      if (escolhida) return resultadoComOC(escolhida, titulo, true, "Vínculo por número-base: a OC registra a parcela desta NF.");
+      return semOC(titulo, `O número-base aparece em ${basesParceladas.length} OCs; falta a referência completa para escolher a certa.`);
+    }
+
+    const fornecedorOcs = new Map<string, OcLinha>();
+    for (const fornecedor of fornecedores) {
+      for (const oc of ocsPorFornecedor.get(fornecedor) ?? []) fornecedorOcs.set(oc.numOcp, oc);
+    }
+    const todasDoFornecedor = filtrarCandidatasValidas(titulo, [...fornecedorOcs.values()]);
+
+    // 5) Fornecedor + valor + data não é uma relação Senior. Mantemos a
+    // análise apenas para explicar a pendência e orientar o backfill da
+    // referência correta; não transformamos a candidata em OC vinculada.
+    const porValorEData = todasDoFornecedor.filter((oc) => {
+      if (!mesmoValor(oc.valor, titulo.valorOriginal)) return false;
+      return dataCompativel(oc, titulo);
+    });
+
+    if (todasDoFornecedor.length === 0) {
+      return semOC(titulo, "Não há OC sincronizada para este fornecedor. Verifique o histórico/backfill do Senior.");
+    }
+    if (porValorEData.length > 1) {
+      return semOC(titulo, `Há ${porValorEData.length} OCs com fornecedor, valor e data compatíveis, mas isso não prova a relação; falta a referência do título/NF.`);
+    }
+    if (porValorEData.length === 1) {
+      return semOC(titulo, `Há uma OC candidata (${porValorEData[0].numOcp}) com fornecedor, valor e data compatíveis, mas não a marquei como vínculo sem a referência do título/NF.`);
+    }
+    const mesmoValorFornecedor = todasDoFornecedor.filter((oc) => mesmoValor(oc.valor, titulo.valorOriginal));
+    if (mesmoValorFornecedor.length > 0) {
+      return semOC(titulo, `Existe(m) ${mesmoValorFornecedor.length} OC(s) com fornecedor e valor compatíveis, mas falta a referência do título/NF para provar qual é a certa.`);
+    }
+    return semOC(titulo, "Há OCs deste fornecedor, mas nenhuma referência do título/NF, parcela ou valor/data permitiu identificar a OC correta.");
   }
 
   const totalAberto = titulos.filter((t) => !t.pago).reduce((s, t) => s + t.valorAberto, 0);
@@ -203,22 +427,27 @@ export async function GET() {
   const totalPago = titulos.filter((t) => t.pago).reduce((s, t) => s + t.valorOriginal, 0);
 
   return NextResponse.json({
-    titulos: titulos.map((t) => ({
-      numTit: t.numTit,
-      codFil: t.codFil,
-      fornecedorNome: t.fornecedorNome ?? `código ${t.codFor}`,
-      tipo: t.tipo,
-      situacao: t.situacao,
-      pago: t.pago,
-      dataEmissao: t.dataEmissao,
-      vencimentoOriginal: t.vencimentoOriginal,
-      vencimentoProgramado: t.vencimentoProgramado,
-      valorOriginal: t.valorOriginal,
-      valorAberto: t.valorAberto,
-      dataPagamento: t.dataPagamento,
-      ccuNome: t.ccuNome ?? t.codccu,
-      ocRelacionada: ocRelacionadaDe(t.codFor, t.numTit, t.valorOriginal, t.dataEmissao, t.tipo),
-    })),
+    titulos: titulos.map((t) => {
+      const vinculo = ocRelacionadaDe(t);
+      return {
+        numTit: t.numTit,
+        codFil: t.codFil,
+        fornecedorNome: t.fornecedorNome ?? `código ${t.codFor}`,
+        tipo: t.tipo,
+        situacao: t.situacao,
+        pago: t.pago,
+        dataEmissao: t.dataEmissao,
+        vencimentoOriginal: t.vencimentoOriginal,
+        vencimentoProgramado: t.vencimentoProgramado,
+        valorOriginal: t.valorOriginal,
+        valorAberto: t.valorAberto,
+        dataPagamento: t.dataPagamento,
+        ccuNome: t.ccuNome ?? t.codccu,
+        ocRelacionada: vinculo.ocRelacionada,
+        motivoSemOC: vinculo.motivoSemOC,
+        ocEsperada: vinculo.ocEsperada,
+      };
+    }),
     totalAberto,
     qtdAberto,
     qtdPagos,

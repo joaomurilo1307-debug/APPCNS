@@ -206,7 +206,7 @@ export default function AprovacoesSeniorPage() {
         </table>
       </div>
 
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">Resolvidas recentemente</h2>
+      <h2 className="mb-2 text-sm font-semibold text-gray-700">Histórico de OCs resolvidas (últimas 500)</h2>
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
         <table className="w-full min-w-[880px] border-collapse text-sm">
           <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-500">
