@@ -12,7 +12,7 @@ export async function GET(req: Request) {
 
   const [titulos, ocs] = await Promise.all([
     prisma.tituloContasAPagar.findMany({
-      select: { numTit: true, codFor: true, codFil: true, fornecedorNome: true, valorOriginal: true, dataEmissao: true },
+      select: { numTit: true, codFor: true, codFil: true, fornecedorNome: true, valorOriginal: true, dataEmissao: true, tipo: true },
     }),
     prisma.aprovacaoSenior.findMany({
       select: { numOcp: true, fornecedorCodigo: true, valor: true, dataEmissao: true, situacaoAtual: true, usuNumTit: true },
@@ -43,9 +43,24 @@ export async function GET(req: Request) {
     ocsPorChaveValor.set(chaveMap, lista);
   }
 
+  // Nem todo titulo pode ter OC -- impostos, INSS/FGTS, pagamentos a governo
+  // e folha nao passam por Ordem de Compra (nao e' falta de dado, e' a
+  // natureza do lancamento). Marca por padrao de nome do fornecedor + tipo
+  // de titulo (CODTPT), pra medir cobertura so' do universo que DEVERIA ter
+  // OC (compra de fornecedor de verdade).
+  const PADRAO_NAO_OC = /SECRETARIA DE (ESTADO|FAZENDA)|GOVERNO FEDERAL|MINISTERIO DA FAZENDA|RECEITA FEDERAL|PREFEITURA|INSS\b|FGTS\b|CAIXA ECON.MICA|FOPAG|FORNECEDORES DIVERSOS|SALARIO|INPS/i;
+
+  function provavelNaoOC(t: (typeof titulos)[number]) {
+    if (PADRAO_NAO_OC.test(t.fornecedorNome || "")) return true;
+    if (/^FOPAG/i.test(t.numTit)) return true;
+    if (t.tipo === "IMP") return true;
+    return false;
+  }
+
   let real = 0;
   let aproximado = 0;
-  let semNenhum = 0;
+  let semNenhumAddressavel = 0;
+  let naoAplicavel = 0;
   const semNenhumAmostra: any[] = [];
 
   for (const t of titulos) {
@@ -59,11 +74,16 @@ export async function GET(req: Request) {
       aproximado++;
       continue;
     }
-    semNenhum++;
-    if (semNenhumAmostra.length < 25) {
+    if (provavelNaoOC(t)) {
+      naoAplicavel++;
+      continue;
+    }
+    semNenhumAddressavel++;
+    if (semNenhumAmostra.length < 40) {
       semNenhumAmostra.push({
         numTit: t.numTit,
         codFor: t.codFor,
+        tipo: t.tipo,
         fornecedorNome: t.fornecedorNome,
         valorOriginal: t.valorOriginal,
         dataEmissao: t.dataEmissao,
@@ -71,14 +91,18 @@ export async function GET(req: Request) {
     }
   }
 
+  const universoAddressavel = titulos.length - naoAplicavel;
+
   return NextResponse.json({
     totalTitulos: titulos.length,
+    naoAplicavel_semOCPorNatureza: naoAplicavel,
+    universoAddressavel,
     totalOCsComUsuNumTit: ocs.filter((o) => o.usuNumTit).length,
     real,
     aproximado,
-    semNenhum,
-    pctReal: ((real / titulos.length) * 100).toFixed(1),
-    pctComAlgumVinculo: (((real + aproximado) / titulos.length) * 100).toFixed(1),
+    semNenhumAddressavel,
+    pctRealDoUniversoAddressavel: ((real / universoAddressavel) * 100).toFixed(1),
+    pctComAlgumVinculoDoAddressavel: (((real + aproximado) / universoAddressavel) * 100).toFixed(1),
     semNenhumAmostra,
   });
 }
