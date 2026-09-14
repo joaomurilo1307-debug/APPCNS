@@ -41,6 +41,8 @@ const itemSchema = z.object({
   criadorCod: z.string().optional().nullable(),
   previsaoPagamento: z.string().optional().nullable(),
   pago: z.boolean().optional().default(false),
+  usuNumTit: z.string().optional().nullable(),
+  usuNumNfc: z.string().optional().nullable(),
 });
 
 const bodySchema = z.object({ itens: z.array(itemSchema) });
@@ -142,6 +144,8 @@ export async function POST(req: Request) {
       criadorCod: item.criadorCod || null,
       criadorNome: nomeSenior(item.criadorCod),
       previsaoPagamento: item.previsaoPagamento ? new Date(item.previsaoPagamento) : null,
+      usuNumTit: item.usuNumTit || null,
+      usuNumNfc: item.usuNumNfc || null,
       pago: item.pago ?? false,
       rotNap: item.rotNap || null,
       niveisExigidos: item.niveisExigidos || null,

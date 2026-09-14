@@ -633,6 +633,11 @@ model AprovacaoSenior {
   criadorCod      String?   // CODUSU do Senior de quem gerou a OC (E420OCP.USUGER)
   criadorNome     String?   // resolvido via UsuarioSenior
   previsaoPagamento DateTime? // E420OCP.USU_DATVECT
+  usuNumTit       String?   @db.Text // E420OCP.USU_NUMTIT -- texto livre digitado pelo comprador com o(s)
+  // NUMTIT do titulo gerado por essa OC (separados por -/;/quebra de linha/virgula). Testado empiricamente
+  // 14/09/2026: 8.780 das 11.682 OCs preenchidas, 83% (25/30 amostra) casam exato com E501TCP.NUMTIT pro
+  // mesmo fornecedor -- e o vinculo OC->titulo REAL desse tenant (NUMOCP no titulo nunca e populado).
+  usuNumNfc       String?   // E420OCP.USU_NUMNFC -- numero da nota fiscal de compra, mesma logica, preenchido em 42%
   pago            Boolean   @default(false) // OC pendente de aprovacao nunca esta paga
   numApr          String
   rotNap          String?

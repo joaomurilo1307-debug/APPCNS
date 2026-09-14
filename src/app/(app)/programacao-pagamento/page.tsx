@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import MapaOC, { type Aprovacao } from "@/components/MapaOC";
 
 type OcRelacionada = {
   numOcp: string;
@@ -80,6 +81,30 @@ export default function ProgramacaoPagamentoPage() {
   const [filtro, setFiltro] = useState<Filtro>("semana");
   const [dataDe, setDataDe] = useState("");
   const [dataAte, setDataAte] = useState("");
+  const [somenteComOC, setSomenteComOC] = useState(false);
+  const [ocAberta, setOcAberta] = useState<Aprovacao | null>(null);
+  const [codToNomeOC, setCodToNomeOC] = useState<Record<string, string>>({});
+  const [carregandoOC, setCarregandoOC] = useState<string | null>(null);
+  const [erroOC, setErroOC] = useState<string | null>(null);
+
+  function abrirOC(numOcp: string) {
+    setCarregandoOC(numOcp);
+    setErroOC(null);
+    fetch(`/api/senior/aprovacoes/${numOcp}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Erro ao carregar a OC");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setOcAberta(data.aprovacao);
+        setCodToNomeOC(data.codToNome ?? {});
+      })
+      .catch((e) => setErroOC(e.message))
+      .finally(() => setCarregandoOC(null));
+  }
   const [totalAberto, setTotalAberto] = useState(0);
   const [qtdAberto, setQtdAberto] = useState(0);
   const [qtdPagos, setQtdPagos] = useState(0);
@@ -121,14 +146,21 @@ export default function ProgramacaoPagamentoPage() {
         if (filtro === "pagos") return t.pago;
         return true;
       })
-      .filter((t) => !termo || t.numTit.toLowerCase().includes(termo) || t.fornecedorNome.toLowerCase().includes(termo))
+      .filter(
+        (t) =>
+          !termo ||
+          t.numTit.toLowerCase().includes(termo) ||
+          t.fornecedorNome.toLowerCase().includes(termo) ||
+          (t.ocRelacionada?.numOcp ?? "").toLowerCase().includes(termo)
+      )
       .filter((t) => (!dataDe && !dataAte) || dataDentroDoIntervalo(t.vencimentoProgramado, dataDe, dataAte))
+      .filter((t) => !somenteComOC || !!t.ocRelacionada)
       .sort((a, b) => {
         if (filtro === "semana") return (a.vencimentoProgramado || "").localeCompare(b.vencimentoProgramado || "");
         if (filtro === "pagos") return (b.dataPagamento || "").localeCompare(a.dataPagamento || ""); // pago mais recente primeiro
         return (b.dataEmissao || "").localeCompare(a.dataEmissao || ""); // aberto/todos: criado mais recente primeiro
       });
-  }, [titulos, busca, filtro, inicioSemana, fimSemana, dataDe, dataAte]);
+  }, [titulos, busca, filtro, inicioSemana, fimSemana, dataDe, dataAte, somenteComOC]);
 
   // "Pagos"/"Todos" podem ter milhares de linhas -- renderiza só as N mais
   // relevantes por vez (a busca ainda filtra sobre o conjunto inteiro).
@@ -151,8 +183,8 @@ export default function ProgramacaoPagamentoPage() {
           </p>
         </div>
         <span className="mt-1 shrink-0 text-right text-[11px] leading-tight text-gray-400">
-          Senior não grava o vínculo real título↔OC — coluna "OC" é aproximada
-          <br />(fornecedor + valor), confira antes de decidir por ela.
+          OC verde = vínculo real (a própria OC referencia esse título no Senior).
+          <br />OC âmbar = aproximada por fornecedor + valor, confira antes de decidir por ela.
         </span>
       </div>
 
@@ -204,9 +236,13 @@ export default function ProgramacaoPagamentoPage() {
               </button>
             )}
           </div>
+          <label className="flex items-center gap-1.5 text-xs text-gray-600">
+            <input type="checkbox" checked={somenteComOC} onChange={(e) => setSomenteComOC(e.target.checked)} />
+            só com OC vinculada
+          </label>
           <input
             type="text"
-            placeholder="Buscar título ou fornecedor..."
+            placeholder="Buscar título, fornecedor ou nº da OC..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             className="w-64 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
@@ -259,7 +295,7 @@ export default function ProgramacaoPagamentoPage() {
               <th className="px-3 py-2 text-right font-medium">Valor original</th>
               <th className="px-3 py-2 text-right font-medium">Valor em aberto</th>
               <th className="px-3 py-2 font-medium">Situação</th>
-              <th className="px-3 py-2 font-medium">OC (aproximada)</th>
+              <th className="px-3 py-2 font-medium">OC</th>
             </tr>
           </thead>
           <tbody>
@@ -288,18 +324,27 @@ export default function ProgramacaoPagamentoPage() {
                 </td>
                 <td className="px-3 py-1.5">
                   {t.ocRelacionada ? (
-                    <span
-                      title="Senior não grava o vínculo real título↔OC — aproximado por fornecedor e valor, pode não ser a OC certa"
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        t.ocRelacionada.situacao === "APR"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-amber-100 text-amber-800"
+                    <button
+                      onClick={() => abrirOC(t.ocRelacionada!.numOcp)}
+                      disabled={carregandoOC === t.ocRelacionada.numOcp}
+                      title={
+                        t.ocRelacionada.aproximado
+                          ? "Aproximado por fornecedor + valor (Senior não grava o vínculo aqui) — clique pra ver o descritivo da OC"
+                          : "Vínculo real: a própria OC referencia esse título no Senior — clique pra ver o descritivo"
+                      }
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium underline decoration-dotted underline-offset-2 hover:brightness-95 disabled:opacity-50 ${
+                        t.ocRelacionada.aproximado
+                          ? "bg-amber-100 text-amber-800"
+                          : t.ocRelacionada.situacao === "APR"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-sky-100 text-sky-800"
                       }`}
                     >
                       OC {t.ocRelacionada.numOcp} · {t.ocRelacionada.situacaoLabel}
-                    </span>
+                      {carregandoOC === t.ocRelacionada.numOcp && "…"}
+                    </button>
                   ) : (
                     <span className="text-gray-300">—</span>
                   )}
@@ -316,6 +361,16 @@ export default function ProgramacaoPagamentoPage() {
           </tbody>
         </table>
       </div>
+
+      {erroOC && (
+        <div
+          className="fixed inset-x-0 bottom-4 z-50 mx-auto w-fit rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700 shadow-lg"
+          onClick={() => setErroOC(null)}
+        >
+          {erroOC} (clique pra fechar)
+        </div>
+      )}
+      {ocAberta && <MapaOC aprovacao={ocAberta} codToNome={codToNomeOC} onClose={() => setOcAberta(null)} />}
     </div>
   );
 }

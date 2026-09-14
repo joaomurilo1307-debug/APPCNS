@@ -1,98 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-type Evento = {
-  id: string;
-  situacao: string;
-  nivel: number | null;
-  observacao: string | null;
-  detectadoEm: string;
-};
-
-type NivelHist = {
-  SEQAPR?: string;
-  NIVAPR?: string;
-  USUAPR?: string;
-  SITAPR?: string;
-  CCUAPR?: string;
-  DATAPR?: string;
-};
-
-type NivelRateio = {
-  nivel: number;
-  grupo: string;
-  status: "aprovado" | "pendente";
-  aprovadoresCod: string[];
-  aprovadores: string[];
-  aprovadoPor?: string | null; // quem assinou (login Senior), quando status = aprovado
-  aprovadoPorCod?: string | null;
-  aprovadoEm?: string | null; // data da assinatura (dd/mm/aaaa)
-};
-
-type RateioItem = {
-  seq?: number;
-  codccu: string;
-  ccuNome?: string;
-  contaFinanceira?: string;
-  perc?: number;
-  valor?: number;
-  nome?: string; // compat com formato antigo
-  niveis?: NivelRateio[];
-};
-
-type Aprovacao = {
-  id: string;
-  numOcp: string;
-  dataEmissao: string;
-  fornecedorCodigo: string;
-  fornecedorNome: string | null;
-  valor: number;
-  descricao: string | null;
-  contratoTexto: string | null;
-  codccu: string | null;
-  contratoNome: string | null;
-  criadorCod: string | null;
-  criadorNome: string | null;
-  previsaoPagamento: string | null;
-  pago: boolean;
-  situacaoAtual: string;
-  niveisExigidos: string | null;
-  niveisAprovados: string | null;
-  nivelAtual: number;
-  temRateio: boolean;
-  rateioDetalhe: string | null;
-  mapaCotacao: string | null;
-  historicoNiveis: string | null;
-  aprovadoresPendentes: string | null;
-  aprovadoresPendentesCod: string | null;
-  proximoAprovadorCod: string | null;
-  proximoAprovadorNome: string | null;
-  proximoAprovador: { id: string; name: string } | null;
-  primeiraDeteccaoEm: string;
-  resolvidoEm: string | null;
-  resolvidoComo: string | null;
-  eventos: Evento[];
-};
-
-const situacaoLabel: Record<string, string> = {
-  ANA: "Em análise",
-  PRE: "Pré-aprovado",
-  APR: "Aprovado",
-  REP: "Reprovado",
-  CAN: "Cancelado",
-};
-
-// nível da alçada de OC do Senior (E068CNA.CODNAP) -> grupo aprovador
-const GRUPO_LABEL: Record<number, string> = { 1: "Coordenação", 2: "Gerência", 3: "Diretoria" };
-
-const situacaoStyle: Record<string, string> = {
-  ANA: "bg-amber-100 text-amber-800",
-  PRE: "bg-sky-100 text-sky-800",
-  APR: "bg-emerald-100 text-emerald-800",
-  REP: "bg-rose-100 text-rose-800",
-  CAN: "bg-gray-100 text-gray-500",
-};
+import { useEffect, useMemo, useState } from "react";
+import MapaOC, {
+  type Aprovacao,
+  situacaoLabel,
+  situacaoStyle,
+  niveisLabel,
+  contratoDe,
+  aprovadorDe,
+} from "@/components/MapaOC";
 
 function formatMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -102,57 +18,7 @@ function diasParado(dataEmissao: string) {
   return Math.floor((Date.now() - new Date(dataEmissao).getTime()) / 86400000);
 }
 
-function parseJSON<T>(s: string | null): T | null {
-  if (!s) return null;
-  try {
-    return JSON.parse(s) as T;
-  } catch {
-    return null;
-  }
-}
-
-function parseNiveis(csv: string | null): number[] {
-  if (!csv) return [];
-  return csv
-    .split(",")
-    .map((n) => Number(n.trim()))
-    .filter((n) => Number.isFinite(n));
-}
-
-function niveisLabel(a: Aprovacao) {
-  const exig = parseNiveis(a.niveisExigidos);
-  const aprv = new Set(parseNiveis(a.niveisAprovados));
-  if (!exig.length) return `nível ${a.nivelAtual}`;
-  const pendentes = exig.filter((n) => !aprv.has(n));
-  if (!pendentes.length) return `${exig.length}/${exig.length} níveis`;
-  return `nível ${pendentes[0]}/${exig.length}`;
-}
-
-function contratoDe(a: Aprovacao) {
-  // centro de custo REAL da OC vem da aba Rateios (E420RAT) -> nome pelo
-  // cadastro mestre E044CCU; com rateio, cada linha tem o seu (ver mapa)
-  const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
-  if (a.temRateio) {
-    const ccs = Array.from(new Set(rateio.map((r) => r.ccuNome || `CC ${r.codccu}`)));
-    if (ccs.length === 1) return `${ccs[0]} · rateio ${rateio.length} linhas`;
-    return `Rateio · ${ccs.length} centros de custo`;
-  }
-  return a.contratoNome || rateio[0]?.ccuNome || (a.codccu ? `CC ${a.codccu}` : a.contratoTexto || "—");
-}
-
-function resolvida(a: Aprovacao) {
-  return !!a.resolvidoEm || ["APR", "REP", "CAN"].includes(a.situacaoAtual);
-}
-
-function aprovadorDe(a: Aprovacao) {
-  if (resolvida(a)) return situacaoLabel[a.resolvidoComo || a.situacaoAtual] || "Resolvido";
-  return a.aprovadoresPendentes || a.proximoAprovador?.name || a.proximoAprovadorNome || `Aguardando · ${niveisLabel(a)}`;
-}
-
-function nomeUsuSenior(cod: string | undefined, codToNome: Record<string, string>) {
-  if (!cod || cod === "0") return null;
-  return codToNome[cod] || `Usuário Senior #${cod}`;
-}
+const SITUACOES_FILTRO = ["ANA", "PRE", "APR", "REP", "CAN"] as const;
 
 export default function AprovacoesSeniorPage() {
   const [pendentes, setPendentes] = useState<Aprovacao[]>([]);
@@ -161,6 +27,9 @@ export default function AprovacoesSeniorPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [aberta, setAberta] = useState<Aprovacao | null>(null);
+  const [busca, setBusca] = useState("");
+  const [situacoesAtivas, setSituacoesAtivas] = useState<Set<string>>(new Set());
+  const [somenteRateio, setSomenteRateio] = useState(false);
 
   useEffect(() => {
     fetch("/api/senior/aprovacoes")
@@ -180,32 +49,95 @@ export default function AprovacoesSeniorPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  function toggleSituacao(s: string) {
+    setSituacoesAtivas((prev) => {
+      const novo = new Set(prev);
+      if (novo.has(s)) novo.delete(s);
+      else novo.add(s);
+      return novo;
+    });
+  }
+
+  function passaFiltro(a: Aprovacao) {
+    const termo = busca.trim().toLowerCase();
+    if (termo) {
+      const alvo = `${a.numOcp} ${a.fornecedorNome ?? ""} ${a.fornecedorCodigo} ${a.descricao ?? ""} ${contratoDe(a)} ${a.usuNumTit ?? ""}`.toLowerCase();
+      if (!alvo.includes(termo)) return false;
+    }
+    if (situacoesAtivas.size > 0 && !situacoesAtivas.has(a.situacaoAtual)) return false;
+    if (somenteRateio && !a.temRateio) return false;
+    return true;
+  }
+
+  const pendentesFiltradas = useMemo(() => pendentes.filter(passaFiltro), [pendentes, busca, situacoesAtivas, somenteRateio]);
+  const resolvidasFiltradas = useMemo(() => resolvidas.filter(passaFiltro), [resolvidas, busca, situacoesAtivas, somenteRateio]);
+
   if (loading) return <div className="p-6 text-sm text-gray-500">Carregando...</div>;
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
 
-  const valorTotalPendente = pendentes.reduce((s, a) => s + a.valor, 0);
+  const valorTotalPendente = pendentesFiltradas.reduce((s, a) => s + a.valor, 0);
+  const filtrosAtivos = busca.trim() || situacoesAtivas.size > 0 || somenteRateio;
 
   return (
     <div className="p-6">
       <h1 className="mb-1 text-xl font-semibold">Aprovações — Ordens de Compra (Senior)</h1>
-      <p className="mb-6 max-w-3xl text-sm text-gray-500">
+      <p className="mb-4 max-w-3xl text-sm text-gray-500">
         Ordens de compra aguardando aprovação, sincronizadas do Senior. A lista mostra quem precisa aprovar e se há
         rateio; clique numa linha para ver o mapa completo da OC (fornecedor, valor, descrição, contratos do rateio,
         histórico de níveis e cotação).
       </p>
 
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          placeholder="Buscar OC, fornecedor, título, descrição..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          className="w-72 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+        />
+        <div className="inline-flex flex-wrap gap-1.5">
+          {SITUACOES_FILTRO.map((s) => (
+            <button
+              key={s}
+              onClick={() => toggleSituacao(s)}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                situacoesAtivas.has(s) ? situacaoStyle[s] : "bg-gray-50 text-gray-400 hover:bg-gray-100"
+              }`}
+            >
+              {situacaoLabel[s]}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-1.5 text-xs text-gray-600">
+          <input type="checkbox" checked={somenteRateio} onChange={(e) => setSomenteRateio(e.target.checked)} />
+          só com rateio
+        </label>
+        {filtrosAtivos && (
+          <button
+            onClick={() => {
+              setBusca("");
+              setSituacoesAtivas(new Set());
+              setSomenteRateio(false);
+            }}
+            className="text-xs text-gray-400 underline hover:text-gray-600"
+          >
+            limpar filtros
+          </button>
+        )}
+      </div>
+
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <p className="text-xs text-gray-500">Pendentes agora</p>
-          <p className="text-2xl font-semibold">{pendentes.length}</p>
+          <p className="text-xs text-gray-500">Pendentes {filtrosAtivos ? "(filtro)" : "agora"}</p>
+          <p className="text-2xl font-semibold">{pendentesFiltradas.length}</p>
         </div>
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
           <p className="text-xs text-gray-500">Valor total parado</p>
           <p className="text-2xl font-semibold">{formatMoeda(valorTotalPendente)}</p>
         </div>
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <p className="text-xs text-gray-500">Resolvidas recentemente</p>
-          <p className="text-2xl font-semibold">{resolvidas.length}</p>
+          <p className="text-xs text-gray-500">Resolvidas {filtrosAtivos ? "(filtro)" : "recentemente"}</p>
+          <p className="text-2xl font-semibold">{resolvidasFiltradas.length}</p>
         </div>
       </div>
 
@@ -225,7 +157,7 @@ export default function AprovacoesSeniorPage() {
             </tr>
           </thead>
           <tbody>
-            {pendentes.map((a) => (
+            {pendentesFiltradas.map((a) => (
               <tr
                 key={a.id}
                 className="cursor-pointer border-t border-gray-100 align-middle hover:bg-brand/[0.04] [&>td]:px-4 [&>td]:py-3"
@@ -233,9 +165,7 @@ export default function AprovacoesSeniorPage() {
               >
                 <td className="whitespace-nowrap font-medium">{a.numOcp}</td>
                 <td className="whitespace-nowrap">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.situacaoAtual]}`}
-                  >
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.situacaoAtual]}`}>
                     {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · {niveisLabel(a)}
                   </span>
                 </td>
@@ -265,10 +195,10 @@ export default function AprovacoesSeniorPage() {
                 </td>
               </tr>
             ))}
-            {pendentes.length === 0 && (
+            {pendentesFiltradas.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-gray-400">
-                  Nenhuma OC pendente de aprovação no momento.
+                  {filtrosAtivos ? "Nenhuma OC pendente bate com esse filtro." : "Nenhuma OC pendente de aprovação no momento."}
                 </td>
               </tr>
             )}
@@ -291,7 +221,7 @@ export default function AprovacoesSeniorPage() {
             </tr>
           </thead>
           <tbody>
-            {resolvidas.map((a) => {
+            {resolvidasFiltradas.map((a) => {
               const dias = a.resolvidoEm
                 ? Math.floor((new Date(a.resolvidoEm).getTime() - new Date(a.primeiraDeteccaoEm).getTime()) / 86400000)
                 : null;
@@ -307,9 +237,7 @@ export default function AprovacoesSeniorPage() {
                   </td>
                   <td className="whitespace-nowrap text-right font-medium tabular-nums">{formatMoeda(a.valor)}</td>
                   <td className="whitespace-nowrap">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.resolvidoComo || ""]}`}
-                    >
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.resolvidoComo || ""]}`}>
                       {situacaoLabel[a.resolvidoComo || ""] || a.resolvidoComo}
                     </span>
                   </td>
@@ -323,10 +251,10 @@ export default function AprovacoesSeniorPage() {
                 </tr>
               );
             })}
-            {resolvidas.length === 0 && (
+            {resolvidasFiltradas.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-6 text-center text-gray-400">
-                  Nenhuma resolução registrada ainda.
+                  {filtrosAtivos ? "Nenhuma OC resolvida bate com esse filtro." : "Nenhuma resolução registrada ainda."}
                 </td>
               </tr>
             )}
@@ -335,282 +263,6 @@ export default function AprovacoesSeniorPage() {
       </div>
 
       {aberta && <MapaOC aprovacao={aberta} codToNome={codToNome} onClose={() => setAberta(null)} />}
-    </div>
-  );
-}
-
-function MapaOC({
-  aprovacao: a,
-  codToNome,
-  onClose,
-}: {
-  aprovacao: Aprovacao;
-  codToNome: Record<string, string>;
-  onClose: () => void;
-}) {
-  const niveis = parseJSON<NivelHist[]>(a.historicoNiveis) ?? [];
-  const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
-  const cotacao = parseJSON<any>(a.mapaCotacao);
-
-  // a alcada e a assinatura sao POR centro de custo -- agrupo as linhas de
-  // rateio por CC (uma OC pode ter N linhas no mesmo CC), somo valor, junto
-  // as contas; os niveis (status/quem aprovou) vem da 1a linha do CC (iguais)
-  type GrupoCC = {
-    codccu: string;
-    ccuNome?: string;
-    linhas: number;
-    valor: number;
-    contas: Set<string>;
-    niveis: NivelRateio[];
-  };
-  const mapaCC = new Map<string, GrupoCC>();
-  for (const r of rateio) {
-    let g = mapaCC.get(r.codccu);
-    if (!g) {
-      g = { codccu: r.codccu, ccuNome: r.ccuNome, linhas: 0, valor: 0, contas: new Set<string>(), niveis: r.niveis ?? [] };
-      mapaCC.set(r.codccu, g);
-    }
-    g.linhas += 1;
-    g.valor += r.valor ?? 0;
-    const conta = r.contaFinanceira || r.nome;
-    if (conta) g.contas.add(conta);
-  }
-  const rateioPorCC = Array.from(mapaCC.values());
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
-    >
-      <div
-        className="my-8 w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* header */}
-        <div className="flex items-start justify-between gap-4 border-b border-gray-100 bg-gradient-to-r from-brand/10 to-transparent px-6 py-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Ordem de compra</p>
-            <p className="text-lg font-semibold">
-              OC {a.numOcp}
-              <span
-                className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${situacaoStyle[a.situacaoAtual]}`}
-              >
-                {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · {niveisLabel(a)}
-              </span>
-            </p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-            ✕
-          </button>
-        </div>
-
-        <div className="space-y-5 px-6 py-5">
-          {/* linha de topo: valor + quem falta */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-xl bg-gray-50 p-3">
-              <p className="text-xs text-gray-500">Valor</p>
-              <p className="text-xl font-semibold">{formatMoeda(a.valor)}</p>
-            </div>
-            <div className="rounded-xl bg-gray-50 p-3">
-              <p className="text-xs text-gray-500">{resolvida(a) ? "Resultado" : "Quem falta aprovar"}</p>
-              <p className="text-sm font-semibold">
-                {resolvida(a)
-                  ? `${situacaoLabel[a.resolvidoComo || a.situacaoAtual] || a.situacaoAtual}${
-                      a.resolvidoEm ? ` em ${new Date(a.resolvidoEm).toLocaleDateString("pt-BR")}` : ""
-                    }`
-                  : a.aprovadoresPendentes || aprovadorDe(a)}
-              </p>
-              <p className="mt-0.5 text-[11px] text-gray-400">
-                {niveisLabel(a)} · alçada multinível do Senior (E068CNA)
-              </p>
-            </div>
-          </div>
-
-          {/* fornecedor + contrato */}
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-            <div>
-              <dt className="text-xs text-gray-500">Fornecedor</dt>
-              <dd className="font-medium">{a.fornecedorNome || "—"}</dd>
-              <dd className="text-xs text-gray-400">código {a.fornecedorCodigo}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-gray-500">Centro de custo (da OC)</dt>
-              {a.temRateio ? (
-                <>
-                  <dd className="font-medium">Rateio — {rateio.length} linhas</dd>
-                  <dd className="text-xs text-gray-400">detalhe por centro de custo abaixo</dd>
-                </>
-              ) : (
-                <>
-                  <dd className="font-medium">
-                    {a.contratoNome || rateio[0]?.ccuNome || (a.codccu ? `CC ${a.codccu}` : "—")}
-                  </dd>
-                  {a.codccu && <dd className="text-xs text-gray-400">CC {a.codccu} · cadastro Senior (E044CCU)</dd>}
-                </>
-              )}
-              {a.contratoTexto && a.contratoTexto !== a.contratoNome && (
-                <dd className="mt-0.5 text-xs text-gray-400">texto do comprador: “{a.contratoTexto}”</dd>
-              )}
-            </div>
-            <div>
-              <dt className="text-xs text-gray-500">Criada por</dt>
-              <dd className="font-medium">{a.criadorNome || (a.criadorCod ? `Usuário Senior #${a.criadorCod}` : "—")}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-gray-500">Pagamento</dt>
-              <dd>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    a.pago ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  {a.pago ? "Pago" : "Não pago"}
-                </span>
-                {a.previsaoPagamento && (
-                  <span className="ml-2 text-xs text-gray-500">
-                    previsão {new Date(a.previsaoPagamento).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
-                  </span>
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-gray-500">Emissão</dt>
-              <dd>{new Date(a.dataEmissao).toLocaleDateString("pt-BR")}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-gray-500">Parada há</dt>
-              <dd className={diasParado(a.dataEmissao) > 7 ? "font-semibold text-rose-600" : ""}>
-                {diasParado(a.dataEmissao)} dias
-              </dd>
-            </div>
-          </dl>
-
-          {/* descricao */}
-          {a.descricao && (
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Descrição</p>
-              <p className="whitespace-pre-wrap rounded-xl bg-gray-50 p-3 text-sm text-gray-700">{a.descricao}</p>
-            </div>
-          )}
-
-          {/* rateio (aba Rateios da OC no Senior), agrupado por centro de custo —
-              cada CC com a sua pendência por nível (a alçada é por CC) */}
-          {rateio.length > 0 && (
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Rateio — {rateio.length} {rateio.length === 1 ? "linha" : "linhas"}
-                {rateioPorCC.length > 1 ? ` em ${rateioPorCC.length} centros de custo` : ""} · pendência por nível
-              </p>
-              <div className="space-y-2">
-                {rateioPorCC.map((g) => (
-                  <div key={g.codccu} className="rounded-xl border border-gray-100 p-3">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                      <p className="text-sm font-medium">
-                        {g.ccuNome || `CC ${g.codccu}`}{" "}
-                        <span className="text-xs font-normal text-gray-400">
-                          CC {g.codccu}
-                          {g.linhas > 1 ? ` · ${g.linhas} linhas` : ""}
-                        </span>
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {Array.from(g.contas).join(", ") || "—"} ·{" "}
-                        <span className="tabular-nums font-medium text-gray-700">{formatMoeda(g.valor)}</span>
-                      </p>
-                    </div>
-                    {g.niveis.length > 0 ? (
-                      <ul className="mt-2 space-y-1">
-                        {g.niveis.map((nv) => (
-                          <li key={nv.nivel} className="flex items-start gap-2 text-xs">
-                            <span
-                              className={`mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                                nv.status === "aprovado"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-amber-100 text-amber-700"
-                              }`}
-                            >
-                              {nv.status === "aprovado" ? "✓" : nv.nivel}
-                            </span>
-                            {nv.status === "aprovado" ? (
-                              <span className="text-gray-500">
-                                <span className="font-medium text-gray-600">{nv.grupo}</span> — aprovado
-                                {nv.aprovadoPor ? ` por ${nv.aprovadoPor}` : ""}
-                                {nv.aprovadoEm ? ` em ${nv.aprovadoEm}` : ""}
-                              </span>
-                            ) : (
-                              <span className="text-gray-700">
-                                <span className="font-medium">{nv.grupo}</span> — aguardando:{" "}
-                                {nv.aprovadores.length ? nv.aprovadores.join(" · ") : "sem aprovador na alçada"}
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1.5 text-xs text-gray-400">alçada não cadastrada para este centro de custo</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <p className="mt-1.5 text-[11px] text-gray-400">
-                cada centro de custo é aprovado pela sua própria alçada (Senior E068CNA); assinaturas vêm do E614USU
-              </p>
-            </div>
-          )}
-
-          {/* fallback: OC sem rateio detalhado -> cadeia simples pelo historico */}
-          {rateio.length === 0 && niveis.length > 0 && (
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Cadeia de aprovação</p>
-              <ol className="space-y-1.5">
-                {niveis
-                  .filter((n) => (n.SITAPR || "").toUpperCase() === "APR")
-                  .map((n, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700">
-                        ✓
-                      </span>
-                      <span>
-                        {GRUPO_LABEL[Number(n.NIVAPR)] || `Nível ${n.NIVAPR}`} — aprovado por{" "}
-                        {nomeUsuSenior(n.USUAPR, codToNome)}
-                        {n.DATAPR ? ` em ${n.DATAPR}` : ""}
-                      </span>
-                    </li>
-                  ))}
-              </ol>
-            </div>
-          )}
-
-          {/* mapa de cotacao */}
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Mapa de cotação</p>
-            {cotacao ? (
-              <pre className="overflow-x-auto rounded-xl bg-gray-50 p-3 text-xs text-gray-700">
-                {JSON.stringify(cotacao, null, 2)}
-              </pre>
-            ) : (
-              <p className="text-sm text-gray-500">Esta OC não tem cotação vinculada no Senior.</p>
-            )}
-          </div>
-
-          {/* eventos (auditoria) */}
-          {a.eventos.length > 0 && (
-            <details className="text-sm">
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Histórico de mudanças ({a.eventos.length})
-              </summary>
-              <ul className="mt-2 space-y-1 text-xs text-gray-600">
-                {a.eventos.map((e) => (
-                  <li key={e.id}>
-                    {new Date(e.detectadoEm).toLocaleString("pt-BR")} — {situacaoLabel[e.situacao] || e.situacao}
-                    {e.nivel ? ` (nível ${e.nivel})` : ""}
-                    {e.observacao ? ` — ${e.observacao}` : ""}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
