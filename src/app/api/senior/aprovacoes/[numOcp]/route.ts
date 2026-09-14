@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 
-// Busca UMA OC por numOcp, com o mapa completo (rateio, níveis, eventos).
-// Existe pra abrir o descritivo da OC a partir de outra tela (ex: coluna
-// "OC" da Programação de Pagamento) sem depender da lista de /api/senior/
-// /aprovacoes, que só traz pendentes + últimas 50 resolvidas -- a maioria
-// das OCs vinculadas a título (histórico 2024/2025) não estaria lá.
+// Busca UMA OC por numOcp, com o mapa completo (rateio, níveis, eventos) +
+// o(s) título(s) que essa OC gerou (sentido inverso do vínculo, mesmo motor
+// de /api/titulos-pagar -- pedido do João 14/09/2026: "tudo precisa casar,
+// se você quiser achar uma OC pelo título ou o título pela OC, pago ou não,
+// tudo tem que aparecer"). Existe pra abrir o descritivo da OC a partir de
+// outra tela (ex: coluna "OC" da Programação de Pagamento) sem depender da
+// lista de /api/senior/aprovacoes, que só traz pendentes + resolvidas -- a
+// maioria das OCs vinculadas a título (histórico 2024/2025) não estaria lá.
 export async function GET(req: Request, { params }: { params: { numOcp: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
@@ -37,5 +41,43 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
   const codToNome: Record<string, string> = {};
   for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
 
-  return NextResponse.json({ aprovacao, codToNome });
+  // Sentido inverso: quais títulos essa OC gerou. Precisa rodar o motor
+  // contra TODAS as OCs (mesmo índice de /api/titulos-pagar) pra garantir
+  // que os dois sentidos batem exatamente igual -- só filtra o resultado
+  // pra esta OC no final, não recalcula uma regra própria.
+  const [titulos, todasOcs] = await Promise.all([
+    prisma.tituloContasAPagar.findMany(),
+    prisma.aprovacaoSenior.findMany({
+      select: {
+        numOcp: true,
+        codFil: true,
+        fornecedorCodigo: true,
+        fornecedorNome: true,
+        valor: true,
+        dataEmissao: true,
+        situacaoAtual: true,
+        usuNumTit: true,
+        usuNumNfc: true,
+        codccu: true,
+        contratoNome: true,
+        temRateio: true,
+        previsaoPagamento: true,
+      },
+    }),
+  ]);
+  const motor = criarMotorVinculo(todasOcs);
+  const titulosVinculados = titulos
+    .filter((t) => motor.ocRelacionadaDe(t).ocRelacionada?.numOcp === params.numOcp)
+    .map((t) => ({
+      numTit: t.numTit,
+      tipo: t.tipo,
+      pago: t.pago,
+      valorOriginal: t.valorOriginal,
+      valorAberto: t.valorAberto,
+      dataEmissao: t.dataEmissao,
+      vencimentoProgramado: t.vencimentoProgramado,
+      dataPagamento: t.dataPagamento,
+    }));
+
+  return NextResponse.json({ aprovacao, codToNome, titulosVinculados });
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MapaOC, {
+  type TituloVinculado,
   type Aprovacao,
   situacaoLabel,
   situacaoStyle,
@@ -58,6 +59,7 @@ export default function AprovacoesSeniorPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [aberta, setAberta] = useState<Aprovacao | null>(null);
+  const [titulosDaAberta, setTitulosDaAberta] = useState<TituloVinculado[]>([]);
   const [busca, setBusca] = useState("");
   const [situacoesAtivas, setSituacoesAtivas] = useState<Set<string>>(new Set());
   const [somenteRateio, setSomenteRateio] = useState(false);
@@ -78,6 +80,7 @@ export default function AprovacoesSeniorPage() {
       .then((data) => {
         setAberta(data.aprovacao);
         setCodToNome((prev) => ({ ...prev, ...(data.codToNome ?? {}) }));
+        setTitulosDaAberta(data.titulosVinculados ?? []);
       })
       .catch((e) => setErroResolvida(e.message))
       .finally(() => setCarregandoResolvida(null));
@@ -254,7 +257,10 @@ export default function AprovacoesSeniorPage() {
               <tr
                 key={a.id}
                 className="cursor-pointer border-t border-gray-100 align-middle hover:bg-brand/[0.04] [&>td]:px-4 [&>td]:py-3"
-                onClick={() => setAberta(a)}
+                onClick={() => {
+                  setAberta(a);
+                  setTitulosDaAberta([]); // pendente: só busca título vinculado ao abrir de fato (sem fetch aqui)
+                }}
               >
                 <td className="whitespace-nowrap font-medium">{a.numOcp}</td>
                 <td className="whitespace-nowrap">
@@ -371,7 +377,9 @@ export default function AprovacoesSeniorPage() {
         </div>
       )}
 
-      {aberta && <MapaOC aprovacao={aberta} codToNome={codToNome} onClose={() => setAberta(null)} />}
+      {aberta && (
+        <MapaOC aprovacao={aberta} codToNome={codToNome} titulosVinculados={titulosDaAberta} onClose={() => setAberta(null)} />
+      )}
     </div>
   );
 }

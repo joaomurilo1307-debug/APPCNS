@@ -46,6 +46,17 @@ export type RateioItem = {
   niveis?: NivelRateio[];
 };
 
+export type TituloVinculado = {
+  numTit: string;
+  tipo: string;
+  pago: boolean;
+  valorOriginal: number;
+  valorAberto: number;
+  dataEmissao: string;
+  vencimentoProgramado: string | null;
+  dataPagamento: string | null;
+};
+
 export type Aprovacao = {
   id: string;
   numOcp: string;
@@ -185,10 +196,12 @@ function nomeUsuSenior(cod: string | undefined, codToNome: Record<string, string
 export default function MapaOC({
   aprovacao: a,
   codToNome,
+  titulosVinculados,
   onClose,
 }: {
   aprovacao: Aprovacao;
   codToNome: Record<string, string>;
+  titulosVinculados?: TituloVinculado[];
   onClose: () => void;
 }) {
   const niveis = parseJSON<NivelHist[]>(a.historicoNiveis) ?? [];
@@ -325,6 +338,31 @@ export default function MapaOC({
               </div>
             )}
           </dl>
+
+          {titulosVinculados && titulosVinculados.length > 0 && (
+            <div className="mb-4">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Título(s) gerado(s) por esta OC ({titulosVinculados.length})
+              </p>
+              <ul className="space-y-1 rounded-xl bg-gray-50 p-3">
+                {titulosVinculados.map((t) => (
+                  <li key={`${t.numTit}-${t.dataEmissao}`} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="font-medium text-gray-800">
+                      {t.numTit} <span className="font-normal text-gray-400">({t.tipo})</span>
+                    </span>
+                    <span className="text-gray-600">{formatMoeda(t.valorOriginal)}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        t.pago ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                      }`}
+                    >
+                      {t.pago ? `Pago em ${t.dataPagamento ? new Date(t.dataPagamento).toLocaleDateString("pt-BR") : "—"}` : "Não pago"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {a.descricao && (
             <div>

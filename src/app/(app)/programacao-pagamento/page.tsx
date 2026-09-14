@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import MapaOC, { type Aprovacao } from "@/components/MapaOC";
+import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 
 type OcRelacionada = {
   numOcp: string;
@@ -134,6 +134,7 @@ export default function ProgramacaoPagamentoPage() {
   const [mostrarRegras, setMostrarRegras] = useState(false);
   const [filtrosColuna, setFiltrosColuna] = useState<FiltrosColuna>(FILTROS_COLUNA_VAZIOS);
   const [ocAberta, setOcAberta] = useState<Aprovacao | null>(null);
+  const [titulosDaOC, setTitulosDaOC] = useState<TituloVinculado[]>([]);
   const [codToNomeOC, setCodToNomeOC] = useState<Record<string, string>>({});
   const [carregandoOC, setCarregandoOC] = useState<string | null>(null);
   const [erroOC, setErroOC] = useState<string | null>(null);
@@ -152,6 +153,7 @@ export default function ProgramacaoPagamentoPage() {
       .then((data) => {
         setOcAberta(data.aprovacao);
         setCodToNomeOC(data.codToNome ?? {});
+        setTitulosDaOC(data.titulosVinculados ?? []);
       })
       .catch((e) => setErroOC(e.message))
       .finally(() => setCarregandoOC(null));
@@ -635,7 +637,9 @@ export default function ProgramacaoPagamentoPage() {
           {erroOC} (clique pra fechar)
         </div>
       )}
-      {ocAberta && <MapaOC aprovacao={ocAberta} codToNome={codToNomeOC} onClose={() => setOcAberta(null)} />}
+      {ocAberta && (
+        <MapaOC aprovacao={ocAberta} codToNome={codToNomeOC} titulosVinculados={titulosDaOC} onClose={() => setOcAberta(null)} />
+      )}
     </div>
   );
 }
