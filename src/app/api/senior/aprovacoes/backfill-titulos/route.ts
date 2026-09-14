@@ -69,9 +69,16 @@ export async function POST(req: Request) {
           usuNumTit: item.usuNumTit || null,
           usuNumNfc: item.usuNumNfc || null,
           pago: false,
-          ...(SITUACOES_RESOLVIDAS.has(item.situacaoAtual)
-            ? { resolvidoEm: new Date(), resolvidoComo: item.situacaoAtual }
-            : {}),
+          // Bug real achado 14/09/2026: aqui gravava resolvidoEm=new Date()
+          // (HOJE) pra OC que na verdade foi resolvida no Senior meses/anos
+          // atras -- isso inflou "resolvidas recentemente" (janela de 30
+          // dias) com ~8.700 OCs fantasma, e a lista virou grande demais pro
+          // IN(...) do script de sync (ORA-01795, limite de 1000 no
+          // Oracle). Nao sabemos a data real de resolucao de uma OC
+          // historica via este backfill (so' veio SITAPR/dados leves) --
+          // gravar resolvidoComo (dado real) sem resolvidoEm (que nao
+          // sabemos) e mais honesto que inventar "resolvida hoje".
+          ...(SITUACOES_RESOLVIDAS.has(item.situacaoAtual) ? { resolvidoComo: item.situacaoAtual } : {}),
         },
       });
       criadas++;
