@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type OcRelacionada = {
+  numOcp: string;
+  situacao: string;
+  situacaoLabel: string;
+  aproximado: boolean;
+};
+
 type Titulo = {
   numTit: string;
   codFil: string;
@@ -16,7 +23,18 @@ type Titulo = {
   valorAberto: number;
   dataPagamento: string | null;
   ccuNome: string | null;
+  ocRelacionada: OcRelacionada | null;
 };
+
+// yyyy-mm-dd (valor de <input type="date">) comparado com um ISO -- ambos
+// tratados como dia civil, sem hora, pra não "vazar" 1 dia por fuso.
+function dataDentroDoIntervalo(iso: string | null, de: string, ate: string) {
+  if (!iso) return false;
+  const dia = iso.slice(0, 10);
+  if (de && dia < de) return false;
+  if (ate && dia > ate) return false;
+  return true;
+}
 
 function formatMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -60,6 +78,8 @@ export default function ProgramacaoPagamentoPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("semana");
+  const [dataDe, setDataDe] = useState("");
+  const [dataAte, setDataAte] = useState("");
   const [totalAberto, setTotalAberto] = useState(0);
   const [qtdAberto, setQtdAberto] = useState(0);
   const [qtdPagos, setQtdPagos] = useState(0);
@@ -102,12 +122,13 @@ export default function ProgramacaoPagamentoPage() {
         return true;
       })
       .filter((t) => !termo || t.numTit.toLowerCase().includes(termo) || t.fornecedorNome.toLowerCase().includes(termo))
+      .filter((t) => (!dataDe && !dataAte) || dataDentroDoIntervalo(t.vencimentoProgramado, dataDe, dataAte))
       .sort((a, b) => {
         if (filtro === "semana") return (a.vencimentoProgramado || "").localeCompare(b.vencimentoProgramado || "");
         if (filtro === "pagos") return (b.dataPagamento || "").localeCompare(a.dataPagamento || ""); // pago mais recente primeiro
         return (b.dataEmissao || "").localeCompare(a.dataEmissao || ""); // aberto/todos: criado mais recente primeiro
       });
-  }, [titulos, busca, filtro, inicioSemana, fimSemana]);
+  }, [titulos, busca, filtro, inicioSemana, fimSemana, dataDe, dataAte]);
 
   // "Pagos"/"Todos" podem ter milhares de linhas -- renderiza só as N mais
   // relevantes por vez (a busca ainda filtra sobre o conjunto inteiro).
@@ -130,8 +151,8 @@ export default function ProgramacaoPagamentoPage() {
           </p>
         </div>
         <span className="mt-1 shrink-0 text-right text-[11px] leading-tight text-gray-400">
-          Sem vínculo de OC no Senior nesta base
-          <br />— comparação com Aprovações OC é manual, por fornecedor/valor.
+          Senior não grava o vínculo real título↔OC — coluna "OC" é aproximada
+          <br />(fornecedor + valor), confira antes de decidir por ela.
         </span>
       </div>
 
@@ -150,12 +171,39 @@ export default function ProgramacaoPagamentoPage() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
-          {filtro === "semana" && (
+        <div className="flex flex-wrap items-center gap-3">
+          {filtro === "semana" && !dataDe && !dataAte && (
             <span className="text-xs text-gray-400">
               {formatData(inicioSemana.toISOString())} – {formatData(fimSemana.toISOString())}
             </span>
           )}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-400">Vencto de</span>
+            <input
+              type="date"
+              value={dataDe}
+              onChange={(e) => setDataDe(e.target.value)}
+              className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+            />
+            <span className="text-xs text-gray-400">até</span>
+            <input
+              type="date"
+              value={dataAte}
+              onChange={(e) => setDataAte(e.target.value)}
+              className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+            />
+            {(dataDe || dataAte) && (
+              <button
+                onClick={() => {
+                  setDataDe("");
+                  setDataAte("");
+                }}
+                className="text-xs text-gray-400 underline hover:text-gray-600"
+              >
+                limpar
+              </button>
+            )}
+          </div>
           <input
             type="text"
             placeholder="Buscar título ou fornecedor..."
@@ -211,6 +259,7 @@ export default function ProgramacaoPagamentoPage() {
               <th className="px-3 py-2 text-right font-medium">Valor original</th>
               <th className="px-3 py-2 text-right font-medium">Valor em aberto</th>
               <th className="px-3 py-2 font-medium">Situação</th>
+              <th className="px-3 py-2 font-medium">OC (aproximada)</th>
             </tr>
           </thead>
           <tbody>
@@ -237,11 +286,29 @@ export default function ProgramacaoPagamentoPage() {
                     {t.pago ? "Pago" : "Não pago"}
                   </span>
                 </td>
+                <td className="px-3 py-1.5">
+                  {t.ocRelacionada ? (
+                    <span
+                      title="Senior não grava o vínculo real título↔OC — aproximado por fornecedor e valor, pode não ser a OC certa"
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        t.ocRelacionada.situacao === "APR"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-amber-100 text-amber-800"
+                      }`}
+                    >
+                      OC {t.ocRelacionada.numOcp} · {t.ocRelacionada.situacaoLabel}
+                    </span>
+                  ) : (
+                    <span className="text-gray-300">—</span>
+                  )}
+                </td>
               </tr>
             ))}
             {filtradosMostrados.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={10} className="px-4 py-6 text-center text-gray-400">
                   Nenhum título encontrado com esse filtro.
                 </td>
               </tr>
