@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
+import { escolherTituloReal, type CandidatoTitulo } from "@/lib/escolherTituloReal";
 
 // Detalhe titulo-a-titulo de UMA linha de Custo por Plano de Contas (um
 // codccu+contaFinanceira+competencia), com a OC relacionada de cada titulo
@@ -81,10 +82,20 @@ export async function GET(req: Request) {
         where: { numTit: { in: numTits } },
       })
     : [];
-  const tituloRealPorChave = new Map(titulosReais.map((t) => [`${t.numTit}|${t.codFor}`, t]));
+  const candidatosPorChave = new Map<string, (typeof titulosReais)[number][]>();
+  for (const t of titulosReais) {
+    const chave = `${t.numTit}|${t.codFor}`;
+    const lista = candidatosPorChave.get(chave) ?? [];
+    lista.push(t);
+    candidatosPorChave.set(chave, lista);
+  }
 
   const itens = linhas.map((l) => {
-    const real = tituloRealPorChave.get(`${l.numTit}|${l.codFor}`);
+    const candidatos = candidatosPorChave.get(`${l.numTit}|${l.codFor}`) ?? [];
+    // desempate por valor quando o mesmo numTit+codFor tem mais de um
+    // título real (ex: um tipo COF e um tipo IRF com o mesmo número) --
+    // ver src/lib/escolherTituloReal.ts.
+    const real = escolherTituloReal(candidatos as CandidatoTitulo<(typeof titulosReais)[number]>[], l.valorRateado);
     const vinculo = motor.ocRelacionadaDe(
       real
         ? {

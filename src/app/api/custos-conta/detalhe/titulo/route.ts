@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
+import { escolherTituloReal, type CandidatoTitulo } from "@/lib/escolherTituloReal";
 
 // Rateio completo de UM título entre todos os centros de custo -- pedido do
 // João 15/09/2026: "poder clicar no título e abrir ele, pra entender", a
@@ -39,14 +40,13 @@ export async function GET(req: Request) {
     if (!souMembro) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
   }
 
-  const [linhas, tituloReal, ocs] = await Promise.all([
+  const [linhas, candidatosTitulo, ocs] = await Promise.all([
     prisma.custoFinanceiroDetalhe.findMany({
       where: { numTit, codFor },
       orderBy: { valorRateado: "desc" },
     }),
-    prisma.tituloContasAPagar.findFirst({
+    prisma.tituloContasAPagar.findMany({
       where: { numTit, codFor },
-      orderBy: { dataEmissao: "desc" },
     }),
     prisma.aprovacaoSenior.findMany({
       select: {
@@ -70,6 +70,15 @@ export async function GET(req: Request) {
   if (linhas.length === 0) {
     return NextResponse.json({ error: "Título não encontrado no detalhe sincronizado" }, { status: 404 });
   }
+
+  const somaRateio = linhas.reduce((s, l) => s + l.valorRateado, 0);
+
+  // Desempate quando numTit+codFor tem mais de um título real (ex: mesmo
+  // número existindo como tipo COF e como tipo IRF) -- achado real na
+  // auditoria sistêmica pedida pelo João 15/09/2026, ver
+  // src/lib/escolherTituloReal.ts. Aqui a referência é a soma do rateio
+  // INTEIRO (todos os CCUs), a mais precisa possível.
+  const tituloReal = escolherTituloReal(candidatosTitulo as CandidatoTitulo<(typeof candidatosTitulo)[number]>[], somaRateio);
 
   // Mesmo motor de vínculo usado em /api/titulos-pagar e no mapa da OC --
   // pra explicar, dentro do próprio dossiê do título, se tem OC ou não e
@@ -104,7 +113,6 @@ export async function GET(req: Request) {
   ]);
   const nomePorCcu = new Map(contratos.map((c) => [c.codccu, c.contrato]));
 
-  const somaRateio = linhas.reduce((s, l) => s + l.valorRateado, 0);
   const valorOriginalSenior = tituloReal?.valorOriginal ?? null;
 
   return NextResponse.json({
