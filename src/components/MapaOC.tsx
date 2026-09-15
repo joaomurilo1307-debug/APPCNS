@@ -134,7 +134,7 @@ function parseJSON<T>(s: string | null): T | null {
 
 function formatDataHora(iso: string | null | undefined) {
   if (!iso) return null;
-  return new Date(iso).toLocaleDateString("pt-BR");
+  return new Date(iso).toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
 // O campo AprovacaoSenior.pago vem sempre `false` do sincronismo (E420OCP
@@ -360,7 +360,7 @@ export default function MapaOC({
             </div>
             <div>
               <dt className="text-xs text-gray-500">Emissão</dt>
-              <dd>{new Date(a.dataEmissao).toLocaleDateString("pt-BR")}</dd>
+              <dd>{new Date(a.dataEmissao).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</dd>
             </div>
             <div>
               <dt className="text-xs text-gray-500">Parada há</dt>
@@ -398,7 +398,9 @@ export default function MapaOC({
                           t.pago ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
                         }`}
                       >
-                        {t.pago ? `Pago em ${t.dataPagamento ? new Date(t.dataPagamento).toLocaleDateString("pt-BR") : "—"}` : "Não pago"}
+                        {t.pago
+                          ? `Pago em ${t.dataPagamento ? new Date(t.dataPagamento).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "—"}`
+                          : "Não pago"}
                       </span>
                     </div>
                     <p className="mt-0.5 text-[11px] text-gray-400">
