@@ -117,15 +117,30 @@ export function variantesReferencia(valor: string | null | undefined) {
   return [...resultado];
 }
 
-export function chavesFornecedor(codFor: string | null | undefined, nome: string | null | undefined) {
+// Bug real achado 14/09/2026 (auditoria de consistência, "confira se tudo
+// bate"): esta função tinha uma chave adicional por NOME normalizado
+// (`N:...`), pensada como fallback pro caso de código de fornecedor
+// divergir por formatação. Na prática, código de fornecedor está SEMPRE
+// preenchido (fornecedorCodigo/codFor não são opcionais no schema) -- a
+// chave por nome nunca era necessária pra isso, e criou 2 falsos positivos
+// confirmados: Senior tem a MESMA empresa cadastrada sob 2 códigos de
+// fornecedor diferentes em pelo menos 2 casos (712040/712116 "G C CECCON",
+// 712188/712015 "ARIZONA LOGISTICA") -- e como títulos de OUTRAS empresas,
+// sem relação nenhuma, coincidentemente usam referências genéricas
+// ("9PL01", "01") repetidas por dezenas de fornecedores diferentes, a
+// combinação (nome bate + referência genérica bate) vinculou título de uma
+// empresa a OC de outra completamente diferente. Corrigido: só código
+// identifica fornecedor pra fins de vínculo. Isso significa que, se o
+// Senior duplicar o cadastro do mesmo fornecedor sob 2 códigos, um título
+// lançado no código B não casará com uma OC do código A -- mais seguro que
+// o oposto (vínculo cruzado errado entre empresas de verdade diferentes).
+export function chavesFornecedor(codFor: string | null | undefined, _nome?: string | null) {
   const chaves = new Set<string>();
   const codigo = normalizarReferencia(codFor);
   if (codigo) {
     chaves.add(`C:${codigo}`);
     if (/^\d+$/.test(codigo)) chaves.add(`C:${codigo.replace(/^0+(?=\d)/, "")}`);
   }
-  const nomeNormalizado = normalizarNomeFornecedor(nome);
-  if (nomeNormalizado) chaves.add(`N:${nomeNormalizado}`);
   return [...chaves];
 }
 
