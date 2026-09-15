@@ -33,6 +33,15 @@ const bodySchema = z.object({
   itens: z.array(itemSchema),
 });
 
+// Piso de competência (pedido do João 15/09/2026: "reduza pra 26 pra frente,
+// os custos de contrato não pode ter antes, pq tem que bater com o Rito").
+// Antes de jan/2026, resultado_por_ccu.custo_financeiro (o "Rito" que essa
+// tela precisa bater) não foi retroalimentado -- fica 0 ou nem existe --
+// então mostrar 2024/2025 aqui é mostrar um número que o Rito não confirma.
+// Aplicado como limpeza incondicional (não só "janela do payload"), pra
+// nunca sobrar lixo histórico mesmo se o script Python mudar no futuro.
+const CUSTO_CONTRATO_A_PARTIR_DE = new Date("2026-01-01T00:00:00.000Z");
+
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
   if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
@@ -45,9 +54,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Payload invalido", detalhes: parsed.error.flatten() }, { status: 422 });
   }
 
-  const itens = parsed.data.itens;
+  const totalRecebido = parsed.data.itens.length;
+  const itens = parsed.data.itens.filter((i) => new Date(i.competencia) >= CUSTO_CONTRATO_A_PARTIR_DE);
+  const ignoradosAntesDoPiso = totalRecebido - itens.length;
+
+  // limpeza incondicional do histórico anterior ao piso -- roda sempre,
+  // mesmo se o payload vier vazio ou só com meses recentes.
+  const { count: removidosAntesDoPiso } = await prisma.custoContaFinanceira.deleteMany({
+    where: { competencia: { lt: CUSTO_CONTRATO_A_PARTIR_DE } },
+  });
+
   if (itens.length === 0) {
-    return NextResponse.json({ ok: true, processados: 0, totalRecebido: 0, removidos: 0, ccusSemEquipe: [] });
+    return NextResponse.json({
+      ok: true,
+      processados: 0,
+      totalRecebido,
+      ignoradosAntesDoPiso,
+      removidos: removidosAntesDoPiso,
+      ccusSemEquipe: [],
+    });
   }
 
   const times = await prisma.team.findMany({ where: { codccu: { not: null } }, select: { id: true, codccu: true } });
@@ -101,8 +126,9 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true,
     processados,
-    totalRecebido: itens.length,
-    removidos: idsParaRemover.length,
+    totalRecebido,
+    ignoradosAntesDoPiso,
+    removidos: idsParaRemover.length + removidosAntesDoPiso,
     ccusSemEquipe: Array.from(semEquipe),
   });
 }

@@ -29,6 +29,13 @@ const itemSchema = z.object({
 
 const bodySchema = z.object({ itens: z.array(itemSchema) });
 
+// Mesmo piso de /api/senior/custos-conta/sync (pedido do João 15/09/2026:
+// "reduza pra 26 pra frente, não pode ter antes, pq tem que bater com o
+// Rito" -- antes de jan/2026 o resultado_por_ccu.custo_financeiro do Rito
+// não foi retroalimentado). Filtrado aqui também, mesmo o script Python já
+// não mandando histórico antigo, pra não depender só da fonte.
+const CUSTO_CONTRATO_A_PARTIR_DE = new Date("2026-01-01T00:00:00.000Z");
+
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
   if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
@@ -41,9 +48,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Payload invalido", detalhes: parsed.error.flatten() }, { status: 422 });
   }
 
-  const itens = parsed.data.itens;
+  const totalRecebido = parsed.data.itens.length;
+  const itens = parsed.data.itens.filter((i) => new Date(i.competencia) >= CUSTO_CONTRATO_A_PARTIR_DE);
+  const ignoradosAntesDoPiso = totalRecebido - itens.length;
   if (itens.length === 0) {
-    return NextResponse.json({ ok: true, processados: 0 });
+    return NextResponse.json({ ok: true, processados: 0, totalRecebido, ignoradosAntesDoPiso });
   }
 
   await prisma.$transaction(
@@ -66,7 +75,7 @@ export async function POST(req: Request) {
     { timeout: 60000 }
   );
 
-  return NextResponse.json({ ok: true, processados: itens.length });
+  return NextResponse.json({ ok: true, processados: itens.length, totalRecebido, ignoradosAntesDoPiso });
 }
 
 export async function GET(req: Request) {
