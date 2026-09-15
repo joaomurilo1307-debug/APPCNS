@@ -17,7 +17,7 @@ export async function GET() {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 
-  const [titulos, ocs] = await Promise.all([
+  const [titulos, ocs, usuariosSenior] = await Promise.all([
     prisma.tituloContasAPagar.findMany({
       orderBy: [{ pago: "asc" }, { vencimentoProgramado: "asc" }],
     }),
@@ -38,7 +38,11 @@ export async function GET() {
         previsaoPagamento: true,
       },
     }),
+    prisma.usuarioSenior.findMany({ include: { user: { select: { name: true } } } }),
   ]);
+
+  const codToNome: Record<string, string> = {};
+  for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
 
   const motor = criarMotorVinculo(ocs);
 
@@ -67,6 +71,11 @@ export async function GET() {
         ocRelacionada: vinculo.ocRelacionada,
         motivoSemOC: vinculo.motivoSemOC,
         ocEsperada: vinculo.ocEsperada,
+        descricao: t.descricao,
+        dataLancamento: t.dataLancamento,
+        lancadoPorNome: t.lancadoPorCod && t.lancadoPorCod !== "0" ? codToNome[t.lancadoPorCod] || `Usuário Senior #${t.lancadoPorCod}` : null,
+        entradaManual: !t.numNfc || t.numNfc === "0",
+        numNfc: t.numNfc && t.numNfc !== "0" ? t.numNfc : null,
       };
     }),
     totalAberto,

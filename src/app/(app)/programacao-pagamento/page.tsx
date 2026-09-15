@@ -29,6 +29,11 @@ type Titulo = {
   ocRelacionada: OcRelacionada | null;
   motivoSemOC: string | null;
   ocEsperada: boolean;
+  descricao: string | null;
+  dataLancamento: string | null;
+  lancadoPorNome: string | null;
+  entradaManual: boolean;
+  numNfc: string | null;
 };
 
 type FiltrosColuna = {
@@ -421,6 +426,7 @@ export default function ProgramacaoPagamentoPage() {
               <th className="px-3 py-2 font-medium">OC</th>
               <th className="px-3 py-2 font-medium">Tipo</th>
               <th className="px-3 py-2 font-medium">Criação</th>
+              <th className="px-3 py-2 font-medium">Lançado no Senior</th>
               <th className="px-3 py-2 font-medium">Fornecedor</th>
               <th className="px-3 py-2 font-medium">Centro de custo</th>
               <th className="px-3 py-2 font-medium">Vencto programado</th>
@@ -475,6 +481,7 @@ export default function ProgramacaoPagamentoPage() {
                   className="w-full min-w-[125px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
+              <th className="px-2 py-2" />
               <th className="px-2 py-2">
                 <input
                   aria-label="Filtrar fornecedor"
@@ -586,6 +593,28 @@ export default function ProgramacaoPagamentoPage() {
                 </td>
                 <td className="px-3 py-1.5 text-gray-500">{t.tipo}</td>
                 <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataEmissao)}</td>
+                <td className="max-w-[160px] px-3 py-1.5 text-gray-500">
+                  <span
+                    className="cursor-help underline decoration-dotted underline-offset-2"
+                    title={[
+                      `Lançado por ${t.lancadoPorNome || "usuário não identificado"} (E501TCP.USUGER) em ${formatData(t.dataLancamento)} (E501TCP.DATGER).`,
+                      t.entradaManual
+                        ? "Lançamento manual, sem nota fiscal de compra vinculada (E501TCP.NUMNFC = 0)."
+                        : `Gerado automaticamente pela Nota Fiscal de Compra ${t.numNfc} (E501TCP.NUMNFC).`,
+                      t.descricao ? `\nDescrição (E501TCP.OBSTCP): ${t.descricao}` : "",
+                    ].join(" ")}
+                  >
+                    {t.lancadoPorNome || "—"}
+                  </span>
+                  <span
+                    className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                      t.entradaManual ? "bg-gray-100 text-gray-500" : "bg-sky-100 text-sky-700"
+                    }`}
+                  >
+                    {t.entradaManual ? "manual" : "NF"}
+                  </span>
+                  {t.dataLancamento && <span className="block text-[10px] text-gray-400">em {formatData(t.dataLancamento)}</span>}
+                </td>
                 <td className="max-w-[200px] truncate px-3 py-1.5" title={t.fornecedorNome}>
                   {t.fornecedorNome}
                 </td>
@@ -620,7 +649,7 @@ export default function ProgramacaoPagamentoPage() {
             ))}
             {filtradosMostrados.length === 0 && (
               <tr>
-                <td colSpan={mostrarColunaPagamento ? 12 : 11} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={mostrarColunaPagamento ? 13 : 12} className="px-4 py-6 text-center text-gray-400">
                   Nenhum título encontrado com esse filtro.
                 </td>
               </tr>

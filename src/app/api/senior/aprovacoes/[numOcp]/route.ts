@@ -77,6 +77,10 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
       dataEmissao: t.dataEmissao,
       vencimentoProgramado: t.vencimentoProgramado,
       dataPagamento: t.dataPagamento,
+      descricao: t.descricao,
+      dataLancamento: t.dataLancamento,
+      lancadoPorNome: t.lancadoPorCod && t.lancadoPorCod !== "0" ? codToNome[t.lancadoPorCod] || `Usuário Senior #${t.lancadoPorCod}` : null,
+      entradaManual: !t.numNfc || t.numNfc === "0",
     }));
 
   return NextResponse.json({ aprovacao, codToNome, titulosVinculados });

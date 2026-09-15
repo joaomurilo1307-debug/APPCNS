@@ -434,7 +434,10 @@ model TituloContasAPagar {
   ccuNome             String?
   numOcp              String? // E501TCP.NUMOCP, quando o Senior gravar a OC de origem
   filOcp              String? // E501TCP.FILOCP, filial da OC quando vier no sincronismo
-  numNfc              String? // E501TCP.NUMNFC, NF de entrada relacionada ao título
+  numNfc              String? // E501TCP.NUMNFC, NF de compra vinculada -- também usado como sinal de lançamento automático (ver entradaManual nas rotas de leitura)
+  descricao           String? // E501TCP.OBSTCP, texto livre digitado por quem lançou o título
+  lancadoPorCod       String? // E501TCP.USUGER, usuário Senior que lançou o título (resolvido pra nome via UsuarioSenior nas rotas de leitura)
+  dataLancamento      DateTime? // E501TCP.DATGER, quando o título foi de fato digitado no Senior -- pode ser muito depois da emissão/vencimento (lançamento retroativo)
   atualizadoEm        DateTime  @updatedAt
 
   @@unique([numTit, codFil, codFor, tipo, dataEmissao])

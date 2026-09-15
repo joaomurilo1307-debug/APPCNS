@@ -26,6 +26,10 @@ type LinhaDetalhe = {
   valorRateado: number;
   ocRelacionada: OcRelacionada | null;
   motivoSemOC: string | null;
+  descricao: string | null;
+  dataLancamento: string | null;
+  lancadoPorNome: string | null;
+  entradaManual: boolean | null;
 };
 
 function formatMoeda(v: number) {
@@ -312,6 +316,7 @@ export default function CustoPlanoDeContasPage() {
                                           <thead className="bg-gray-50 text-left uppercase text-gray-400">
                                             <tr>
                                               <th className="px-2 py-1.5">Título</th>
+                                              <th className="px-2 py-1.5">Lançado no Senior</th>
                                               <th className="px-2 py-1.5">Fornecedor</th>
                                               <th className="px-2 py-1.5">Entrada</th>
                                               <th className="px-2 py-1.5 text-right">Valor</th>
@@ -322,6 +327,31 @@ export default function CustoPlanoDeContasPage() {
                                             {det.itens.map((l, i) => (
                                               <tr key={`${l.numTit}-${l.codFor}-${i}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
                                                 <td className="px-2 py-1 font-medium text-gray-700">{l.numTit}</td>
+                                                <td className="max-w-[150px] px-2 py-1 text-gray-500">
+                                                  <span
+                                                    className="cursor-help underline decoration-dotted underline-offset-2"
+                                                    title={[
+                                                      `Lançado por ${l.lancadoPorNome || "usuário não identificado"} (E501TCP.USUGER)${l.dataLancamento ? ` em ${formatData(l.dataLancamento)}` : ""} (E501TCP.DATGER).`,
+                                                      l.entradaManual === false
+                                                        ? "Gerado automaticamente por Nota Fiscal de Compra vinculada (E501TCP.NUMNFC)."
+                                                        : l.entradaManual === true
+                                                          ? "Lançamento manual, sem nota fiscal de compra vinculada (E501TCP.NUMNFC = 0)."
+                                                          : "",
+                                                      l.descricao ? `\nDescrição (E501TCP.OBSTCP): ${l.descricao}` : "",
+                                                    ].join(" ")}
+                                                  >
+                                                    {l.lancadoPorNome || "—"}
+                                                  </span>
+                                                  {l.entradaManual !== null && (
+                                                    <span
+                                                      className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                                                        l.entradaManual ? "bg-gray-100 text-gray-500" : "bg-sky-100 text-sky-700"
+                                                      }`}
+                                                    >
+                                                      {l.entradaManual ? "manual" : "NF"}
+                                                    </span>
+                                                  )}
+                                                </td>
                                                 <td className="max-w-[220px] truncate px-2 py-1" title={l.fornecedorNome}>
                                                   {l.fornecedorNome}
                                                 </td>
@@ -333,8 +363,11 @@ export default function CustoPlanoDeContasPage() {
                                                       {badgeOc(l.ocRelacionada)}
                                                     </button>
                                                   ) : (
-                                                    <span title={l.motivoSemOC ?? undefined} className="text-gray-300">
-                                                      —
+                                                    <span
+                                                      title={l.motivoSemOC ?? "Sem motivo de vínculo informado."}
+                                                      className="cursor-help rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500 underline decoration-dotted underline-offset-2"
+                                                    >
+                                                      Sem OC
                                                     </span>
                                                   )}
                                                 </td>
@@ -342,7 +375,7 @@ export default function CustoPlanoDeContasPage() {
                                             ))}
                                             {det.itens.length === 0 && (
                                               <tr>
-                                                <td colSpan={5} className="px-2 py-3 text-center text-gray-400">
+                                                <td colSpan={6} className="px-2 py-3 text-center text-gray-400">
                                                   Nenhum lançamento encontrado.
                                                 </td>
                                               </tr>

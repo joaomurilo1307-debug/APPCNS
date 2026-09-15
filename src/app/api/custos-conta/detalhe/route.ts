@@ -35,7 +35,7 @@ export async function GET(req: Request) {
     if (!souMembro) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
   }
 
-  const [linhas, ocs] = await Promise.all([
+  const [linhas, ocs, usuariosSenior] = await Promise.all([
     prisma.custoFinanceiroDetalhe.findMany({
       where: { codccu, contaFinanceira, competencia: new Date(competencia) },
       orderBy: { valorRateado: "desc" },
@@ -57,9 +57,27 @@ export async function GET(req: Request) {
         previsaoPagamento: true,
       },
     }),
+    prisma.usuarioSenior.findMany({ include: { user: { select: { name: true } } } }),
   ]);
 
+  const codToNome: Record<string, string> = {};
+  for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
+
   const motor = criarMotorVinculo(ocs);
+
+  // detalhe (composicao_custo_financeiro) não carrega quem lançou o
+  // título/descrição/NF -- busca isso no título real por numTit+codFor,
+  // mesma chave usada em Programação de Pagamento (pedido do João
+  // 15/09/2026: "quem gerou, se foi manual, a descrição, o nome do campo,
+  // em todas as abas onde aparece título").
+  const numTits = Array.from(new Set(linhas.map((l) => l.numTit)));
+  const titulosReais = numTits.length
+    ? await prisma.tituloContasAPagar.findMany({
+        where: { numTit: { in: numTits } },
+        select: { numTit: true, codFor: true, descricao: true, lancadoPorCod: true, dataLancamento: true, numNfc: true },
+      })
+    : [];
+  const tituloRealPorChave = new Map(titulosReais.map((t) => [`${t.numTit}|${t.codFor}`, t]));
 
   const itens = linhas.map((l) => {
     const vinculo = motor.ocRelacionadaDe({
@@ -74,6 +92,7 @@ export async function GET(req: Request) {
       dataEmissao: l.dataEntrada ?? l.competencia,
       vencimentoProgramado: l.dataVencimento,
     });
+    const real = tituloRealPorChave.get(`${l.numTit}|${l.codFor}`);
     return {
       numTit: l.numTit,
       codFor: l.codFor,
@@ -83,6 +102,10 @@ export async function GET(req: Request) {
       valorRateado: l.valorRateado,
       ocRelacionada: vinculo.ocRelacionada,
       motivoSemOC: vinculo.motivoSemOC,
+      descricao: real?.descricao ?? null,
+      dataLancamento: real?.dataLancamento ?? null,
+      lancadoPorNome: real?.lancadoPorCod && real.lancadoPorCod !== "0" ? codToNome[real.lancadoPorCod] || `Usuário Senior #${real.lancadoPorCod}` : null,
+      entradaManual: real ? !real.numNfc || real.numNfc === "0" : null,
     };
   });
 

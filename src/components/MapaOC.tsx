@@ -55,6 +55,10 @@ export type TituloVinculado = {
   dataEmissao: string;
   vencimentoProgramado: string | null;
   dataPagamento: string | null;
+  descricao?: string | null;
+  dataLancamento?: string | null;
+  lancadoPorNome?: string | null;
+  entradaManual?: boolean | null;
 };
 
 export type Aprovacao = {
@@ -126,6 +130,42 @@ function parseJSON<T>(s: string | null): T | null {
   } catch {
     return null;
   }
+}
+
+function formatDataHora(iso: string | null | undefined) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString("pt-BR");
+}
+
+// O campo AprovacaoSenior.pago vem sempre `false` do sincronismo (E420OCP
+// não tem um status de pagamento confiável no cabeçalho da OC -- só o
+// título real sabe se foi pago) -- por isso NUNCA usar a.pago pra mostrar
+// "Pago"/"Não pago" aqui, senão contradiz o título de verdade logo abaixo
+// (bug real reportado pelo João 15/09/2026, print da OC 12394: cabeçalho
+// dizia "Não pago" e o título gerado por ela já mostrava "Pago em X").
+// Deriva sempre dos títulos REAIS gerados por esta OC.
+function statusPagamento(titulos: TituloVinculado[] | undefined) {
+  if (!titulos || titulos.length === 0) {
+    return { label: "Sem título gerado ainda", style: "bg-gray-100 text-gray-500" as const, data: null as string | null };
+  }
+  const pagos = titulos.filter((t) => t.pago);
+  if (pagos.length === titulos.length) {
+    const datas = pagos.map((t) => t.dataPagamento).filter(Boolean) as string[];
+    const maisRecente = datas.sort().at(-1) ?? null;
+    return {
+      label: titulos.length > 1 ? `Pago (${titulos.length} títulos)` : "Pago",
+      style: "bg-emerald-100 text-emerald-800" as const,
+      data: maisRecente,
+    };
+  }
+  if (pagos.length > 0) {
+    return {
+      label: `Parcialmente pago (${pagos.length} de ${titulos.length} títulos)`,
+      style: "bg-amber-100 text-amber-800" as const,
+      data: null,
+    };
+  }
+  return { label: "Não pago", style: "bg-gray-100 text-gray-500" as const, data: null };
 }
 
 function parseNiveis(csv: string | null): number[] {
@@ -207,6 +247,7 @@ export default function MapaOC({
   const niveis = parseJSON<NivelHist[]>(a.historicoNiveis) ?? [];
   const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
   const cotacao = parseJSON<any>(a.mapaCotacao);
+  const pagamento = statusPagamento(titulosVinculados);
 
   type GrupoCC = {
     codccu: string;
@@ -301,18 +342,18 @@ export default function MapaOC({
               <dd className="font-medium">{a.criadorNome || (a.criadorCod ? `Usuário Senior #${a.criadorCod}` : "—")}</dd>
             </div>
             <div>
-              <dt className="text-xs text-gray-500">Pagamento</dt>
+              <dt className="text-xs text-gray-500">Pagamento (do título real, não da OC)</dt>
               <dd>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    a.pago ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  {a.pago ? "Pago" : "Não pago"}
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${pagamento.style}`}>
+                  {pagamento.label}
+                  {pagamento.data ? ` em ${new Date(pagamento.data).toLocaleDateString("pt-BR", { timeZone: "UTC" })}` : ""}
                 </span>
                 {a.previsaoPagamento && (
-                  <span className="ml-2 text-xs text-gray-500">
-                    previsão {new Date(a.previsaoPagamento).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
+                  <span
+                    className="ml-2 text-xs text-gray-500"
+                    title="Data digitada pelo comprador ao criar a OC (E420OCP.USU_DATVECT) -- é uma previsão, não confirma se foi pago."
+                  >
+                    previsão digitada na OC: {new Date(a.previsaoPagamento).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
                   </span>
                 )}
               </dd>
@@ -344,20 +385,33 @@ export default function MapaOC({
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Título(s) gerado(s) por esta OC ({titulosVinculados.length})
               </p>
-              <ul className="space-y-1 rounded-xl bg-gray-50 p-3">
+              <ul className="space-y-2 rounded-xl bg-gray-50 p-3">
                 {titulosVinculados.map((t) => (
-                  <li key={`${t.numTit}-${t.dataEmissao}`} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                    <span className="font-medium text-gray-800">
-                      {t.numTit} <span className="font-normal text-gray-400">({t.tipo})</span>
-                    </span>
-                    <span className="text-gray-600">{formatMoeda(t.valorOriginal)}</span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        t.pago ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                      }`}
-                    >
-                      {t.pago ? `Pago em ${t.dataPagamento ? new Date(t.dataPagamento).toLocaleDateString("pt-BR") : "—"}` : "Não pago"}
-                    </span>
+                  <li key={`${t.numTit}-${t.dataEmissao}`} className="text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium text-gray-800">
+                        {t.numTit} <span className="font-normal text-gray-400">({t.tipo})</span>
+                      </span>
+                      <span className="text-gray-600">{formatMoeda(t.valorOriginal)}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          t.pago ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {t.pago ? `Pago em ${t.dataPagamento ? new Date(t.dataPagamento).toLocaleDateString("pt-BR") : "—"}` : "Não pago"}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-gray-400">
+                      Lançado no Senior {t.lancadoPorNome ? `por ${t.lancadoPorNome}` : "(sem usuário identificado)"}
+                      {formatDataHora(t.dataLancamento) ? ` em ${formatDataHora(t.dataLancamento)}` : ""}
+                      {" · "}
+                      <span title={t.entradaManual ? "Sem nota fiscal de compra vinculada (E501TCP.NUMNFC=0)." : "Gerado a partir de uma Nota Fiscal de Compra vinculada (E501TCP.NUMNFC)."}>
+                        {t.entradaManual === null || t.entradaManual === undefined ? "origem não verificada" : t.entradaManual ? "lançamento manual" : "gerado automaticamente (NF vinculada)"}
+                      </span>
+                    </p>
+                    {t.descricao && (
+                      <p className="mt-1 whitespace-pre-wrap rounded-lg bg-white p-2 text-[11px] text-gray-500">{t.descricao}</p>
+                    )}
                   </li>
                 ))}
               </ul>

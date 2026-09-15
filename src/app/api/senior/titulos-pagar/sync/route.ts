@@ -44,6 +44,9 @@ const itemSchema = z.object({
   numOcp: z.string().nullable(),
   filOcp: z.string().nullable().optional(),
   numNfc: z.string().nullable().optional(),
+  descricao: z.string().nullable().optional(),
+  lancadoPorCod: z.string().nullable().optional(),
+  dataLancamento: z.string().nullable().optional(),
 });
 
 const bodySchema = z.object({ itens: z.array(itemSchema) });
@@ -116,6 +119,11 @@ export async function POST(req: Request) {
         numOcp: item.numOcp,
         ...(item.filOcp !== undefined ? { filOcp: item.filOcp } : {}),
         ...(item.numNfc !== undefined ? { numNfc: item.numNfc } : {}),
+        ...(item.descricao !== undefined ? { descricao: item.descricao } : {}),
+        ...(item.lancadoPorCod !== undefined ? { lancadoPorCod: item.lancadoPorCod } : {}),
+        ...(item.dataLancamento !== undefined
+          ? { dataLancamento: item.dataLancamento ? new Date(item.dataLancamento) : null }
+          : {}),
       },
       create: {
         numTit: item.numTit,
@@ -136,6 +144,9 @@ export async function POST(req: Request) {
         numOcp: item.numOcp,
         filOcp: item.filOcp ?? null,
         numNfc: item.numNfc ?? null,
+        descricao: item.descricao ?? null,
+        lancadoPorCod: item.lancadoPorCod ?? null,
+        dataLancamento: item.dataLancamento ? new Date(item.dataLancamento) : null,
       },
     });
     processados++;
