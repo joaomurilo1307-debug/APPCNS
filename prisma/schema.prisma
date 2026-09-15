@@ -353,6 +353,30 @@ model CustoContaFinanceira {
   @@index([competencia])
 }
 
+// Detalhe titulo-a-titulo por tras de cada linha de CustoContaFinanceira --
+// pedido do Joao 15/09/2026: "abrir a conta financeira e ver os lancamentos
+// certinhos, com a OC relacionada". Espelho de leitura de
+// rito_financeiro.composicao_custo_financeiro (Postgres do Rito, mesma
+// fonte ja validada ao centavo que soma pro total exibido) -- sem chave
+// unica de proposito (o titulo pode aparecer >1x na mesma conta/mes/CCU/
+// fornecedor, rateio real confirmado no Rito) -- sync sempre apaga tudo e
+// reinsere (a fonte tambem e recalculada inteira a cada cascata).
+model CustoFinanceiroDetalhe {
+  id              String   @id @default(cuid())
+  codccu          String
+  contaFinanceira String
+  competencia     DateTime
+  numTit          String
+  codFor          String
+  fornecedorNome  String?
+  dataEntrada     DateTime?
+  dataVencimento  DateTime?
+  valorRateado    Float
+  atualizadoEm    DateTime @updatedAt
+
+  @@index([codccu, contaFinanceira, competencia])
+}
+
 // Ledger IMUTAVEL de qual centro de custo cada colaborador CLT tinha em
 // cada mes -- vem de rito_financeiro.historico_ccu_colaborador (Postgres
 // do Rito, VPS 2.25.191.135), capturado la TODO MES pela cascata (nunca

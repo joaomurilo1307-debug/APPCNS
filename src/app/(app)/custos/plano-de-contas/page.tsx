@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 
 type Mes = { competencia: string; valor: number };
 type Conta = { contaFinanceira: string; total: number; meses: Mes[] };
@@ -15,8 +16,40 @@ type Contrato = {
   contas: Conta[];
 };
 
+type OcRelacionada = { numOcp: string; situacao: string; situacaoLabel: string; parcela: boolean; motivo: string };
+type LinhaDetalhe = {
+  numTit: string;
+  codFor: string;
+  fornecedorNome: string;
+  dataEntrada: string | null;
+  dataVencimento: string | null;
+  valorRateado: number;
+  ocRelacionada: OcRelacionada | null;
+  motivoSemOC: string | null;
+};
+
 function formatMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatData(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+}
+
+function badgeOc(oc: OcRelacionada | null) {
+  if (!oc) return <span className="text-gray-300">—</span>;
+  const cor =
+    oc.situacao === "APR"
+      ? "bg-emerald-100 text-emerald-800"
+      : oc.situacao === "REP" || oc.situacao === "CAN"
+        ? "bg-red-100 text-red-700"
+        : "bg-amber-100 text-amber-800";
+  return (
+    <span title={oc.motivo} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${cor}`}>
+      OC {oc.numOcp} · {oc.situacaoLabel}
+    </span>
+  );
 }
 
 function formatMesAno(iso: string) {
@@ -35,6 +68,48 @@ export default function CustoPlanoDeContasPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [expandido, setExpandido] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
+
+  // segundo nivel: qual conta financeira esta "explodida" mostrando o
+  // detalhe titulo-a-titulo, e o cache do que ja foi buscado (chave
+  // "codccu|contaFinanceira|competencia" -- pedido do Joao 15/09/2026)
+  const [contaAberta, setContaAberta] = useState<string | null>(null);
+  const [detalhes, setDetalhes] = useState<Record<string, { itens: LinhaDetalhe[]; total: number } | "carregando" | "erro">>({});
+
+  // modal da OC (busca sob demanda, mesmo padrao da tela Aprovações OC)
+  const [ocAberta, setOcAberta] = useState<{ aprovacao: Aprovacao; codToNome: Record<string, string>; titulosVinculados?: TituloVinculado[] } | "carregando" | null>(null);
+
+  async function toggleConta(codccu: string, contaFinanceira: string, competencia: string) {
+    const chave = `${codccu}|${contaFinanceira}|${competencia}`;
+    if (contaAberta === chave) {
+      setContaAberta(null);
+      return;
+    }
+    setContaAberta(chave);
+    if (detalhes[chave]) return; // ja em cache
+    setDetalhes((d) => ({ ...d, [chave]: "carregando" }));
+    try {
+      const params = new URLSearchParams({ codccu, contaFinanceira, competencia });
+      const res = await fetch(`/api/custos-conta/detalhe?${params.toString()}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setDetalhes((d) => ({ ...d, [chave]: data }));
+    } catch {
+      setDetalhes((d) => ({ ...d, [chave]: "erro" }));
+    }
+  }
+
+  async function abrirOC(numOcp: string) {
+    setOcAberta("carregando");
+    try {
+      const res = await fetch(`/api/senior/aprovacoes/${numOcp}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setOcAberta({ aprovacao: data.aprovacao ?? data, codToNome: data.codToNome ?? {}, titulosVinculados: data.titulosVinculados });
+    } catch {
+      setOcAberta(null);
+      alert("Não foi possível carregar o mapa dessa OC.");
+    }
+  }
 
   useEffect(() => {
     fetch("/api/custos-conta")
@@ -200,6 +275,7 @@ export default function CustoPlanoDeContasPage() {
                   <p className="mb-2 text-xs font-semibold uppercase text-gray-500">
                     Custo por conta financeira — {formatMesAno(mesSel)}
                   </p>
+                  <p className="mb-2 text-[11px] text-gray-400">Clique numa conta pra ver os lançamentos e a OC de cada um.</p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="text-left text-xs text-gray-500">
@@ -209,12 +285,78 @@ export default function CustoPlanoDeContasPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {c.contasMes.map((conta) => (
-                          <tr key={conta.contaFinanceira} className="border-t border-gray-100">
-                            <td className="py-1.5 pr-4">{conta.contaFinanceira}</td>
-                            <td className="py-1.5 text-right font-medium">{formatMoeda(conta.total)}</td>
-                          </tr>
-                        ))}
+                        {c.contasMes.map((conta) => {
+                          const chave = `${c.codccu}|${conta.contaFinanceira}|${mesSel}`;
+                          const aberta = contaAberta === chave;
+                          const det = detalhes[chave];
+                          return (
+                            <Fragment key={conta.contaFinanceira}>
+                              <tr
+                                onClick={() => toggleConta(c.codccu, conta.contaFinanceira, mesSel)}
+                                className="cursor-pointer border-t border-gray-100 hover:bg-gray-100/60"
+                              >
+                                <td className="py-1.5 pr-4">
+                                  <span className="mr-1 inline-block w-3 text-gray-400">{aberta ? "▾" : "▸"}</span>
+                                  {conta.contaFinanceira}
+                                </td>
+                                <td className="py-1.5 text-right font-medium">{formatMoeda(conta.total)}</td>
+                              </tr>
+                              {aberta && (
+                                <tr className="border-t border-gray-100">
+                                  <td colSpan={2} className="bg-white px-2 py-2">
+                                    {det === "carregando" && <p className="text-xs text-gray-400">Carregando lançamentos...</p>}
+                                    {det === "erro" && <p className="text-xs text-red-600">Não foi possível carregar os lançamentos.</p>}
+                                    {det && det !== "carregando" && det !== "erro" && (
+                                      <div className="overflow-x-auto rounded-lg border border-gray-100">
+                                        <table className="w-full text-xs">
+                                          <thead className="bg-gray-50 text-left uppercase text-gray-400">
+                                            <tr>
+                                              <th className="px-2 py-1.5">Título</th>
+                                              <th className="px-2 py-1.5">Fornecedor</th>
+                                              <th className="px-2 py-1.5">Entrada</th>
+                                              <th className="px-2 py-1.5 text-right">Valor</th>
+                                              <th className="px-2 py-1.5">OC</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {det.itens.map((l, i) => (
+                                              <tr key={`${l.numTit}-${l.codFor}-${i}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
+                                                <td className="px-2 py-1 font-medium text-gray-700">{l.numTit}</td>
+                                                <td className="max-w-[220px] truncate px-2 py-1" title={l.fornecedorNome}>
+                                                  {l.fornecedorNome}
+                                                </td>
+                                                <td className="px-2 py-1 tabular-nums text-gray-500">{formatData(l.dataEntrada)}</td>
+                                                <td className="px-2 py-1 text-right tabular-nums">{formatMoeda(l.valorRateado)}</td>
+                                                <td className="px-2 py-1">
+                                                  {l.ocRelacionada ? (
+                                                    <button onClick={() => abrirOC(l.ocRelacionada!.numOcp)} className="hover:underline">
+                                                      {badgeOc(l.ocRelacionada)}
+                                                    </button>
+                                                  ) : (
+                                                    <span title={l.motivoSemOC ?? undefined} className="text-gray-300">
+                                                      —
+                                                    </span>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                            {det.itens.length === 0 && (
+                                              <tr>
+                                                <td colSpan={5} className="px-2 py-3 text-center text-gray-400">
+                                                  Nenhum lançamento encontrado.
+                                                </td>
+                                              </tr>
+                                            )}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -222,6 +364,19 @@ export default function CustoPlanoDeContasPage() {
               )}
             </div>
           ))}
+          {ocAberta === "carregando" && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+              <div className="rounded-lg bg-white px-4 py-3 text-sm text-gray-600 shadow-lg">Carregando OC...</div>
+            </div>
+          )}
+          {ocAberta && ocAberta !== "carregando" && (
+            <MapaOC
+              aprovacao={ocAberta.aprovacao}
+              codToNome={ocAberta.codToNome}
+              titulosVinculados={ocAberta.titulosVinculados}
+              onClose={() => setOcAberta(null)}
+            />
+          )}
           {contratosNoMes.length === 0 && (
             <div className="rounded-xl border border-gray-100 bg-white p-6 text-center text-sm text-gray-400 shadow-sm">
               Nenhum custo neste mês para os contratos que você acompanha.
