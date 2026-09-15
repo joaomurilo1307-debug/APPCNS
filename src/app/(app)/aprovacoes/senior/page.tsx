@@ -19,6 +19,16 @@ function diasParado(dataEmissao: string) {
   return Math.floor((Date.now() - new Date(dataEmissao).getTime()) / 86400000);
 }
 
+function formatDataHora(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function minutosDesde(iso: string | null) {
+  if (!iso) return null;
+  return (Date.now() - new Date(iso).getTime()) / 60000;
+}
+
 function textoContem(valor: string | null | undefined, filtro: string) {
   return !filtro || (valor ?? "").toLocaleLowerCase().includes(filtro.trim().toLocaleLowerCase());
 }
@@ -105,6 +115,9 @@ export default function AprovacoesSeniorPage() {
   const [erroResolvida, setErroResolvida] = useState<string | null>(null);
   const [filtrosResolvidas, setFiltrosResolvidas] = useState<FiltrosResolvidas>(FILTROS_RESOLVIDAS_VAZIOS);
   const [filtrosPendentes, setFiltrosPendentes] = useState<FiltrosPendentes>(FILTROS_PENDENTES_VAZIOS);
+  const [sincronizadoEm, setSincronizadoEm] = useState<string | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [msgSincronizacao, setMsgSincronizacao] = useState<string | null>(null);
 
   function atualizarFiltroResolvidas<K extends keyof FiltrosResolvidas>(campo: K, valor: FiltrosResolvidas[K]) {
     setFiltrosResolvidas((prev) => ({ ...prev, [campo]: valor }));
@@ -133,8 +146,8 @@ export default function AprovacoesSeniorPage() {
       .finally(() => setCarregandoResolvida(null));
   }
 
-  useEffect(() => {
-    fetch("/api/senior/aprovacoes")
+  function carregar() {
+    return fetch("/api/senior/aprovacoes")
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -146,10 +159,35 @@ export default function AprovacoesSeniorPage() {
         setPendentes(data.pendentes);
         setResolvidas(data.resolvidasRecentes);
         setCodToNome(data.codToNome ?? {});
-      })
+        setSincronizadoEm(data.sincronizadoEm ?? null);
+      });
+  }
+
+  useEffect(() => {
+    carregar()
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  // Botão "Atualizar agora" -- dispara o webhook do n8n (mesma ação do
+  // cron de 10 em 10 minutos) e reconsulta a lista depois de um tempo,
+  // já que a sincronização roda em segundo plano no VPS (pedido do João
+  // 15/09/2026, junto com o aumento da frequência automática).
+  function sincronizarAgora() {
+    setSincronizando(true);
+    setMsgSincronizacao(null);
+    fetch("/api/senior/aprovacoes/sincronizar-agora", { method: "POST" })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Erro ao disparar sincronização");
+        setMsgSincronizacao("Sincronização disparada — atualizando em instantes...");
+        setTimeout(() => {
+          carregar().then(() => setMsgSincronizacao("Lista atualizada com o retrato mais recente do Senior."));
+        }, 15000);
+      })
+      .catch((e) => setMsgSincronizacao(e.message))
+      .finally(() => setSincronizando(false));
+  }
 
   function toggleSituacao(s: string) {
     setSituacoesAtivas((prev) => {
@@ -226,6 +264,28 @@ export default function AprovacoesSeniorPage() {
             rateio; clique numa linha para ver o mapa completo da OC (fornecedor, valor, descrição, contratos do rateio,
             histórico de níveis e cotação).
           </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {sincronizadoEm && (
+              <p
+                className={`text-[11px] ${
+                  (minutosDesde(sincronizadoEm) ?? 0) > 20 ? "font-medium text-amber-700" : "text-gray-400"
+                }`}
+                title="Atualiza sozinho a cada 10 minutos; use o botão ao lado pra forçar agora."
+              >
+                Sincronizado do Senior em {formatDataHora(sincronizadoEm)}
+                {(minutosDesde(sincronizadoEm) ?? 0) > 20 &&
+                  ` · ${Math.floor(minutosDesde(sincronizadoEm) ?? 0)} min atrás`}
+              </p>
+            )}
+            <button
+              onClick={sincronizarAgora}
+              disabled={sincronizando}
+              className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {sincronizando ? "Sincronizando..." : "↻ Atualizar agora"}
+            </button>
+            {msgSincronizacao && <span className="text-[11px] text-gray-500">{msgSincronizacao}</span>}
+          </div>
         </div>
         <button
           onClick={() => setMostrarLegenda((v) => !v)}
@@ -586,7 +646,16 @@ export default function AprovacoesSeniorPage() {
       )}
 
       {aberta && (
-        <MapaOC aprovacao={aberta} codToNome={codToNome} titulosVinculados={titulosDaAberta} onClose={() => setAberta(null)} />
+        <MapaOC
+          aprovacao={aberta}
+          codToNome={codToNome}
+          titulosVinculados={titulosDaAberta}
+          onClose={() => setAberta(null)}
+          onAtualizado={() => {
+            abrirResolvida(aberta.numOcp);
+            carregar();
+          }}
+        />
       )}
     </div>
   );

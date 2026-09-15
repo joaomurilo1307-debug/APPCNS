@@ -757,7 +757,13 @@ export default function ProgramacaoPagamentoPage() {
         </div>
       )}
       {ocAberta && (
-        <MapaOC aprovacao={ocAberta} codToNome={codToNomeOC} titulosVinculados={titulosDaOC} onClose={() => setOcAberta(null)} />
+        <MapaOC
+          aprovacao={ocAberta}
+          codToNome={codToNomeOC}
+          titulosVinculados={titulosDaOC}
+          onClose={() => setOcAberta(null)}
+          onAtualizado={() => abrirOC(ocAberta.numOcp)}
+        />
       )}
     </div>
   );

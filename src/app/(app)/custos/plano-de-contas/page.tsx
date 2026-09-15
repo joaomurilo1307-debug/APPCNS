@@ -448,6 +448,7 @@ export default function CustoPlanoDeContasPage() {
               codToNome={ocAberta.codToNome}
               titulosVinculados={ocAberta.titulosVinculados}
               onClose={() => setOcAberta(null)}
+              onAtualizado={() => abrirOC(ocAberta.aprovacao.numOcp)}
             />
           )}
           {tituloAberto === "carregando" && (

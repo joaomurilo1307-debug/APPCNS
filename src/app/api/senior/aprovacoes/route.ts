@@ -56,7 +56,7 @@ export async function GET() {
     resolvidoComo: true,
   } as const;
 
-  const [pendentes, resolvidas, usuariosSenior] = await Promise.all([
+  const [pendentes, resolvidas, usuariosSenior, ultimaSinc] = await Promise.all([
     prisma.aprovacaoSenior.findMany({
       where: { situacaoAtual: { in: ["ANA", "PRE"] } },
       orderBy: { dataEmissao: "desc" },
@@ -80,6 +80,10 @@ export async function GET() {
     prisma.usuarioSenior.findMany({
       include: { user: { select: { name: true } } },
     }),
+    // Pedido do João 15/09/2026: "coloque um sincronizado quando" -- mesmo
+    // padrão já usado em Programação de Pagamento, pra deixar claro há
+    // quanto tempo esse retrato das OCs foi tirado do Senior.
+    prisma.aprovacaoSenior.findFirst({ orderBy: { ultimaSincEm: "desc" }, select: { ultimaSincEm: true } }),
   ]);
 
   // {codigoSenior: nome} pra resolver os codigos que aparecem no historico
@@ -89,5 +93,10 @@ export async function GET() {
     codToNome[u.codigo] = u.user?.name || u.nome;
   }
 
-  return NextResponse.json({ pendentes, resolvidasRecentes: resolvidas, codToNome });
+  return NextResponse.json({
+    pendentes,
+    resolvidasRecentes: resolvidas,
+    codToNome,
+    sincronizadoEm: ultimaSinc?.ultimaSincEm ?? null,
+  });
 }

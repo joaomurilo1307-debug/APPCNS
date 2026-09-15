@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 // Modal com o descritivo completo de uma Ordem de Compra do Senior
 // (fornecedor, valor, rateio por centro de custo, alçada/níveis de
 // aprovação, mapa de cotação, histórico). Compartilhado entre a tela de
@@ -95,6 +97,7 @@ export type Aprovacao = {
   resolvidoEm: string | null;
   resolvidoComo: string | null;
   eventos: Evento[];
+  ultimaSincEm?: string;
 };
 
 export const situacaoLabel: Record<string, string> = {
@@ -238,16 +241,40 @@ export default function MapaOC({
   codToNome,
   titulosVinculados,
   onClose,
+  onAtualizado,
 }: {
   aprovacao: Aprovacao;
   codToNome: Record<string, string>;
   titulosVinculados?: TituloVinculado[];
   onClose: () => void;
+  // Recarrega esta OC no componente-pai depois de disparar a sincronização
+  // manual (o modal não busca dados sozinho) -- pedido do João 15/09/2026,
+  // junto com o botão "Atualizar agora" da lista de Aprovações OC.
+  onAtualizado?: () => void;
 }) {
   const niveis = parseJSON<NivelHist[]>(a.historicoNiveis) ?? [];
   const rateio = parseJSON<RateioItem[]>(a.rateioDetalhe) ?? [];
   const cotacao = parseJSON<any>(a.mapaCotacao);
   const pagamento = statusPagamento(titulosVinculados);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [msgSincronizacao, setMsgSincronizacao] = useState<string | null>(null);
+
+  function sincronizarAgora() {
+    setSincronizando(true);
+    setMsgSincronizacao(null);
+    fetch("/api/senior/aprovacoes/sincronizar-agora", { method: "POST" })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Erro ao disparar sincronização");
+        setMsgSincronizacao("Disparado — atualizando em instantes...");
+        setTimeout(() => {
+          onAtualizado?.();
+          setMsgSincronizacao("Atualizado com o retrato mais recente do Senior.");
+        }, 15000);
+      })
+      .catch((e) => setMsgSincronizacao(e.message))
+      .finally(() => setSincronizando(false));
+  }
 
   type GrupoCC = {
     codccu: string;
@@ -289,6 +316,21 @@ export default function MapaOC({
                 {situacaoLabel[a.situacaoAtual] || a.situacaoAtual} · {niveisLabel(a)}
               </span>
             </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {a.ultimaSincEm && (
+                <span className="text-[11px] text-gray-400">
+                  Sincronizado em {new Date(a.ultimaSincEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                </span>
+              )}
+              <button
+                onClick={sincronizarAgora}
+                disabled={sincronizando}
+                className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {sincronizando ? "Sincronizando..." : "↻ Atualizar agora"}
+              </button>
+              {msgSincronizacao && <span className="text-[11px] text-gray-500">{msgSincronizacao}</span>}
+            </div>
           </div>
           <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
             ✕
