@@ -32,6 +32,24 @@ type LinhaDetalhe = {
   entradaManual: boolean | null;
 };
 
+type DetalheTitulo = {
+  numTit: string;
+  codFor: string;
+  fornecedorNome: string;
+  tipo: string | null;
+  situacao: string | null;
+  pago: boolean | null;
+  dataPagamento: string | null;
+  valorOriginalSenior: number | null;
+  somaRateio: number;
+  bateComSenior: boolean | null;
+  descricao: string | null;
+  dataLancamento: string | null;
+  lancadoPorNome: string | null;
+  entradaManual: boolean | null;
+  rateio: { codccu: string; contrato: string; contaFinanceira: string; competencia: string; valorRateado: number }[];
+};
+
 function formatMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -81,6 +99,24 @@ export default function CustoPlanoDeContasPage() {
 
   // modal da OC (busca sob demanda, mesmo padrao da tela Aprovações OC)
   const [ocAberta, setOcAberta] = useState<{ aprovacao: Aprovacao; codToNome: Record<string, string>; titulosVinculados?: TituloVinculado[] } | "carregando" | null>(null);
+
+  // modal do título: rateio completo entre todos os CCUs -- pedido do João
+  // 15/09/2026 a partir de um caso real (título aparecia R$8,66 aqui mas
+  // R$78,00 no Senior -- confirmado que é rateio entre 9 centros de custo).
+  const [tituloAberto, setTituloAberto] = useState<DetalheTitulo | "carregando" | "erro" | null>(null);
+
+  async function abrirTitulo(numTit: string, codFor: string, codccuOrigem: string) {
+    setTituloAberto("carregando");
+    try {
+      const params = new URLSearchParams({ numTit, codFor, codccuOrigem });
+      const res = await fetch(`/api/custos-conta/detalhe/titulo?${params.toString()}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setTituloAberto(data);
+    } catch {
+      setTituloAberto("erro");
+    }
+  }
 
   async function toggleConta(codccu: string, contaFinanceira: string, competencia: string) {
     const chave = `${codccu}|${contaFinanceira}|${competencia}`;
@@ -326,7 +362,15 @@ export default function CustoPlanoDeContasPage() {
                                           <tbody>
                                             {det.itens.map((l, i) => (
                                               <tr key={`${l.numTit}-${l.codFor}-${i}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
-                                                <td className="px-2 py-1 font-medium text-gray-700">{l.numTit}</td>
+                                                <td className="px-2 py-1 font-medium">
+                                                  <button
+                                                    onClick={() => abrirTitulo(l.numTit, l.codFor, c.codccu)}
+                                                    className="text-gray-700 hover:text-brand hover:underline"
+                                                    title="Clique pra ver o rateio completo desse título entre todos os centros de custo"
+                                                  >
+                                                    {l.numTit}
+                                                  </button>
+                                                </td>
                                                 <td className="max-w-[150px] px-2 py-1 text-gray-500">
                                                   <span
                                                     className="cursor-help underline decoration-dotted underline-offset-2"
@@ -409,6 +453,123 @@ export default function CustoPlanoDeContasPage() {
               titulosVinculados={ocAberta.titulosVinculados}
               onClose={() => setOcAberta(null)}
             />
+          )}
+          {tituloAberto === "carregando" && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+              <div className="rounded-lg bg-white px-4 py-3 text-sm text-gray-600 shadow-lg">Carregando título...</div>
+            </div>
+          )}
+          {tituloAberto === "erro" && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setTituloAberto(null)}>
+              <div className="rounded-lg bg-white px-4 py-3 text-sm text-red-600 shadow-lg">Não foi possível carregar o rateio desse título.</div>
+            </div>
+          )}
+          {tituloAberto && tituloAberto !== "carregando" && tituloAberto !== "erro" && (
+            <div
+              className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-[2px]"
+              onClick={() => setTituloAberto(null)}
+            >
+              <div className="my-8 w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4 border-b border-gray-100 bg-gradient-to-r from-brand/10 to-transparent px-6 py-4">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Título</p>
+                    <p className="text-lg font-semibold">
+                      {tituloAberto.numTit} <span className="text-sm font-normal text-gray-400">({tituloAberto.tipo ?? "—"})</span>
+                    </p>
+                  </div>
+                  <button onClick={() => setTituloAberto(null)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-5 px-6 py-5">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-xl bg-gray-50 p-3">
+                      <p className="text-xs text-gray-500">Valor original no Senior (E501TCP.VLRORI)</p>
+                      <p className="text-xl font-semibold">
+                        {tituloAberto.valorOriginalSenior !== null ? formatMoeda(tituloAberto.valorOriginalSenior) : "—"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 p-3">
+                      <p className="text-xs text-gray-500">Soma do rateio ({tituloAberto.rateio.length} centro(s) de custo)</p>
+                      <p className="text-xl font-semibold">{formatMoeda(tituloAberto.somaRateio)}</p>
+                      {tituloAberto.bateComSenior !== null && (
+                        <p className={`mt-0.5 text-xs font-medium ${tituloAberto.bateComSenior ? "text-emerald-600" : "text-rose-600"}`}>
+                          {tituloAberto.bateComSenior ? "✓ bate com o Senior" : "✗ NÃO bate com o Senior"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                    <div>
+                      <dt className="text-xs text-gray-500">Fornecedor</dt>
+                      <dd className="font-medium">{tituloAberto.fornecedorNome}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-gray-500">Pagamento</dt>
+                      <dd>
+                        {tituloAberto.pago === null ? (
+                          "—"
+                        ) : (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                              tituloAberto.pago ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {tituloAberto.pago ? `Pago em ${formatData(tituloAberto.dataPagamento)}` : "Não pago"}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                    <div className="col-span-2">
+                      <dt className="text-xs text-gray-500">Lançado no Senior</dt>
+                      <dd className="font-medium">
+                        {tituloAberto.lancadoPorNome || "usuário não identificado"}
+                        {tituloAberto.dataLancamento ? ` em ${formatData(tituloAberto.dataLancamento)}` : ""}
+                        {" · "}
+                        {tituloAberto.entradaManual === null ? "origem não verificada" : tituloAberto.entradaManual ? "lançamento manual" : "gerado automaticamente (NF vinculada)"}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {tituloAberto.descricao && (
+                    <div>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Descrição (E501TCP.OBSTCP)</p>
+                      <p className="whitespace-pre-wrap rounded-xl bg-gray-50 p-3 text-sm text-gray-700">{tituloAberto.descricao}</p>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Rateio entre centros de custo (rito_financeiro.composicao_custo_financeiro)
+                    </p>
+                    <div className="overflow-hidden rounded-xl border border-gray-100">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400">
+                          <tr>
+                            <th className="px-3 py-1.5">Centro de custo</th>
+                            <th className="px-3 py-1.5">Conta financeira</th>
+                            <th className="px-3 py-1.5 text-right">Valor</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tituloAberto.rateio.map((r, i) => (
+                            <tr key={`${r.codccu}-${i}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
+                              <td className="px-3 py-1.5">
+                                {r.contrato} <span className="text-xs text-gray-400">CCU {r.codccu}</span>
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-500">{r.contaFinanceira}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums font-medium">{formatMoeda(r.valorRateado)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
           {contratosNoMes.length === 0 && (
             <div className="rounded-xl border border-gray-100 bg-white p-6 text-center text-sm text-gray-400 shadow-sm">
