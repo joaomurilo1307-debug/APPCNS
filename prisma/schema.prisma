@@ -1023,3 +1023,51 @@ model Folder {
   @@index([parentId])
   @@index([createdBy])
 }
+
+
+// Dossiê de Ordem de Compra gerado pela automação do n8n (Senior -> PDF -> GED).
+//
+// Recebido por POST /api/senior/dossies/sync, autenticado por x-sync-key
+// (mesmo padrão das demais rotas de sincronismo do Senior). Alimenta a aba
+// Conferência de OC e o link que sai do número do título na Programação de
+// Pagamento.
+//
+// Sobre a chave: o dossiê nasce de uma OC, mas a automação também registra o
+// que NÃO conseguiu gerar (título sem OC localizada, OC ainda não quitada,
+// falha na publicação) -- e nesses casos não há numOcp. Por isso a chave é um
+// texto que o próprio n8n monta: "OC|<codFil>|<numOcp>" quando gerou, e
+// "TIT|<codFil>|<codFor>|<numTit>" quando não gerou. Uma coluna única só,
+// sem chave composta que muda de formato conforme o caso.
+//
+// Sobre `titulos`: uma OC pode responder por mais de um título (USU_NUMTIT
+// tipo "398A1 - 196$01"). O dossiê é um só, mas precisa ser encontrável por
+// QUALQUER um deles -- daí a lista, e não uma coluna simples.
+model DossieOC {
+  id             String    @id @default(cuid())
+  chave          String    @unique
+  numOcp         String?
+  codFil         String
+  codFor         String?
+  titulos        String[]  // todos os NUMTIT que este dossiê responde
+  fornecedorNome String?
+  vencimento     DateTime? // USU_DATVECT da OC -- o vencimento que nomeia o documento
+  valorTotal     Float?
+
+  status         String    // PUBLICADO | ERRO | SEM_OC | OC_NAO_QUITADA
+  motivo         String?   @db.Text // por que não gerou, quando status != PUBLICADO
+  origem         String?   // VIGIA_OC_QUITADA | RELATORIO_201 | MANUAL
+
+  gedDocumentId  String?
+  gedVersao      String?
+
+  arquivoNome    String?
+  arquivoPath    String?   // relativo a UPLOAD_DIR, mesmo padrão de Attachment
+  arquivoBytes   Int?
+
+  geradoEm       DateTime  @default(now())
+  atualizadoEm   DateTime  @updatedAt
+
+  @@index([numOcp])
+  @@index([status])
+  @@index([codFor])
+}

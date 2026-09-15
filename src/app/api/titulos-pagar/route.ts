@@ -17,7 +17,7 @@ export async function GET() {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 
-  const [titulos, ocs, usuariosSenior] = await Promise.all([
+  const [titulos, ocs, usuariosSenior, dossies] = await Promise.all([
     prisma.tituloContasAPagar.findMany({
       orderBy: [{ pago: "asc" }, { vencimentoProgramado: "asc" }],
     }),
@@ -39,12 +39,67 @@ export async function GET() {
       },
     }),
     prisma.usuarioSenior.findMany({ include: { user: { select: { name: true } } } }),
+    prisma.dossieOC.findMany({
+      select: {
+        id: true,
+        numOcp: true,
+        codFor: true,
+        titulos: true,
+        status: true,
+        motivo: true,
+        arquivoPath: true,
+        geradoEm: true,
+      },
+      orderBy: { geradoEm: "desc" },
+    }),
   ]);
 
   const codToNome: Record<string, string> = {};
   for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
 
   const motor = criarMotorVinculo(ocs);
+
+  // Dossiê por título (aba Conferência de OC). Um dossiê pode responder por
+  // mais de um título -- a OC 14934, por exemplo, informa "398A1 - 196$01" --
+  // então o índice é montado expandindo a lista, não por coluna simples.
+  // A chave preferida inclui o fornecedor; a automação nem sempre tem o
+  // CODFOR (caso do registro de erro "título sem OC"), e aí vale a chave só
+  // pelo número. Como vem ordenado do mais recente pro mais antigo, o
+  // primeiro a ocupar a chave é o dossiê mais novo daquele título.
+  const dossiePorTitulo = new Map<string, (typeof dossies)[number]>();
+  for (const d of dossies) {
+    for (const numTit of d.titulos) {
+      const limpo = numTit.trim();
+      if (!limpo) continue;
+      if (d.codFor) {
+        const comFornecedor = `${d.codFor}|${limpo}`;
+        if (!dossiePorTitulo.has(comFornecedor)) dossiePorTitulo.set(comFornecedor, d);
+      }
+      const soNumero = `*|${limpo}`;
+      if (!dossiePorTitulo.has(soNumero)) dossiePorTitulo.set(soNumero, d);
+    }
+  }
+
+  function dossieDe(codFor: string, numTit: string) {
+    const achado = dossiePorTitulo.get(`${codFor}|${numTit}`) ?? dossiePorTitulo.get(`*|${numTit}`);
+    if (!achado) return null;
+    return {
+      id: achado.id,
+      status: achado.status,
+      motivo: achado.motivo,
+      temArquivo: !!achado.arquivoPath,
+      numOcp: achado.numOcp,
+      geradoEm: achado.geradoEm,
+    };
+  }
+
+  // Quando o sincronismo rodou pela última vez. Sem isso a tela não tem como
+  // avisar que está mostrando dado de dias atrás -- e conferência contra dado
+  // defasado é pior do que não conferir, porque parece confiável.
+  let sincronizadoEm: Date | null = null;
+  for (const t of titulos) {
+    if (!sincronizadoEm || t.atualizadoEm > sincronizadoEm) sincronizadoEm = t.atualizadoEm;
+  }
 
   const totalAberto = titulos.filter((t) => !t.pago).reduce((s, t) => s + t.valorAberto, 0);
   const qtdAberto = titulos.filter((t) => !t.pago).length;
@@ -57,6 +112,7 @@ export async function GET() {
       return {
         numTit: t.numTit,
         codFil: t.codFil,
+        codFor: t.codFor,
         fornecedorNome: t.fornecedorNome ?? `código ${t.codFor}`,
         tipo: t.tipo,
         situacao: t.situacao,
@@ -76,6 +132,7 @@ export async function GET() {
         lancadoPorNome: t.lancadoPorCod && t.lancadoPorCod !== "0" ? codToNome[t.lancadoPorCod] || `Usuário Senior #${t.lancadoPorCod}` : null,
         entradaManual: !t.numNfc || t.numNfc === "0",
         numNfc: t.numNfc && t.numNfc !== "0" ? t.numNfc : null,
+        dossie: dossieDe(t.codFor, t.numTit),
       };
     }),
     totalAberto,
@@ -83,5 +140,6 @@ export async function GET() {
     qtdPagos,
     totalPago,
     totalTitulos: titulos.length,
+    sincronizadoEm,
   });
 }

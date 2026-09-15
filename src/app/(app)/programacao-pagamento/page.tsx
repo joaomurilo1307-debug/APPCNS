@@ -12,9 +12,19 @@ type OcRelacionada = {
   centroCusto?: string | null;
 };
 
+type DossieDoTitulo = {
+  id: string;
+  status: string;
+  motivo: string | null;
+  temArquivo: boolean;
+  numOcp: string | null;
+  geradoEm: string;
+};
+
 type Titulo = {
   numTit: string;
   codFil: string;
+  codFor: string;
   fornecedorNome: string;
   tipo: string;
   situacao: string;
@@ -29,6 +39,7 @@ type Titulo = {
   ocRelacionada: OcRelacionada | null;
   motivoSemOC: string | null;
   ocEsperada: boolean;
+  dossie: DossieDoTitulo | null;
   descricao: string | null;
   dataLancamento: string | null;
   lancadoPorNome: string | null;
@@ -81,6 +92,34 @@ function formatMoeda(v: number) {
 function formatData(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+}
+
+function formatDataHora(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function horasDesde(iso: string | null) {
+  if (!iso) return null;
+  return (Date.now() - new Date(iso).getTime()) / 3600000;
+}
+
+const MOTIVO_PADRAO: Record<string, string> = {
+  SEM_OC: "A automação não localizou a OC deste título",
+  OC_NAO_QUITADA: "A OC existe, mas ainda tem título em aberto",
+  ERRO: "A geração do dossiê falhou",
+};
+
+// Sentinela de "sem data" do Senior aparecendo como data real. Confirmado
+// 14/09/2026: 33 títulos em aberto vêm com vencimento 30 ou 31/12/2030, e o
+// ERP diz o mesmo -- é cadastro, não erro de sincronismo. Sem marcar, eles
+// nunca caem em nenhuma semana e ficam invisíveis pra sempre na conferência.
+function vencimentoSentinela(iso: string | null) {
+  if (!iso) return false;
+  const dia = iso.slice(0, 10);
+  const [ano, mes, d] = dia.split("-").map(Number);
+  if (ano <= 1950) return true;
+  return ano >= 2030 && mes === 12 && d >= 28;
 }
 
 function textoContem(valor: string | null | undefined, filtro: string) {
@@ -163,6 +202,7 @@ export default function ProgramacaoPagamentoPage() {
       .catch((e) => setErroOC(e.message))
       .finally(() => setCarregandoOC(null));
   }
+  const [sincronizadoEm, setSincronizadoEm] = useState<string | null>(null);
   const [totalAberto, setTotalAberto] = useState(0);
   const [qtdAberto, setQtdAberto] = useState(0);
   const [qtdPagos, setQtdPagos] = useState(0);
@@ -179,6 +219,7 @@ export default function ProgramacaoPagamentoPage() {
       })
       .then((data) => {
         setTitulos(data.titulos);
+        setSincronizadoEm(data.sincronizadoEm ?? null);
         setTotalAberto(data.totalAberto ?? 0);
         setQtdAberto(data.qtdAberto ?? 0);
         setQtdPagos(data.qtdPagos ?? 0);
@@ -278,6 +319,22 @@ export default function ProgramacaoPagamentoPage() {
             Contas a pagar por título (histórico completo), sincronizado do Senior. O vínculo com OC é demonstrado por número exato,
             parcela confirmada ou conciliação única — quando não houver OC, o motivo aparece no campo “OC”.
           </p>
+          {sincronizadoEm && (
+            <p
+              className={`mt-1 text-[11px] ${
+                (horasDesde(sincronizadoEm) ?? 0) > 24 ? "font-medium text-amber-700" : "text-gray-400"
+              }`}
+              title={
+                (horasDesde(sincronizadoEm) ?? 0) > 24
+                  ? "O Senior pode ter reprogramado vencimentos depois desta sincronização — confira a data antes de decidir pagamento."
+                  : undefined
+              }
+            >
+              Sincronizado do Senior em {formatDataHora(sincronizadoEm)}
+              {(horasDesde(sincronizadoEm) ?? 0) > 24 &&
+                ` · ${Math.floor((horasDesde(sincronizadoEm) ?? 0) / 24)} dia(s) atrás`}
+            </p>
+          )}
         </div>
         <button
           onClick={() => setMostrarRegras((v) => !v)}
@@ -559,7 +616,30 @@ export default function ProgramacaoPagamentoPage() {
           <tbody>
             {filtradosMostrados.map((t, i) => (
               <tr key={`${t.numTit}-${t.codFil}-${t.dataEmissao}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
-                <td className="px-3 py-1.5 font-medium text-gray-800">{t.numTit}</td>
+                <td className="px-3 py-1.5 font-medium text-gray-800">
+                  {t.dossie?.temArquivo ? (
+                    <a
+                      href={`/api/dossies/${t.dossie.id}/arquivo`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Abrir o dossiê${t.dossie.numOcp ? ` da OC ${t.dossie.numOcp}` : ""} — gerado em ${formatDataHora(t.dossie.geradoEm)}`}
+                      className="text-brand underline decoration-dotted underline-offset-2 hover:brightness-95"
+                    >
+                      {t.numTit}
+                    </a>
+                  ) : (
+                    <span
+                      title={
+                        t.dossie
+                          ? t.dossie.motivo ?? MOTIVO_PADRAO[t.dossie.status] ?? "Dossiê registrado sem documento"
+                          : "Nenhum dossiê gerado para este título ainda"
+                      }
+                      className={t.dossie ? "cursor-help decoration-dotted underline-offset-2 [text-decoration-line:underline]" : undefined}
+                    >
+                      {t.numTit}
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-1.5">
                   {t.ocRelacionada ? (
                     <button
@@ -630,7 +710,17 @@ export default function ProgramacaoPagamentoPage() {
                     <span className="mt-0.5 block text-[10px] text-gray-400">OC: {t.ocRelacionada.centroCusto}</span>
                   )}
                 </td>
-                <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.vencimentoProgramado)}</td>
+                <td className="px-3 py-1.5 tabular-nums text-gray-500">
+                  {formatData(t.vencimentoProgramado)}
+                  {vencimentoSentinela(t.vencimentoProgramado) && (
+                    <span
+                      className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
+                      title="Data de preenchimento do Senior, não um vencimento real — este título não vai aparecer em nenhuma semana até ser corrigido no ERP."
+                    >
+                      sem data real
+                    </span>
+                  )}
+                </td>
                 {mostrarColunaPagamento && (
                   <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataPagamento)}</td>
                 )}
