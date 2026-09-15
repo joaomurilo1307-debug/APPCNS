@@ -19,6 +19,20 @@ function diasParado(dataEmissao: string) {
   return Math.floor((Date.now() - new Date(dataEmissao).getTime()) / 86400000);
 }
 
+function textoContem(valor: string | null | undefined, filtro: string) {
+  return !filtro || (valor ?? "").toLocaleLowerCase().includes(filtro.trim().toLocaleLowerCase());
+}
+
+function valorContem(valor: number, filtro: string) {
+  if (!filtro.trim()) return true;
+  const termo = filtro.trim().toLocaleLowerCase();
+  return formatMoeda(valor).toLocaleLowerCase().includes(termo) || valor.toFixed(2).includes(termo.replace(",", "."));
+}
+
+function dataIgual(iso: string | null, filtro: string) {
+  return !filtro || (!!iso && iso.slice(0, 10) === filtro);
+}
+
 const SITUACOES_FILTRO = ["ANA", "PRE", "APR", "REP", "CAN"] as const;
 const LIMITE_LINHAS = 500;
 
@@ -44,6 +58,30 @@ type ResolvidaResumo = {
   resolvidoComo: string | null;
 };
 
+type FiltrosResolvidas = {
+  oc: string;
+  fornecedor: string;
+  valor: string;
+  resultado: "" | "APR" | "REP" | "CAN";
+  detectadaEm: string;
+  resolvidaEm: string;
+};
+const FILTROS_RESOLVIDAS_VAZIOS: FiltrosResolvidas = {
+  oc: "", fornecedor: "", valor: "", resultado: "", detectadaEm: "", resolvidaEm: "",
+};
+
+type FiltrosPendentes = {
+  oc: string;
+  situacao: string;
+  fornecedor: string;
+  contrato: string;
+  valor: string;
+  aprovador: string;
+};
+const FILTROS_PENDENTES_VAZIOS: FiltrosPendentes = {
+  oc: "", situacao: "", fornecedor: "", contrato: "", valor: "", aprovador: "",
+};
+
 const LEGENDA_SITUACAO: { sit: (typeof SITUACOES_FILTRO)[number]; desc: string }[] = [
   { sit: "ANA", desc: "Em análise — ainda não passou por nenhum nível de aprovação da alçada." },
   { sit: "PRE", desc: "Pré-aprovado — passou por uma etapa inicial (ex. empenho/orçamento), mas ainda não é a aprovação final da alçada." },
@@ -65,6 +103,15 @@ export default function AprovacoesSeniorPage() {
   const [somenteRateio, setSomenteRateio] = useState(false);
   const [carregandoResolvida, setCarregandoResolvida] = useState<string | null>(null);
   const [erroResolvida, setErroResolvida] = useState<string | null>(null);
+  const [filtrosResolvidas, setFiltrosResolvidas] = useState<FiltrosResolvidas>(FILTROS_RESOLVIDAS_VAZIOS);
+  const [filtrosPendentes, setFiltrosPendentes] = useState<FiltrosPendentes>(FILTROS_PENDENTES_VAZIOS);
+
+  function atualizarFiltroResolvidas<K extends keyof FiltrosResolvidas>(campo: K, valor: FiltrosResolvidas[K]) {
+    setFiltrosResolvidas((prev) => ({ ...prev, [campo]: valor }));
+  }
+  function atualizarFiltroPendentes<K extends keyof FiltrosPendentes>(campo: K, valor: FiltrosPendentes[K]) {
+    setFiltrosPendentes((prev) => ({ ...prev, [campo]: valor }));
+  }
 
   function abrirResolvida(numOcp: string) {
     setCarregandoResolvida(numOcp);
@@ -131,15 +178,43 @@ export default function AprovacoesSeniorPage() {
 
   const [mostrarLegenda, setMostrarLegenda] = useState(false);
 
-  const pendentesFiltradas = useMemo(() => pendentes.filter(passaFiltro), [pendentes, busca, situacoesAtivas, somenteRateio]);
-  const resolvidasFiltradas = useMemo(() => resolvidas.filter(passaFiltro), [resolvidas, busca, situacoesAtivas, somenteRateio]);
+  const pendentesFiltradas = useMemo(
+    () =>
+      pendentes.filter(passaFiltro).filter((a) => {
+        const f = filtrosPendentes;
+        if (!textoContem(a.numOcp, f.oc)) return false;
+        if (f.situacao && a.situacaoAtual !== f.situacao) return false;
+        if (!textoContem(a.fornecedorNome || a.fornecedorCodigo, f.fornecedor)) return false;
+        if (!textoContem(contratoDe(a), f.contrato)) return false;
+        if (!valorContem(a.valor, f.valor)) return false;
+        if (!textoContem(aprovadorDe(a), f.aprovador)) return false;
+        return true;
+      }),
+    [pendentes, busca, situacoesAtivas, somenteRateio, filtrosPendentes]
+  );
+  const resolvidasFiltradas = useMemo(
+    () =>
+      resolvidas.filter(passaFiltro).filter((a) => {
+        const f = filtrosResolvidas;
+        if (!textoContem(a.numOcp, f.oc)) return false;
+        if (!textoContem(a.fornecedorNome || a.fornecedorCodigo, f.fornecedor)) return false;
+        if (!valorContem(a.valor, f.valor)) return false;
+        if (f.resultado && a.resolvidoComo !== f.resultado) return false;
+        if (!dataIgual(a.primeiraDeteccaoEm, f.detectadaEm)) return false;
+        if (!dataIgual(a.resolvidoEm, f.resolvidaEm)) return false;
+        return true;
+      }),
+    [resolvidas, busca, situacoesAtivas, somenteRateio, filtrosResolvidas]
+  );
   const resolvidasMostradas = resolvidasFiltradas.slice(0, LIMITE_LINHAS);
+  const filtrosColunaAtivos =
+    Object.values(filtrosPendentes).some(Boolean) || Object.values(filtrosResolvidas).some(Boolean);
 
   if (loading) return <div className="p-6 text-sm text-gray-500">Carregando...</div>;
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
 
   const valorTotalPendente = pendentesFiltradas.reduce((s, a) => s + a.valor, 0);
-  const filtrosAtivos = busca.trim() || situacoesAtivas.size > 0 || somenteRateio;
+  const filtrosAtivos = busca.trim() || situacoesAtivas.size > 0 || somenteRateio || filtrosColunaAtivos;
 
   return (
     <div className="p-6">
@@ -214,6 +289,8 @@ export default function AprovacoesSeniorPage() {
               setBusca("");
               setSituacoesAtivas(new Set());
               setSomenteRateio(false);
+              setFiltrosPendentes(FILTROS_PENDENTES_VAZIOS);
+              setFiltrosResolvidas(FILTROS_RESOLVIDAS_VAZIOS);
             }}
             className="text-xs text-gray-400 underline hover:text-gray-600"
           >
@@ -250,6 +327,73 @@ export default function AprovacoesSeniorPage() {
               <th>Quem falta aprovar</th>
               <th className="text-center">Rateio</th>
               <th className="text-center">Dias parada</th>
+            </tr>
+            <tr className="border-t border-gray-200 bg-white align-top [&>th]:px-2 [&>th]:py-2">
+              <th>
+                <input
+                  aria-label="Filtrar OC"
+                  type="text"
+                  placeholder="nº OC..."
+                  value={filtrosPendentes.oc}
+                  onChange={(e) => atualizarFiltroPendentes("oc", e.target.value)}
+                  className="w-full min-w-[80px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th>
+                <select
+                  aria-label="Filtrar situação"
+                  value={filtrosPendentes.situacao}
+                  onChange={(e) => atualizarFiltroPendentes("situacao", e.target.value)}
+                  className="w-full min-w-[100px] rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                >
+                  <option value="">todas</option>
+                  {SITUACOES_FILTRO.map((s) => (
+                    <option key={s} value={s}>{situacaoLabel[s]}</option>
+                  ))}
+                </select>
+              </th>
+              <th>
+                <input
+                  aria-label="Filtrar fornecedor"
+                  type="text"
+                  placeholder="fornecedor..."
+                  value={filtrosPendentes.fornecedor}
+                  onChange={(e) => atualizarFiltroPendentes("fornecedor", e.target.value)}
+                  className="w-full min-w-[140px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th>
+                <input
+                  aria-label="Filtrar contrato/centro de custo"
+                  type="text"
+                  placeholder="contrato/CC..."
+                  value={filtrosPendentes.contrato}
+                  onChange={(e) => atualizarFiltroPendentes("contrato", e.target.value)}
+                  className="w-full min-w-[140px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th>
+                <input
+                  aria-label="Filtrar valor"
+                  type="text"
+                  placeholder="valor..."
+                  value={filtrosPendentes.valor}
+                  onChange={(e) => atualizarFiltroPendentes("valor", e.target.value)}
+                  className="w-full min-w-[90px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th>
+                <input
+                  aria-label="Filtrar quem falta aprovar"
+                  type="text"
+                  placeholder="aprovador..."
+                  value={filtrosPendentes.aprovador}
+                  onChange={(e) => atualizarFiltroPendentes("aprovador", e.target.value)}
+                  className="w-full min-w-[120px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th />
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -324,6 +468,70 @@ export default function AprovacoesSeniorPage() {
               <th>Detectada em</th>
               <th>Resolvida em</th>
               <th className="text-center">Tempo até decisão</th>
+            </tr>
+            <tr className="border-t border-gray-200 bg-white align-top [&>th]:px-2 [&>th]:py-2">
+              <th>
+                <input
+                  aria-label="Filtrar OC"
+                  type="text"
+                  placeholder="nº OC..."
+                  value={filtrosResolvidas.oc}
+                  onChange={(e) => atualizarFiltroResolvidas("oc", e.target.value)}
+                  className="w-full min-w-[80px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th>
+                <input
+                  aria-label="Filtrar fornecedor"
+                  type="text"
+                  placeholder="fornecedor..."
+                  value={filtrosResolvidas.fornecedor}
+                  onChange={(e) => atualizarFiltroResolvidas("fornecedor", e.target.value)}
+                  className="w-full min-w-[140px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th>
+                <input
+                  aria-label="Filtrar valor"
+                  type="text"
+                  placeholder="valor..."
+                  value={filtrosResolvidas.valor}
+                  onChange={(e) => atualizarFiltroResolvidas("valor", e.target.value)}
+                  className="w-full min-w-[90px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th>
+                <select
+                  aria-label="Filtrar resultado"
+                  value={filtrosResolvidas.resultado}
+                  onChange={(e) => atualizarFiltroResolvidas("resultado", e.target.value as FiltrosResolvidas["resultado"])}
+                  className="w-full min-w-[100px] rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                >
+                  <option value="">todos</option>
+                  <option value="APR">Aprovado</option>
+                  <option value="REP">Reprovado</option>
+                  <option value="CAN">Cancelado</option>
+                </select>
+              </th>
+              <th>
+                <input
+                  aria-label="Filtrar data de detecção"
+                  type="date"
+                  value={filtrosResolvidas.detectadaEm}
+                  onChange={(e) => atualizarFiltroResolvidas("detectadaEm", e.target.value)}
+                  className="w-full min-w-[125px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th>
+                <input
+                  aria-label="Filtrar data de resolução"
+                  type="date"
+                  value={filtrosResolvidas.resolvidaEm}
+                  onChange={(e) => atualizarFiltroResolvidas("resolvidaEm", e.target.value)}
+                  className="w-full min-w-[125px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th />
             </tr>
           </thead>
           <tbody>
