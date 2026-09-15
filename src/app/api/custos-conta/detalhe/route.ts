@@ -65,34 +65,55 @@ export async function GET(req: Request) {
 
   const motor = criarMotorVinculo(ocs);
 
-  // detalhe (composicao_custo_financeiro) não carrega quem lançou o
-  // título/descrição/NF -- busca isso no título real por numTit+codFor,
-  // mesma chave usada em Programação de Pagamento (pedido do João
-  // 15/09/2026: "quem gerou, se foi manual, a descrição, o nome do campo,
-  // em todas as abas onde aparece título").
+  // detalhe (composicao_custo_financeiro) não carrega tipo/NF/valor real
+  // do título -- só o valor RATEADO pra este CCU. Bug real encontrado pelo
+  // João 15/09/2026 (título 239A1: linha da tabela dizia "Sem OC", mas o
+  // dossiê do MESMO título, que usa o título real, achava a OC 11743 na
+  // hora): esta rota rodava o motor de vínculo com tipo/numNfc/valorOriginal
+  // ZERADOS (placeholder), em vez do título de verdade -- por isso o
+  // "vínculo exato" via NF (que depende de numNfc/valorOriginal reais)
+  // nunca fechava aqui, mesmo quando existia e o dossiê achava certinho.
+  // Busca o título real por numTit+codFor ANTES de rodar o motor, mesma
+  // chave usada em Programação de Pagamento e no dossiê do título.
   const numTits = Array.from(new Set(linhas.map((l) => l.numTit)));
   const titulosReais = numTits.length
     ? await prisma.tituloContasAPagar.findMany({
         where: { numTit: { in: numTits } },
-        select: { numTit: true, codFor: true, descricao: true, lancadoPorCod: true, dataLancamento: true, numNfc: true },
       })
     : [];
   const tituloRealPorChave = new Map(titulosReais.map((t) => [`${t.numTit}|${t.codFor}`, t]));
 
   const itens = linhas.map((l) => {
-    const vinculo = motor.ocRelacionadaDe({
-      numTit: l.numTit,
-      codFor: l.codFor,
-      fornecedorNome: l.fornecedorNome,
-      tipo: "", // este detalhe (composicao_custo_financeiro) nao carrega o tipo/CODTPT do titulo
-      numOcp: null, // NUMOCP direto no titulo confirmado sempre zero nesta base (ver Programação de Pagamento)
-      filOcp: null,
-      numNfc: null,
-      valorOriginal: l.valorRateado,
-      dataEmissao: l.dataEntrada ?? l.competencia,
-      vencimentoProgramado: l.dataVencimento,
-    });
     const real = tituloRealPorChave.get(`${l.numTit}|${l.codFor}`);
+    const vinculo = motor.ocRelacionadaDe(
+      real
+        ? {
+            numTit: real.numTit,
+            codFor: real.codFor,
+            fornecedorNome: real.fornecedorNome,
+            tipo: real.tipo,
+            numOcp: real.numOcp,
+            filOcp: real.filOcp,
+            numNfc: real.numNfc,
+            valorOriginal: real.valorOriginal,
+            dataEmissao: real.dataEmissao,
+            vencimentoProgramado: real.vencimentoProgramado,
+          }
+        : {
+            // título não achado na base de contas a pagar (raro) -- cai pro
+            // placeholder anterior, sem inventar dado que não existe.
+            numTit: l.numTit,
+            codFor: l.codFor,
+            fornecedorNome: l.fornecedorNome,
+            tipo: "",
+            numOcp: null,
+            filOcp: null,
+            numNfc: null,
+            valorOriginal: l.valorRateado,
+            dataEmissao: l.dataEntrada ?? l.competencia,
+            vencimentoProgramado: l.dataVencimento,
+          }
+    );
     return {
       numTit: l.numTit,
       codFor: l.codFor,

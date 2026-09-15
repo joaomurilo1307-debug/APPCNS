@@ -363,8 +363,16 @@ export default function MapaOC({
               <dd>{new Date(a.dataEmissao).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</dd>
             </div>
             <div>
-              <dt className="text-xs text-gray-500">Parada há</dt>
-              <dd className={diasParado(a.dataEmissao) > 7 ? "font-semibold text-rose-600" : ""}>{diasParado(a.dataEmissao)} dias</dd>
+              {/* "Parada" só faz sentido enquanto pendente -- numa OC já
+                  resolvida (aprovada/reprovada/cancelada), dias desde a
+                  emissão é só um dado histórico, não um alerta (bug real
+                  reportado pelo João 15/09/2026: OC já aprovada e paga
+                  mostrando "parada há 186 dias" em vermelho, como se ainda
+                  estivesse travada). */}
+              <dt className="text-xs text-gray-500">{resolvida(a) ? "Emitida há" : "Parada há"}</dt>
+              <dd className={!resolvida(a) && diasParado(a.dataEmissao) > 7 ? "font-semibold text-rose-600" : "text-gray-700"}>
+                {diasParado(a.dataEmissao)} dias
+              </dd>
             </div>
             {a.usuNumTit && (
               <div className="col-span-2">
