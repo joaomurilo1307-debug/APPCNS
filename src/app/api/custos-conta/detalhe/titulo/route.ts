@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 
 // Rateio completo de UM título entre todos os centros de custo -- pedido do
 // João 15/09/2026: "poder clicar no título e abrir ele, pra entender", a
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
     if (!souMembro) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
   }
 
-  const [linhas, tituloReal] = await Promise.all([
+  const [linhas, tituloReal, ocs] = await Promise.all([
     prisma.custoFinanceiroDetalhe.findMany({
       where: { numTit, codFor },
       orderBy: { valorRateado: "desc" },
@@ -47,11 +48,48 @@ export async function GET(req: Request) {
       where: { numTit, codFor },
       orderBy: { dataEmissao: "desc" },
     }),
+    prisma.aprovacaoSenior.findMany({
+      select: {
+        numOcp: true,
+        codFil: true,
+        fornecedorCodigo: true,
+        fornecedorNome: true,
+        valor: true,
+        dataEmissao: true,
+        situacaoAtual: true,
+        usuNumTit: true,
+        usuNumNfc: true,
+        codccu: true,
+        contratoNome: true,
+        temRateio: true,
+        previsaoPagamento: true,
+      },
+    }),
   ]);
 
   if (linhas.length === 0) {
     return NextResponse.json({ error: "Título não encontrado no detalhe sincronizado" }, { status: 404 });
   }
+
+  // Mesmo motor de vínculo usado em /api/titulos-pagar e no mapa da OC --
+  // pra explicar, dentro do próprio dossiê do título, se tem OC ou não e
+  // por quê (pedido do João 15/09/2026: "se foi aprovado por alguém como
+  // que não tem OC, isso que eu não to conseguindo visualizar").
+  const motor = criarMotorVinculo(ocs);
+  const vinculo = tituloReal
+    ? motor.ocRelacionadaDe({
+        numTit: tituloReal.numTit,
+        codFor: tituloReal.codFor,
+        fornecedorNome: tituloReal.fornecedorNome,
+        tipo: tituloReal.tipo,
+        numOcp: tituloReal.numOcp,
+        filOcp: tituloReal.filOcp,
+        numNfc: tituloReal.numNfc,
+        valorOriginal: tituloReal.valorOriginal,
+        dataEmissao: tituloReal.dataEmissao,
+        vencimentoProgramado: tituloReal.vencimentoProgramado,
+      })
+    : { ocRelacionada: null, motivoSemOC: "Título não encontrado na base de contas a pagar sincronizada.", ocEsperada: false };
 
   const codccus = Array.from(new Set(linhas.map((l) => l.codccu)));
   const [contratos, usuarioLancou] = await Promise.all([
@@ -84,6 +122,9 @@ export async function GET(req: Request) {
     dataLancamento: tituloReal?.dataLancamento ?? null,
     lancadoPorNome: usuarioLancou?.user?.name || usuarioLancou?.nome || (tituloReal?.lancadoPorCod ? `Usuário Senior #${tituloReal.lancadoPorCod}` : null),
     entradaManual: tituloReal ? !tituloReal.numNfc || tituloReal.numNfc === "0" : null,
+    ocRelacionada: vinculo.ocRelacionada,
+    motivoSemOC: vinculo.motivoSemOC,
+    ocEsperada: vinculo.ocEsperada,
     rateio: linhas.map((l) => ({
       codccu: l.codccu,
       contrato: nomePorCcu.get(l.codccu) ?? `CCU ${l.codccu}`,

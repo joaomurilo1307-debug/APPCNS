@@ -47,6 +47,9 @@ type DetalheTitulo = {
   dataLancamento: string | null;
   lancadoPorNome: string | null;
   entradaManual: boolean | null;
+  ocRelacionada: OcRelacionada | null;
+  motivoSemOC: string | null;
+  ocEsperada: boolean;
   rateio: { codccu: string; contrato: string; contaFinanceira: string; competencia: string; valorRateado: number }[];
 };
 
@@ -365,27 +368,20 @@ export default function CustoPlanoDeContasPage() {
                                                 <td className="px-2 py-1 font-medium">
                                                   <button
                                                     onClick={() => abrirTitulo(l.numTit, l.codFor, c.codccu)}
-                                                    className="text-gray-700 hover:text-brand hover:underline"
-                                                    title="Clique pra ver o rateio completo desse título entre todos os centros de custo"
+                                                    className="text-brand underline decoration-dotted underline-offset-2 hover:text-brand/80"
+                                                    title="Clique pra ver o dossiê completo desse título: quem lançou, rateio e OC"
                                                   >
                                                     {l.numTit}
                                                   </button>
                                                 </td>
                                                 <td className="max-w-[150px] px-2 py-1 text-gray-500">
-                                                  <span
-                                                    className="cursor-help underline decoration-dotted underline-offset-2"
-                                                    title={[
-                                                      `Lançado por ${l.lancadoPorNome || "usuário não identificado"} (E501TCP.USUGER)${l.dataLancamento ? ` em ${formatData(l.dataLancamento)}` : ""} (E501TCP.DATGER).`,
-                                                      l.entradaManual === false
-                                                        ? "Gerado automaticamente por Nota Fiscal de Compra vinculada (E501TCP.NUMNFC)."
-                                                        : l.entradaManual === true
-                                                          ? "Lançamento manual, sem nota fiscal de compra vinculada (E501TCP.NUMNFC = 0)."
-                                                          : "",
-                                                      l.descricao ? `\nDescrição (E501TCP.OBSTCP): ${l.descricao}` : "",
-                                                    ].join(" ")}
+                                                  <button
+                                                    onClick={() => abrirTitulo(l.numTit, l.codFor, c.codccu)}
+                                                    className="underline decoration-dotted underline-offset-2 hover:text-brand"
+                                                    title="Clique pra ver o dossiê completo desse título"
                                                   >
                                                     {l.lancadoPorNome || "—"}
-                                                  </span>
+                                                  </button>
                                                   {l.entradaManual !== null && (
                                                     <span
                                                       className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
@@ -532,6 +528,32 @@ export default function CustoPlanoDeContasPage() {
                       </dd>
                     </div>
                   </dl>
+
+                  <div>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Ordem de compra</p>
+                    {tituloAberto.ocRelacionada ? (
+                      <button
+                        onClick={() => {
+                          const numOcp = tituloAberto.ocRelacionada!.numOcp;
+                          setTituloAberto(null);
+                          abrirOC(numOcp);
+                        }}
+                        className="hover:underline"
+                      >
+                        {badgeOc(tituloAberto.ocRelacionada)}
+                      </button>
+                    ) : (
+                      <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+                        <p className="font-medium">Sem OC vinculada</p>
+                        <p className="mt-0.5 text-amber-800">
+                          {tituloAberto.motivoSemOC ||
+                            (tituloAberto.ocEsperada
+                              ? "Não encontramos nenhuma OC que referencie este título — vale investigar no Senior."
+                              : "Por natureza deste tipo de lançamento, não se espera uma OC por trás.")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                   {tituloAberto.descricao && (
                     <div>
