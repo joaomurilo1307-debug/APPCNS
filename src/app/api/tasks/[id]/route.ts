@@ -16,6 +16,8 @@ const updateTaskSchema = z.object({
   parentTaskId: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
   dueDate: z.string().datetime().nullable().optional(),
+  actualStartedAt: z.string().datetime().nullable().optional(),
+  actualEndedAt: z.string().datetime().nullable().optional(),
   durationDays: z.number().int().min(0).max(3650).nullable().optional(),
   isEntrega: z.boolean().optional(),
   locked: z.boolean().optional(),
@@ -103,6 +105,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     } else if (task.status === "FEITO") {
       data.actualEndedAt = null;
     }
+  }
+  // valor explícito no corpo sempre vence o auto-preenchimento acima —
+  // permite corrigir a data real (ex.: importação de trabalho já feito
+  // no passado, que não pode ficar carimbado com o momento do PATCH).
+  if (parsed.data.actualStartedAt !== undefined) {
+    data.actualStartedAt = parsed.data.actualStartedAt ? new Date(parsed.data.actualStartedAt) : null;
+  }
+  if (parsed.data.actualEndedAt !== undefined) {
+    data.actualEndedAt = parsed.data.actualEndedAt ? new Date(parsed.data.actualEndedAt) : null;
   }
 
   const affectsSchedule =
