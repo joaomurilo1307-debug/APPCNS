@@ -99,9 +99,9 @@ function formatDataHora(iso: string | null) {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-function horasDesde(iso: string | null) {
+function minutosDesde(iso: string | null) {
   if (!iso) return null;
-  return (Date.now() - new Date(iso).getTime()) / 3600000;
+  return (Date.now() - new Date(iso).getTime()) / 60000;
 }
 
 const MOTIVO_PADRAO: Record<string, string> = {
@@ -207,9 +207,11 @@ export default function ProgramacaoPagamentoPage() {
   const [qtdAberto, setQtdAberto] = useState(0);
   const [qtdPagos, setQtdPagos] = useState(0);
   const [totalPago, setTotalPago] = useState(0);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [msgSincronizacao, setMsgSincronizacao] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/titulos-pagar")
+  function carregar() {
+    return fetch("/api/titulos-pagar")
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -224,10 +226,45 @@ export default function ProgramacaoPagamentoPage() {
         setQtdAberto(data.qtdAberto ?? 0);
         setQtdPagos(data.qtdPagos ?? 0);
         setTotalPago(data.totalPago ?? 0);
-      })
+      });
+  }
+
+  useEffect(() => {
+    carregar()
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  // Atualiza sozinho a cada 10 minutos, igual as Aprovações OC -- pedido do
+  // João 16/09/2026. Só recarrega a lista (rápido, direto do Postgres da
+  // app); a sincronização em si com o Senior roda em segundo plano no VPS
+  // pelo mesmo cron de 10 em 10 min.
+  useEffect(() => {
+    const id = setInterval(() => {
+      carregar().catch(() => {});
+    }, 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Botão "Atualizar agora" -- dispara o webhook do n8n (mesma ação do cron
+  // de 10 em 10 minutos) e reconsulta a lista depois de um tempo, já que a
+  // sincronização roda em segundo plano no VPS (~2 mil títulos, leva alguns
+  // minutos).
+  function sincronizarAgora() {
+    setSincronizando(true);
+    setMsgSincronizacao(null);
+    fetch("/api/senior/titulos-pagar/sincronizar-agora", { method: "POST" })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Erro ao disparar sincronização");
+        setMsgSincronizacao("Sincronização disparada — atualizando em alguns minutos...");
+        setTimeout(() => {
+          carregar().then(() => setMsgSincronizacao("Lista atualizada com o retrato mais recente do Senior."));
+        }, 90000);
+      })
+      .catch((e) => setMsgSincronizacao(e.message))
+      .finally(() => setSincronizando(false));
+  }
 
   const { inicio: inicioSemana, fim: fimSemana } = useMemo(() => semanaAtual(), []);
 
@@ -319,22 +356,28 @@ export default function ProgramacaoPagamentoPage() {
             Contas a pagar por título (histórico completo), sincronizado do Senior. O vínculo com OC é demonstrado por número exato,
             parcela confirmada ou conciliação única — quando não houver OC, o motivo aparece no campo “OC”.
           </p>
-          {sincronizadoEm && (
-            <p
-              className={`mt-1 text-[11px] ${
-                (horasDesde(sincronizadoEm) ?? 0) > 24 ? "font-medium text-amber-700" : "text-gray-400"
-              }`}
-              title={
-                (horasDesde(sincronizadoEm) ?? 0) > 24
-                  ? "O Senior pode ter reprogramado vencimentos depois desta sincronização — confira a data antes de decidir pagamento."
-                  : undefined
-              }
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {sincronizadoEm && (
+              <p
+                className={`text-[11px] ${
+                  (minutosDesde(sincronizadoEm) ?? 0) > 20 ? "font-medium text-amber-700" : "text-gray-400"
+                }`}
+                title="Atualiza sozinho a cada 10 minutos; use o botão ao lado pra forçar agora."
+              >
+                Sincronizado do Senior em {formatDataHora(sincronizadoEm)}
+                {(minutosDesde(sincronizadoEm) ?? 0) > 20 &&
+                  ` · ${Math.floor(minutosDesde(sincronizadoEm) ?? 0)} min atrás`}
+              </p>
+            )}
+            <button
+              onClick={sincronizarAgora}
+              disabled={sincronizando}
+              className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
             >
-              Sincronizado do Senior em {formatDataHora(sincronizadoEm)}
-              {(horasDesde(sincronizadoEm) ?? 0) > 24 &&
-                ` · ${Math.floor((horasDesde(sincronizadoEm) ?? 0) / 24)} dia(s) atrás`}
-            </p>
-          )}
+              {sincronizando ? "Sincronizando..." : "↻ Atualizar agora"}
+            </button>
+            {msgSincronizacao && <span className="text-[11px] text-gray-500">{msgSincronizacao}</span>}
+          </div>
         </div>
         <button
           onClick={() => setMostrarRegras((v) => !v)}
