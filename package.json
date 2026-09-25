@@ -7,7 +7,9 @@
     "build": "prisma generate && next build",
     "start": "next start -p 3000",
     "postinstall": "prisma generate",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "senior:descobrir": "tsx --env-file=.env scripts/senior-descobrir.ts",
+    "senior:sync": "tsx --env-file=.env scripts/senior-sync-pagamentos.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",
