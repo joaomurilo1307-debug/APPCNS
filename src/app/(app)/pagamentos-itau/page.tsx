@@ -114,6 +114,8 @@ export default function PagamentosItauPage() {
   const [gerando, setGerando] = useState(false);
   const [mostrarFormConta, setMostrarFormConta] = useState(false);
   const [novaConta, setNovaConta] = useState({ apelido: "", cnpj: "", agencia: "", conta: "", dac: "" });
+  const [sincronizando, setSincronizando] = useState(false);
+  const [mensagemSync, setMensagemSync] = useState<string | null>(null);
 
   function carregarTudo() {
     setLoading(true);
@@ -200,6 +202,25 @@ export default function PagamentosItauPage() {
     }
 
     setCarrinho((c) => [...c, item]);
+  }
+
+  async function sincronizarComSenior() {
+    setSincronizando(true);
+    setErro(null);
+    setMensagemSync(null);
+    try {
+      const res = await fetch("/api/pagamentos-itau/sincronizar-titulos", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao consultar a Senior");
+      setMensagemSync(
+        `Atualizado agora: ${data.totalSenior} título(s) em aberto na Senior, ${data.comContaCompleta} com conta bancária completa.`
+      );
+      carregarTudo();
+    } catch (e: any) {
+      setErro(e.message);
+    } finally {
+      setSincronizando(false);
+    }
   }
 
   function atualizarItem(chave: string, patch: Partial<ItemCarrinho>) {
@@ -378,7 +399,18 @@ export default function PagamentosItauPage() {
       <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
           <div className="border-b border-gray-100 p-3">
-            <p className="mb-2 text-sm font-semibold text-gray-700">Títulos em aberto</p>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-gray-700">Títulos em aberto</p>
+              <button
+                onClick={sincronizarComSenior}
+                disabled={sincronizando}
+                title="Busca os títulos em aberto direto na Senior agora, em vez de confiar só no último `npm run senior:sync` rodado manualmente."
+                className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {sincronizando ? "Consultando a Senior... (pode levar alguns minutos)" : "Atualizar do Senior agora"}
+              </button>
+            </div>
+            {mensagemSync && <p className="mb-2 text-[11px] text-gray-500">{mensagemSync}</p>}
             <input
               type="text"
               placeholder="buscar título ou fornecedor..."
