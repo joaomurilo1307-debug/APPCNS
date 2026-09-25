@@ -1,0 +1,122 @@
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
+import { z } from "zod";
+import { logAudit } from "@/lib/auditLog";
+
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if ((session.user as any).role !== "ADMIN") {
+    return NextResponse.json({ error: "Só administradores acessam esta lista" }, { status: 403 });
+  }
+
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      active: true,
+      verTodosCustos: true,
+      avatarColor: true,
+      avatarUrl: true,
+      createdAt: true,
+      cargo: true,
+      setor: true,
+      diretoria: true,
+      ramal: true,
+      whatsapp: true,
+      dataInicio: true,
+      gestorImediatoId: true,
+      gestorImediato: { select: { id: true, name: true } },
+      nivelHierarquico: true,
+      nucleoId: true,
+      nucleo: { select: { id: true, name: true } },
+      teams: { include: { team: { select: { id: true, name: true } } } },
+      anonymizedAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return NextResponse.json(users);
+}
+
+const createUserSchema = z.object({
+  name: z.string().min(2).max(150),
+  email: z.string().email(),
+  password: z.string().min(8),
+  role: z.enum(["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR"]),
+  avatarColor: z.string().optional(),
+  cargo: z.string().optional(),
+  setor: z.string().optional(),
+  diretoria: z.string().optional(),
+  ramal: z.string().optional(),
+  whatsapp: z.string().optional(),
+  dataInicio: z.string().datetime().nullable().optional(),
+  gestorImediatoId: z.string().nullable().optional(),
+  nivelHierarquico: z.enum(["DIRETORIA", "GERENCIA", "COORDENACAO", "SUPERVISOR", "COLABORADOR"]).nullable().optional(),
+  nucleoId: z.string().nullable().optional(),
+  newNucleoName: z.string().min(2).max(100).optional(),
+});
+
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if ((session.user as any).role !== "ADMIN") {
+    return NextResponse.json({ error: "Só administradores podem cadastrar usuários" }, { status: 403 });
+  }
+
+  const body = await req.json();
+  const parsed = createUserSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
+
+  const existing = await prisma.user.findUnique({ where: { email: parsed.data.email.toLowerCase() } });
+  if (existing) return NextResponse.json({ error: "Já existe um usuário com este e-mail" }, { status: 409 });
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+
+  const user = await prisma.$transaction(async (tx) => {
+    let nucleoId = parsed.data.nucleoId ?? null;
+    if (!nucleoId && parsed.data.newNucleoName) {
+      const nucleo = await tx.nucleo.upsert({
+        where: { name: parsed.data.newNucleoName },
+        update: {},
+        create: { name: parsed.data.newNucleoName },
+      });
+      nucleoId = nucleo.id;
+    }
+
+    return tx.user.create({
+      data: {
+        name: parsed.data.name,
+        email: parsed.data.email.toLowerCase(),
+        passwordHash,
+        role: parsed.data.role,
+        avatarColor: parsed.data.avatarColor,
+        cargo: parsed.data.cargo,
+        setor: parsed.data.setor,
+        diretoria: parsed.data.diretoria,
+        ramal: parsed.data.ramal,
+        whatsapp: parsed.data.whatsapp,
+        dataInicio: parsed.data.dataInicio ? new Date(parsed.data.dataInicio) : null,
+        gestorImediatoId: parsed.data.gestorImediatoId,
+        nivelHierarquico: parsed.data.nivelHierarquico ?? undefined,
+        nucleoId,
+      },
+      select: { id: true, name: true, email: true, role: true, active: true, avatarColor: true },
+    });
+  });
+
+  await logAudit({
+    userId: (session.user as any).id,
+    action: "user.create",
+    entityType: "User",
+    entityId: user.id,
+    metadata: { name: user.name, email: user.email, role: user.role },
+  });
+
+  return NextResponse.json(user, { status: 201 });
+}

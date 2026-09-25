@@ -1,0 +1,169 @@
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
+import { z } from "zod";
+import { logAudit } from "@/lib/auditLog";
+
+const updateUserSchema = z.object({
+  role: z.enum(["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR"]).optional(),
+  active: z.boolean().optional(),
+  verTodosCustos: z.boolean().optional(),
+  name: z.string().min(2).max(150).optional(),
+  avatarColor: z.string().optional(),
+  cargo: z.string().optional(),
+  setor: z.string().optional(),
+  diretoria: z.string().optional(),
+  ramal: z.string().optional(),
+  whatsapp: z.string().optional(),
+  dataInicio: z.string().datetime().nullable().optional(),
+  gestorImediatoId: z.string().nullable().optional(),
+  password: z.string().min(8).optional(),
+  nivelHierarquico: z.enum(["DIRETORIA", "GERENCIA", "COORDENACAO", "SUPERVISOR", "COLABORADOR"]).nullable().optional(),
+  nucleoId: z.string().nullable().optional(),
+  newNucleoName: z.string().min(2).max(100).optional(),
+});
+
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  const currentUserId = (session.user as any).id;
+  const currentRole = (session.user as any).role;
+
+  const body = await req.json();
+  const parsed = updateUserSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
+
+  const onlyAvatarColor = Object.keys(parsed.data).every((k) => k === "avatarColor");
+  const isSelf = currentUserId === params.id;
+  const isAdmin = currentRole === "ADMIN";
+  const isManagerSettingAvatar = currentRole === "GESTOR_PROJETO" && onlyAvatarColor;
+
+  if (!isAdmin && !(isSelf && onlyAvatarColor) && !isManagerSettingAvatar) {
+    return NextResponse.json({ error: "Sem permissão para essa alteração" }, { status: 403 });
+  }
+
+  if (parsed.data.password && !isAdmin) {
+    return NextResponse.json({ error: "Só administradores podem redefinir a senha de outra pessoa" }, { status: 403 });
+  }
+
+  const { dataInicio, password, newNucleoName, ...rest } = parsed.data;
+
+  const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    let nucleoId = rest.nucleoId;
+    if (!nucleoId && newNucleoName) {
+      const nucleo = await tx.nucleo.upsert({
+        where: { name: newNucleoName },
+        update: {},
+        create: { name: newNucleoName },
+      });
+      nucleoId = nucleo.id;
+    }
+
+    return tx.user.update({
+      where: { id: params.id },
+      data: {
+        ...rest,
+        ...(nucleoId !== undefined ? { nucleoId } : {}),
+        ...(dataInicio !== undefined ? { dataInicio: dataInicio ? new Date(dataInicio) : null } : {}),
+        ...(passwordHash ? { passwordHash } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        verTodosCustos: true,
+        avatarColor: true,
+        cargo: true,
+        setor: true,
+        diretoria: true,
+        ramal: true,
+        whatsapp: true,
+        dataInicio: true,
+        gestorImediatoId: true,
+        gestorImediato: { select: { id: true, name: true } },
+        nivelHierarquico: true,
+        nucleoId: true,
+        nucleo: { select: { id: true, name: true } },
+      },
+    });
+  });
+
+  await logAudit({
+    userId: currentUserId,
+    action: password ? "user.password_reset" : "user.update",
+    entityType: "User",
+    entityId: params.id,
+    metadata: { fields: Object.keys(rest), passwordChanged: !!password },
+  });
+
+  return NextResponse.json(updated);
+}
+
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  const currentUserId = (session.user as any).id;
+  const currentRole = (session.user as any).role;
+  if (currentRole !== "ADMIN") {
+    return NextResponse.json({ error: "Só administradores podem excluir usuários" }, { status: 403 });
+  }
+  if (currentUserId === params.id) {
+    return NextResponse.json({ error: "Você não pode excluir a si mesmo" }, { status: 422 });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: params.id } });
+  if (!user) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
+
+  const [tasksCount, projectsOwnedCount, eventsCreatedCount, attachmentsCount, foldersCount] = await Promise.all([
+    prisma.task.count({ where: { assigneeId: params.id } }),
+    prisma.project.count({ where: { ownerId: params.id } }),
+    prisma.calendarEvent.count({ where: { creatorId: params.id } }),
+    prisma.attachment.count({ where: { uploadedBy: params.id } }),
+    prisma.folder.count({ where: { createdBy: params.id } }),
+  ]);
+
+  if (tasksCount > 0 || projectsOwnedCount > 0 || eventsCreatedCount > 0 || attachmentsCount > 0 || foldersCount > 0) {
+    const parts = [
+      tasksCount > 0 && `${tasksCount} tarefa(s)`,
+      projectsOwnedCount > 0 && `${projectsOwnedCount} projeto(s) como responsável`,
+      eventsCreatedCount > 0 && `${eventsCreatedCount} evento(s) criado(s)`,
+      attachmentsCount > 0 && `${attachmentsCount} arquivo(s) enviado(s)`,
+      foldersCount > 0 && `${foldersCount} pasta(s) criada(s)`,
+    ].filter(Boolean);
+    return NextResponse.json(
+      {
+        error:
+          `Essa pessoa tem ${parts.join(", ")} vinculados. ` +
+          `Transfira essas responsabilidades para outra pessoa antes de excluir, ou inative a pessoa em vez de excluir.`,
+      },
+      { status: 422 }
+    );
+  }
+
+  try {
+    await prisma.user.delete({ where: { id: params.id } });
+  } catch {
+    return NextResponse.json(
+      { error: "Não foi possível excluir — essa pessoa ainda tem dados vinculados no sistema. Inative em vez de excluir." },
+      { status: 422 }
+    );
+  }
+
+  await logAudit({
+    userId: currentUserId,
+    action: "user.delete",
+    entityType: "User",
+    entityId: params.id,
+    metadata: { deletedName: user.name, deletedEmail: user.email },
+  });
+
+  return NextResponse.json({ ok: true });
+}

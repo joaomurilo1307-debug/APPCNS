@@ -1,0 +1,57 @@
+services:
+  app:
+    image: ghcr.io/joaomurilo1307-debug/appcns:latest
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      NEXTAUTH_URL: https://${APP_DOMAIN}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      APP_DOMAIN: ${APP_DOMAIN}
+      UPLOAD_DIR: /app/uploads
+      RUN_SEED: ${RUN_SEED}
+      RUN_SEED_SENIOR: ${RUN_SEED_SENIOR}
+      RUN_FIX_NOMES: ${RUN_FIX_NOMES}
+      RUN_SEED_CONTRATOS: ${RUN_SEED_CONTRATOS}
+      RUN_BACKFILL_CODCCU: ${RUN_BACKFILL_CODCCU}
+      RUN_MERGE_FIN: ${RUN_MERGE_FIN}
+      RUN_SEED_NUCLEOS: ${RUN_SEED_NUCLEOS}
+      RUN_WIPE_PROJ: ${RUN_WIPE_PROJ}
+      RUN_WIPE_EQ: ${RUN_WIPE_EQ}
+      SENIOR_SYNC_KEY: ${SENIOR_SYNC_KEY}
+      OC_SYNC_WEBHOOK_URL: ${OC_SYNC_WEBHOOK_URL}
+      OC_SYNC_WEBHOOK_SECRET: ${OC_SYNC_WEBHOOK_SECRET}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+    volumes:
+      - uploads:/app/uploads
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.consominas-gestao.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.consominas-gestao.entrypoints=websecure"
+      - "traefik.http.routers.consominas-gestao.tls.certresolver=letsencrypt"
+      - "traefik.http.services.consominas-gestao.loadbalancer.server.port=3000"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:
+  uploads:

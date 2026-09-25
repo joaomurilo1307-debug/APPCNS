@@ -1,0 +1,175 @@
+import { prisma } from "@/lib/prisma";
+
+export async function getUserTeamIds(userId: string): Promise<string[]> {
+  const memberships = await prisma.userTeam.findMany({
+    where: { userId },
+    select: { teamId: true },
+  });
+  return memberships.map((m) => m.teamId);
+}
+
+/** IDs de pessoas que pertencem a núcleos gerenciados/visualizados por este usuário (relação Nucleo.gerentes). */
+async function nucleoManagedUserIds(userId: string): Promise<string[]> {
+  const nucleos = await prisma.nucleo.findMany({
+    where: { gerentes: { some: { id: userId } } },
+    select: { membros: { select: { id: true } } },
+  });
+  return nucleos.flatMap((n) => n.membros.map((m) => m.id));
+}
+
+/**
+ * Regra de governança de visibilidade (independente do `role` de permissão):
+ * - ADMIN/DIRETOR: veem tudo.
+ * - Nível hierárquico GERENCIA: vê tudo (todos os setores/núcleos e projetos), igual DIRETOR.
+ * - Gerente/visualizador de núcleo (Nucleo.gerentes): vê também as equipes/projetos que
+ *   incluem pessoas dos núcleos que ele gerencia, além das equipes das quais participa.
+ * - Demais (ex.: coordenador): só as equipes das quais participa (comportamento padrão).
+ * Retorna um filtro Prisma pronto para o campo `teamId` de Project (usar direto em
+ * `Project.findMany({ where })`) ou, para outros modelos, envolver em `{ project: <isto> }`.
+ */
+export async function visibleProjectWhere(userId: string, role: string): Promise<any> {
+  if (role === "ADMIN" || role === "DIRETOR") return {};
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { nivelHierarquico: true } });
+  if (user?.nivelHierarquico === "GERENCIA") return {};
+
+  const teamIds = await getUserTeamIds(userId);
+  const nucleoUserIds = await nucleoManagedUserIds(userId);
+
+  const clauses: any[] = [
+    { teamId: { in: teamIds } },
+    { diretores: { some: { id: userId } } },
+    { coordenadores: { some: { id: userId } } },
+    { nucleos: { some: { gerentes: { some: { id: userId } } } } },
+  ];
+  if (nucleoUserIds.length > 0) {
+    clauses.push({ team: { members: { some: { userId: { in: nucleoUserIds } } } } });
+  }
+
+  return { OR: clauses };
+}
+
+/** Mesma regra de `visibleProjectWhere`, mas retorna um filtro para o modelo Team diretamente. */
+export async function visibleTeamWhere(userId: string, role: string): Promise<any> {
+  if (role === "ADMIN" || role === "DIRETOR") return {};
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { nivelHierarquico: true } });
+  if (user?.nivelHierarquico === "GERENCIA") return {};
+
+  const teamIds = await getUserTeamIds(userId);
+  const nucleoUserIds = await nucleoManagedUserIds(userId);
+
+  if (nucleoUserIds.length === 0) return { id: { in: teamIds } };
+
+  return {
+    OR: [{ id: { in: teamIds } }, { members: { some: { userId: { in: nucleoUserIds } } } }],
+  };
+}
+
+/**
+ * IDs de pessoas para quem `userId` pode criar/gerenciar PDI, além de ADMIN/DIRETOR (que veem todo mundo):
+ * - Liderados diretos (gestorImediatoId === userId).
+ * - Se `userId` é coordenador (nivelHierarquico=COORDENACAO), todo mundo do mesmo núcleo.
+ * - Se `userId` é gerente/diretor de um ou mais núcleos (Nucleo.gerentes), todo mundo desses núcleos.
+ */
+export async function manageablePdiUserIds(userId: string): Promise<string[]> {
+  const me = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { nivelHierarquico: true, nucleoId: true },
+  });
+
+  const idSet = new Set<string>();
+
+  const directs = await prisma.user.findMany({ where: { gestorImediatoId: userId }, select: { id: true } });
+  directs.forEach((d) => idSet.add(d.id));
+
+  if (me?.nivelHierarquico === "COORDENACAO" && me.nucleoId) {
+    const membros = await prisma.user.findMany({ where: { nucleoId: me.nucleoId }, select: { id: true } });
+    membros.forEach((m) => idSet.add(m.id));
+  }
+
+  const nucleosGeridos = await prisma.nucleo.findMany({
+    where: { gerentes: { some: { id: userId } } },
+    select: { membros: { select: { id: true } } },
+  });
+  nucleosGeridos.forEach((n) => n.membros.forEach((m) => idSet.add(m.id)));
+
+  idSet.delete(userId);
+  return Array.from(idSet);
+}
+
+export async function canManagePdiFor(userId: string, role: string, targetUserId: string): Promise<boolean> {
+  if (role === "ADMIN" || role === "DIRETOR") return true;
+  const ids = await manageablePdiUserIds(userId);
+  return ids.includes(targetUserId);
+}
+
+export async function isTeamMember(userId: string, role: string, teamId: string): Promise<boolean> {
+  if (role === "ADMIN") return true;
+  const membership = await prisma.userTeam.findUnique({ where: { userId_teamId: { userId, teamId } } });
+  return !!membership;
+}
+
+export async function isTeamManager(userId: string, teamId: string): Promise<boolean> {
+  const membership = await prisma.userTeam.findUnique({
+    where: { userId_teamId: { userId, teamId } },
+  });
+  return membership?.role === "GESTOR";
+}
+
+export async function canManageTeam(userId: string, role: string, teamId: string) {
+  if (role === "ADMIN") return true;
+  return isTeamManager(userId, teamId);
+}
+
+/** Quem pode excluir/mover uma tarefa: Admin e Gestor de Projeto sempre (se não travada); Colaborador só se não travada e for responsável; Cliente/Visualizador/Aprovador nunca -- SALVO se for Gestor da equipe dona do projeto (ver canModifyTaskScoped). */
+export function canModifyTask(role: string, isAssignee: boolean, locked: boolean) {
+  if (locked) return role === "ADMIN" || role === "GESTOR_PROJETO";
+  if (role === "ADMIN" || role === "GESTOR_PROJETO") return true;
+  if (role === "COLABORADOR") return isAssignee;
+  return false;
+}
+
+/**
+ * Mesma regra de `canModifyTask`, mais uma exceção por equipe: quem é Gestor
+ * (UserTeam.role="GESTOR") da equipe dona do projeto da tarefa também pode
+ * mover/editar/atribuir -- pra gente como um Aprovador que também gerencia um
+ * núcleo/equipe (ex: Claudia Moreira), sem abrir isso pra qualquer Aprovador
+ * em qualquer tarefa do sistema (achado 14/09/2026: ela não conseguia trocar
+ * status nem atribuir responsável em nenhuma tarefa, porque APROVADOR nunca
+ * passava em `canModifyTask`, mesmo sendo gerente da equipe do projeto).
+ * Tarefa travada continua só pra Admin/Gestor de Projeto, igual antes.
+ */
+export async function canModifyTaskScoped(
+  userId: string,
+  role: string,
+  isAssignee: boolean,
+  locked: boolean,
+  teamId: string | null | undefined
+): Promise<boolean> {
+  if (canModifyTask(role, isAssignee, locked)) return true;
+  if (locked || !teamId) return false;
+  return isTeamManager(userId, teamId);
+}
+
+export function canDeleteTask(role: string) {
+  return role === "ADMIN" || role === "GESTOR_PROJETO";
+}
+
+export function isReadOnlyRole(role: string) {
+  return role === "CLIENTE" || role === "VISUALIZADOR";
+}
+
+/** Rota inicial recomendada por papel, após login. */
+export function landingPathForRole(role: string) {
+  switch (role) {
+    case "APROVADOR":
+      return "/aprovacoes";
+    case "CLIENTE":
+      return "/portal-cliente";
+    case "VISUALIZADOR":
+      return "/dashboard";
+    default:
+      return "/dashboard";
+  }
+}

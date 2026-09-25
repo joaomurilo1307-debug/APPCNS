@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+uploads/
+*.log
+.DS_Store
+next-env.d.ts
+deploy_payload.json
+build_log.txt
+*.log
+build_log*.txt
+senior-descobrir-saida*.txt

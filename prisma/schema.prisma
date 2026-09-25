@@ -1,0 +1,1283 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl"]
+}
+
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  DIRETOR
+  GESTOR_PROJETO
+  APROVADOR
+  COLABORADOR
+  CLIENTE
+  VISUALIZADOR
+}
+
+enum Horizon {
+  H1
+  H2
+  H3
+}
+
+enum NivelHierarquico {
+  DIRETORIA
+  GERENCIA
+  COORDENACAO
+  SUPERVISOR
+  COLABORADOR
+}
+
+enum RiskLevel {
+  BAIXO
+  MEDIO
+  ALTO
+}
+
+enum RiskStatus {
+  ABERTO
+  MITIGADO
+  ENCERRADO
+}
+
+enum IdeaStatus {
+  NOVA
+  EM_ANALISE
+  APROVADA
+  REJEITADA
+  CONVERTIDA
+}
+
+enum IdeaLevel {
+  BAIXO
+  MEDIO
+  ALTO
+}
+
+enum ScorecardScope {
+  PESSOAL
+  EQUIPE
+  PROJETO
+  CORPORATIVO
+}
+
+enum ScorecardStatusColor {
+  VERDE
+  AMARELO
+  VERMELHO
+}
+
+enum NotificationType {
+  TAREFA_ATRIBUIDA
+  PRAZO_ALTERADO
+  TAREFA_ATRASADA
+  APROVACAO_PENDENTE
+  MENCAO_COMENTARIO
+  REUNIAO_PROXIMA
+  CONVITE_PROJETO
+  OUTRO
+}
+
+enum ApprovalStatus {
+  NAO_REQUER
+  PENDENTE
+  APROVADO
+  REJEITADO
+}
+
+enum TeamRole {
+  GESTOR
+  MEMBRO
+}
+
+enum ProjectStatus {
+  PLANEJADO
+  EM_ANDAMENTO
+  PAUSADO
+  CONCLUIDO
+}
+
+enum TaskStatus {
+  A_FAZER
+  FAZENDO
+  BLOQUEADO
+  FEITO
+}
+
+enum TaskPriority {
+  BAIXA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
+enum RotinaFrequencia {
+  DIARIA
+  SEMANAL
+  MENSAL
+}
+
+enum EventType {
+  REUNIAO
+  COMPROMISSO
+  ENTREGA
+  PRAZO
+  OUTRO
+}
+
+enum MeetingType {
+  ALINHAMENTO
+  KICKOFF
+  UM_A_UM
+  DIRETORIA
+  CLIENTE
+  TECNICA
+  TREINAMENTO
+  OUTRA
+}
+
+enum OnlineMeetingProvider {
+  NENHUM
+  TEAMS
+  GOOGLE_MEET
+  JITSI
+}
+
+enum CustomFieldType {
+  TEXTO
+  NUMERO
+  MOEDA
+  DATA
+  LISTA
+  CHECKBOX
+  PESSOA
+  FORMULA
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         UserRole  @default(COLABORADOR)
+  active       Boolean   @default(true)
+  // excecao de acesso, independente do papel -- pra gente como gerentes
+  // (ex: Claudia/APROVADOR) que precisa ver o custo de TODA a empresa em
+  // Custo por Plano de Contas sem virar DIRETOR (que traria outros
+  // privilegios junto). So o ADMIN liga isso, pela tela de Usuarios.
+  verTodosCustos Boolean @default(false)
+  avatarColor  String    @default("#0f766e")
+  avatarUrl    String?   @db.Text
+  lastSeenAt   DateTime?
+  statusManual String?
+  cargo        String?
+  setor        String?
+  diretoria    String?
+  ramal        String?
+  whatsapp     String?
+  resetToken   String?   @unique
+  resetTokenExpiresAt DateTime?
+  nivelHierarquico NivelHierarquico?
+  nucleoId     String?
+  dataInicio   DateTime?
+  gestorImediatoId String?
+  anonymizedAt DateTime?
+  createdAt    DateTime  @default(now())
+  // true para contas criadas em massa a partir do Senior (email placeholder
+  // nome.sobrenome@consominas.com.br, senha temporaria) -- forca a pessoa a
+  // confirmar o email real e trocar a senha no primeiro login.
+  primeiroAcesso Boolean @default(false)
+  // origem do cadastro: "MANUAL" (criado pela tela de usuarios) ou "SENIOR"
+  // (importado em massa da folha, ainda sem email/CPF confirmado pela pessoa)
+  origemCadastro String  @default("MANUAL")
+  matriculaSenior String? @unique
+
+  gestorImediato  User?      @relation("GestorImediato", fields: [gestorImediatoId], references: [id], onDelete: SetNull)
+  subordinados    User[]     @relation("GestorImediato")
+  nucleo          Nucleo?    @relation(fields: [nucleoId], references: [id], onDelete: SetNull)
+
+  teams           UserTeam[]
+  ownedProjects   Project[]      @relation("ProjectOwner")
+  approvingProjects Project[]    @relation("ProjectApprover")
+  clientProjects  ProjectClient[]
+  assignedTasks   Task[]         @relation("TaskAssignee")
+  attachments     Attachment[]
+  taskComments    TaskComment[]
+  assignedGoals   Goal[]         @relation("GoalAssignees")
+  createdEvents   CalendarEvent[]         @relation("EventCreator")
+  eventInvites    CalendarEventAttendee[]
+  outlookAccount  OutlookAccount?
+  sentDirectMessages     DirectMessage[]   @relation("DMSender")
+  receivedDirectMessages DirectMessage[]   @relation("DMReceiver")
+  teamMessages           TeamMessage[]     @relation("TeamMessageSender")
+  teamMessageReads       TeamMessageRead[]
+  createdIdeas    Idea[]        @relation("IdeaCreator")
+  assignedIdeas   Idea[]        @relation("IdeaAssignee")
+  ideaComments    IdeaComment[]
+  decisionsMade   Decision[]
+  scorecardItems  ScorecardItem[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+  resourceRates   ResourceRate[]
+  createdFolders  Folder[]  @relation("FolderCreator")
+  approvalRequestsSent     ApprovalRequest[] @relation("ApprovalRequester")
+  approvalRequestsReceived ApprovalRequest[] @relation("ApprovalApprover")
+  pdisAsPessoa  PDI[] @relation("PDIPessoa")
+  pdisAsGestor  PDI[] @relation("PDICriador")
+  nucleosGerenciados Nucleo[] @relation("NucleoGerente")
+  projetosComoDiretor     Project[] @relation("ProjectDiretor")
+  projetosComoCoordenador Project[] @relation("ProjectCoordenador")
+  aprovacoesSeniorComoProximo AprovacaoSenior[] @relation("AprovacaoSeniorProximo")
+  usuarioSenior              UsuarioSenior[]    @relation("UsuarioSeniorConta")
+  remessasPagamentoCriadas     RemessaPagamento[]
+  retornosPagamentoProcessados RetornoPagamentoArquivo[]
+}
+
+model ApprovalRequest {
+  id          String         @id @default(cuid())
+  title       String
+  description String?        @db.Text
+  requesterId String
+  approverId  String
+  status      ApprovalStatus @default(PENDENTE)
+  decidedAt   DateTime?
+  createdAt   DateTime       @default(now())
+
+  requester User @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  approver  User @relation("ApprovalApprover", fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@index([approverId, status])
+  @@index([requesterId])
+}
+
+model DirectMessage {
+  id         String    @id @default(cuid())
+  senderId   String
+  receiverId String
+  body       String
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
+
+  sender   User @relation("DMSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("DMReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
+
+  @@index([senderId, receiverId])
+  @@index([receiverId, senderId])
+}
+
+model TeamMessage {
+  id        String   @id @default(cuid())
+  teamId    String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sender User @relation("TeamMessageSender", fields: [senderId], references: [id])
+  attachments Attachment[]
+
+  @@index([teamId, createdAt])
+}
+
+model TeamMessageRead {
+  id         String   @id @default(cuid())
+  userId     String
+  teamId     String
+  lastReadAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+}
+
+model OutlookAccount {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
+  expiresAt    DateTime
+  msEmail      String?
+  deltaLink    String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  // CCU (centro de custo) da Senior que essa equipe representa -- preenchido
+  // pelo seed a partir do roster real; usado pra ligar o custo por plano de
+  // contas (CustoContaFinanceira) a equipe/contrato certo sem depender de
+  // parsear o nome.
+  codccu String? @unique
+
+  members  UserTeam[]
+  projects Project[]
+  goals    Goal[]
+  messages     TeamMessage[]
+  messageReads TeamMessageRead[]
+  scorecardItems ScorecardItem[]
+  folders      Folder[]
+  attachments  Attachment[]
+  custosContaFinanceira CustoContaFinanceira[]
+  historicoCcuColaborador HistoricoCcuColaborador[]
+}
+
+// Custo por plano de contas (conta_financeira), agregado por CCU/mes, vindo
+// do Rito de Gestao (rito_financeiro.composicao_custo_financeiro). Sincronizado
+// pelo mesmo mecanismo das aprovacoes (chave SENIOR_SYNC_KEY), mas disparado
+// junto com a cascata MENSAL do Rito (o dado fonte so muda uma vez por mes).
+model CustoContaFinanceira {
+  id              String   @id @default(cuid())
+  codccu          String
+  contrato        String
+  contaFinanceira String
+  competencia     DateTime // dia 1 do mes de competencia
+  valor           Float
+  teamId          String?
+  atualizadoEm    DateTime @updatedAt
+
+  team Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@unique([codccu, contaFinanceira, competencia])
+  @@index([teamId])
+  @@index([competencia])
+}
+
+// Detalhe titulo-a-titulo por tras de cada linha de CustoContaFinanceira --
+// pedido do Joao 15/09/2026: "abrir a conta financeira e ver os lancamentos
+// certinhos, com a OC relacionada". Espelho de leitura de
+// rito_financeiro.composicao_custo_financeiro (Postgres do Rito, mesma
+// fonte ja validada ao centavo que soma pro total exibido) -- sem chave
+// unica de proposito (o titulo pode aparecer >1x na mesma conta/mes/CCU/
+// fornecedor, rateio real confirmado no Rito) -- sync sempre apaga tudo e
+// reinsere (a fonte tambem e recalculada inteira a cada cascata).
+model CustoFinanceiroDetalhe {
+  id              String   @id @default(cuid())
+  codccu          String
+  contaFinanceira String
+  competencia     DateTime
+  numTit          String
+  codFor          String
+  fornecedorNome  String?
+  dataEntrada     DateTime?
+  dataVencimento  DateTime?
+  valorRateado    Float
+  atualizadoEm    DateTime @updatedAt
+
+  @@index([codccu, contaFinanceira, competencia])
+}
+
+// Ledger IMUTAVEL de qual centro de custo cada colaborador CLT tinha em
+// cada mes -- vem de rito_financeiro.historico_ccu_colaborador (Postgres
+// do Rito, VPS 2.25.191.135), capturado la TODO MES pela cascata (nunca
+// sobrescrito). Existe pq R034FUN.CODCCU no Senior so guarda o valor
+// ATUAL do colaborador (achado 11/09/2026, caso Elisangela/ALCOA: um
+// contrato ja encerrado aparecia com margem otima porque o custo da
+// pessoa tinha ido pro CC novo dela nos meses seguintes). Aqui e' so
+// LEITURA (espelho de consulta) -- a fonte da verdade e o Postgres do
+// Rito; upsert simples, nunca apaga linha antiga.
+model HistoricoCcuColaborador {
+  id          String   @id @default(cuid())
+  matricula   String
+  competencia DateTime // dia 1 do mes
+  codccu      String
+  colaborador String
+  teamId      String?
+  atualizadoEm DateTime @updatedAt
+
+  team Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@unique([matricula, competencia])
+  @@index([teamId])
+  @@index([competencia])
+  @@index([codccu])
+}
+
+// Programação de Contas a Pagar por título -- espelho de E501TCP (Senior),
+// pedido do João em 13/09/2026 pra cruzar com Aprovações OC: cada título
+// carrega o NÚMERO DA OC de origem (NUMOCP) quando existe, pra bater se
+// uma OC aprovada já foi paga ou ainda está em aberto. "pago" é derivado
+// de VLRABE (valor em aberto) == 0 -- o próprio campo já diz se sobrou
+// saldo a pagar, não precisa decifrar os códigos de SITTIT.
+//
+// Chave única: NUMTIT sozinho (nem +codFil, nem +codFor) NÃO identifica um
+// título -- confirmado 13/09/2026, achamos 101 pares (numTit+codFil)
+// repetidos (inclusive dentro do MESMO fornecedor) somando 161 títulos que
+// se perderiam num upsert simples. (numTit,codFil,codFor,tipo,dataEmissao)
+// é 100% único na base real (checado título a título antes de assumir).
+model TituloContasAPagar {
+  id                  String    @id @default(cuid())
+  numTit              String
+  codFil              String
+  codFor              String
+  fornecedorNome      String?
+  tipo                String // CODTPT
+  situacao            String // SITTIT (AB, LQ, CA, etc. -- cru, so' referencia)
+  pago                Boolean // valorAberto == 0
+  dataEmissao         DateTime // sempre presente na base real (checado); faz parte da chave unica
+  vencimentoOriginal  DateTime?
+  vencimentoProgramado DateTime?
+  valorOriginal       Float
+  valorAberto         Float
+  dataPagamento       DateTime? // ULTPGT -- so' preenchido quando pago=true
+  codccu              String?
+  ccuNome             String?
+  numOcp              String? // E501TCP.NUMOCP, quando o Senior gravar a OC de origem
+  filOcp              String? // E501TCP.FILOCP, filial da OC quando vier no sincronismo
+  numNfc              String? // E501TCP.NUMNFC, NF de compra vinculada -- também usado como sinal de lançamento automático (ver entradaManual nas rotas de leitura)
+  descricao           String? // E501TCP.OBSTCP, texto livre digitado por quem lançou o título
+  lancadoPorCod       String? // E501TCP.USUGER, usuário Senior que lançou o título (resolvido pra nome via UsuarioSenior nas rotas de leitura)
+  dataLancamento      DateTime? // E501TCP.DATGER, quando o título foi de fato digitado no Senior -- pode ser muito depois da emissão/vencimento (lançamento retroativo)
+  // Codigo de barras do boleto (44 digitos) deste titulo especifico, quando o
+  // pagamento for por boleto -- diferente do dado bancario do fornecedor
+  // (agencia/conta, mais abaixo); cada NF/boleto tem seu proprio codigo. O
+  // Senior (E501TCP.CODBAR) nao preenche isso em nenhum titulo em aberto --
+  // ver docs/integracao-itau.md, "Integração com o Senior".
+  codigoBarrasBoleto String?
+
+  // Dados de pagamento do favorecido COMO ESTAO NO TITULO no Senior (E501TCP
+  // -- o cadastro do fornecedor, E095FOR, nao tem coluna de banco). Descoberta
+  // em 24/09/2026 numa base real de 2.420 titulos em aberto: so' ~4% tem
+  // conta preenchida (CODBAN/CODAGE/CCBFOR, "9999-9" e "99999-9" com hifen
+  // antes do DV), ~3,5% tem chave PIX (CHVPIX/TPCPIX) e NENHUM tem
+  // codigo de barras (CODBAR) -- por isso o codigo de barras continua vindo
+  // do boleto (digitado ou, no futuro, do DDA). Agencia e conta ja chegam
+  // separadas do DV, prontas pro CNAB (o manual manda nao misturar o DAC no
+  // campo da agencia).
+  bancoFavorecido     String? // CODBAN
+  agenciaFavorecido   String? // CODAGE sem o DV
+  contaFavorecido     String? // CCBFOR antes do hifen
+  dacFavorecido       String? // CCBFOR depois do hifen
+  tipoContaFavorecido String? // TIPTCC cru (mapeamento dos codigos: ver docs/integracao-itau.md)
+  chavePix            String? // CHVPIX
+  tipoChavePix        String? // TPCPIX cru
+  documentoFavorecido String? // CPF/CNPJ so' digitos: DOCIDEFAV do titulo, ou CGCCPF do fornecedor
+  atualizadoEm        DateTime  @updatedAt
+
+  remessaItens RemessaItemPagamento[]
+
+  @@unique([numTit, codFil, codFor, tipo, dataEmissao])
+  @@index([numOcp])
+  @@index([filOcp, numOcp])
+  @@index([codFor, numNfc])
+  @@index([pago])
+  @@index([codFor])
+}
+
+model Nucleo {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  membros  User[]
+  gerentes User[]    @relation("NucleoGerente")
+  projetos Project[] @relation("ProjectNucleo")
+}
+
+model UserTeam {
+  id     String   @id @default(cuid())
+  userId String
+  teamId String
+  role   TeamRole @default(MEMBRO)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+}
+
+model Project {
+  id             String         @id @default(cuid())
+  name           String
+  description    String?
+  status         ProjectStatus  @default(PLANEJADO)
+  teamId         String
+  ownerId        String
+  approverId     String?
+  approvalStatus ApprovalStatus @default(NAO_REQUER)
+  startDate      DateTime?
+  endDate        DateTime?
+  actualStartedAt DateTime?
+  actualEndedAt   DateTime?
+  kanbanColumns  String?        @db.Text
+  horizon        Horizon?
+  orcamento      Float?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  team     Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  owner    User             @relation("ProjectOwner", fields: [ownerId], references: [id])
+  approver User?            @relation("ProjectApprover", fields: [approverId], references: [id])
+  clients  ProjectClient[]
+  tasks    Task[]
+  board    ProjectBoard?
+  goals    Goal[]
+  events   CalendarEvent[]
+  customFields CustomField[]
+  milestones Milestone[]
+  risks      Risk[]
+  decisions  Decision[]
+  ideas      Idea[]
+  scorecardItems ScorecardItem[]
+  resourceRates  ResourceRate[]
+  nucleos       Nucleo[] @relation("ProjectNucleo")
+  diretores     User[]   @relation("ProjectDiretor")
+  coordenadores User[]   @relation("ProjectCoordenador")
+  folders       Folder[]
+  attachments   Attachment[]
+
+  @@index([teamId])
+  @@index([ownerId])
+  @@index([status])
+}
+
+model ResourceRate {
+  id         String @id @default(cuid())
+  projectId  String
+  userId     String
+  hourlyRate Float  @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model Milestone {
+  id        String    @id @default(cuid())
+  projectId String
+  title     String
+  dueDate   DateTime?
+  done      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Risk {
+  id             String     @id @default(cuid())
+  projectId      String
+  title          String
+  description    String?    @db.Text
+  impact         RiskLevel  @default(MEDIO)
+  probability    RiskLevel  @default(MEDIO)
+  mitigationPlan String?    @db.Text
+  status         RiskStatus @default(ABERTO)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Decision {
+  id          String   @id @default(cuid())
+  projectId   String
+  title       String
+  description String?  @db.Text
+  decidedById String
+  decidedAt   DateTime @default(now())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  decidedBy User    @relation(fields: [decidedById], references: [id])
+}
+
+model Idea {
+  id              String     @id @default(cuid())
+  projectId       String
+  title           String
+  description     String?    @db.Text
+  category        String?
+  status          IdeaStatus @default(NOVA)
+  impact          IdeaLevel  @default(MEDIO)
+  viability       IdeaLevel  @default(MEDIO)
+  urgency         IdeaLevel  @default(MEDIO)
+  createdById     String
+  assigneeId      String?
+  dueDate         DateTime?
+  convertedTaskId String?    @unique
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User          @relation("IdeaCreator", fields: [createdById], references: [id])
+  assignee  User?         @relation("IdeaAssignee", fields: [assigneeId], references: [id])
+  comments  IdeaComment[]
+
+  @@index([projectId, status])
+}
+
+model IdeaComment {
+  id        String   @id @default(cuid())
+  ideaId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  idea   Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+}
+
+model ScorecardItem {
+  id            String               @id @default(cuid())
+  scope         ScorecardScope
+  teamId        String?
+  projectId     String?
+  userId        String?
+  objective     String
+  indicator     String
+  target        Float?
+  current       Float                @default(0)
+  unit          String?
+  statusColor   ScorecardStatusColor @default(VERDE)
+  trend         String?
+  periodicity   String?
+  justification String?              @db.Text
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  team    Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([scope])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// Espelho das Ordens de Compra do Senior que precisam de aprovacao
+// (E420OCP, SITAPR). Sincronizado periodicamente via
+// POST /api/senior/aprovacoes/sync (script roda no VPS do Rito de
+// Gestao, que tem acesso ao Senior via GetDBInfo). Cada mudanca de
+// situacao vira uma linha em AprovacaoSeniorHistorico -- e a fonte do
+// "relatorio de aprovacao" (quem aprovou, quando, quanto tempo ficou
+// parado).
+model AprovacaoSenior {
+  id              String    @id @default(cuid())
+  numOcp          String    @unique
+  codFil          String?   // E420OCP.CODFIL, quando o export da OC o informar
+  dataEmissao     DateTime
+  fornecedorCodigo String
+  fornecedorNome  String?   // USU_NOMFOR da OC (nome livre digitado); cai pro codigo se vazio
+  valor           Float
+  descricao       String?   @db.Text
+  contratoTexto   String?   // texto "C/C:" que o comprador escreveu na OC (bate com a aba Rateios do Senior)
+  codccu          String?   // centro de custo real, da tabela E420RAT (aba Rateios da OC)
+  contratoNome    String?   // nome do CC resolvido de rito_financeiro.centros_custo (secundario -- a base tem erros)
+  criadorCod      String?   // CODUSU do Senior de quem gerou a OC (E420OCP.USUGER)
+  criadorNome     String?   // resolvido via UsuarioSenior
+  previsaoPagamento DateTime? // E420OCP.USU_DATVECT
+  usuNumTit       String?   @db.Text // E420OCP.USU_NUMTIT -- texto livre digitado pelo comprador com o(s)
+  // NUMTIT do titulo gerado por essa OC (separados por -/;/quebra de linha/virgula). Testado empiricamente
+  // 14/09/2026: 8.780 das 11.682 OCs preenchidas, 83% (25/30 amostra) casam exato com E501TCP.NUMTIT pro
+  // mesmo fornecedor. Neste tenant, NUMOCP veio zerado no historico analisado;
+  // se o export passar a informar a relacao direta, ela tem prioridade.
+  usuNumNfc       String?   // E420OCP.USU_NUMNFC -- numero da nota fiscal de compra, mesma logica, preenchido em 42%
+  pago            Boolean   @default(false) // OC pendente de aprovacao nunca esta paga
+  numApr          String
+  rotNap          String?
+  situacaoAtual   String    // ANA / PRE / APR / REP / CAN
+  niveisExigidos  String?   // ex "1,2,3" -- niveis que a alcada exige (E614APR.NIVEXI)
+  niveisAprovados String?   // ex "1" -- niveis ja aprovados (E614USU)
+  nivelAtual      Int       @default(1) // menor nivel ainda pendente
+  historicoNiveis String?   @db.Text // JSON: [{seqApr, nivApr, usuAprSenior, situacao, data, ccu}]
+  temRateio       Boolean   @default(false) // >1 linha de rateio ou >1 CCU
+  rateioDetalhe   String?   @db.Text // JSON: [{seq, codccu, ccuNome, contaFinanceira, perc, valor, niveis:[{nivel,grupo,status,aprovadoresCod,aprovadores}]}]
+  aprovadoresPendentes    String?  // nomes (login Senior) de quem falta aprovar, unidos por ", "
+  aprovadoresPendentesCod String?  // CODUSU do Senior de quem falta aprovar, unidos por ","
+  mapaCotacao     String?   @db.Text // JSON do mapa de cotacao, quando a OC tem cotacao vinculada
+  proximoAprovadorCod  String?  // CODUSU do Senior que provavelmente aprova o nivel atual (do historico E614USU)
+  proximoAprovadorNome String?  // resolvido via UsuarioSenior quando o de-para existir
+  proximoAprovadorUserId String? // match no consominas-gestao -> alimenta a pagina pessoal de aprovacoes
+  proximoAprovador     User?    @relation("AprovacaoSeniorProximo", fields: [proximoAprovadorUserId], references: [id], onDelete: SetNull)
+  primeiraDeteccaoEm DateTime @default(now())
+  ultimaSincEm    DateTime  @updatedAt
+  resolvidoEm     DateTime?
+  resolvidoComo   String?   // situacaoAtual no momento da resolucao (APR/REP/CAN)
+
+  eventos AprovacaoSeniorEvento[]
+
+  @@index([situacaoAtual])
+  @@index([codFil, numOcp])
+  @@index([codccu])
+  @@index([proximoAprovadorUserId])
+}
+
+// De-para dos usuarios do Senior (CODUSU numerico -> nome, e opcionalmente
+// -> conta no consominas-gestao). Preenchido a partir de um export do
+// Senior (tela Cadastros > Usuarios). Sem isso, so da pra mostrar o codigo.
+model UsuarioSenior {
+  codigo       String   @id // CODUSU do Senior (ex: "177")
+  nome         String
+  userId       String?
+  user         User?    @relation("UsuarioSeniorConta", fields: [userId], references: [id], onDelete: SetNull)
+  atualizadoEm DateTime @updatedAt
+}
+
+model AprovacaoSeniorEvento {
+  id                String   @id @default(cuid())
+  aprovacaoSeniorId String
+  situacao          String
+  nivel             Int?
+  usuAprSenior      String?
+  observacao        String?
+  detectadoEm       DateTime @default(now())
+
+  aprovacaoSenior AprovacaoSenior @relation(fields: [aprovacaoSeniorId], references: [id], onDelete: Cascade)
+
+  @@index([aprovacaoSeniorId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType @default(OUTRO)
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model CustomField {
+  id        String          @id @default(cuid())
+  projectId String
+  name      String
+  type      CustomFieldType
+  options   String?         @db.Text
+  order     Int             @default(0)
+  createdAt DateTime        @default(now())
+
+  project Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  values  TaskCustomFieldValue[]
+}
+
+model TaskCustomFieldValue {
+  id            String  @id @default(cuid())
+  taskId        String
+  customFieldId String
+  value         String? @db.Text
+
+  task        Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  customField CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, customFieldId])
+}
+
+model Goal {
+  id            String   @id @default(cuid())
+  projectId     String?
+  title         String
+  description   String?
+  targetValue   Float?
+  currentValue  Float    @default(0)
+  unit          String?
+  dueDate       DateTime?
+  assignedTeamId String?
+  parentGoalId  String?
+  contributionValue Float?
+  autoFromProjectProgress Boolean @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedUsers User[]  @relation("GoalAssignees")
+  assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
+  parentGoal   Goal?   @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: SetNull)
+  subGoals     Goal[]  @relation("GoalHierarchy")
+
+  @@index([projectId])
+  @@index([parentGoalId])
+  @@index([assignedTeamId])
+}
+
+model PDI {
+  id        String   @id @default(cuid())
+  userId    String
+  gestorId  String
+  period    String?
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User      @relation("PDIPessoa", fields: [userId], references: [id], onDelete: Cascade)
+  gestor User      @relation("PDICriador", fields: [gestorId], references: [id], onDelete: Cascade)
+  items  PDIItem[]
+
+  @@index([userId])
+  @@index([gestorId])
+}
+
+model PDIItem {
+  id          String    @id @default(cuid())
+  pdiId       String
+  title       String
+  description String?
+  status      TaskStatus @default(A_FAZER)
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  pdi PDI @relation(fields: [pdiId], references: [id], onDelete: Cascade)
+
+  @@index([pdiId])
+}
+
+model CalendarEvent {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  type           EventType @default(COMPROMISSO)
+  meetingType    MeetingType?
+  startAt        DateTime
+  endAt          DateTime?
+  allDay         Boolean   @default(false)
+  projectId      String?
+  creatorId      String
+  outlookEventId String?   @unique
+  onlineMeetingProvider OnlineMeetingProvider @default(NENHUM)
+  onlineMeetingUrl      String?               @db.Text
+  icsSequence    Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  project   Project?                @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  creator   User                    @relation("EventCreator", fields: [creatorId], references: [id])
+  attendees CalendarEventAttendee[]
+
+  @@index([projectId])
+  @@index([creatorId])
+  @@index([startAt])
+}
+
+model CalendarEventAttendee {
+  id     String         @id @default(cuid())
+  eventId String
+  userId String?
+  guestEmail  String?
+  guestName   String?
+  inviteToken String?        @unique
+  status ApprovalStatus @default(PENDENTE)
+
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+}
+
+model ProjectBoard {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  content   String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ProjectClient {
+  id        String @id @default(cuid())
+  projectId String
+  userId    String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model Task {
+  id                String            @id @default(cuid())
+  title             String
+  description       String?
+  status            TaskStatus        @default(A_FAZER)
+  priority          TaskPriority      @default(MEDIA)
+  startDate         DateTime?
+  dueDate           DateTime?
+  durationDays      Int?
+  isEntrega         Boolean           @default(false)
+  isRotina          Boolean           @default(false)
+  rotinaFrequencia  RotinaFrequencia?
+  rotinaAteData     DateTime?
+  rotinaGroupId     String?
+  order             Int               @default(0)
+  projectId         String?
+  assigneeId        String?
+  parentTaskId      String?
+  locked            Boolean           @default(false)
+  outlookEventId    String?           @unique
+  actualStartedAt   DateTime?
+  actualEndedAt     DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  project      Project?               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee     User?                  @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  parentTask   Task?                  @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks     Task[]                 @relation("Subtasks")
+  attachments  Attachment[]
+  comments     TaskComment[]
+  customFieldValues TaskCustomFieldValue[]
+  predecessorLinks TaskDependency[] @relation("DependencySuccessor")
+  successorLinks   TaskDependency[] @relation("DependencyPredecessor")
+
+  @@index([projectId])
+  @@index([assigneeId])
+  @@index([parentTaskId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([rotinaGroupId])
+}
+
+enum DependencyType {
+  FS
+  SS
+  FF
+  SF
+}
+
+// Dependencia de cronograma entre duas tarefas (rede de precedencia, estilo MS Project/Primavera).
+// predecessor precisa ocorrer (conforme `type`) antes do sucessor, com `lagDays` de folga/antecedencia.
+model TaskDependency {
+  id            String         @id @default(cuid())
+  predecessorId String
+  successorId   String
+  type          DependencyType @default(FS)
+  lagDays       Int            @default(0)
+  createdAt     DateTime       @default(now())
+
+  predecessor Task @relation("DependencyPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor   Task @relation("DependencySuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId])
+  @@index([predecessorId])
+  @@index([successorId])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([taskId])
+}
+
+model Attachment {
+  id              String   @id @default(cuid())
+  taskId          String?
+  teamMessageId   String?
+  directMessageId String?
+  projectId       String?
+  teamId          String?
+  folderId        String?
+  fileName        String
+  filePath        String
+  fileSize        Int
+  uploadedBy      String
+  uploadedAt      DateTime @default(now())
+
+  task          Task?          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  teamMessage   TeamMessage?   @relation(fields: [teamMessageId], references: [id], onDelete: Cascade)
+  directMessage DirectMessage? @relation(fields: [directMessageId], references: [id], onDelete: Cascade)
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team          Team?          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  folder        Folder?        @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  uploader      User           @relation(fields: [uploadedBy], references: [id])
+
+  @@index([taskId])
+  @@index([teamMessageId])
+  @@index([directMessageId])
+  @@index([projectId])
+  @@index([teamId])
+  @@index([folderId])
+}
+
+// Pasta de arquivos de um projeto — organizador hierárquico de documentos/contratos,
+// separado dos anexos de chat/tarefa (aba "Arquivos" do projeto).
+// projectId OU teamId (nunca os dois) define de quem e a pasta — igual Attachment,
+// mais de um dono possivel via FKs opcionais, garantido na camada de API.
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  projectId String?
+  teamId    String?
+  parentId  String?
+  createdBy String
+  createdAt DateTime @default(now())
+
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team        Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  parent      Folder?      @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Folder[]     @relation("FolderChildren")
+  attachments Attachment[]
+  creator     User         @relation("FolderCreator", fields: [createdBy], references: [id])
+
+  @@index([projectId])
+  @@index([teamId])
+  @@index([parentId])
+  @@index([createdBy])
+}
+
+
+// Dossiê de Ordem de Compra gerado pela automação do n8n (Senior -> PDF -> GED).
+//
+// Recebido por POST /api/senior/dossies/sync, autenticado por x-sync-key
+// (mesmo padrão das demais rotas de sincronismo do Senior). Alimenta a aba
+// Conferência de OC e o link que sai do número do título na Programação de
+// Pagamento.
+//
+// Sobre a chave: o dossiê nasce de uma OC, mas a automação também registra o
+// que NÃO conseguiu gerar (título sem OC localizada, OC ainda não quitada,
+// falha na publicação) -- e nesses casos não há numOcp. Por isso a chave é um
+// texto que o próprio n8n monta: "OC|<codFil>|<numOcp>" quando gerou, e
+// "TIT|<codFil>|<codFor>|<numTit>" quando não gerou. Uma coluna única só,
+// sem chave composta que muda de formato conforme o caso.
+//
+// Sobre `titulos`: uma OC pode responder por mais de um título (USU_NUMTIT
+// tipo "398A1 - 196$01"). O dossiê é um só, mas precisa ser encontrável por
+// QUALQUER um deles -- daí a lista, e não uma coluna simples.
+model DossieOC {
+  id             String    @id @default(cuid())
+  chave          String    @unique
+  numOcp         String?
+  codFil         String
+  codFor         String?
+  titulos        String[]  // todos os NUMTIT que este dossiê responde
+  fornecedorNome String?
+  vencimento     DateTime? // USU_DATVECT da OC -- o vencimento que nomeia o documento
+  valorTotal     Float?
+
+  status         String    // PUBLICADO | ERRO | SEM_OC | OC_NAO_QUITADA
+  motivo         String?   @db.Text // por que não gerou, quando status != PUBLICADO
+  origem         String?   // VIGIA_OC_QUITADA | RELATORIO_201 | MANUAL
+
+  gedDocumentId  String?
+  gedVersao      String?
+
+  arquivoNome    String?
+  arquivoPath    String?   // relativo a UPLOAD_DIR, mesmo padrão de Attachment
+  arquivoBytes   Int?
+
+  geradoEm       DateTime  @default(now())
+  atualizadoEm   DateTime  @updatedAt
+
+  @@index([numOcp])
+  @@index([status])
+  @@index([codFor])
+}
+
+// ============================================================================
+// Integracao bancaria Itau -- SISPAG (remessa/retorno CNAB240), DDA e
+// Conciliacao Bancaria. Ver docs/integracao-itau.md para o desenho completo.
+//
+// TituloContasAPagar/AprovacaoSenior (acima) nao trazem dado bancario do
+// favorecido nem codigo de barras de boleto -- o sincronismo do Senior/Rito
+// hoje so exporta o necessario pra conferencia (Titulo<->OC), nao pagamento.
+// Por isso RemessaItemPagamento guarda esses dados TAMBEM localmente,
+// preenchidos manualmente na tela ate o Rito passar a exportar isso do
+// Senior (proximo passo natural, ver o doc).
+// ============================================================================
+
+enum StatusRemessaPagamento {
+  RASCUNHO // selecionado na tela, arquivo ainda nao gerado
+  GERADO // arquivo .txt gerado e baixado, aguardando envio manual ao Itau (Internet Banking / VAN)
+  RETORNO_PROCESSADO // pelo menos um arquivo de retorno foi importado pra esta remessa
+}
+
+enum StatusItemPagamento {
+  PENDENTE // na remessa, retorno ainda nao chegou
+  AGENDADO // retorno confirmou agendamento (ocorrencia BD)
+  PAGO // retorno confirmou pagamento efetuado (ocorrencia 00)
+  REJEITADO // retorno trouxe ocorrencia de erro/rejeicao
+  CANCELADO // exclusao comandada ou cancelamento informado no retorno
+}
+
+// Conta corrente da empresa usada como debito nos arquivos de remessa
+// (Registro Header de Arquivo / Header de Lote, posicoes 053-072 do layout
+// CNAB240 SISPAG). Cadastro simples, feito uma vez por conta.
+model ContaBancaria {
+  id        String   @id @default(cuid())
+  apelido   String // ex: "Itau - Conta Movimento"
+  banco     String   @default("341") // codigo Itau na compensacao
+  cnpj      String // so' digitos, 14 posicoes (Empresa-Inscricao = CNPJ)
+  agencia   String
+  conta     String
+  dac       String // digito verificador agencia/conta
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  remessas RemessaPagamento[]
+}
+
+// Um arquivo de remessa CNAB240 SISPAG (um lote de pagamentos "Fornecedores",
+// tipo 20 -- ver Nota 4 do manual). codigoLote e sequencial por arquivo,
+// comeca em "0001" (Nota 3 do manual).
+model RemessaPagamento {
+  id             String                  @id @default(cuid())
+  contaBancariaId String
+  codigoLote     String                  @default("0001")
+  status         StatusRemessaPagamento  @default(RASCUNHO)
+  nomeArquivo    String?
+  conteudoArquivo String?                @db.Text // o .txt gerado, guardado pra re-download (nao reenviar ao banco sem necessidade)
+  totalRegistros Int                     @default(0)
+  totalValor     Float                   @default(0)
+  criadoPorId    String?
+  criadoEm       DateTime                @default(now())
+  geradoEm       DateTime?
+
+  contaBancaria ContaBancaria @relation(fields: [contaBancariaId], references: [id])
+  criadoPor     User?         @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+  itens         RemessaItemPagamento[]
+  retornos      RetornoPagamentoArquivo[]
+
+  @@index([status])
+}
+
+// Um pagamento dentro da remessa (Segmento A = credito conta/TED, Segmento J
+// = boleto em cobranca). "referenciaEmpresa" vai no campo "Seu Numero" do
+// CNAB (posicoes 074-093 no Segmento A, 183-202 no J -- Nota 43) e e' a
+// unica forma de casar uma linha do arquivo de retorno de volta a este
+// registro, ja que "Nosso Numero" so existe depois que o banco responde.
+model RemessaItemPagamento {
+  id                 String   @id @default(cuid())
+  remessaId          String
+  tituloId           String?
+  numeroSequencial   Int // posicao no lote (Nota 9), 1-based
+  segmento           String // "A" (credito/TED) ou "J" (boleto)
+  formaPagamento     String // codigo da Nota 5 do manual: 01, 41, 43, 30, 31...
+  referenciaEmpresa  String   @unique // "Seu Numero" enviado no CNAB
+
+  favorecidoNome        String
+  favorecidoTipoDoc     String // "1"=CPF, "2"=CNPJ
+  favorecidoDocumento   String
+
+  // Segmento A (credito em conta / TED)
+  bancoFavorecido    String?
+  agenciaFavorecido  String?
+  contaFavorecido    String?
+  dacFavorecido      String?
+
+  // Segmento J (boleto em cobranca)
+  codigoBarras       String?
+
+  valor              Float
+  dataPagamento      DateTime
+
+  status             StatusItemPagamento @default(PENDENTE)
+  nossoNumero        String? // preenchido a partir do retorno (Nota 12)
+  dataEfetivacao     DateTime?
+  valorEfetivado     Float?
+  ocorrencias        String?  @db.Text // JSON: [{codigo, descricao, recebidoEm}], historico de ocorrencias do retorno (Nota 8)
+
+  criadoEm           DateTime @default(now())
+  atualizadoEm       DateTime @updatedAt
+
+  remessa RemessaPagamento    @relation(fields: [remessaId], references: [id], onDelete: Cascade)
+  titulo  TituloContasAPagar? @relation(fields: [tituloId], references: [id], onDelete: SetNull)
+
+  @@index([remessaId])
+  @@index([tituloId])
+  @@index([status])
+}
+
+// Um arquivo de retorno importado (pode responder por mais de uma remessa se
+// o Itau consolidar lotes de dias diferentes num so retorno -- por isso o
+// vinculo fica no item, nao aqui; este registro e' so o log de importacao).
+model RetornoPagamentoArquivo {
+  id               String   @id @default(cuid())
+  remessaId        String?
+  nomeArquivo      String
+  totalRegistros   Int      @default(0)
+  totalReconhecidos Int     @default(0) // linhas cujo "Seu Numero" bateu com algum RemessaItemPagamento
+  processadoPorId  String?
+  processadoEm     DateTime @default(now())
+
+  remessa     RemessaPagamento? @relation(fields: [remessaId], references: [id], onDelete: SetNull)
+  processadoPor User?           @relation(fields: [processadoPorId], references: [id], onDelete: SetNull)
+}
+
+// --- DDA e Conciliacao Bancaria: protocolos de implantacao IT-000233088 e
+// IT-000233091 ja estao em andamento junto ao Itau (ver docs/integracao-itau.md),
+// mas o formato exato do arquivo de intercambio (o Itau chama de "Cadastro de
+// Intercambio de Arquivos") so e' confirmado quando a implantacao terminar.
+// Os modelos abaixo fixam o dominio (o que guardar) sem comprometer o layout
+// de importacao, que fica pra quando o manual especifico chegar.
+
+enum StatusDdaBoleto {
+  PENDENTE
+  BAIXADO // enviado pra pagamento (virou um RemessaItemPagamento)
+  IGNORADO
+}
+
+model DdaBoletoRegistrado {
+  id              String   @id @default(cuid())
+  codigoBarras    String   @unique
+  linhaDigitavel  String?
+  sacadorNome     String?
+  sacadorDocumento String?
+  valor           Float
+  dataVencimento  DateTime
+  status          StatusDdaBoleto @default(PENDENTE)
+  origemArquivo   String? // nome do arquivo de intercambio DDA importado
+  importadoEm     DateTime @default(now())
+
+  @@index([status])
+  @@index([dataVencimento])
+}
+
+enum StatusConciliacaoLancamento {
+  NAO_CONCILIADO
+  CONCILIADO_AUTOMATICO // casado com um RemessaItemPagamento por valor+data+nossoNumero
+  CONCILIADO_MANUAL
+  DIVERGENTE // achou candidato mas valor/data nao bateram exatamente
+}
+
+model ConciliacaoBancariaLancamento {
+  id                String   @id @default(cuid())
+  contaBancariaId   String
+  dataLancamento    DateTime
+  valor             Float // positivo = credito, negativo = debito no extrato
+  historico         String
+  documento         String? // numero do documento no extrato, quando houver
+  status            StatusConciliacaoLancamento @default(NAO_CONCILIADO)
+  remessaItemId     String? // RemessaItemPagamento casado, quando conciliado
+  origemArquivo     String? // nome do extrato (OFX/CNAB) importado
+  importadoEm       DateTime @default(now())
+
+  @@index([contaBancariaId, dataLancamento])
+  @@index([status])
+}
