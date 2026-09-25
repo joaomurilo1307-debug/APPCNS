@@ -110,6 +110,7 @@ export async function GET() {
     titulos: titulos.map((t) => {
       const vinculo = motor.ocRelacionadaDe(t);
       return {
+        id: t.id,
         numTit: t.numTit,
         codFil: t.codFil,
         codFor: t.codFor,
@@ -133,6 +134,17 @@ export async function GET() {
         entradaManual: !t.numNfc || t.numNfc === "0",
         numNfc: t.numNfc && t.numNfc !== "0" ? t.numNfc : null,
         dossie: dossieDe(t.codFor, t.numTit),
+        // Preenchimento automatico do Pagamentos Itaú (SISPAG), quando o
+        // sincronismo já trouxer isso -- ver docs/integracao-itau.md.
+        codigoBarrasBoleto: t.codigoBarrasBoleto,
+        bancoFavorecido: t.bancoFavorecido,
+        agenciaFavorecido: t.agenciaFavorecido,
+        contaFavorecido: t.contaFavorecido,
+        dacFavorecido: t.dacFavorecido,
+        tipoContaFavorecido: t.tipoContaFavorecido,
+        chavePix: t.chavePix,
+        tipoChavePix: t.tipoChavePix,
+        documentoFavorecido: t.documentoFavorecido,
       };
     }),
     totalAberto,
