@@ -6,11 +6,13 @@ import * as XLSX from "xlsx";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 
 const REVISAO_LABEL: Record<string, string> = {
+  APROVADO: "Aprovado",
   CORRIGIDO: "Corrigido",
   SEM_OC_CONFIRMADO: "Sem OC (confirmado)",
   AGUARDANDO_COMPRAS: "Aguardando compras",
 };
 const REVISAO_COR: Record<string, string> = {
+  APROVADO: "bg-brand text-white",
   CORRIGIDO: "bg-emerald-100 text-emerald-800",
   SEM_OC_CONFIRMADO: "bg-gray-200 text-gray-700",
   AGUARDANDO_COMPRAS: "bg-amber-100 text-amber-800",
@@ -255,14 +257,18 @@ export default function ProgramacaoPagamentoPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Atualiza sozinho a cada 10 minutos, igual as Aprovações OC -- pedido do
-  // João 16/09/2026. Só recarrega a lista (rápido, direto do Postgres da
-  // app); a sincronização em si com o Senior roda em segundo plano no VPS
-  // pelo mesmo cron de 10 em 10 min.
+  // Reduzido de 10 pra 2 minutos (30/09/2026, pedido do João: "tudo tem que
+  // atualizar muito rápido"). Só recarrega a lista (direto do Postgres da
+  // app, sem chamar o Senior) -- ainda assim não dá pra ir muito abaixo
+  // disso: cada carga baixa o histórico completo de títulos (payload grande),
+  // então 2min já é bem mais responsivo sem virar polling agressivo demais.
+  // O dado do SENIOR em si (OC nova, título cancelado) só muda de verdade
+  // quando o cron de 10min (ou o botão "Atualizar agora") roda -- reduzir só
+  // este intervalo não acelera aquele lado.
   useEffect(() => {
     const id = setInterval(() => {
       carregar().catch(() => {});
-    }, 10 * 60 * 1000);
+    }, 2 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -294,15 +300,10 @@ export default function ProgramacaoPagamentoPage() {
       .finally(() => setSalvandoRevisao(null));
   }
 
-  // Duas formas de exportar (30/09/2026, pedido do João): com seleção ativa,
-  // exporta SÓ os escolhidos (de qualquer filtro, não só o filtro atual) com
-  // uma linha de TOTAL no fim -- é o "relatório dos aprovados pra pagar".
-  // Sem seleção, exporta tudo que está filtrado na tela agora, sem total
-  // (é a auditoria geral, não uma lista fechada de pagamento).
-  function exportarRelatorio() {
-    const usarSelecao = selecionados.size > 0;
-    const base = usarSelecao ? titulos.filter((t) => selecionados.has(t.id)) : filtrados;
-    const linhas = base.map((t) => ({
+  // Exporta o que está filtrado na tela (auditoria geral, sem seleção) --
+  // Excel simples, sem dossiê, sem total (não é uma lista fechada de pagamento).
+  function exportarRelatorioFiltrado() {
+    const linhas = filtrados.map((t) => ({
       "Título": t.numTit,
       "OC": t.ocRelacionada ? `OC ${t.ocRelacionada.numOcp} (${t.ocRelacionada.situacaoLabel})` : "Sem OC",
       "Motivo (sem OC)": t.ocRelacionada ? "" : t.motivoSemOC || "",
@@ -319,16 +320,6 @@ export default function ProgramacaoPagamentoPage() {
       "Valor em aberto": t.valorAberto,
       "Situação": t.pago ? "Pago" : "Não pago",
     }));
-    if (usarSelecao) {
-      linhas.push({
-        "Título": "TOTAL",
-        "OC": "", "Motivo (sem OC)": "", "Status revisão": "", "Revisado por": "", "Revisado em": "",
-        "Tipo": "", "Criação": "", "Fornecedor": "", "Centro de custo": "", "Vencto programado": "", "Pago em": "",
-        "Valor original": base.reduce((s, t) => s + t.valorOriginal, 0),
-        "Valor em aberto": base.reduce((s, t) => s + t.valorAberto, 0),
-        "Situação": `${base.length} título(s)`,
-      });
-    }
     const ws = XLSX.utils.json_to_sheet(linhas);
     ws["!cols"] = [
       { wch: 14 }, { wch: 22 }, { wch: 40 }, { wch: 20 }, { wch: 20 }, { wch: 16 },
@@ -336,9 +327,46 @@ export default function ProgramacaoPagamentoPage() {
       { wch: 16 }, { wch: 16 }, { wch: 12 },
     ];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, usarSelecao ? "Selecionados p/ pagamento" : "Programação de Pagamento");
+    XLSX.utils.book_append_sheet(wb, ws, "Programação de Pagamento");
     const hoje = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `Programacao_Pagamento_${usarSelecao ? "selecionados_" : ""}${hoje}.xlsx`);
+    XLSX.writeFile(wb, `Programacao_Pagamento_${hoje}.xlsx`);
+  }
+
+  const [gerandoPacote, setGerandoPacote] = useState(false);
+
+  // Pacote pra mandar pra fora do sistema (30/09/2026, pedido do João:
+  // "quando eu exportar os que selecionei já vem uma pasta com o dossiê
+  // deles ... pra ir pro André"): pede pro servidor montar um ZIP com o
+  // Excel (+ linha de TOTAL) e o PDF do dossiê de cada título selecionado.
+  function exportarPacoteSelecionados() {
+    setGerandoPacote(true);
+    setErroOC(null);
+    fetch("/api/titulos-pagar/exportar-pacote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [...selecionados] }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Erro ao gerar o pacote");
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const hoje = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `Pagamento_Selecionados_${hoje}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch((e) => setErroOC(e.message))
+      .finally(() => setGerandoPacote(false));
+  }
+
+  function exportarRelatorio() {
+    if (selecionados.size > 0) exportarPacoteSelecionados();
+    else exportarRelatorioFiltrado();
   }
 
   function alternarSelecao(id: string) {
@@ -362,6 +390,12 @@ export default function ProgramacaoPagamentoPage() {
 
   function limparSelecao() {
     setSelecionados(new Set());
+  }
+
+  const qtdAprovados = useMemo(() => titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago).length, [titulos]);
+
+  function selecionarAprovados() {
+    setSelecionados(new Set(titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago).map((t) => t.id)));
   }
 
   // Handoff pra tela de Pagamentos Itaú (30/09/2026): antes disso a pessoa
@@ -524,9 +558,20 @@ export default function ProgramacaoPagamentoPage() {
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {qtdAprovados > 0 && selecionados.size === 0 && (
+            <button
+              onClick={selecionarAprovados}
+              title="Seleciona todos os títulos marcados como Aprovado na coluna Revisão"
+              className="rounded-lg border border-brand px-2 py-1.5 text-xs font-medium text-brand hover:bg-brand-light"
+            >
+              Selecionar {qtdAprovados} aprovado(s)
+            </button>
+          )}
           {selecionados.size > 0 && (
             <>
-              <span className="text-xs text-gray-500">{selecionados.size} selecionado(s)</span>
+              <span className="text-xs text-gray-500">
+                {selecionados.size} selecionado(s) · {formatMoeda(titulos.filter((t) => selecionados.has(t.id)).reduce((s, t) => s + t.valorAberto, 0))}
+              </span>
               <button
                 onClick={limparSelecao}
                 className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50"
@@ -544,11 +589,15 @@ export default function ProgramacaoPagamentoPage() {
           )}
           <button
             onClick={exportarRelatorio}
-            disabled={filtrados.length === 0}
-            title="Exporta pra Excel exatamente os títulos que estão filtrados na tela agora"
+            disabled={(selecionados.size === 0 && filtrados.length === 0) || gerandoPacote}
+            title={
+              selecionados.size > 0
+                ? "Baixa um .zip com o Excel dos selecionados (+ TOTAL) e o dossiê em PDF de cada um"
+                : "Exporta pra Excel exatamente os títulos que estão filtrados na tela agora"
+            }
             className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40"
           >
-            ⬇ Exportar relatório
+            {gerandoPacote ? "Gerando pacote…" : selecionados.size > 0 ? "⬇ Exportar pacote (.zip + dossiês)" : "⬇ Exportar relatório"}
           </button>
           <button
             onClick={() => setMostrarRegras((v) => !v)}
@@ -987,6 +1036,7 @@ export default function ProgramacaoPagamentoPage() {
                     }`}
                   >
                     <option value="">Não revisado</option>
+                    <option value="APROVADO">Aprovado</option>
                     <option value="CORRIGIDO">Corrigido</option>
                     <option value="SEM_OC_CONFIRMADO">Sem OC (confirmado)</option>
                     <option value="AGUARDANDO_COMPRAS">Aguardando compras</option>
