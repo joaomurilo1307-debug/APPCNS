@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 // resultado -- nao mexe em nada do motor de vinculoOcTitulo.ts, e' so' um
 // rastro de acompanhamento pra saber o que ja foi olhado.
 const bodySchema = z.object({
-  revisadoStatus: z.enum(["CORRIGIDO", "SEM_OC_CONFIRMADO", "AGUARDANDO_COMPRAS"]).nullable(),
+  revisadoStatus: z.enum(["APROVADO", "CORRIGIDO", "SEM_OC_CONFIRMADO", "AGUARDANDO_COMPRAS"]).nullable(),
   revisadoObs: z.string().max(500).nullable().optional(),
 });
 

@@ -470,7 +470,7 @@ model TituloContasAPagar {
   // e' automatico (motivoSemOC != null), alguem do financeiro/compras
   // confere na origem (Senior) e marca aqui o resultado -- nao mexe na
   // logica de vinculoOcTitulo.ts, e' so' um rastro de "ja foi olhado".
-  revisadoStatus String? // null = nao revisado; "CORRIGIDO" | "SEM_OC_CONFIRMADO" (de fato nao tem OC) | "AGUARDANDO_COMPRAS"
+  revisadoStatus String? // null = nao revisado; "APROVADO" (pronto pra remessa) | "CORRIGIDO" | "SEM_OC_CONFIRMADO" (de fato nao tem OC) | "AGUARDANDO_COMPRAS"
   revisadoPorNome String?
   revisadoEm      DateTime?
   revisadoObs     String?
