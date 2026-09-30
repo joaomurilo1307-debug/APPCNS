@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 
@@ -184,6 +185,8 @@ const ABAS: [Filtro, string][] = [
 ];
 
 export default function ProgramacaoPagamentoPage() {
+  const router = useRouter();
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [titulos, setTitulos] = useState<Titulo[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -321,6 +324,38 @@ export default function ProgramacaoPagamentoPage() {
     XLSX.writeFile(wb, `Programacao_Pagamento_${hoje}.xlsx`);
   }
 
+  function alternarSelecao(id: string) {
+    setSelecionados((anterior) => {
+      const novo = new Set(anterior);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }
+
+  function selecionarTodosFiltrados() {
+    setSelecionados((anterior) => {
+      const novo = new Set(anterior);
+      for (const t of filtrados) {
+        if (!t.pago && t.ocRelacionada) novo.add(t.id);
+      }
+      return novo;
+    });
+  }
+
+  function limparSelecao() {
+    setSelecionados(new Set());
+  }
+
+  // Handoff pra tela de Pagamentos Itaú (30/09/2026): antes disso a pessoa
+  // tinha que redigitar título/fornecedor/valor na outra tela -- agora so'
+  // passa os ids pelo sessionStorage, a tela de destino ja' tem o titulo
+  // completo (mesma fonte /api/titulos-pagar) e monta o carrinho sozinha.
+  function enviarParaRemessaItau() {
+    sessionStorage.setItem("handoffRemessaItau", JSON.stringify([...selecionados]));
+    router.push("/pagamentos-itau");
+  }
+
   function sincronizarAgora() {
     setSincronizando(true);
     setMsgSincronizacao(null);
@@ -450,7 +485,25 @@ export default function ProgramacaoPagamentoPage() {
             {msgSincronizacao && <span className="text-[11px] text-gray-500">{msgSincronizacao}</span>}
           </div>
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {selecionados.size > 0 && (
+            <>
+              <span className="text-xs text-gray-500">{selecionados.size} selecionado(s)</span>
+              <button
+                onClick={limparSelecao}
+                className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50"
+              >
+                Limpar seleção
+              </button>
+              <button
+                onClick={enviarParaRemessaItau}
+                title="Leva os títulos selecionados pro carrinho da tela de Pagamentos Itaú, sem precisar redigitar nada"
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                → Enviar para remessa Itaú
+              </button>
+            </>
+          )}
           <button
             onClick={exportarRelatorio}
             disabled={filtrados.length === 0}
@@ -603,6 +656,15 @@ export default function ProgramacaoPagamentoPage() {
         <table className="w-full text-[13px]">
           <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
             <tr>
+              <th className="px-2 py-2">
+                <button
+                  onClick={selecionarTodosFiltrados}
+                  title="Seleciona todos os títulos filtrados (não pagos, com OC) pra mandar pra remessa Itaú"
+                  className="normal-case tracking-normal text-gray-400 underline decoration-dotted hover:text-brand"
+                >
+                  sel.
+                </button>
+              </th>
               <th className="px-3 py-2 font-medium">Título</th>
               <th className="px-3 py-2 font-medium">OC</th>
               <th className="px-3 py-2 font-medium">Tipo</th>
@@ -618,6 +680,7 @@ export default function ProgramacaoPagamentoPage() {
               <th className="px-3 py-2 font-medium">Revisão</th>
             </tr>
             <tr className="border-t border-gray-200 bg-white align-top">
+              <th className="px-2 py-2" />
               <th className="px-2 py-2">
                 <input
                   aria-label="Filtrar título"
@@ -742,6 +805,15 @@ export default function ProgramacaoPagamentoPage() {
           <tbody>
             {filtradosMostrados.map((t, i) => (
               <tr key={t.id} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
+                <td className="px-2 py-1.5 text-center">
+                  <input
+                    type="checkbox"
+                    aria-label={`Selecionar título ${t.numTit}`}
+                    checked={selecionados.has(t.id)}
+                    onChange={() => alternarSelecao(t.id)}
+                    className="h-3.5 w-3.5 rounded border-gray-300 text-brand focus:ring-brand"
+                  />
+                </td>
                 <td className="px-3 py-1.5 font-medium text-gray-800">
                   {t.dossie?.temArquivo ? (
                     <a
@@ -886,7 +958,7 @@ export default function ProgramacaoPagamentoPage() {
             ))}
             {filtradosMostrados.length === 0 && (
               <tr>
-                <td colSpan={mostrarColunaPagamento ? 14 : 13} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={mostrarColunaPagamento ? 15 : 14} className="px-4 py-6 text-center text-gray-400">
                   Nenhum título encontrado com esse filtro.
                 </td>
               </tr>

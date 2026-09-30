@@ -125,10 +125,34 @@ export default function PagamentosItauPage() {
       fetch("/api/pagamentos-itau/remessas").then((r) => r.json()),
     ])
       .then(([tit, cont, rem]) => {
-        setTitulos((tit.titulos ?? []).filter((t: Titulo) => !t.pago));
+        const titulosAbertos: Titulo[] = (tit.titulos ?? []).filter((t: Titulo) => !t.pago);
+        setTitulos(titulosAbertos);
         setContas(cont.contas ?? []);
         if ((cont.contas ?? []).length > 0) setContaSelecionadaId((c: string) => c || cont.contas[0].id);
         setRemessas(rem.remessas ?? []);
+
+        // Handoff da Programação de Pagamento (30/09/2026): a pessoa seleciona
+        // lá e manda pra cá sem redigitar -- os ids chegam pelo sessionStorage,
+        // aqui so' precisa achar o titulo (mesma fonte /api/titulos-pagar) e
+        // adicionar ao carrinho com o preenchimento automatico de sempre.
+        const pendente = sessionStorage.getItem("handoffRemessaItau");
+        if (pendente) {
+          sessionStorage.removeItem("handoffRemessaItau");
+          try {
+            const ids: string[] = JSON.parse(pendente);
+            const porId = new Map(titulosAbertos.map((t) => [t.id, t]));
+            const encontrados = ids.map((id) => porId.get(id)).filter((t): t is Titulo => !!t);
+            for (const t of encontrados) adicionarAoCarrinho(t);
+            if (encontrados.length > 0) {
+              setMensagem(`${encontrados.length} título(s) trazido(s) da Programação de Pagamento.`);
+            }
+            if (encontrados.length < ids.length) {
+              setErro(`${ids.length - encontrados.length} título(s) selecionado(s) não foram encontrados aqui (já pago ou não sincronizado) e não entraram no carrinho.`);
+            }
+          } catch {
+            // handoff corrompido -- ignora silenciosamente, pessoa so' nao ve o carrinho pre-preenchido
+          }
+        }
       })
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false));
