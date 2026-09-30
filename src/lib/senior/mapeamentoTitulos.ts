@@ -73,9 +73,20 @@ export function separarDv(valor: string | undefined): { base: string; dv: string
   return { base: soDigitos(texto.slice(0, i)), dv: texto.slice(i + 1).trim().toUpperCase() };
 }
 
-/** CPF (11) ou CNPJ (14) plausivel: exclui sequencia repetida tipo 11111111111 (placeholder do "fornecedor diverso"). */
-export function documentoValido(valor: string | undefined): string | null {
-  const d = soDigitos(valor);
+/**
+ * CPF (11) ou CNPJ (14) plausivel: exclui sequencia repetida tipo 11111111111
+ * (placeholder do "fornecedor diverso").
+ *
+ * ACHADO 30/09/2026 (Edilson Fernandes Batista, CODFOR 625506): CGCCPF vem de
+ * campo NUMBER na Senior -- CPF comecando com "0" perde o zero a esquerda no
+ * banco (chegou "1557161666", 10 digitos). So' preenche o zero quando TIPFOR
+ * (E095FOR: F=fisica/CPF, J=juridica/CNPJ) confirma o tamanho esperado, pra
+ * nao inventar digito em documento que esta errado por outro motivo.
+ */
+export function documentoValido(valor: string | undefined, tipoPessoa?: string): string | null {
+  let d = soDigitos(valor);
+  if (tipoPessoa === "F" && d.length === 10) d = "0" + d;
+  if (tipoPessoa === "J" && d.length === 13) d = "0" + d;
   if (d.length !== 11 && d.length !== 14) return null;
   if (/^(\d)\1+$/.test(d)) return null;
   return d;
@@ -139,7 +150,9 @@ export function mapearTitulo(
     chavePix: preenchido(t.CHVPIX) ? t.CHVPIX.trim() : null,
     tipoChavePix: preenchido(t.TPCPIX) ? t.TPCPIX : null,
     documentoFavorecido:
-      documentoValido(t.DOCIDEFAV) ?? documentoValido(cadastroBancario?.DOCIDEFAV) ?? documentoValido(fornecedor?.CGCCPF),
+      documentoValido(t.DOCIDEFAV, fornecedor?.TIPFOR) ??
+      documentoValido(cadastroBancario?.DOCIDEFAV, fornecedor?.TIPFOR) ??
+      documentoValido(fornecedor?.CGCCPF, fornecedor?.TIPFOR),
   };
 
   // Codigo de barras: so' vai quando o Senior tiver -- omitido (nao null) pra

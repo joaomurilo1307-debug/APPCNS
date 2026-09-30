@@ -25,6 +25,18 @@ import {
 
 const ROLES_ESCRITA = ["ADMIN", "DIRETOR"];
 const TAMANHO_LOTE = 200;
+const TAMANHO_LOTE_CODFOR = 400; // limite do IN() da Senior e' ~1000 (ORA-01795) -- 400 da margem
+
+// Busca em lotes por CODFOR IN (...) -- so' os fornecedores que aparecem nos
+// titulos de hoje, nao a tabela inteira.
+async function porLotesDeCodFor(sqlBase: string, codigos: string[]): Promise<LinhaSenior[]> {
+  const resultado: LinhaSenior[] = [];
+  for (let i = 0; i < codigos.length; i += TAMANHO_LOTE_CODFOR) {
+    const lote = codigos.slice(i, i + TAMANHO_LOTE_CODFOR).join(",");
+    resultado.push(...(await consultarSenior(`${sqlBase} CODFOR IN (${lote})`)));
+  }
+  return resultado;
+}
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -37,10 +49,19 @@ export async function POST(req: Request) {
 
   try {
     const titulos = await consultarSenior(`SELECT ${CAMPOS_TITULO.join(", ")} FROM E501TCP WHERE SITTIT = 'AB'`);
-    const fornecedores = await consultarSenior("SELECT CODFOR, NOMFOR, CGCCPF FROM E095FOR");
-    const cadastros = await consultarSenior(
-      `SELECT ${CAMPOS_CADASTRO_BANCARIO.join(", ")} FROM E095HFO WHERE CODEMP = 1 AND CODFIL = 1`
-    );
+
+    // ACHADO 30/09/2026: aqui buscava E095FOR inteira (2400+ linhas) e E095HFO
+    // travada em CODEMP=1 (19 mil linhas, ~2min) -- essa consulta dupla
+    // estourava o timeout do proxy da Hostinger e a rota caia com 502, sem
+    // NENHUM dado bancario chegar (achado ao vivo: Edilson Fernandes Batista
+    // e outros 2415 titulos, 100% sem CPF/CNPJ/conta). Escopo agora e' so' os
+    // fornecedores dos titulos de hoje, em lotes -- e sem o CODEMP=1 (fornecedor
+    // pode ter conta cadastrada so' numa outra empresa do grupo).
+    const codigosFor = [...new Set(titulos.map((t) => t.CODFOR).filter((c) => /^\d+$/.test(c)))];
+    const [fornecedores, cadastros] = await Promise.all([
+      porLotesDeCodFor("SELECT CODFOR, NOMFOR, CGCCPF, TIPFOR FROM E095FOR WHERE", codigosFor),
+      porLotesDeCodFor(`SELECT ${CAMPOS_CADASTRO_BANCARIO.join(", ")} FROM E095HFO WHERE`, codigosFor),
+    ]);
 
     const porCodigo = new Map(fornecedores.map((f) => [f.CODFOR, f]));
     const cadastrosPorFornecedor = new Map<string, LinhaSenior[]>();

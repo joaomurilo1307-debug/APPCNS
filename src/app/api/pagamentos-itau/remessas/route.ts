@@ -129,6 +129,28 @@ export async function POST(req: Request) {
         { status: 422 }
       );
     }
+
+    // Portão de segurança (30/09/2026): título com SITTIT fora de AB/LQ (ex:
+    // "PE" -- achado ao vivo, Fort Minas 1765$01/2071$01/2072$01/2072$02)
+    // pode já estar comprometido em outro fluxo de pagamento do próprio
+    // Senior -- incluir de novo numa remessa nossa arriscaria pagar em dobro.
+    // A tela já trava a seleção, isso aqui é o mesmo motor de decisão do lado
+    // do servidor, pra quem tentar contornar a tela.
+    const bloqueados = titulosDaRemessa.filter((t) => !t.pago && t.situacao !== "AB");
+    if (bloqueados.length > 0) {
+      return NextResponse.json(
+        {
+          error: `${bloqueados.length} título(s) em situação especial no Senior (fora de Aberto/Pago) não podem entrar na remessa`,
+          titulosBloqueados: bloqueados.map((t) => ({
+            numTit: t.numTit,
+            fornecedor: t.fornecedorNome ?? `código ${t.codFor}`,
+            valor: t.valorAberto,
+            situacao: t.situacao,
+          })),
+        },
+        { status: 422 }
+      );
+    }
   }
 
   try {

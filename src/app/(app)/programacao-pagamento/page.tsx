@@ -18,6 +18,27 @@ const REVISAO_COR: Record<string, string> = {
   AGUARDANDO_COMPRAS: "bg-amber-100 text-amber-800",
 };
 
+// Achado 30/09/2026: o Senior tem 7 status de título (AB, LQ, CA, PE, AV,
+// LS, LV), mas o sync só trazia AB/LQ -- título que o Senior movia pra
+// qualquer outro status sumia da fonte e era apagado do nosso banco (ex:
+// Fort Minas 1765$01/2071$01/2072$01/2072$02, achados via CODTNS=90501 no
+// E501MCP). Agora o sync traz todos, e aqui eles ficam visíveis mas
+// travados pra remessa -- podem já estar comprometidos em outro fluxo de
+// pagamento do próprio Senior, incluir de novo arriscaria pagar em dobro.
+const SITUACAO_ESPECIAL_LABEL: Record<string, string> = {
+  CA: "Cancelado no Senior",
+  PE: "Situação especial no Senior (PE)",
+  AV: "Situação especial no Senior (AV)",
+  LS: "Situação especial no Senior (LS)",
+  LV: "Situação especial no Senior (LV)",
+};
+function situacaoEspecial(t: Pick<Titulo, "situacao" | "pago">) {
+  return !t.pago && t.situacao !== "AB";
+}
+function labelSituacaoEspecial(situacao: string) {
+  return SITUACAO_ESPECIAL_LABEL[situacao] || `Situação especial no Senior (${situacao})`;
+}
+
 type OcRelacionada = {
   numOcp: string;
   situacao: string;
@@ -370,6 +391,8 @@ export default function ProgramacaoPagamentoPage() {
   }
 
   function alternarSelecao(id: string) {
+    const titulo = titulos.find((t) => t.id === id);
+    if (titulo && situacaoEspecial(titulo)) return; // travado -- ver SITUACAO_ESPECIAL_LABEL
     setSelecionados((anterior) => {
       const novo = new Set(anterior);
       if (novo.has(id)) novo.delete(id);
@@ -382,7 +405,7 @@ export default function ProgramacaoPagamentoPage() {
     setSelecionados((anterior) => {
       const novo = new Set(anterior);
       for (const t of filtrados) {
-        if (!t.pago && t.ocRelacionada) novo.add(t.id);
+        if (!t.pago && t.ocRelacionada && !situacaoEspecial(t)) novo.add(t.id);
       }
       return novo;
     });
@@ -392,10 +415,15 @@ export default function ProgramacaoPagamentoPage() {
     setSelecionados(new Set());
   }
 
-  const qtdAprovados = useMemo(() => titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago).length, [titulos]);
+  const qtdAprovados = useMemo(
+    () => titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago && !situacaoEspecial(t)).length,
+    [titulos]
+  );
 
   function selecionarAprovados() {
-    setSelecionados(new Set(titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago).map((t) => t.id)));
+    setSelecionados(
+      new Set(titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago && !situacaoEspecial(t)).map((t) => t.id))
+    );
   }
 
   // Handoff pra tela de Pagamentos Itaú (30/09/2026): antes disso a pessoa
@@ -897,8 +925,10 @@ export default function ProgramacaoPagamentoPage() {
                     type="checkbox"
                     aria-label={`Selecionar título ${t.numTit}`}
                     checked={selecionados.has(t.id)}
+                    disabled={situacaoEspecial(t)}
+                    title={situacaoEspecial(t) ? labelSituacaoEspecial(t.situacao) + " — travado pra não arriscar pagamento em dobro" : undefined}
                     onChange={() => alternarSelecao(t.id)}
-                    className="h-3.5 w-3.5 rounded border-gray-300 text-brand focus:ring-brand"
+                    className="h-3.5 w-3.5 rounded border-gray-300 text-brand focus:ring-brand disabled:cursor-not-allowed disabled:opacity-40"
                   />
                 </td>
                 <td className="px-3 py-1.5 font-medium text-gray-800">
@@ -1019,6 +1049,14 @@ export default function ProgramacaoPagamentoPage() {
                   >
                     {t.pago ? "Pago" : "Não pago"}
                   </span>
+                  {situacaoEspecial(t) && (
+                    <span
+                      className="ml-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700"
+                      title="Status fora de Aberto/Pago no Senior -- pode já estar comprometido em outro fluxo de pagamento. Não incluir em remessa nova."
+                    >
+                      {labelSituacaoEspecial(t.situacao)}
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-1.5">
                   <select

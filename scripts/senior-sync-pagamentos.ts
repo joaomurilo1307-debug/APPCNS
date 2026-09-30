@@ -51,7 +51,7 @@ async function main() {
     titulos = await consultarSenior(`SELECT ${CAMPOS_TITULO.join(", ")} FROM E501TCP WHERE NUMTIT = '${TITULO.replace(/'/g, "''")}'`);
     console.log(`  ${titulos.length} titulo(s)`);
     for (const codigo of new Set(titulos.map((t) => t.CODFOR).filter((c) => /^\d+$/.test(c)))) {
-      fornecedores.push(...(await consultarSenior(`SELECT CODFOR, NOMFOR, CGCCPF FROM E095FOR WHERE CODFOR = ${codigo}`)));
+      fornecedores.push(...(await consultarSenior(`SELECT CODFOR, NOMFOR, CGCCPF, TIPFOR FROM E095FOR WHERE CODFOR = ${codigo}`)));
       cadastros.push(...(await consultarSenior(`SELECT ${CAMPOS_CADASTRO_BANCARIO.join(", ")} FROM E095HFO WHERE CODEMP = 1 AND CODFIL = 1 AND CODFOR = ${codigo}`)));
     }
   } else {
@@ -60,7 +60,7 @@ async function main() {
     console.log(`  ${titulos.length} titulos em aberto`);
 
     console.log("Consultando fornecedores...");
-    fornecedores = await consultarSenior("SELECT CODFOR, NOMFOR, CGCCPF FROM E095FOR");
+    fornecedores = await consultarSenior("SELECT CODFOR, NOMFOR, CGCCPF, TIPFOR FROM E095FOR");
     console.log(`  ${fornecedores.length} fornecedores`);
 
     // E095HFO tem uma linha por fornecedor x empresa x filial (~19 mil no total,

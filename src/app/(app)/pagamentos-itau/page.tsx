@@ -366,6 +366,14 @@ export default function PagamentosItauPage() {
             .join("\n");
           throw new Error(`${data.error}\n\n${lista}\n\nResolva o vínculo na Programação de Pagamento antes de gerar a remessa.`);
         }
+        if (Array.isArray(data.titulosBloqueados) && data.titulosBloqueados.length > 0) {
+          const lista = data.titulosBloqueados
+            .map((t: any) => `• ${t.numTit} (${t.fornecedor}, ${formatMoeda(t.valor)}): situação "${t.situacao}" no Senior`)
+            .join("\n");
+          throw new Error(
+            `${data.error}\n\n${lista}\n\nPodem já estar comprometidos em outro fluxo de pagamento do Senior -- remova-os do carrinho.`
+          );
+        }
         throw new Error(data.error || "Erro ao gerar remessa");
       }
       setMensagem(`Remessa gerada com ${carrinho.length} pagamento(s), total ${formatMoeda(carrinho.reduce((s, i) => s + i.valor, 0))}.`);
