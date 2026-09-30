@@ -70,6 +70,38 @@ type Remessa = {
   qtdRejeitados: number;
 };
 
+// Guarda o rascunho (carrinho, conta escolhida, filtros) no navegador -- sair
+// da tela sem gerar a remessa (ou recarregar por engano) não pode apagar o
+// trabalho de quem está montando um pagamento. Só localStorage (por
+// navegador, não sincroniza entre pessoas/abas) -- não é onde mora o dado
+// real, só evita perder o que ainda não foi enviado ao servidor.
+const CHAVE_RASCUNHO = "pagamentosItau:rascunho:v1";
+
+type Rascunho = {
+  carrinho: ItemCarrinho[];
+  contaSelecionadaId: string;
+  busca: string;
+  vencDe: string;
+  vencAte: string;
+};
+
+function lerRascunho(): Partial<Rascunho> {
+  try {
+    const bruto = localStorage.getItem(CHAVE_RASCUNHO);
+    return bruto ? JSON.parse(bruto) : {};
+  } catch {
+    return {};
+  }
+}
+
+function salvarRascunho(r: Rascunho) {
+  try {
+    localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(r));
+  } catch {
+    // Modo privado/quota cheia -- perde só a conveniência de lembrar, não trava a tela.
+  }
+}
+
 function formatMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -116,6 +148,9 @@ export default function PagamentosItauPage() {
   const [novaConta, setNovaConta] = useState({ apelido: "", cnpj: "", agencia: "", conta: "", dac: "" });
   const [sincronizando, setSincronizando] = useState(false);
   const [mensagemSync, setMensagemSync] = useState<string | null>(null);
+  const [vencDe, setVencDe] = useState("");
+  const [vencAte, setVencAte] = useState("");
+  const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
 
   function carregarTudo() {
     setLoading(true);
@@ -128,7 +163,7 @@ export default function PagamentosItauPage() {
         const titulosAbertos: Titulo[] = (tit.titulos ?? []).filter((t: Titulo) => !t.pago);
         setTitulos(titulosAbertos);
         setContas(cont.contas ?? []);
-        if ((cont.contas ?? []).length > 0) setContaSelecionadaId((c: string) => c || cont.contas[0].id);
+        setContaSelecionadaId((atual) => atual || (cont.contas ?? [])[0]?.id || "");
         setRemessas(rem.remessas ?? []);
 
         // Handoff da Programação de Pagamento (30/09/2026): a pessoa seleciona
@@ -158,9 +193,30 @@ export default function PagamentosItauPage() {
       .finally(() => setLoading(false));
   }
 
+  // Restaura o rascunho ANTES de carregar do servidor, pra não perder o
+  // carrinho se a pessoa recarregou a página ou navegou e voltou. A conta
+  // escolhida e o carrinho vêm do rascunho; contas/remessas vêm sempre do
+  // servidor (são dado compartilhado, não pessoal desta aba).
   useEffect(() => {
+    const r = lerRascunho();
+    if (r.carrinho?.length) {
+      setCarrinho(r.carrinho);
+      setMensagem(`Rascunho anterior restaurado: ${r.carrinho.length} item(ns) no carrinho que ainda não tinham virado remessa.`);
+    }
+    if (r.contaSelecionadaId) setContaSelecionadaId(r.contaSelecionadaId);
+    if (r.busca) setBusca(r.busca);
+    if (r.vencDe) setVencDe(r.vencDe);
+    if (r.vencAte) setVencAte(r.vencAte);
+    setRascunhoRestaurado(true);
     carregarTudo();
   }, []);
+
+  // Salva a cada mudança -- só depois de restaurar uma vez, pra não sobrescrever
+  // um rascunho existente com o estado inicial vazio antes da leitura acima.
+  useEffect(() => {
+    if (!rascunhoRestaurado) return;
+    salvarRascunho({ carrinho, contaSelecionadaId, busca, vencDe, vencAte });
+  }, [rascunhoRestaurado, carrinho, contaSelecionadaId, busca, vencDe, vencAte]);
 
   const titulosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -171,8 +227,10 @@ export default function PagamentosItauPage() {
         (t) =>
           !termo || t.numTit.toLowerCase().includes(termo) || t.fornecedorNome.toLowerCase().includes(termo)
       )
+      .filter((t) => !vencDe || (t.vencimentoProgramado ?? "").slice(0, 10) >= vencDe)
+      .filter((t) => !vencAte || (t.vencimentoProgramado ?? "").slice(0, 10) <= vencAte)
       .slice(0, 200);
-  }, [titulos, busca, carrinho]);
+  }, [titulos, busca, carrinho, vencDe, vencAte]);
 
   function adicionarAoCarrinho(t: Titulo) {
     const hoje = new Date().toISOString().slice(0, 10);
@@ -448,8 +506,35 @@ export default function PagamentosItauPage() {
               placeholder="buscar título ou fornecedor..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+              className="mb-2 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
             />
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+              <span>Vencimento de</span>
+              <input
+                type="date"
+                value={vencDe}
+                onChange={(e) => setVencDe(e.target.value)}
+                className="rounded border border-gray-200 px-1.5 py-1 text-[12px] focus:border-brand focus:outline-none"
+              />
+              <span>até</span>
+              <input
+                type="date"
+                value={vencAte}
+                onChange={(e) => setVencAte(e.target.value)}
+                className="rounded border border-gray-200 px-1.5 py-1 text-[12px] focus:border-brand focus:outline-none"
+              />
+              {(vencDe || vencAte) && (
+                <button
+                  onClick={() => {
+                    setVencDe("");
+                    setVencAte("");
+                  }}
+                  className="text-brand underline decoration-dotted underline-offset-2"
+                >
+                  limpar
+                </button>
+              )}
+            </div>
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             <table className="w-full text-[13px]">
