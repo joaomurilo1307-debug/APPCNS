@@ -25,6 +25,7 @@ const STATUS_LABEL: Record<string, string> = {
   ERRO: "Falha na geração",
   SEM_OC: "OC não localizada",
   OC_NAO_QUITADA: "OC ainda não quitada",
+  AGUARDANDO_GERACAO: "Aguardando geração (n8n)",
 };
 
 const STATUS_CLASSE: Record<string, string> = {
@@ -32,6 +33,7 @@ const STATUS_CLASSE: Record<string, string> = {
   ERRO: "bg-red-100 text-red-700",
   SEM_OC: "bg-amber-100 text-amber-800",
   OC_NAO_QUITADA: "bg-sky-100 text-sky-800",
+  AGUARDANDO_GERACAO: "bg-purple-100 text-purple-800",
 };
 
 const ORIGEM_LABEL: Record<string, string> = {
@@ -39,6 +41,7 @@ const ORIGEM_LABEL: Record<string, string> = {
   RELATORIO_201: "Relatório 201",
   MANUAL: "Manual",
   EVENTO_PAGAMENTO: "Vigia (OC quitada)",
+  DETECCAO_INTERNA: "Detecção interna (sem retorno do n8n)",
 };
 
 function formatMoeda(v: number | null) {
@@ -56,21 +59,49 @@ function formatDataHora(iso: string | null) {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-type Filtro = "documentos" | "pendencias" | "todos";
+type StatusDossie = "PUBLICADO" | "ERRO" | "SEM_OC" | "OC_NAO_QUITADA" | "AGUARDANDO_GERACAO";
 
-const ABAS: [Filtro, string][] = [
-  ["documentos", "Com documento"],
-  ["pendencias", "Pendências"],
-  ["todos", "Todos"],
+const STATUS_OPCOES: StatusDossie[] = ["PUBLICADO", "ERRO", "SEM_OC", "OC_NAO_QUITADA", "AGUARDANDO_GERACAO"];
+
+const ORIGEM_OPCOES: [string, string][] = [
+  ["todas", "Todas as origens"],
+  ["VIGIA_OC_QUITADA", "Vigia (OC quitada)"],
+  ["RELATORIO_201", "Relatório 201"],
+  ["MANUAL", "Manual"],
+  ["DETECCAO_INTERNA", "Detecção interna (sem retorno do n8n)"],
 ];
+
+const INTERVALO_ATUALIZACAO_MS = 20_000;
 
 export default function ConferenciaOcPage() {
   const [dossies, setDossies] = useState<Dossie[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [busca, setBusca] = useState("");
-  const [filtro, setFiltro] = useState<Filtro>("documentos");
   const [ultimoRecebidoEm, setUltimoRecebidoEm] = useState<string | null>(null);
+
+  const [statusSelecionados, setStatusSelecionados] = useState<StatusDossie[]>(STATUS_OPCOES);
+  const [buscaTitulo, setBuscaTitulo] = useState("");
+  const [buscaOc, setBuscaOc] = useState("");
+  const [buscaFornecedor, setBuscaFornecedor] = useState("");
+  const [origemFiltro, setOrigemFiltro] = useState("todas");
+  const [vencDe, setVencDe] = useState("");
+  const [vencAte, setVencAte] = useState("");
+
+  function alternarStatus(s: StatusDossie) {
+    setStatusSelecionados((atual) =>
+      atual.includes(s) ? atual.filter((x) => x !== s) : [...atual, s]
+    );
+  }
+
+  function limparFiltros() {
+    setStatusSelecionados(STATUS_OPCOES);
+    setBuscaTitulo("");
+    setBuscaOc("");
+    setBuscaFornecedor("");
+    setOrigemFiltro("todas");
+    setVencDe("");
+    setVencAte("");
+  }
 
   const [ocAberta, setOcAberta] = useState<Aprovacao | null>(null);
   const [codToNomeOC, setCodToNomeOC] = useState<Record<string, string>>({});
@@ -96,8 +127,11 @@ export default function ConferenciaOcPage() {
       .finally(() => setCarregandoOC(null));
   }
 
-  useEffect(() => {
-    fetch("/api/dossies")
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
+
+  function carregarDossies(silencioso = false) {
+    if (!silencioso) setLoading(true);
+    return fetch("/api/dossies")
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -108,30 +142,45 @@ export default function ConferenciaOcPage() {
       .then((data) => {
         setDossies(data.dossies ?? []);
         setUltimoRecebidoEm(data.ultimoRecebidoEm ?? null);
+        setErro(null);
+        setAtualizadoEm(new Date());
       })
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    carregarDossies();
+    const id = setInterval(() => carregarDossies(true), INTERVALO_ATUALIZACAO_MS);
+    return () => clearInterval(id);
   }, []);
 
   const qtdPublicados = useMemo(() => dossies.filter((d) => d.status === "PUBLICADO").length, [dossies]);
   const qtdPendentes = dossies.length - qtdPublicados;
+  const qtdSemGeracao = useMemo(
+    () => dossies.filter((d) => d.status === "AGUARDANDO_GERACAO").length,
+    [dossies]
+  );
+
+  const qtdPorStatus = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const d of dossies) m[d.status] = (m[d.status] ?? 0) + 1;
+    return m;
+  }, [dossies]);
 
   const filtrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termoTitulo = buscaTitulo.trim().toLowerCase();
+    const termoOc = buscaOc.trim().toLowerCase();
+    const termoFornecedor = buscaFornecedor.trim().toLowerCase();
     return dossies
-      .filter((d) => {
-        if (filtro === "documentos") return d.status === "PUBLICADO";
-        if (filtro === "pendencias") return d.status !== "PUBLICADO";
-        return true;
-      })
-      .filter(
-        (d) =>
-          !termo ||
-          d.titulos.some((t) => t.toLowerCase().includes(termo)) ||
-          (d.numOcp ?? "").toLowerCase().includes(termo) ||
-          (d.fornecedorNome ?? "").toLowerCase().includes(termo)
-      );
-  }, [dossies, busca, filtro]);
+      .filter((d) => statusSelecionados.includes(d.status as StatusDossie))
+      .filter((d) => !termoTitulo || d.titulos.some((t) => t.toLowerCase().includes(termoTitulo)))
+      .filter((d) => !termoOc || (d.numOcp ?? "").toLowerCase().includes(termoOc))
+      .filter((d) => !termoFornecedor || (d.fornecedorNome ?? "").toLowerCase().includes(termoFornecedor))
+      .filter((d) => origemFiltro === "todas" || (d.origem ?? "") === origemFiltro)
+      .filter((d) => !vencDe || (d.vencimento ?? "").slice(0, 10) >= vencDe)
+      .filter((d) => !vencAte || (d.vencimento ?? "").slice(0, 10) <= vencAte);
+  }, [dossies, statusSelecionados, buscaTitulo, buscaOc, buscaFornecedor, origemFiltro, vencDe, vencAte]);
 
   if (loading) return <div className="p-6 text-sm text-gray-500">Carregando...</div>;
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
@@ -148,31 +197,93 @@ export default function ConferenciaOcPage() {
         </div>
         <span className="mt-1 shrink-0 text-right text-[11px] leading-tight text-gray-400">
           {ultimoRecebidoEm ? <>Último dossiê recebido em {formatDataHora(ultimoRecebidoEm)}</> : "Nenhum dossiê recebido ainda"}
+          <br />
+          {atualizadoEm && <>Tela atualizada às {atualizadoEm.toLocaleTimeString("pt-BR")} (auto a cada 20s)</>}
         </span>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 text-sm">
-          {ABAS.map(([v, label]) => (
+      {qtdSemGeracao > 0 && (
+        <div className="mb-4 rounded-xl border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm text-purple-800">
+          <strong>{qtdSemGeracao}</strong> OC{qtdSemGeracao > 1 ? "s" : ""} já paga{qtdSemGeracao > 1 ? "s" : ""} na
+          Senior mas sem dossiê recebido do n8n — listada{qtdSemGeracao > 1 ? "s" : ""} abaixo como
+          &quot;{STATUS_LABEL.AGUARDANDO_GERACAO}&quot;.
+        </div>
+      )}
+
+      <div className="mb-4 space-y-2.5 rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">Situação</span>
+          {STATUS_OPCOES.map((s) => (
             <button
-              key={v}
-              onClick={() => setFiltro(v)}
-              className={`px-3 py-1.5 whitespace-nowrap transition-colors ${
-                filtro === v ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+              key={s}
+              onClick={() => alternarStatus(s)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                statusSelecionados.includes(s)
+                  ? "border-brand bg-brand text-white"
+                  : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
               }`}
             >
-              {label}
-              {v === "documentos" ? ` (${qtdPublicados})` : v === "pendencias" ? ` (${qtdPendentes})` : ""}
+              {STATUS_LABEL[s]} ({qtdPorStatus[s] ?? 0})
             </button>
           ))}
+          <button
+            onClick={limparFiltros}
+            className="ml-auto text-[11px] font-medium text-gray-400 underline decoration-dotted underline-offset-2 hover:text-gray-600"
+          >
+            Limpar filtros
+          </button>
         </div>
-        <input
-          type="text"
-          placeholder="Buscar título, nº da OC ou fornecedor..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="w-72 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
-        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            placeholder="Filtrar por título..."
+            value={buscaTitulo}
+            onChange={(e) => setBuscaTitulo(e.target.value)}
+            className="w-44 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+          />
+          <input
+            type="text"
+            placeholder="Filtrar por nº da OC..."
+            value={buscaOc}
+            onChange={(e) => setBuscaOc(e.target.value)}
+            className="w-44 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+          />
+          <input
+            type="text"
+            placeholder="Filtrar por fornecedor..."
+            value={buscaFornecedor}
+            onChange={(e) => setBuscaFornecedor(e.target.value)}
+            className="w-52 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+          />
+          <select
+            value={origemFiltro}
+            onChange={(e) => setOrigemFiltro(e.target.value)}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+          >
+            {ORIGEM_OPCOES.map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <div className="flex items-center gap-1.5 text-sm text-gray-500">
+            <span className="text-[11px] uppercase tracking-wide text-gray-400">Vencimento</span>
+            <input
+              type="date"
+              value={vencDe}
+              onChange={(e) => setVencDe(e.target.value)}
+              className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+            />
+            <span>até</span>
+            <input
+              type="date"
+              value={vencAte}
+              onChange={(e) => setVencAte(e.target.value)}
+              className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
