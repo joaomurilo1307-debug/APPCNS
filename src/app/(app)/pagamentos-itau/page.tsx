@@ -17,8 +17,12 @@ type Titulo = {
   contaFavorecido: string | null;
   dacFavorecido: string | null;
   chavePix: string | null;
+  tipoChavePix: string | null;
   documentoFavorecido: string | null;
 };
+
+// Nota 37 do manual SISPAG (mesmos códigos do TPCPIX da Senior).
+const TIPO_CHAVE_PIX: Record<string, string> = { "1": "telefone", "2": "e-mail", "3": "CPF/CNPJ", "4": "aleatória" };
 
 function contaCompleta(t: Titulo): boolean {
   return !!(t.bancoFavorecido && t.agenciaFavorecido && t.contaFavorecido && t.dacFavorecido);
@@ -53,6 +57,7 @@ type ItemCarrinho = {
   codigoBarras: string;
   valor: number;
   dataPagamento: string;
+  chavePix?: string; // só exibição -- não vai no CNAB
 };
 
 type Remessa = {
@@ -115,6 +120,7 @@ const FORMAS: { valor: string; segmento: Segmento; label: string }[] = [
   { valor: "01", segmento: "A", label: "Crédito em conta corrente Itaú" },
   { valor: "41", segmento: "A", label: "TED — outro titular" },
   { valor: "43", segmento: "A", label: "TED — mesmo titular" },
+  { valor: "45", segmento: "A", label: "PIX Transferência" },
   { valor: "30", segmento: "J", label: "Boleto Itaú" },
   { valor: "31", segmento: "J", label: "Boleto de outros bancos" },
 ];
@@ -253,6 +259,7 @@ export default function PagamentosItauPage() {
       valor: t.valorAberto,
       // Data de pagamento no passado o banco rejeita: se o vencimento já passou, sugere hoje.
       dataPagamento: t.vencimentoProgramado && t.vencimentoProgramado.slice(0, 10) >= hoje ? t.vencimentoProgramado.slice(0, 10) : hoje,
+      chavePix: t.chavePix ? `${t.chavePix} (${TIPO_CHAVE_PIX[t.tipoChavePix ?? ""] ?? t.tipoChavePix ?? "?"})` : undefined,
     };
 
     // Preenche sozinho quando o sincronismo já trouxe o dado: boleto tem
@@ -273,7 +280,8 @@ export default function PagamentosItauPage() {
       item = {
         ...base,
         preenchidoAutomaticamente: true,
-        formaPagamento: contaItau ? "01" : "41",
+        // Chave PIX cadastrada no título -> PIX Transferência (mesma conta, só muda o código da forma).
+        formaPagamento: t.chavePix ? "45" : contaItau ? "01" : "41",
         favorecidoTipoDoc: t.documentoFavorecido && t.documentoFavorecido.length === 11 ? "1" : "2",
         favorecidoDocumento: t.documentoFavorecido ?? "",
         bancoFavorecido: t.bancoFavorecido!,
@@ -718,6 +726,12 @@ export default function PagamentosItauPage() {
                           className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
                         />
                       </label>
+                    )}
+                    {item.chavePix && (
+                      <p className="col-span-2 text-[11px] text-gray-500">
+                        Chave PIX na Senior: <span className="font-medium text-gray-700">{item.chavePix}</span> — informativo; o
+                        arquivo usa a conta acima mesmo na forma PIX Transferência.
+                      </p>
                     )}
                   </div>
                 </div>
