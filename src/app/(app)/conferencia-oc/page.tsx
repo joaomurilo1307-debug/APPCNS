@@ -25,6 +25,7 @@ const STATUS_LABEL: Record<string, string> = {
   ERRO: "Falha na geração",
   SEM_OC: "OC não localizada",
   OC_NAO_QUITADA: "OC ainda não quitada",
+  AGUARDANDO_GERACAO: "Aguardando geração (n8n)",
 };
 
 const STATUS_CLASSE: Record<string, string> = {
@@ -32,6 +33,7 @@ const STATUS_CLASSE: Record<string, string> = {
   ERRO: "bg-red-100 text-red-700",
   SEM_OC: "bg-amber-100 text-amber-800",
   OC_NAO_QUITADA: "bg-sky-100 text-sky-800",
+  AGUARDANDO_GERACAO: "bg-purple-100 text-purple-800",
 };
 
 const ORIGEM_LABEL: Record<string, string> = {
@@ -39,6 +41,7 @@ const ORIGEM_LABEL: Record<string, string> = {
   RELATORIO_201: "Relatório 201",
   MANUAL: "Manual",
   EVENTO_PAGAMENTO: "Vigia (OC quitada)",
+  DETECCAO_INTERNA: "Detecção interna (sem retorno do n8n)",
 };
 
 function formatMoeda(v: number | null) {
@@ -56,16 +59,19 @@ function formatDataHora(iso: string | null) {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-type StatusDossie = "PUBLICADO" | "ERRO" | "SEM_OC" | "OC_NAO_QUITADA";
+type StatusDossie = "PUBLICADO" | "ERRO" | "SEM_OC" | "OC_NAO_QUITADA" | "AGUARDANDO_GERACAO";
 
-const STATUS_OPCOES: StatusDossie[] = ["PUBLICADO", "ERRO", "SEM_OC", "OC_NAO_QUITADA"];
+const STATUS_OPCOES: StatusDossie[] = ["PUBLICADO", "ERRO", "SEM_OC", "OC_NAO_QUITADA", "AGUARDANDO_GERACAO"];
 
 const ORIGEM_OPCOES: [string, string][] = [
   ["todas", "Todas as origens"],
   ["VIGIA_OC_QUITADA", "Vigia (OC quitada)"],
   ["RELATORIO_201", "Relatório 201"],
   ["MANUAL", "Manual"],
+  ["DETECCAO_INTERNA", "Detecção interna (sem retorno do n8n)"],
 ];
+
+const INTERVALO_ATUALIZACAO_MS = 20_000;
 
 export default function ConferenciaOcPage() {
   const [dossies, setDossies] = useState<Dossie[]>([]);
@@ -121,8 +127,11 @@ export default function ConferenciaOcPage() {
       .finally(() => setCarregandoOC(null));
   }
 
-  useEffect(() => {
-    fetch("/api/dossies")
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
+
+  function carregarDossies(silencioso = false) {
+    if (!silencioso) setLoading(true);
+    return fetch("/api/dossies")
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -133,13 +142,25 @@ export default function ConferenciaOcPage() {
       .then((data) => {
         setDossies(data.dossies ?? []);
         setUltimoRecebidoEm(data.ultimoRecebidoEm ?? null);
+        setErro(null);
+        setAtualizadoEm(new Date());
       })
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    carregarDossies();
+    const id = setInterval(() => carregarDossies(true), INTERVALO_ATUALIZACAO_MS);
+    return () => clearInterval(id);
   }, []);
 
   const qtdPublicados = useMemo(() => dossies.filter((d) => d.status === "PUBLICADO").length, [dossies]);
   const qtdPendentes = dossies.length - qtdPublicados;
+  const qtdSemGeracao = useMemo(
+    () => dossies.filter((d) => d.status === "AGUARDANDO_GERACAO").length,
+    [dossies]
+  );
 
   const qtdPorStatus = useMemo(() => {
     const m: Record<string, number> = {};
@@ -176,8 +197,18 @@ export default function ConferenciaOcPage() {
         </div>
         <span className="mt-1 shrink-0 text-right text-[11px] leading-tight text-gray-400">
           {ultimoRecebidoEm ? <>Último dossiê recebido em {formatDataHora(ultimoRecebidoEm)}</> : "Nenhum dossiê recebido ainda"}
+          <br />
+          {atualizadoEm && <>Tela atualizada às {atualizadoEm.toLocaleTimeString("pt-BR")} (auto a cada 20s)</>}
         </span>
       </div>
+
+      {qtdSemGeracao > 0 && (
+        <div className="mb-4 rounded-xl border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm text-purple-800">
+          <strong>{qtdSemGeracao}</strong> OC{qtdSemGeracao > 1 ? "s" : ""} já paga{qtdSemGeracao > 1 ? "s" : ""} na
+          Senior mas sem dossiê recebido do n8n — listada{qtdSemGeracao > 1 ? "s" : ""} abaixo como
+          &quot;{STATUS_LABEL.AGUARDANDO_GERACAO}&quot;.
+        </div>
+      )}
 
       <div className="mb-4 space-y-2.5 rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
         <div className="flex flex-wrap items-center gap-1.5">
