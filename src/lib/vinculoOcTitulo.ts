@@ -113,6 +113,16 @@ export function variantesReferencia(valor: string | null | undefined) {
   for (const parte of partes) {
     resultado.add(parte);
     if (/^\d+$/.test(parte)) resultado.add(parte.replace(/^0+(?=\d)/, ""));
+    // Achado 30/09/2026: quem digita USU_NUMTIT na OC às vezes deixa a
+    // parcela pela metade (ex.: "2072$" em vez de "2072$01") ao registrar
+    // mais de uma referência no mesmo campo. Sem isso, "2072$" nunca bate
+    // com a parcela real do título nem vira um prefixo válido (a regra de
+    // parcela exige dígito depois do separador) -- a OC nunca aparece pro
+    // título certo mesmo já sincronizada. Tratamos o separador solto no
+    // final como se a parcela não tivesse sido informada, caindo pro
+    // número-base (aditivo: só adiciona candidata, nunca remove uma já
+    // válida).
+    if (/[$_]$/.test(parte)) resultado.add(parte.slice(0, -1));
   }
   return [...resultado];
 }
