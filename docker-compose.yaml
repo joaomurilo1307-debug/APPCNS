@@ -21,6 +21,15 @@ services:
       RUN_WIPE_PROJ: ${RUN_WIPE_PROJ}
       RUN_WIPE_EQ: ${RUN_WIPE_EQ}
       SENIOR_SYNC_KEY: ${SENIOR_SYNC_KEY}
+      # GetDBInfo direto na Senior (consulta SQL somente leitura) -- usado pelo
+      # botao "Atualizar do Senior agora" em /pagamentos-itau e pelo script
+      # scripts/senior-sync-pagamentos.ts. Sem essas duas, o app nunca
+      # consegue buscar conta bancaria/codigo de barras do favorecido (achado
+      # 30/09/2026: faltavam aqui, por isso a tela nao preenchia nada em
+      # producao). Mesmo usuario/senha do Sapiens que ja existe no .env local
+      # de quem fez a integracao -- ver GabrielOS/senior_conhecimento_tecnico.md.
+      SENIOR_WS_SAPIENS_USER: ${SENIOR_WS_SAPIENS_USER}
+      SENIOR_WS_SAPIENS_PASSWORD: ${SENIOR_WS_SAPIENS_PASSWORD}
       OC_SYNC_WEBHOOK_URL: ${OC_SYNC_WEBHOOK_URL}
       OC_SYNC_WEBHOOK_SECRET: ${OC_SYNC_WEBHOOK_SECRET}
       TITULOS_SYNC_WEBHOOK_URL: ${TITULOS_SYNC_WEBHOOK_URL}

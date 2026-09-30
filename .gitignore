@@ -11,3 +11,6 @@ deploy_payload.json
 build_log.txt
 *.log
 build_log*.txt
+tsconfig.tsbuildinfo
+senior-descobrir-saida*.txt
+.claude/
