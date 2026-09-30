@@ -466,6 +466,15 @@ model TituloContasAPagar {
   documentoFavorecido String? // CPF/CNPJ so' digitos: DOCIDEFAV do titulo, ou CGCCPF do fornecedor
   atualizadoEm        DateTime  @updatedAt
 
+  // Controle manual de conferencia (30/09/2026): quando o vinculo com OC nao
+  // e' automatico (motivoSemOC != null), alguem do financeiro/compras
+  // confere na origem (Senior) e marca aqui o resultado -- nao mexe na
+  // logica de vinculoOcTitulo.ts, e' so' um rastro de "ja foi olhado".
+  revisadoStatus String? // null = nao revisado; "CORRIGIDO" | "SEM_OC_CONFIRMADO" (de fato nao tem OC) | "AGUARDANDO_COMPRAS"
+  revisadoPorNome String?
+  revisadoEm      DateTime?
+  revisadoObs     String?
+
   remessaItens RemessaItemPagamento[]
 
   @@unique([numTit, codFil, codFor, tipo, dataEmissao])

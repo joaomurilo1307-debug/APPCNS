@@ -146,8 +146,6 @@ export async function POST(req: Request) {
       criadorCod: item.criadorCod || null,
       criadorNome: nomeSenior(item.criadorCod),
       previsaoPagamento: item.previsaoPagamento ? new Date(item.previsaoPagamento) : null,
-      usuNumTit: item.usuNumTit || null,
-      usuNumNfc: item.usuNumNfc || null,
       pago: item.pago ?? false,
       rotNap: item.rotNap || null,
       niveisExigidos: item.niveisExigidos || null,
@@ -169,6 +167,8 @@ export async function POST(req: Request) {
           dataEmissao: new Date(item.dataEmissao),
           numApr: item.numApr,
           situacaoAtual: item.situacaoAtual,
+          usuNumTit: item.usuNumTit || null,
+          usuNumNfc: item.usuNumNfc || null,
           ...descritivos,
           ...(SITUACOES_RESOLVIDAS.has(item.situacaoAtual)
             ? { resolvidoEm: new Date(), resolvidoComo: item.situacaoAtual }
@@ -226,6 +226,15 @@ export async function POST(req: Request) {
       data: {
         situacaoAtual: item.situacaoAtual,
         ...descritivos,
+        // ACHADO 30/09/2026: gravar usuNumTit/usuNumNfc incondicionalmente
+        // apagava toda vez (a cada sync de 10min) qualquer referencia que so'
+        // existe na nossa base (correcao manual confirmada por alguem, tipo
+        // OC 15115/15631 que estao em branco no Senior ate hoje) -- o dado
+        // MELHOR (o que a gente sabe ser verdade) perdia sempre pro dado PIOR
+        // (o que o Senior tem agora, vazio). So' atualiza quando o Senior
+        // manda algo preenchido; se vier vazio, mantem o que ja esta gravado.
+        ...(item.usuNumTit ? { usuNumTit: item.usuNumTit } : {}),
+        ...(item.usuNumNfc ? { usuNumNfc: item.usuNumNfc } : {}),
         ...(foiResolvidaAgora ? { resolvidoEm: new Date(), resolvidoComo: item.situacaoAtual } : {}),
       },
     });

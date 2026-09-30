@@ -145,6 +145,10 @@ export async function GET() {
         chavePix: t.chavePix,
         tipoChavePix: t.tipoChavePix,
         documentoFavorecido: t.documentoFavorecido,
+        revisadoStatus: t.revisadoStatus,
+        revisadoPorNome: t.revisadoPorNome,
+        revisadoEm: t.revisadoEm,
+        revisadoObs: t.revisadoObs,
       };
     }),
     totalAberto,

@@ -1,7 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
+
+const REVISAO_LABEL: Record<string, string> = {
+  CORRIGIDO: "Corrigido",
+  SEM_OC_CONFIRMADO: "Sem OC (confirmado)",
+  AGUARDANDO_COMPRAS: "Aguardando compras",
+};
+const REVISAO_COR: Record<string, string> = {
+  CORRIGIDO: "bg-emerald-100 text-emerald-800",
+  SEM_OC_CONFIRMADO: "bg-gray-200 text-gray-700",
+  AGUARDANDO_COMPRAS: "bg-amber-100 text-amber-800",
+};
 
 type OcRelacionada = {
   numOcp: string;
@@ -22,6 +34,7 @@ type DossieDoTitulo = {
 };
 
 type Titulo = {
+  id: string;
   numTit: string;
   codFil: string;
   codFor: string;
@@ -45,6 +58,10 @@ type Titulo = {
   lancadoPorNome: string | null;
   entradaManual: boolean;
   numNfc: string | null;
+  revisadoStatus: string | null;
+  revisadoPorNome: string | null;
+  revisadoEm: string | null;
+  revisadoObs: string | null;
 };
 
 type FiltrosColuna = {
@@ -250,6 +267,60 @@ export default function ProgramacaoPagamentoPage() {
   // de 10 em 10 minutos) e reconsulta a lista depois de um tempo, já que a
   // sincronização roda em segundo plano no VPS (~2 mil títulos, leva alguns
   // minutos).
+  const [salvandoRevisao, setSalvandoRevisao] = useState<string | null>(null);
+
+  function atualizarRevisao(id: string, revisadoStatus: string | null) {
+    setSalvandoRevisao(id);
+    fetch(`/api/titulos-pagar/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revisadoStatus }),
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erro ao salvar revisão");
+        setTitulos((anterior) =>
+          anterior.map((t) =>
+            t.id === id
+              ? { ...t, revisadoStatus: data.revisadoStatus, revisadoPorNome: data.revisadoPorNome, revisadoEm: data.revisadoEm }
+              : t
+          )
+        );
+      })
+      .catch((e) => setErroOC(e.message))
+      .finally(() => setSalvandoRevisao(null));
+  }
+
+  function exportarRelatorio() {
+    const linhas = filtrados.map((t) => ({
+      "Título": t.numTit,
+      "OC": t.ocRelacionada ? `OC ${t.ocRelacionada.numOcp} (${t.ocRelacionada.situacaoLabel})` : "Sem OC",
+      "Motivo (sem OC)": t.ocRelacionada ? "" : t.motivoSemOC || "",
+      "Status revisão": t.revisadoStatus ? REVISAO_LABEL[t.revisadoStatus] || t.revisadoStatus : "Não revisado",
+      "Revisado por": t.revisadoPorNome || "",
+      "Revisado em": t.revisadoEm ? formatDataHora(t.revisadoEm) : "",
+      "Tipo": t.tipo,
+      "Criação": formatData(t.dataEmissao),
+      "Fornecedor": t.fornecedorNome,
+      "Centro de custo": t.ccuNome || "",
+      "Vencto programado": formatData(t.vencimentoProgramado),
+      "Pago em": t.dataPagamento ? formatData(t.dataPagamento) : "",
+      "Valor original": t.valorOriginal,
+      "Valor em aberto": t.valorAberto,
+      "Situação": t.pago ? "Pago" : "Não pago",
+    }));
+    const ws = XLSX.utils.json_to_sheet(linhas);
+    ws["!cols"] = [
+      { wch: 14 }, { wch: 22 }, { wch: 40 }, { wch: 20 }, { wch: 20 }, { wch: 16 },
+      { wch: 8 }, { wch: 12 }, { wch: 38 }, { wch: 22 }, { wch: 14 }, { wch: 14 },
+      { wch: 16 }, { wch: 16 }, { wch: 12 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Programação de Pagamento");
+    const hoje = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Programacao_Pagamento_${hoje}.xlsx`);
+  }
+
   function sincronizarAgora() {
     setSincronizando(true);
     setMsgSincronizacao(null);
@@ -379,12 +450,22 @@ export default function ProgramacaoPagamentoPage() {
             {msgSincronizacao && <span className="text-[11px] text-gray-500">{msgSincronizacao}</span>}
           </div>
         </div>
-        <button
-          onClick={() => setMostrarRegras((v) => !v)}
-          className="shrink-0 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
-        >
-          {mostrarRegras ? "Ocultar regras" : "Quando um título tem (ou não) OC?"}
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            onClick={exportarRelatorio}
+            disabled={filtrados.length === 0}
+            title="Exporta pra Excel exatamente os títulos que estão filtrados na tela agora"
+            className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ⬇ Exportar relatório
+          </button>
+          <button
+            onClick={() => setMostrarRegras((v) => !v)}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+          >
+            {mostrarRegras ? "Ocultar regras" : "Quando um título tem (ou não) OC?"}
+          </button>
+        </div>
       </div>
 
       {mostrarRegras && (
@@ -534,6 +615,7 @@ export default function ProgramacaoPagamentoPage() {
               <th className="px-3 py-2 text-right font-medium">Valor original</th>
               <th className="px-3 py-2 text-right font-medium">Valor em aberto</th>
               <th className="px-3 py-2 font-medium">Situação</th>
+              <th className="px-3 py-2 font-medium">Revisão</th>
             </tr>
             <tr className="border-t border-gray-200 bg-white align-top">
               <th className="px-2 py-2">
@@ -654,11 +736,12 @@ export default function ProgramacaoPagamentoPage() {
                   <option value="pago">Pago</option>
                 </select>
               </th>
+              <th className="px-2 py-2" />
             </tr>
           </thead>
           <tbody>
             {filtradosMostrados.map((t, i) => (
-              <tr key={`${t.numTit}-${t.codFil}-${t.dataEmissao}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
+              <tr key={t.id} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
                 <td className="px-3 py-1.5 font-medium text-gray-800">
                   {t.dossie?.temArquivo ? (
                     <a
@@ -778,11 +861,32 @@ export default function ProgramacaoPagamentoPage() {
                     {t.pago ? "Pago" : "Não pago"}
                   </span>
                 </td>
+                <td className="px-3 py-1.5">
+                  <select
+                    aria-label="Status de revisão"
+                    value={t.revisadoStatus ?? ""}
+                    disabled={salvandoRevisao === t.id}
+                    onChange={(e) => atualizarRevisao(t.id, e.target.value || null)}
+                    title={
+                      t.revisadoPorNome
+                        ? `Revisado por ${t.revisadoPorNome} em ${formatDataHora(t.revisadoEm)}`
+                        : "Ainda não revisado"
+                    }
+                    className={`rounded-full border-0 px-2 py-0.5 text-[11px] font-medium focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 ${
+                      t.revisadoStatus ? REVISAO_COR[t.revisadoStatus] : "bg-gray-100 text-gray-400"
+                    }`}
+                  >
+                    <option value="">Não revisado</option>
+                    <option value="CORRIGIDO">Corrigido</option>
+                    <option value="SEM_OC_CONFIRMADO">Sem OC (confirmado)</option>
+                    <option value="AGUARDANDO_COMPRAS">Aguardando compras</option>
+                  </select>
+                </td>
               </tr>
             ))}
             {filtradosMostrados.length === 0 && (
               <tr>
-                <td colSpan={mostrarColunaPagamento ? 13 : 12} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={mostrarColunaPagamento ? 14 : 13} className="px-4 py-6 text-center text-gray-400">
                   Nenhum título encontrado com esse filtro.
                 </td>
               </tr>
