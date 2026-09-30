@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { linhaDigitavelParaCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
 import type { ItemRemessa } from "@/lib/cnab240/itau/tipos";
+import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 
 const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const ROLES_ESCRITA = ["ADMIN", "DIRETOR"];
@@ -91,6 +92,44 @@ export async function POST(req: Request) {
 
   const conta = await prisma.contaBancaria.findUnique({ where: { id: parsed.data.contaBancariaId } });
   if (!conta || !conta.ativo) return NextResponse.json({ error: "Conta bancária inválida" }, { status: 422 });
+
+  // Portão de segurança (30/09/2026): a remessa vira arquivo de pagamento
+  // de verdade no banco -- nenhum título que precisa de OC pode entrar sem
+  // uma OC confirmada. Reaproveita o MESMO motor da Programação de
+  // Pagamento (src/lib/vinculoOcTitulo.ts) pra não haver 2 fontes de
+  // verdade sobre "isso tem OC ou não" que possam divergir.
+  const idsComTitulo = parsed.data.itens.map((i) => i.tituloId).filter((id): id is string => !!id);
+  if (idsComTitulo.length > 0) {
+    const [titulosDaRemessa, ocs] = await Promise.all([
+      prisma.tituloContasAPagar.findMany({ where: { id: { in: idsComTitulo } } }),
+      prisma.aprovacaoSenior.findMany({
+        select: {
+          numOcp: true, codFil: true, fornecedorCodigo: true, fornecedorNome: true,
+          valor: true, dataEmissao: true, situacaoAtual: true, usuNumTit: true,
+          usuNumNfc: true, codccu: true, contratoNome: true, temRateio: true, previsaoPagamento: true,
+        },
+      }),
+    ]);
+    const motor = criarMotorVinculo(ocs);
+    const semOC = titulosDaRemessa
+      .map((t) => ({ titulo: t, vinculo: motor.ocRelacionadaDe(t) }))
+      .filter(({ vinculo }) => vinculo.ocEsperada && !vinculo.ocRelacionada);
+
+    if (semOC.length > 0) {
+      return NextResponse.json(
+        {
+          error: `${semOC.length} título(s) sem OC confirmada não podem entrar na remessa`,
+          titulosSemOC: semOC.map(({ titulo, vinculo }) => ({
+            numTit: titulo.numTit,
+            fornecedor: titulo.fornecedorNome ?? `código ${titulo.codFor}`,
+            valor: titulo.valorAberto,
+            motivo: vinculo.motivoSemOC,
+          })),
+        },
+        { status: 422 }
+      );
+    }
+  }
 
   try {
     const resultado = await prisma.$transaction(async (tx) => {

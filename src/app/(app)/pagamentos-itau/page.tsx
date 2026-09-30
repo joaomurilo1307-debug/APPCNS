@@ -277,7 +277,15 @@ export default function PagamentosItauPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao gerar remessa");
+      if (!res.ok) {
+        if (Array.isArray(data.titulosSemOC) && data.titulosSemOC.length > 0) {
+          const lista = data.titulosSemOC
+            .map((t: any) => `• ${t.numTit} (${t.fornecedor}, ${formatMoeda(t.valor)}): ${t.motivo}`)
+            .join("\n");
+          throw new Error(`${data.error}\n\n${lista}\n\nResolva o vínculo na Programação de Pagamento antes de gerar a remessa.`);
+        }
+        throw new Error(data.error || "Erro ao gerar remessa");
+      }
       setMensagem(`Remessa gerada com ${carrinho.length} pagamento(s), total ${formatMoeda(carrinho.reduce((s, i) => s + i.valor, 0))}.`);
       setCarrinho([]);
       carregarTudo();
@@ -322,7 +330,7 @@ export default function PagamentosItauPage() {
         </p>
       </div>
 
-      {erro && <div className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{erro}</div>}
+      {erro && <div className="mb-4 whitespace-pre-wrap rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{erro}</div>}
       {mensagem && <div className="mb-4 rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-800">{mensagem}</div>}
 
       <div className="mb-5 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
