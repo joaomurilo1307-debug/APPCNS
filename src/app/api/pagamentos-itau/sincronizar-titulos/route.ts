@@ -57,11 +57,14 @@ export async function POST(req: Request) {
     // e outros 2415 titulos, 100% sem CPF/CNPJ/conta). Escopo agora e' so' os
     // fornecedores dos titulos de hoje, em lotes -- e sem o CODEMP=1 (fornecedor
     // pode ter conta cadastrada so' numa outra empresa do grupo).
+    // Sequencial, nao Promise.all -- achado 30/09/2026: 2 lotes de consulta
+    // concorrentes contra o mesmo web service da Senior derrubaram a conexao
+    // ("fetch failed"). O ganho de velocidade do paralelo nao compensa a
+    // instabilidade numa hora com a programacao de pagamento correndo contra
+    // o horario do banco.
     const codigosFor = [...new Set(titulos.map((t) => t.CODFOR).filter((c) => /^\d+$/.test(c)))];
-    const [fornecedores, cadastros] = await Promise.all([
-      porLotesDeCodFor("SELECT CODFOR, NOMFOR, CGCCPF, TIPFOR FROM E095FOR WHERE", codigosFor),
-      porLotesDeCodFor(`SELECT ${CAMPOS_CADASTRO_BANCARIO.join(", ")} FROM E095HFO WHERE`, codigosFor),
-    ]);
+    const fornecedores = await porLotesDeCodFor("SELECT CODFOR, NOMFOR, CGCCPF, TIPFOR FROM E095FOR WHERE", codigosFor);
+    const cadastros = await porLotesDeCodFor(`SELECT ${CAMPOS_CADASTRO_BANCARIO.join(", ")} FROM E095HFO WHERE`, codigosFor);
 
     const porCodigo = new Map(fornecedores.map((f) => [f.CODFOR, f]));
     const cadastrosPorFornecedor = new Map<string, LinhaSenior[]>();
