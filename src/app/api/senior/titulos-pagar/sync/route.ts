@@ -47,9 +47,41 @@ const itemSchema = z.object({
   descricao: z.string().nullable().optional(),
   lancadoPorCod: z.string().nullable().optional(),
   dataLancamento: z.string().nullable().optional(),
+  // Codigo de barras do boleto (44 digitos), quando o titulo tiver um
+  // boleto de cobranca associado -- alimenta a geracao de remessa SISPAG
+  // (Pagamentos Itaú). Ver docs/integracao-itau.md.
+  codigoBarrasBoleto: z.string().nullable().optional(),
+  // Dados de pagamento do favorecido, do proprio titulo no Senior (E501TCP:
+  // CODBAN/CODAGE/CCBFOR/TIPTCC/CHVPIX/TPCPIX) + CPF/CNPJ do fornecedor.
+  bancoFavorecido: z.string().nullable().optional(),
+  agenciaFavorecido: z.string().nullable().optional(),
+  contaFavorecido: z.string().nullable().optional(),
+  dacFavorecido: z.string().nullable().optional(),
+  tipoContaFavorecido: z.string().nullable().optional(),
+  chavePix: z.string().nullable().optional(),
+  tipoChavePix: z.string().nullable().optional(),
+  documentoFavorecido: z.string().nullable().optional(),
 });
 
 const bodySchema = z.object({ itens: z.array(itemSchema) });
+
+type ItemSync = z.infer<typeof itemSchema>;
+
+// Campos de pagamento que so' atualizam quando vieram no payload (undefined =
+// "nao mexe"), mesmo padrao dos outros campos opcionais deste sync.
+function camposDePagamento(item: ItemSync) {
+  return {
+    ...(item.codigoBarrasBoleto !== undefined ? { codigoBarrasBoleto: item.codigoBarrasBoleto } : {}),
+    ...(item.bancoFavorecido !== undefined ? { bancoFavorecido: item.bancoFavorecido } : {}),
+    ...(item.agenciaFavorecido !== undefined ? { agenciaFavorecido: item.agenciaFavorecido } : {}),
+    ...(item.contaFavorecido !== undefined ? { contaFavorecido: item.contaFavorecido } : {}),
+    ...(item.dacFavorecido !== undefined ? { dacFavorecido: item.dacFavorecido } : {}),
+    ...(item.tipoContaFavorecido !== undefined ? { tipoContaFavorecido: item.tipoContaFavorecido } : {}),
+    ...(item.chavePix !== undefined ? { chavePix: item.chavePix } : {}),
+    ...(item.tipoChavePix !== undefined ? { tipoChavePix: item.tipoChavePix } : {}),
+    ...(item.documentoFavorecido !== undefined ? { documentoFavorecido: item.documentoFavorecido } : {}),
+  };
+}
 
 function chaveDe(i: { numTit: string; codFil: string; codFor: string; tipo: string; dataEmissao: string }) {
   return `${i.numTit}|${i.codFil}|${i.codFor}|${i.tipo}|${i.dataEmissao}`;
@@ -78,18 +110,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, processados: 0, totalRecebido: 0, removidos: 0 });
   }
 
+  // ?modo=incremental: o payload NAO e' o universo completo (ex.: so' os
+  // titulos em aberto, mandados em lotes por scripts/senior-sync-pagamentos.ts).
+  // Nesse modo nada e' removido, e titulo que ja existe so' recebe os campos
+  // de pagamento e de situacao/vencimento/valor -- nao sobrescreve o que o
+  // Rito resolve por outras fontes (nome do CC, OC, etc.).
+  // Titulo que ainda nao existe e' criado com todos os campos enviados.
+  const incremental = new URL(req.url).searchParams.get("modo") === "incremental";
+
   // limpeza: o payload representa o universo COMPLETO de 2026 (aberto +
   // pago) a cada sync -- qualquer linha existente que nao veio de novo
   // (de fora de 2026, ou removida/cancelada no Senior) e' orfa e sai.
-  const chavesRecebidas = new Set(itens.map(chaveDe));
-  const existentes = await prisma.tituloContasAPagar.findMany({
-    select: { id: true, numTit: true, codFil: true, codFor: true, tipo: true, dataEmissao: true },
-  });
-  const idsParaRemover = existentes
-    .filter((e) => !chavesRecebidas.has(`${e.numTit}|${e.codFil}|${e.codFor}|${e.tipo}|${e.dataEmissao.toISOString().slice(0, 10)}`))
-    .map((e) => e.id);
-  if (idsParaRemover.length > 0) {
-    await prisma.tituloContasAPagar.deleteMany({ where: { id: { in: idsParaRemover } } });
+  let idsParaRemover: string[] = [];
+  if (!incremental) {
+    const chavesRecebidas = new Set(itens.map(chaveDe));
+    const existentes = await prisma.tituloContasAPagar.findMany({
+      select: { id: true, numTit: true, codFil: true, codFor: true, tipo: true, dataEmissao: true },
+    });
+    idsParaRemover = existentes
+      .filter((e) => !chavesRecebidas.has(`${e.numTit}|${e.codFil}|${e.codFor}|${e.tipo}|${e.dataEmissao.toISOString().slice(0, 10)}`))
+      .map((e) => e.id);
+    if (idsParaRemover.length > 0) {
+      await prisma.tituloContasAPagar.deleteMany({ where: { id: { in: idsParaRemover } } });
+    }
   }
 
   let processados = 0;
@@ -105,7 +148,20 @@ export async function POST(req: Request) {
           dataEmissao,
         },
       },
-      update: {
+      // Incremental: alem dos dados de pagamento, atualiza so' o que vem direto
+      // do E501TCP e que o Rito tambem grava igual (situacao, vencimentos,
+      // valores) -- e' o que muda quando alguem reprograma/corrige o titulo no
+      // Senior. Nao mexe em CC/OC/nome do CC, que o Rito resolve por outras fontes.
+      update: incremental ? {
+        situacao: item.situacao,
+        pago: item.pago,
+        vencimentoOriginal: item.vencimentoOriginal ? new Date(item.vencimentoOriginal) : null,
+        vencimentoProgramado: item.vencimentoProgramado ? new Date(item.vencimentoProgramado) : null,
+        valorOriginal: item.valorOriginal,
+        valorAberto: item.valorAberto,
+        ...(item.fornecedorNome ? { fornecedorNome: item.fornecedorNome } : {}),
+        ...camposDePagamento(item),
+      } : {
         fornecedorNome: item.fornecedorNome,
         situacao: item.situacao,
         pago: item.pago,
@@ -124,6 +180,7 @@ export async function POST(req: Request) {
         ...(item.dataLancamento !== undefined
           ? { dataLancamento: item.dataLancamento ? new Date(item.dataLancamento) : null }
           : {}),
+        ...camposDePagamento(item),
       },
       create: {
         numTit: item.numTit,
@@ -147,6 +204,7 @@ export async function POST(req: Request) {
         descricao: item.descricao ?? null,
         lancadoPorCod: item.lancadoPorCod ?? null,
         dataLancamento: item.dataLancamento ? new Date(item.dataLancamento) : null,
+        ...camposDePagamento(item),
       },
     });
     processados++;

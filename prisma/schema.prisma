@@ -234,6 +234,8 @@ model User {
   projetosComoCoordenador Project[] @relation("ProjectCoordenador")
   aprovacoesSeniorComoProximo AprovacaoSenior[] @relation("AprovacaoSeniorProximo")
   usuarioSenior              UsuarioSenior[]    @relation("UsuarioSeniorConta")
+  remessasPagamentoCriadas     RemessaPagamento[]
+  retornosPagamentoProcessados RetornoPagamentoArquivo[]
 }
 
 model ApprovalRequest {
@@ -438,7 +440,33 @@ model TituloContasAPagar {
   descricao           String? // E501TCP.OBSTCP, texto livre digitado por quem lançou o título
   lancadoPorCod       String? // E501TCP.USUGER, usuário Senior que lançou o título (resolvido pra nome via UsuarioSenior nas rotas de leitura)
   dataLancamento      DateTime? // E501TCP.DATGER, quando o título foi de fato digitado no Senior -- pode ser muito depois da emissão/vencimento (lançamento retroativo)
+  // Codigo de barras do boleto (44 digitos) deste titulo especifico, quando o
+  // pagamento for por boleto -- diferente do dado bancario do fornecedor
+  // (agencia/conta, mais abaixo); cada NF/boleto tem seu proprio codigo. O
+  // Senior (E501TCP.CODBAR) nao preenche isso em nenhum titulo em aberto --
+  // ver docs/integracao-itau.md, "Integração com o Senior".
+  codigoBarrasBoleto String?
+
+  // Dados de pagamento do favorecido COMO ESTAO NO TITULO no Senior (E501TCP
+  // -- o cadastro do fornecedor, E095FOR, nao tem coluna de banco). Descoberta
+  // em 24/09/2026 numa base real de 2.420 titulos em aberto: so' ~4% tem
+  // conta preenchida (CODBAN/CODAGE/CCBFOR, "9999-9" e "99999-9" com hifen
+  // antes do DV), ~3,5% tem chave PIX (CHVPIX/TPCPIX) e NENHUM tem
+  // codigo de barras (CODBAR) -- por isso o codigo de barras continua vindo
+  // do boleto (digitado ou, no futuro, do DDA). Agencia e conta ja chegam
+  // separadas do DV, prontas pro CNAB (o manual manda nao misturar o DAC no
+  // campo da agencia).
+  bancoFavorecido     String? // CODBAN
+  agenciaFavorecido   String? // CODAGE sem o DV
+  contaFavorecido     String? // CCBFOR antes do hifen
+  dacFavorecido       String? // CCBFOR depois do hifen
+  tipoContaFavorecido String? // TIPTCC cru (mapeamento dos codigos: ver docs/integracao-itau.md)
+  chavePix            String? // CHVPIX
+  tipoChavePix        String? // TPCPIX cru
+  documentoFavorecido String? // CPF/CNPJ so' digitos: DOCIDEFAV do titulo, ou CGCCPF do fornecedor
   atualizadoEm        DateTime  @updatedAt
+
+  remessaItens RemessaItemPagamento[]
 
   @@unique([numTit, codFil, codFor, tipo, dataEmissao])
   @@index([numOcp])
@@ -1070,4 +1098,186 @@ model DossieOC {
   @@index([numOcp])
   @@index([status])
   @@index([codFor])
+}
+
+// ============================================================================
+// Integracao bancaria Itau -- SISPAG (remessa/retorno CNAB240), DDA e
+// Conciliacao Bancaria. Ver docs/integracao-itau.md para o desenho completo.
+//
+// TituloContasAPagar/AprovacaoSenior (acima) nao trazem dado bancario do
+// favorecido nem codigo de barras de boleto -- o sincronismo do Senior/Rito
+// hoje so exporta o necessario pra conferencia (Titulo<->OC), nao pagamento.
+// Por isso RemessaItemPagamento guarda esses dados TAMBEM localmente,
+// preenchidos manualmente na tela ate o Rito passar a exportar isso do
+// Senior (proximo passo natural, ver o doc).
+// ============================================================================
+
+enum StatusRemessaPagamento {
+  RASCUNHO // selecionado na tela, arquivo ainda nao gerado
+  GERADO // arquivo .txt gerado e baixado, aguardando envio manual ao Itau (Internet Banking / VAN)
+  RETORNO_PROCESSADO // pelo menos um arquivo de retorno foi importado pra esta remessa
+}
+
+enum StatusItemPagamento {
+  PENDENTE // na remessa, retorno ainda nao chegou
+  AGENDADO // retorno confirmou agendamento (ocorrencia BD)
+  PAGO // retorno confirmou pagamento efetuado (ocorrencia 00)
+  REJEITADO // retorno trouxe ocorrencia de erro/rejeicao
+  CANCELADO // exclusao comandada ou cancelamento informado no retorno
+}
+
+// Conta corrente da empresa usada como debito nos arquivos de remessa
+// (Registro Header de Arquivo / Header de Lote, posicoes 053-072 do layout
+// CNAB240 SISPAG). Cadastro simples, feito uma vez por conta.
+model ContaBancaria {
+  id        String   @id @default(cuid())
+  apelido   String // ex: "Itau - Conta Movimento"
+  banco     String   @default("341") // codigo Itau na compensacao
+  cnpj      String // so' digitos, 14 posicoes (Empresa-Inscricao = CNPJ)
+  agencia   String
+  conta     String
+  dac       String // digito verificador agencia/conta
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  remessas RemessaPagamento[]
+}
+
+// Um arquivo de remessa CNAB240 SISPAG (um lote de pagamentos "Fornecedores",
+// tipo 20 -- ver Nota 4 do manual). codigoLote e sequencial por arquivo,
+// comeca em "0001" (Nota 3 do manual).
+model RemessaPagamento {
+  id             String                  @id @default(cuid())
+  contaBancariaId String
+  codigoLote     String                  @default("0001")
+  status         StatusRemessaPagamento  @default(RASCUNHO)
+  nomeArquivo    String?
+  conteudoArquivo String?                @db.Text // o .txt gerado, guardado pra re-download (nao reenviar ao banco sem necessidade)
+  totalRegistros Int                     @default(0)
+  totalValor     Float                   @default(0)
+  criadoPorId    String?
+  criadoEm       DateTime                @default(now())
+  geradoEm       DateTime?
+
+  contaBancaria ContaBancaria @relation(fields: [contaBancariaId], references: [id])
+  criadoPor     User?         @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+  itens         RemessaItemPagamento[]
+  retornos      RetornoPagamentoArquivo[]
+
+  @@index([status])
+}
+
+// Um pagamento dentro da remessa (Segmento A = credito conta/TED, Segmento J
+// = boleto em cobranca). "referenciaEmpresa" vai no campo "Seu Numero" do
+// CNAB (posicoes 074-093 no Segmento A, 183-202 no J -- Nota 43) e e' a
+// unica forma de casar uma linha do arquivo de retorno de volta a este
+// registro, ja que "Nosso Numero" so existe depois que o banco responde.
+model RemessaItemPagamento {
+  id                 String   @id @default(cuid())
+  remessaId          String
+  tituloId           String?
+  numeroSequencial   Int // posicao no lote (Nota 9), 1-based
+  segmento           String // "A" (credito/TED) ou "J" (boleto)
+  formaPagamento     String // codigo da Nota 5 do manual: 01, 41, 43, 30, 31...
+  referenciaEmpresa  String   @unique // "Seu Numero" enviado no CNAB
+
+  favorecidoNome        String
+  favorecidoTipoDoc     String // "1"=CPF, "2"=CNPJ
+  favorecidoDocumento   String
+
+  // Segmento A (credito em conta / TED)
+  bancoFavorecido    String?
+  agenciaFavorecido  String?
+  contaFavorecido    String?
+  dacFavorecido      String?
+
+  // Segmento J (boleto em cobranca)
+  codigoBarras       String?
+
+  valor              Float
+  dataPagamento      DateTime
+
+  status             StatusItemPagamento @default(PENDENTE)
+  nossoNumero        String? // preenchido a partir do retorno (Nota 12)
+  dataEfetivacao     DateTime?
+  valorEfetivado     Float?
+  ocorrencias        String?  @db.Text // JSON: [{codigo, descricao, recebidoEm}], historico de ocorrencias do retorno (Nota 8)
+
+  criadoEm           DateTime @default(now())
+  atualizadoEm       DateTime @updatedAt
+
+  remessa RemessaPagamento    @relation(fields: [remessaId], references: [id], onDelete: Cascade)
+  titulo  TituloContasAPagar? @relation(fields: [tituloId], references: [id], onDelete: SetNull)
+
+  @@index([remessaId])
+  @@index([tituloId])
+  @@index([status])
+}
+
+// Um arquivo de retorno importado (pode responder por mais de uma remessa se
+// o Itau consolidar lotes de dias diferentes num so retorno -- por isso o
+// vinculo fica no item, nao aqui; este registro e' so o log de importacao).
+model RetornoPagamentoArquivo {
+  id               String   @id @default(cuid())
+  remessaId        String?
+  nomeArquivo      String
+  totalRegistros   Int      @default(0)
+  totalReconhecidos Int     @default(0) // linhas cujo "Seu Numero" bateu com algum RemessaItemPagamento
+  processadoPorId  String?
+  processadoEm     DateTime @default(now())
+
+  remessa     RemessaPagamento? @relation(fields: [remessaId], references: [id], onDelete: SetNull)
+  processadoPor User?           @relation(fields: [processadoPorId], references: [id], onDelete: SetNull)
+}
+
+// --- DDA e Conciliacao Bancaria: protocolos de implantacao IT-000233088 e
+// IT-000233091 ja estao em andamento junto ao Itau (ver docs/integracao-itau.md),
+// mas o formato exato do arquivo de intercambio (o Itau chama de "Cadastro de
+// Intercambio de Arquivos") so e' confirmado quando a implantacao terminar.
+// Os modelos abaixo fixam o dominio (o que guardar) sem comprometer o layout
+// de importacao, que fica pra quando o manual especifico chegar.
+
+enum StatusDdaBoleto {
+  PENDENTE
+  BAIXADO // enviado pra pagamento (virou um RemessaItemPagamento)
+  IGNORADO
+}
+
+model DdaBoletoRegistrado {
+  id              String   @id @default(cuid())
+  codigoBarras    String   @unique
+  linhaDigitavel  String?
+  sacadorNome     String?
+  sacadorDocumento String?
+  valor           Float
+  dataVencimento  DateTime
+  status          StatusDdaBoleto @default(PENDENTE)
+  origemArquivo   String? // nome do arquivo de intercambio DDA importado
+  importadoEm     DateTime @default(now())
+
+  @@index([status])
+  @@index([dataVencimento])
+}
+
+enum StatusConciliacaoLancamento {
+  NAO_CONCILIADO
+  CONCILIADO_AUTOMATICO // casado com um RemessaItemPagamento por valor+data+nossoNumero
+  CONCILIADO_MANUAL
+  DIVERGENTE // achou candidato mas valor/data nao bateram exatamente
+}
+
+model ConciliacaoBancariaLancamento {
+  id                String   @id @default(cuid())
+  contaBancariaId   String
+  dataLancamento    DateTime
+  valor             Float // positivo = credito, negativo = debito no extrato
+  historico         String
+  documento         String? // numero do documento no extrato, quando houver
+  status            StatusConciliacaoLancamento @default(NAO_CONCILIADO)
+  remessaItemId     String? // RemessaItemPagamento casado, quando conciliado
+  origemArquivo     String? // nome do extrato (OFX/CNAB) importado
+  importadoEm       DateTime @default(now())
+
+  @@index([contaBancariaId, dataLancamento])
+  @@index([status])
 }
