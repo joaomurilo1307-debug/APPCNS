@@ -294,8 +294,15 @@ export default function ProgramacaoPagamentoPage() {
       .finally(() => setSalvandoRevisao(null));
   }
 
+  // Duas formas de exportar (30/09/2026, pedido do João): com seleção ativa,
+  // exporta SÓ os escolhidos (de qualquer filtro, não só o filtro atual) com
+  // uma linha de TOTAL no fim -- é o "relatório dos aprovados pra pagar".
+  // Sem seleção, exporta tudo que está filtrado na tela agora, sem total
+  // (é a auditoria geral, não uma lista fechada de pagamento).
   function exportarRelatorio() {
-    const linhas = filtrados.map((t) => ({
+    const usarSelecao = selecionados.size > 0;
+    const base = usarSelecao ? titulos.filter((t) => selecionados.has(t.id)) : filtrados;
+    const linhas = base.map((t) => ({
       "Título": t.numTit,
       "OC": t.ocRelacionada ? `OC ${t.ocRelacionada.numOcp} (${t.ocRelacionada.situacaoLabel})` : "Sem OC",
       "Motivo (sem OC)": t.ocRelacionada ? "" : t.motivoSemOC || "",
@@ -312,6 +319,16 @@ export default function ProgramacaoPagamentoPage() {
       "Valor em aberto": t.valorAberto,
       "Situação": t.pago ? "Pago" : "Não pago",
     }));
+    if (usarSelecao) {
+      linhas.push({
+        "Título": "TOTAL",
+        "OC": "", "Motivo (sem OC)": "", "Status revisão": "", "Revisado por": "", "Revisado em": "",
+        "Tipo": "", "Criação": "", "Fornecedor": "", "Centro de custo": "", "Vencto programado": "", "Pago em": "",
+        "Valor original": base.reduce((s, t) => s + t.valorOriginal, 0),
+        "Valor em aberto": base.reduce((s, t) => s + t.valorAberto, 0),
+        "Situação": `${base.length} título(s)`,
+      });
+    }
     const ws = XLSX.utils.json_to_sheet(linhas);
     ws["!cols"] = [
       { wch: 14 }, { wch: 22 }, { wch: 40 }, { wch: 20 }, { wch: 20 }, { wch: 16 },
@@ -319,9 +336,9 @@ export default function ProgramacaoPagamentoPage() {
       { wch: 16 }, { wch: 16 }, { wch: 12 },
     ];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Programação de Pagamento");
+    XLSX.utils.book_append_sheet(wb, ws, usarSelecao ? "Selecionados p/ pagamento" : "Programação de Pagamento");
     const hoje = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `Programacao_Pagamento_${hoje}.xlsx`);
+    XLSX.writeFile(wb, `Programacao_Pagamento_${usarSelecao ? "selecionados_" : ""}${hoje}.xlsx`);
   }
 
   function alternarSelecao(id: string) {
@@ -356,14 +373,35 @@ export default function ProgramacaoPagamentoPage() {
     router.push("/pagamentos-itau");
   }
 
+  // ACHADO 30/09/2026: este botao so' disparava a sincronizacao de TITULOS
+  // -- o vinculo com OC vem de uma sincronizacao SEPARADA (AprovacaoSenior,
+  // rodando sozinha a cada 10min via n8n), que esse botao nunca tocava.
+  // Por isso alguem podia clicar "Atualizar agora" varias vezes e a OC
+  // continuar desatualizada (so' o titulo atualizava). Agora dispara as
+  // DUAS, em paralelo -- clique unico, atualizacao completa de verdade.
   function sincronizarAgora() {
     setSincronizando(true);
     setMsgSincronizacao(null);
-    fetch("/api/senior/titulos-pagar/sincronizar-agora", { method: "POST" })
-      .then(async (res) => {
+    Promise.allSettled([
+      fetch("/api/senior/titulos-pagar/sincronizar-agora", { method: "POST" }).then(async (res) => {
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "Erro ao disparar sincronização");
-        setMsgSincronizacao("Sincronização disparada — atualizando em alguns minutos...");
+        if (!res.ok) throw new Error(data.error || "títulos: erro ao disparar");
+      }),
+      fetch("/api/senior/aprovacoes/sincronizar-agora", { method: "POST" }).then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "OCs: erro ao disparar");
+      }),
+    ])
+      .then((resultados) => {
+        const falhas = resultados.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+        if (falhas.length === resultados.length) {
+          throw new Error(falhas.map((f) => f.reason?.message).join(" / "));
+        }
+        setMsgSincronizacao(
+          falhas.length > 0
+            ? `Disparado parcialmente (falhou: ${falhas.map((f) => f.reason?.message).join(", ")}) — atualizando em alguns minutos...`
+            : "Sincronização de títulos e OCs disparada — atualizando em alguns minutos..."
+        );
         setTimeout(() => {
           carregar().then(() => setMsgSincronizacao("Lista atualizada com o retrato mais recente do Senior."));
         }, 90000);
