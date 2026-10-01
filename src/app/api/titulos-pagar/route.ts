@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
+import { criarIndiceDossies } from "@/lib/dossieTitulo";
 
 // Programação de Contas a Pagar por título, escopo histórico completo.
 // Mesmo nível de acesso das Aprovações OC do Senior. Motor de conciliação
@@ -58,30 +59,10 @@ export async function GET() {
   for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
 
   const motor = criarMotorVinculo(ocs);
+  const indiceDossies = criarIndiceDossies(dossies);
 
-  // Dossiê por título (aba Conferência de OC). Um dossiê pode responder por
-  // mais de um título -- a OC 14934, por exemplo, informa "398A1 - 196$01" --
-  // então o índice é montado expandindo a lista, não por coluna simples.
-  // A chave preferida inclui o fornecedor; a automação nem sempre tem o
-  // CODFOR (caso do registro de erro "título sem OC"), e aí vale a chave só
-  // pelo número. Como vem ordenado do mais recente pro mais antigo, o
-  // primeiro a ocupar a chave é o dossiê mais novo daquele título.
-  const dossiePorTitulo = new Map<string, (typeof dossies)[number]>();
-  for (const d of dossies) {
-    for (const numTit of d.titulos) {
-      const limpo = numTit.trim();
-      if (!limpo) continue;
-      if (d.codFor) {
-        const comFornecedor = `${d.codFor}|${limpo}`;
-        if (!dossiePorTitulo.has(comFornecedor)) dossiePorTitulo.set(comFornecedor, d);
-      }
-      const soNumero = `*|${limpo}`;
-      if (!dossiePorTitulo.has(soNumero)) dossiePorTitulo.set(soNumero, d);
-    }
-  }
-
-  function dossieDe(codFor: string, numTit: string) {
-    const achado = dossiePorTitulo.get(`${codFor}|${numTit}`) ?? dossiePorTitulo.get(`*|${numTit}`);
+  function dossieDe(titulo: { numTit: string; codFor: string }, numOcpVinculado: string | null | undefined) {
+    const achado = indiceDossies.dossieDoTitulo({ numTit: titulo.numTit, codFor: titulo.codFor, numOcp: numOcpVinculado });
     if (!achado) return null;
     return {
       id: achado.id,
@@ -133,7 +114,7 @@ export async function GET() {
         lancadoPorNome: t.lancadoPorCod && t.lancadoPorCod !== "0" ? codToNome[t.lancadoPorCod] || `Usuário Senior #${t.lancadoPorCod}` : null,
         entradaManual: !t.numNfc || t.numNfc === "0",
         numNfc: t.numNfc && t.numNfc !== "0" ? t.numNfc : null,
-        dossie: dossieDe(t.codFor, t.numTit),
+        dossie: dossieDe(t, vinculo.ocRelacionada?.numOcp),
         // Preenchimento automatico do Pagamentos Itaú (SISPAG), quando o
         // sincronismo já trouxer isso -- ver docs/integracao-itau.md.
         codigoBarrasBoleto: t.codigoBarrasBoleto,

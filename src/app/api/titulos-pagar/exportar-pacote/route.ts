@@ -8,6 +8,8 @@ import JSZip from "jszip";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/uploadValidation";
+import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
+import { criarIndiceDossies } from "@/lib/dossieTitulo";
 
 // Pacote pra mandar pra fora do sistema (30/09/2026, pedido do João: "quando
 // eu exportar os que selecionei já vem uma pasta com o dossiê deles"): um
@@ -45,30 +47,29 @@ export async function POST(req: Request) {
   const titulos = await prisma.tituloContasAPagar.findMany({ where: { id: { in: parsed.data.ids } } });
   if (titulos.length === 0) return NextResponse.json({ error: "Nenhum título encontrado" }, { status: 404 });
 
-  const numTits = titulos.map((t) => t.numTit);
-  const dossies = await prisma.dossieOC.findMany({
-    where: { titulos: { hasSome: numTits } },
-    orderBy: { geradoEm: "desc" },
-  });
-
-  // Mesmo criterio de desempate do titulos-pagar/route.ts: prefere o dossiê
-  // que também bate o fornecedor; entre vários, o mais recente (já vem
-  // ordenado) fica pra trás no set (não sobrescreve o primeiro = mais novo).
-  const dossiePorChave = new Map<string, (typeof dossies)[number]>();
-  for (const d of dossies) {
-    for (const numTit of d.titulos) {
-      const limpo = numTit.trim();
-      if (!limpo) continue;
-      if (d.codFor) {
-        const comFornecedor = `${d.codFor}|${limpo}`;
-        if (!dossiePorChave.has(comFornecedor)) dossiePorChave.set(comFornecedor, d);
-      }
-      const soNumero = `*|${limpo}`;
-      if (!dossiePorChave.has(soNumero)) dossiePorChave.set(soNumero, d);
-    }
-  }
-  function dossieDe(codFor: string, numTit: string) {
-    return dossiePorChave.get(`${codFor}|${numTit}`) ?? dossiePorChave.get(`*|${numTit}`) ?? null;
+  // Mesmo motor de dossiê<->título do titulos-pagar/route.ts (ver
+  // src/lib/dossieTitulo.ts): sinal mais forte é a OC já confirmada pelo
+  // motor de vínculo, não a string crua de DossieOC.titulos -- por isso
+  // busca TODOS os dossiês (não só os que batem numTit literal) e TODAS as
+  // OCs, igual a Programação de Pagamento já faz.
+  const [ocs, dossies] = await Promise.all([
+    prisma.aprovacaoSenior.findMany({
+      select: {
+        numOcp: true, codFil: true, fornecedorCodigo: true, fornecedorNome: true,
+        valor: true, dataEmissao: true, situacaoAtual: true, usuNumTit: true,
+        usuNumNfc: true, codccu: true, contratoNome: true, temRateio: true, previsaoPagamento: true,
+      },
+    }),
+    prisma.dossieOC.findMany({
+      select: { id: true, numOcp: true, codFor: true, titulos: true, status: true, motivo: true, arquivoPath: true, geradoEm: true },
+      orderBy: { geradoEm: "desc" },
+    }),
+  ]);
+  const motor = criarMotorVinculo(ocs);
+  const indiceDossies = criarIndiceDossies(dossies);
+  function dossieDe(t: (typeof titulos)[number]) {
+    const numOcpVinculado = motor.ocRelacionadaDe(t).ocRelacionada?.numOcp;
+    return indiceDossies.dossieDoTitulo({ numTit: t.numTit, codFor: t.codFor, numOcp: numOcpVinculado });
   }
 
   // ---------- Excel ----------
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
     "Valor original": t.valorOriginal,
     "Valor em aberto": t.valorAberto,
     "Situação": t.pago ? "Pago" : "Não pago",
-    "Dossiê incluso": dossieDe(t.codFor, t.numTit)?.arquivoPath ? "Sim" : "Não",
+    "Dossiê incluso": dossieDe(t)?.arquivoPath ? "Sim" : "Não",
   }));
   linhas.push({
     "Título": "TOTAL",
@@ -108,7 +109,7 @@ export async function POST(req: Request) {
 
   const semDossie: string[] = [];
   for (const t of titulos) {
-    const dossie = dossieDe(t.codFor, t.numTit);
+    const dossie = dossieDe(t);
     if (!dossie?.arquivoPath) {
       semDossie.push(`${t.numTit} — ${t.fornecedorNome ?? "fornecedor código " + t.codFor} — ${dossie?.motivo || "sem dossiê gerado"}`);
       continue;
