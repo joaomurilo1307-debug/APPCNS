@@ -308,7 +308,8 @@ export default function PagamentosItauPage() {
       if (!res.ok) throw new Error(data.error || "Erro ao disparar a sincronização");
       setMensagemSync(data.mensagem || "Sincronização disparada.");
       setTimeout(() => {
-        carregarTudo().then(() => setMensagemSync("Lista atualizada com o retrato mais recente do Senior."));
+        carregarTudo();
+        setMensagemSync("Lista atualizada com o retrato mais recente do Senior.");
       }, 150000);
     } catch (e: any) {
       setErro(e.message);
