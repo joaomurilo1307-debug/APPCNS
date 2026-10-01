@@ -383,56 +383,82 @@ export default function PagamentosItauPage() {
     carregarTudo();
   }
 
+  function itemParaApi(i: ItemCarrinho) {
+    return {
+      tituloId: i.tituloId,
+      segmento: i.segmento,
+      formaPagamento: i.formaPagamento,
+      favorecidoNome: i.favorecidoNome,
+      favorecidoTipoDoc: i.favorecidoTipoDoc,
+      favorecidoDocumento: i.favorecidoDocumento.replace(/\D/g, ""),
+      bancoFavorecido: i.segmento === "A" ? i.bancoFavorecido : undefined,
+      agenciaFavorecido: i.segmento === "A" ? i.agenciaFavorecido : undefined,
+      contaFavorecido: i.segmento === "A" ? i.contaFavorecido : undefined,
+      dacFavorecido: i.segmento === "A" ? i.dacFavorecido : undefined,
+      codigoBarras: i.segmento === "J" ? i.codigoBarras.replace(/\D/g, "") : undefined,
+      chavePixTipo: i.formaPagamento === "45" ? i.chavePixTipo : undefined,
+      chavePixValor: i.formaPagamento === "45" ? i.chavePixValor : undefined,
+      valor: i.valor,
+      dataPagamento: i.dataPagamento,
+    };
+  }
+
+  async function postRemessa(itens: ItemCarrinho[]) {
+    const res = await fetch("/api/pagamentos-itau/remessas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contaBancariaId: contaSelecionadaId, itens: itens.map(itemParaApi) }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (Array.isArray(data.titulosSemOC) && data.titulosSemOC.length > 0) {
+        const lista = data.titulosSemOC
+          .map((t: any) => `• ${t.numTit} (${t.fornecedor}, ${formatMoeda(t.valor)}): ${t.motivo}`)
+          .join("\n");
+        throw new Error(`${data.error}\n\n${lista}\n\nResolva o vínculo na Programação de Pagamento antes de gerar a remessa.`);
+      }
+      if (Array.isArray(data.titulosBloqueados) && data.titulosBloqueados.length > 0) {
+        const lista = data.titulosBloqueados
+          .map((t: any) => `• ${t.numTit} (${t.fornecedor}, ${formatMoeda(t.valor)}): situação "${t.situacao}" no Senior`)
+          .join("\n");
+        throw new Error(
+          `${data.error}\n\n${lista}\n\nPodem já estar comprometidos em outro fluxo de pagamento do Senior -- remova-os do carrinho.`
+        );
+      }
+      throw new Error(data.error || "Erro ao gerar remessa");
+    }
+    return data;
+  }
+
+  // ACHADO 01/10/2026 (pedido do João: "tudo é um fluxo", programação do dia
+  // tem que sair rápido): o manual do SISPAG exige PIX numa remessa SEPARADA
+  // de boleto/TED/crédito -- um lote vindo da Programação de Pagamento
+  // quase sempre mistura as três formas. Em vez de travar tudo com um erro
+  // e obrigar a pessoa a filtrar o carrinho na mão, separa sozinho e gera
+  // uma remessa por grupo (1 ou 2 chamadas, conforme o que tiver no carrinho).
   async function gerarRemessa() {
     if (!contaSelecionadaId || carrinho.length === 0) return;
     setGerando(true);
     setErro(null);
     setMensagem(null);
+    const pix = carrinho.filter((i) => i.formaPagamento === "45");
+    const outros = carrinho.filter((i) => i.formaPagamento !== "45");
+    const grupos = [outros, pix].filter((g) => g.length > 0);
     try {
-      const res = await fetch("/api/pagamentos-itau/remessas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contaBancariaId: contaSelecionadaId,
-          itens: carrinho.map((i) => ({
-            tituloId: i.tituloId,
-            segmento: i.segmento,
-            formaPagamento: i.formaPagamento,
-            favorecidoNome: i.favorecidoNome,
-            favorecidoTipoDoc: i.favorecidoTipoDoc,
-            favorecidoDocumento: i.favorecidoDocumento.replace(/\D/g, ""),
-            bancoFavorecido: i.segmento === "A" ? i.bancoFavorecido : undefined,
-            agenciaFavorecido: i.segmento === "A" ? i.agenciaFavorecido : undefined,
-            contaFavorecido: i.segmento === "A" ? i.contaFavorecido : undefined,
-            dacFavorecido: i.segmento === "A" ? i.dacFavorecido : undefined,
-            codigoBarras: i.segmento === "J" ? i.codigoBarras.replace(/\D/g, "") : undefined,
-            chavePixTipo: i.formaPagamento === "45" ? i.chavePixTipo : undefined,
-            chavePixValor: i.formaPagamento === "45" ? i.chavePixValor : undefined,
-            valor: i.valor,
-            dataPagamento: i.dataPagamento,
-          })),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (Array.isArray(data.titulosSemOC) && data.titulosSemOC.length > 0) {
-          const lista = data.titulosSemOC
-            .map((t: any) => `• ${t.numTit} (${t.fornecedor}, ${formatMoeda(t.valor)}): ${t.motivo}`)
-            .join("\n");
-          throw new Error(`${data.error}\n\n${lista}\n\nResolva o vínculo na Programação de Pagamento antes de gerar a remessa.`);
-        }
-        if (Array.isArray(data.titulosBloqueados) && data.titulosBloqueados.length > 0) {
-          const lista = data.titulosBloqueados
-            .map((t: any) => `• ${t.numTit} (${t.fornecedor}, ${formatMoeda(t.valor)}): situação "${t.situacao}" no Senior`)
-            .join("\n");
-          throw new Error(
-            `${data.error}\n\n${lista}\n\nPodem já estar comprometidos em outro fluxo de pagamento do Senior -- remova-os do carrinho.`
-          );
-        }
-        throw new Error(data.error || "Erro ao gerar remessa");
+      const resultados: string[] = [];
+      for (const grupo of grupos) {
+        await postRemessa(grupo);
+        const ehPix = grupo[0].formaPagamento === "45";
+        resultados.push(
+          `${grupo.length} pagamento(s) ${ehPix ? "PIX" : "boleto/TED/crédito"}, ${formatMoeda(grupo.reduce((s, i) => s + i.valor, 0))}`
+        );
+        // Tira do carrinho assim que o grupo gera com sucesso -- se o
+        // próximo grupo (quando há 2) falhar, quem já foi gerado não fica
+        // disponível pra gerar de novo por engano num retry.
+        const chavesDoGrupo = new Set(grupo.map((i) => i.chave));
+        setCarrinho((c) => c.filter((i) => !chavesDoGrupo.has(i.chave)));
       }
-      setMensagem(`Remessa gerada com ${carrinho.length} pagamento(s), total ${formatMoeda(carrinho.reduce((s, i) => s + i.valor, 0))}.`);
-      setCarrinho([]);
+      setMensagem(`Remessa${grupos.length > 1 ? "s" : ""} gerada${grupos.length > 1 ? "s" : ""}: ${resultados.join(" · ")}.`);
       carregarTudo();
     } catch (e: any) {
       setErro(e.message);
