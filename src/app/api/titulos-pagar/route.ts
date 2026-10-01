@@ -17,6 +17,10 @@ export async function GET() {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 
+  // Instrumentacao temporaria (30/09/2026): rota medida em 10-30s ao vivo com
+  // 20 mil+ titulos, achar onde o tempo vai antes de decidir o fix (index?
+  // volume de OCs? laco em JS?). Remover depois de diagnosticado.
+  const _t0 = Date.now();
   const [titulos, ocs, usuariosSenior, dossies] = await Promise.all([
     prisma.tituloContasAPagar.findMany({
       orderBy: [{ pago: "asc" }, { vencimentoProgramado: "asc" }],
@@ -54,10 +58,12 @@ export async function GET() {
     }),
   ]);
 
+  const _t1 = Date.now();
   const codToNome: Record<string, string> = {};
   for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
 
   const motor = criarMotorVinculo(ocs);
+  const _t2 = Date.now();
 
   // Dossiê por título (aba Conferência de OC). Um dossiê pode responder por
   // mais de um título -- a OC 14934, por exemplo, informa "398A1 - 196$01" --
@@ -106,8 +112,7 @@ export async function GET() {
   const qtdPagos = titulos.filter((t) => t.pago).length;
   const totalPago = titulos.filter((t) => t.pago).reduce((s, t) => s + t.valorOriginal, 0);
 
-  return NextResponse.json({
-    titulos: titulos.map((t) => {
+  const titulosResposta = titulos.map((t) => {
       const vinculo = motor.ocRelacionadaDe(t);
       return {
         id: t.id,
@@ -150,12 +155,25 @@ export async function GET() {
         revisadoEm: t.revisadoEm,
         revisadoObs: t.revisadoObs,
       };
-    }),
+  });
+  const _t3 = Date.now();
+
+  return NextResponse.json({
+    titulos: titulosResposta,
     totalAberto,
     qtdAberto,
     qtdPagos,
     totalPago,
     totalTitulos: titulos.length,
     sincronizadoEm,
+    _timing: {
+      queryDbMs: _t1 - _t0,
+      montarMotorMs: _t2 - _t1,
+      mapearTitulosMs: _t3 - _t2,
+      totalMs: _t3 - _t0,
+      qtdOcs: ocs.length,
+      qtdTitulos: titulos.length,
+      qtdDossies: dossies.length,
+    },
   });
 }
