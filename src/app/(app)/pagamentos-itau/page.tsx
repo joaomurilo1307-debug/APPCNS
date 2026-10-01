@@ -187,6 +187,12 @@ export default function PagamentosItauPage() {
         // lá e manda pra cá sem redigitar -- os ids chegam pelo sessionStorage,
         // aqui so' precisa achar o titulo (mesma fonte /api/titulos-pagar) e
         // adicionar ao carrinho com o preenchimento automatico de sempre.
+        //
+        // Lote, nao confirmacao por item (01/10/2026): o clique manual
+        // pergunta um por um antes de adicionar titulo sem forma de
+        // pagamento, mas um lote de 20 aprovados nao pode abrir 20 popups
+        // em sequencia -- aqui so' soma os "sem forma" e avisa tudo numa
+        // mensagem so' no final.
         const pendente = sessionStorage.getItem("handoffRemessaItau");
         if (pendente) {
           sessionStorage.removeItem("handoffRemessaItau");
@@ -194,9 +200,16 @@ export default function PagamentosItauPage() {
             const ids: string[] = JSON.parse(pendente);
             const porId = new Map(titulosAbertos.map((t) => [t.id, t]));
             const encontrados = ids.map((id) => porId.get(id)).filter((t): t is Titulo => !!t);
-            for (const t of encontrados) adicionarAoCarrinho(t);
+            const itensMontados = encontrados.map((t) => montarItemCarrinho(t));
+            setCarrinho((c) => [...c, ...itensMontados]);
+            const semForma = itensMontados.filter(semFormaDePagamento);
             if (encontrados.length > 0) {
-              setMensagem(`${encontrados.length} título(s) trazido(s) da Programação de Pagamento.`);
+              setMensagem(
+                `${encontrados.length} título(s) trazido(s) da Programação de Pagamento` +
+                  (semForma.length > 0
+                    ? ` (${semForma.length} sem boleto/conta/PIX na Senior, precisam de dado manual: ${semForma.map((i) => i.numTit).join(", ")}).`
+                    : ".")
+              );
             }
             if (encontrados.length < ids.length) {
               setErro(`${ids.length - encontrados.length} título(s) selecionado(s) não foram encontrados aqui (já pago ou não sincronizado) e não entraram no carrinho.`);
@@ -249,7 +262,11 @@ export default function PagamentosItauPage() {
       .slice(0, 200);
   }, [titulos, busca, carrinho, vencDe, vencAte]);
 
-  function adicionarAoCarrinho(t: Titulo) {
+  // Monta o item do carrinho a partir de um título, sem efeito colateral --
+  // separado de adicionarAoCarrinho pra poder ser chamado tanto no clique
+  // manual (com confirmação) quanto no handoff em lote vindo da Programação
+  // de Pagamento (sem popup por item, ver mais abaixo).
+  function montarItemCarrinho(t: Titulo): ItemCarrinho {
     const hoje = new Date().toISOString().slice(0, 10);
     // ACHADO 01/10/2026: CPF/CNPJ só era preenchido dentro do ramo "conta
     // completa" -- título com boleto, ou com conta incompleta/nenhuma (mas
@@ -331,6 +348,31 @@ export default function PagamentosItauPage() {
       };
     }
 
+    return item;
+  }
+
+  // true quando a Senior não tem boleto, conta nem chave Pix pra esse título
+  // -- nenhuma forma automática de preenchimento se aplicou.
+  function semFormaDePagamento(item: ItemCarrinho): boolean {
+    return !item.preenchidoAutomaticamente;
+  }
+
+  function motivoSemFormaDePagamento(item: ItemCarrinho): string {
+    return item.favorecidoDocumento
+      ? `Este título não tem boleto, conta bancária nem chave PIX cadastrados na Senior — só o CPF/CNPJ (${item.favorecidoDocumento}). Vai entrar sem forma de pagamento definida, pra completar na mão.`
+      : "Este título não tem boleto, conta bancária, chave PIX nem CPF/CNPJ cadastrados na Senior. Vai entrar totalmente em branco, pra completar na mão.";
+  }
+
+  // Clique manual na lista "Títulos em aberto": pedido do João 01/10/2026 --
+  // quando não sobra nenhuma forma automática, avisa o motivo e confirma
+  // antes de adicionar, em vez de só jogar no carrinho sem a pessoa perceber
+  // que falta tudo.
+  function adicionarAoCarrinho(t: Titulo) {
+    const item = montarItemCarrinho(t);
+    if (semFormaDePagamento(item)) {
+      const confirmado = window.confirm(`${t.numTit} — ${t.fornecedorNome}\n\n${motivoSemFormaDePagamento(item)}\n\nAdicionar mesmo assim?`);
+      if (!confirmado) return;
+    }
     setCarrinho((c) => [...c, item]);
   }
 
