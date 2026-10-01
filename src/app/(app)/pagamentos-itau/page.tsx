@@ -240,6 +240,12 @@ export default function PagamentosItauPage() {
 
   function adicionarAoCarrinho(t: Titulo) {
     const hoje = new Date().toISOString().slice(0, 10);
+    // ACHADO 01/10/2026: CPF/CNPJ só era preenchido dentro do ramo "conta
+    // completa" -- título com boleto, ou com conta incompleta/nenhuma (mas
+    // documento já conhecido pela Senior), perdia o documento à toa. CPF/CNPJ
+    // é exigido pelo CNAB em QUALQUER segmento (A ou J), então entra aqui na
+    // base, igual pros três casos.
+    const documento = t.documentoFavorecido ?? "";
     const base: ItemCarrinho = {
       chave: `${t.numTit}|${t.codFil}|${t.codFor}`,
       tituloId: t.id,
@@ -249,8 +255,8 @@ export default function PagamentosItauPage() {
       preenchidoAutomaticamente: false,
       segmento: "A",
       formaPagamento: "01",
-      favorecidoTipoDoc: "2",
-      favorecidoDocumento: "",
+      favorecidoTipoDoc: documento.length === 11 ? "1" : "2",
+      favorecidoDocumento: documento,
       bancoFavorecido: "341",
       agenciaFavorecido: "",
       contaFavorecido: "",
@@ -265,7 +271,10 @@ export default function PagamentosItauPage() {
     // Preenche sozinho quando o sincronismo já trouxe o dado: boleto tem
     // prioridade (é o mais comum pra fornecedor), senão usa a conta do
     // favorecido (do título ou do cadastro do fornecedor no Senior). Continua
-    // editável — é um ponto de partida, não uma trava.
+    // editável — é um ponto de partida, não uma trava. Nota: mesmo com chave
+    // PIX cadastrada, o CNAB desse banco ainda exige banco/agência/conta/DAC
+    // reais (a chave só troca o código da forma de pagamento) -- título sem
+    // conta na Senior não tem como sair pronto, só com o documento preenchido.
     let item = base;
     if (t.codigoBarrasBoleto) {
       item = {
@@ -282,8 +291,6 @@ export default function PagamentosItauPage() {
         preenchidoAutomaticamente: true,
         // Chave PIX cadastrada no título -> PIX Transferência (mesma conta, só muda o código da forma).
         formaPagamento: t.chavePix ? "45" : contaItau ? "01" : "41",
-        favorecidoTipoDoc: t.documentoFavorecido && t.documentoFavorecido.length === 11 ? "1" : "2",
-        favorecidoDocumento: t.documentoFavorecido ?? "",
         bancoFavorecido: t.bancoFavorecido!,
         agenciaFavorecido: t.agenciaFavorecido!,
         contaFavorecido: t.contaFavorecido!,
@@ -575,6 +582,7 @@ export default function PagamentosItauPage() {
                         </span>
                       )}
                     </td>
+                    <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.vencimentoProgramado)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{formatMoeda(t.valorAberto)}</td>
                     <td className="px-2 py-1.5 text-right">
                       <button
@@ -588,7 +596,7 @@ export default function PagamentosItauPage() {
                 ))}
                 {titulosFiltrados.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-gray-400">
+                    <td colSpan={5} className="px-4 py-6 text-center text-gray-400">
                       Nenhum título encontrado.
                     </td>
                   </tr>
