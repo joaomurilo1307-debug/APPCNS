@@ -8,7 +8,15 @@
 // sem compactacao, conforme "2.1 - Intercambio de informacoes" do manual.
 
 import { alfa, brancos, dataDDMMAAAA, horaHHMMSS, montarRegistro, numero, valorMonetario, zeros } from "./campos";
-import { CODIGO_BANCO_ITAU, TIPO_MOVIMENTO, TIPO_PAGAMENTO_FORNECEDORES, segmentoDaForma } from "./constantes";
+import {
+  CODIGO_BANCO_ITAU,
+  CODIGO_COMPENSACAO_PIX,
+  FORMA_PAGAMENTO,
+  TIPO_MOVIMENTO,
+  TIPO_PAGAMENTO_FORNECEDORES,
+  TIPO_TRANSFERENCIA_PIX,
+  segmentoDaForma,
+} from "./constantes";
 import { dataVencimentoDoFator, parseCodigoBarras, valorDoCodigoBarras } from "./codigoBarras";
 import type { ContaDebito, ItemRemessa } from "./tipos";
 
@@ -88,6 +96,14 @@ function montarHeaderLote(conta: ContaDebito, numeroLote: string, formaPagamento
 
 function detalheSegmentoA(numeroLote: string, numeroRegistro: number, item: ItemRemessa): string {
   const finalidadeTed = "00005"; // Nota 26: "Pagamento de Fornecedores"
+  const ehPix = item.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
+  const temContaReal = !!(item.bancoFavorecido && item.agenciaFavorecido && item.contaFavorecido && item.dacFavorecido);
+  // Nota 71/36: PIX leva "009" (codigo de compensacao do SPI) nas posicoes
+  // 018-020, no lugar da camara/zeros de um TED comum, e o tipo de
+  // transferencia nas posicoes 113-114. Modelo "Chave" (04) quando nao ha
+  // conta bancaria real do favorecido -- e' o caso de quem so' tem Pix
+  // cadastrado na Senior, sem banco/agencia/conta.
+  const tipoTransferenciaPix = temContaReal ? TIPO_TRANSFERENCIA_PIX.CONTA_CORRENTE : TIPO_TRANSFERENCIA_PIX.CHAVE;
   return montarRegistro([
     numero(CODIGO_BANCO_ITAU, 3),
     numero(numeroLote, 4),
@@ -95,15 +111,18 @@ function detalheSegmentoA(numeroLote: string, numeroRegistro: number, item: Item
     numero(numeroRegistro, 5),
     "A",
     numero(TIPO_MOVIMENTO.INCLUSAO, 3),
-    zeros(3), // camara centralizadora (so' TED p/ corretora)
-    numero(item.bancoFavorecido ?? CODIGO_BANCO_ITAU, 3),
+    ehPix ? numero(CODIGO_COMPENSACAO_PIX, 3) : zeros(3), // camara centralizadora (so' TED p/ corretora) / codigo SPI pra PIX
+    // Banco favorecido "000" quando PIX via chave sem conta real -- nao
+    // existe banco de verdade a declarar (achado 01/10/2026, Radioenlace e
+    // outros fornecedores so' com chave Pix cadastrada).
+    numero(item.bancoFavorecido ?? (ehPix && !temContaReal ? "0" : CODIGO_BANCO_ITAU), 3),
     agenciaContaFavorecido(item),
     alfa(item.favorecidoNome, 30),
     alfa(item.referenciaEmpresa, 20), // "seu numero"
     dataDDMMAAAA(item.dataPagamento),
     alfa("REA", 3), // moeda
-    brancos(8), // codigo ISPB
-    brancos(2), // identificacao transferencia conta pagamento / PIX (nao usado)
+    brancos(8), // codigo ISPB -- so' exigido p/ TED conta pagamento (Nota 35), nao pro modelo Chave
+    ehPix ? alfa(tipoTransferenciaPix, 2) : brancos(2), // identificacao transferencia conta pagamento / PIX (Nota 36)
     zeros(5),
     valorMonetario(item.valor, 13, 2),
     brancos(15), // nosso numero (so' retorno)
@@ -117,6 +136,29 @@ function detalheSegmentoA(numeroLote: string, numeroRegistro: number, item: Item
     alfa(finalidadeTed, 5),
     brancos(5),
     "0", // aviso ao favorecido: nao emite
+    brancos(10), // ocorrencias (so' retorno)
+  ]);
+}
+
+// Segmento B obrigatorio pra PIX Transferencia no modelo "Chave" (manual
+// pag. 22, Nota 37) -- carrega a chave Pix de verdade. So' gerado quando o
+// item e' PIX; vai sempre logo apos o Segmento A correspondente, mesmo
+// numero de registro (Nota 9).
+function detalheSegmentoBPix(numeroLote: string, numeroRegistro: number, item: ItemRemessa): string {
+  return montarRegistro([
+    numero(CODIGO_BANCO_ITAU, 3),
+    numero(numeroLote, 4),
+    numero(3, 1),
+    numero(numeroRegistro, 5),
+    "B",
+    alfa(item.chavePixTipo ?? "", 2), // tipo chave: 01 telefone / 02 e-mail / 03 CPF-CNPJ / 04 aleatoria
+    brancos(1),
+    numero(item.favorecidoTipoDocumento, 1),
+    numero(item.favorecidoDocumento, 14),
+    brancos(30), // posicoes 33-62, sem nome no manual -- preenchimento
+    brancos(65), // informacoes entre usuarios (63-127, opcional, nao usamos)
+    alfa(item.chavePixValor ?? "", 100), // chave de enderecamento (Nota 40)
+    brancos(3),
     brancos(10), // ocorrencias (so' retorno)
   ]);
 }
@@ -236,6 +278,20 @@ export type ResultadoRemessa = {
 export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], dataGeracao: Date = new Date()): ResultadoRemessa {
   if (itens.length === 0) throw new Error("Nenhum item para gerar remessa.");
 
+  // Manual pag. 8 ("2.2 Explicacoes gerais sobre o arquivo"): "Os lotes de
+  // servicos de pagamentos na forma de PIX devem ser enviados
+  // obrigatoriamente em arquivo separado das demais formas de pagamento."
+  // Nao da pra misturar PIX com TED/boleto no mesmo .rem -- se a selecao
+  // tiver as duas coisas, melhor recusar com uma mensagem clara do que gerar
+  // um arquivo que o banco provavelmente rejeita inteiro.
+  const temPix = itens.some((i) => i.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA);
+  const temOutraForma = itens.some((i) => i.formaPagamento !== FORMA_PAGAMENTO.PIX_TRANSFERENCIA);
+  if (temPix && temOutraForma) {
+    throw new Error(
+      "PIX Transferência não pode ir na mesma remessa que outras formas de pagamento (exigência do manual SISPAG) -- gere os itens PIX numa remessa separada dos boletos/TED/crédito."
+    );
+  }
+
   const formasNaOrdem: string[] = [];
   const porForma = new Map<string, ItemRemessa[]>();
   for (const item of itens) {
@@ -268,6 +324,14 @@ export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], da
       if (segmento === "J") {
         linhas.push(detalheSegmentoJ(numeroLoteStr, numeroRegistro, item));
         linhas.push(detalheSegmentoJ52(numeroLoteStr, numeroRegistro, item, conta));
+        registrosDetalhe += 2;
+      } else if (item.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA) {
+        // Segmento B obrigatorio pra PIX no modelo Chave (Nota 37) -- vai
+        // sempre junto, mesmo quando o pagamento usa conta real (nao custa
+        // nada emitir e evita ficar dependente de saber se o banco vai
+        // exigir ou nao caso a conta informada nao exista de verdade).
+        linhas.push(detalheSegmentoA(numeroLoteStr, numeroRegistro, item));
+        linhas.push(detalheSegmentoBPix(numeroLoteStr, numeroRegistro, item));
         registrosDetalhe += 2;
       } else {
         linhas.push(detalheSegmentoA(numeroLoteStr, numeroRegistro, item));

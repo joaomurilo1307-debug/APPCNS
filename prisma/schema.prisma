@@ -1203,6 +1203,12 @@ model RemessaItemPagamento {
   // Segmento J (boleto em cobranca)
   codigoBarras       String?
 
+  // Segmento B obrigatorio pra PIX no modelo "Chave" (Nota 37 do manual) --
+  // so' preenchido quando formaPagamento = "45" e o favorecido nao tem conta
+  // bancaria completa, so' chave Pix.
+  chavePixTipo       String?
+  chavePixValor      String?
+
   valor              Float
   dataPagamento      DateTime
 

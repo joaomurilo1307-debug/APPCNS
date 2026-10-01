@@ -57,8 +57,19 @@ type ItemCarrinho = {
   codigoBarras: string;
   valor: number;
   dataPagamento: string;
-  chavePix?: string; // só exibição -- não vai no CNAB
+  chavePix?: string; // rótulo pra exibição ("chave (tipo)")
+  // Segmento B obrigatório pra PIX no modelo "Chave" (Nota 37 do manual) --
+  // só preenchido quando formaPagamento = "45" e não há conta bancária completa.
+  chavePixTipo?: "01" | "02" | "03" | "04";
+  chavePixValor?: string;
 };
+
+// Nota 37 do manual: código de 2 dígitos no CNAB. Mesma numeração do TPCPIX
+// da Senior ("1" a "4"), só com zero à esquerda.
+function tipoChavePixCnab(tpcpix: string | null): "01" | "02" | "03" | "04" | undefined {
+  const mapa: Record<string, "01" | "02" | "03" | "04"> = { "1": "01", "2": "02", "3": "03", "4": "04" };
+  return tpcpix ? mapa[tpcpix] : undefined;
+}
 
 type Remessa = {
   id: string;
@@ -268,13 +279,17 @@ export default function PagamentosItauPage() {
       chavePix: t.chavePix ? `${t.chavePix} (${TIPO_CHAVE_PIX[t.tipoChavePix ?? ""] ?? t.tipoChavePix ?? "?"})` : undefined,
     };
 
-    // Preenche sozinho quando o sincronismo já trouxe o dado: boleto tem
-    // prioridade (é o mais comum pra fornecedor), senão usa a conta do
-    // favorecido (do título ou do cadastro do fornecedor no Senior). Continua
-    // editável — é um ponto de partida, não uma trava. Nota: mesmo com chave
-    // PIX cadastrada, o CNAB desse banco ainda exige banco/agência/conta/DAC
-    // reais (a chave só troca o código da forma de pagamento) -- título sem
-    // conta na Senior não tem como sair pronto, só com o documento preenchido.
+    // Preenche sozinho quando o sincronismo já trouxe o dado, em ordem de
+    // prioridade: boleto > conta bancária completa > só chave Pix. Continua
+    // editável — é um ponto de partida, não uma trava.
+    //
+    // ACHADO 01/10/2026 (manual SISPAG oficial, pedido do João): título sem
+    // conta mas COM chave Pix cadastrada na Senior não precisa ficar em
+    // branco -- o CNAB tem um Segmento B próprio pra isso ("modelo Chave",
+    // Nota 37), obrigatório só nesse caso. Só fica realmente sem jeito de
+    // preencher quando a Senior não tem boleto, nem conta, nem chave -- aí
+    // o fornecedor nunca informou nenhuma forma de recebimento eletrônica.
+    const tipoChaveCnab = tipoChavePixCnab(t.tipoChavePix);
     let item = base;
     if (t.codigoBarrasBoleto) {
       item = {
@@ -295,6 +310,24 @@ export default function PagamentosItauPage() {
         agenciaFavorecido: t.agenciaFavorecido!,
         contaFavorecido: t.contaFavorecido!,
         dacFavorecido: t.dacFavorecido!,
+        chavePixTipo: t.chavePix ? tipoChaveCnab : undefined,
+        chavePixValor: t.chavePix ? t.chavePix : undefined,
+      };
+    } else if (t.chavePix && tipoChaveCnab) {
+      item = {
+        ...base,
+        preenchidoAutomaticamente: true,
+        formaPagamento: "45",
+        // Sem conta real -- é a chave quem carrega o destino (Segmento B).
+        // Zera os campos de conta do "base" (que default pra "341" quando
+        // nenhum ramo se aplica) pra tela e validação reconhecerem certo
+        // que este item não tem conta bancária.
+        bancoFavorecido: "",
+        agenciaFavorecido: "",
+        contaFavorecido: "",
+        dacFavorecido: "",
+        chavePixTipo: tipoChaveCnab,
+        chavePixValor: t.chavePix,
       };
     }
 
@@ -373,6 +406,8 @@ export default function PagamentosItauPage() {
             contaFavorecido: i.segmento === "A" ? i.contaFavorecido : undefined,
             dacFavorecido: i.segmento === "A" ? i.dacFavorecido : undefined,
             codigoBarras: i.segmento === "J" ? i.codigoBarras.replace(/\D/g, "") : undefined,
+            chavePixTipo: i.formaPagamento === "45" ? i.chavePixTipo : undefined,
+            chavePixValor: i.formaPagamento === "45" ? i.chavePixValor : undefined,
             valor: i.valor,
             dataPagamento: i.dataPagamento,
           })),
@@ -435,9 +470,10 @@ export default function PagamentosItauPage() {
         <h1 className="text-xl font-semibold">Pagamentos Itaú (SISPAG)</h1>
         <p className="mt-0.5 max-w-3xl text-sm text-gray-500">
           Gera o arquivo de remessa CNAB240 (padrão SISPAG do Itaú) a partir de títulos em aberto e processa o arquivo de retorno
-          para atualizar o status de cada pagamento. Dados bancários/CPF-CNPJ/código de barras vêm direto da sincronização com a
-          Senior (atualize com o botão abaixo se o título for recente) — quando algum vier vazio, é porque a Senior não tem
-          esse cadastro pra esse fornecedor, não falta nada aqui pra preencher automaticamente.
+          para atualizar o status de cada pagamento. Boleto, conta bancária ou chave PIX vêm direto da sincronização com a
+          Senior (atualize com o botão abaixo se o título for recente), na prioridade boleto → conta → chave PIX. PIX via chave
+          exige remessa separada de boleto/TED (exigência do próprio manual do banco — gere em arquivos diferentes). Quando tudo
+          vier vazio, é porque a Senior não tem nenhum cadastro de pagamento pra esse fornecedor — peça direto a ele.
         </p>
       </div>
 
@@ -703,7 +739,58 @@ export default function PagamentosItauPage() {
                       />
                     </label>
 
-                    {formaInfo.segmento === "A" ? (
+                    {formaInfo.segmento === "J" ? (
+                      <label className="col-span-2">
+                        Código de barras / linha digitável do boleto
+                        <input
+                          value={item.codigoBarras}
+                          onChange={(e) => atualizarItem(item.chave, { codigoBarras: e.target.value })}
+                          placeholder="44 ou 47 dígitos"
+                          className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                        />
+                      </label>
+                    ) : item.formaPagamento === "45" && !item.bancoFavorecido ? (
+                      // PIX no modelo "Chave" (Nota 37 do manual): não tem conta bancária
+                      // real do favorecido, só a chave -- é o Segmento B que carrega isso,
+                      // não o banco/agência/conta do Segmento A.
+                      <>
+                        <label>
+                          Tipo de chave
+                          <select
+                            value={item.chavePixTipo ?? ""}
+                            onChange={(e) => atualizarItem(item.chave, { chavePixTipo: e.target.value as ItemCarrinho["chavePixTipo"] })}
+                            className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                          >
+                            <option value="">selecione...</option>
+                            <option value="01">Telefone</option>
+                            <option value="02">E-mail</option>
+                            <option value="03">CPF/CNPJ</option>
+                            <option value="04">Chave aleatória</option>
+                          </select>
+                        </label>
+                        <label>
+                          Chave PIX
+                          <input
+                            value={item.chavePixValor ?? ""}
+                            onChange={(e) => atualizarItem(item.chave, { chavePixValor: e.target.value })}
+                            className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            atualizarItem(item.chave, {
+                              formaPagamento: "01",
+                              chavePixTipo: undefined,
+                              chavePixValor: undefined,
+                            })
+                          }
+                          className="col-span-2 text-left text-[11px] text-brand underline"
+                        >
+                          Tenho a conta bancária real desse favorecido — usar TED/crédito em vez de PIX
+                        </button>
+                      </>
+                    ) : (
                       <>
                         <label>
                           Banco favorecido
@@ -738,21 +825,11 @@ export default function PagamentosItauPage() {
                           />
                         </label>
                       </>
-                    ) : (
-                      <label className="col-span-2">
-                        Código de barras / linha digitável do boleto
-                        <input
-                          value={item.codigoBarras}
-                          onChange={(e) => atualizarItem(item.chave, { codigoBarras: e.target.value })}
-                          placeholder="44 ou 47 dígitos"
-                          className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
-                        />
-                      </label>
                     )}
-                    {item.chavePix && (
+                    {item.chavePix && item.formaPagamento === "45" && !!item.bancoFavorecido && (
                       <p className="col-span-2 text-[11px] text-gray-500">
-                        Chave PIX na Senior: <span className="font-medium text-gray-700">{item.chavePix}</span> — informativo; o
-                        arquivo usa a conta acima mesmo na forma PIX Transferência.
+                        Chave PIX na Senior: <span className="font-medium text-gray-700">{item.chavePix}</span> — informativo; já há
+                        conta bancária real, o arquivo usa a conta acima (Segmento B leva a chave como complemento).
                       </p>
                     )}
                   </div>

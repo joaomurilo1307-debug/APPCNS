@@ -27,6 +27,13 @@ export type ItemRemessa = {
 
   // Segmento J (boleto em cobranca)
   codigoBarras?: string;
+
+  // Segmento B obrigatorio pra PIX Transferencia no modelo "Chave" (Nota 37
+  // do manual): usado quando o favorecido so' tem chave Pix cadastrada, sem
+  // conta bancaria completa. "01" telefone / "02" e-mail / "03" CPF-CNPJ /
+  // "04" aleatoria -- mesmo codigo do TPCPIX da Senior, so' com zero a esquerda.
+  chavePixTipo?: "01" | "02" | "03" | "04";
+  chavePixValor?: string;
 };
 
 export type OcorrenciaRetorno = {

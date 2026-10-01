@@ -26,6 +26,11 @@ const itemSchema = z
     contaFavorecido: z.string().optional(),
     dacFavorecido: z.string().optional(),
     codigoBarras: z.string().optional(),
+    // Segmento B obrigatorio pra PIX no modelo "Chave" (Nota 37 do manual) --
+    // so' preenchido quando formaPagamento = "45" (PIX Transferencia) e o
+    // favorecido nao tem conta bancaria completa.
+    chavePixTipo: z.enum(["01", "02", "03", "04"]).optional(),
+    chavePixValor: z.string().optional(),
     valor: z.number().positive(),
     dataPagamento: z.string(), // yyyy-mm-dd
   })
@@ -33,10 +38,17 @@ const itemSchema = z
     message: "Boleto (Segmento J) exige código de barras",
     path: ["codigoBarras"],
   })
-  .refine((i) => i.segmento === "J" || (!!i.bancoFavorecido && !!i.agenciaFavorecido && !!i.contaFavorecido && !!i.dacFavorecido), {
-    message: "Crédito/TED (Segmento A) exige banco/agência/conta/DAC do favorecido",
-    path: ["bancoFavorecido"],
-  });
+  .refine(
+    (i) =>
+      i.segmento === "J" ||
+      (!!i.bancoFavorecido && !!i.agenciaFavorecido && !!i.contaFavorecido && !!i.dacFavorecido) ||
+      // PIX no modelo Chave dispensa conta bancaria real -- a chave resolve o destino (manual pag. 22).
+      (i.formaPagamento === "45" && !!i.chavePixTipo && !!i.chavePixValor),
+    {
+      message: "Crédito/TED (Segmento A) exige banco/agência/conta/DAC do favorecido, ou (PIX) tipo e valor da chave",
+      path: ["bancoFavorecido"],
+    }
+  );
 
 const bodySchema = z.object({
   contaBancariaId: z.string(),
@@ -160,6 +172,8 @@ export async function POST(req: Request) {
             contaFavorecido: item.contaFavorecido ?? null,
             dacFavorecido: item.dacFavorecido ?? null,
             codigoBarras: codigoBarras ?? null,
+            chavePixTipo: item.chavePixTipo ?? null,
+            chavePixValor: item.chavePixValor ?? null,
             valor: item.valor,
             dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
           },
@@ -179,6 +193,8 @@ export async function POST(req: Request) {
           contaFavorecido: item.contaFavorecido,
           dacFavorecido: item.dacFavorecido,
           codigoBarras,
+          chavePixTipo: item.chavePixTipo,
+          chavePixValor: item.chavePixValor,
         });
       }
 

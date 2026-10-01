@@ -22,11 +22,39 @@ export const FORMA_PAGAMENTO = {
 
 export type FormaPagamento = (typeof FORMA_PAGAMENTO)[keyof typeof FORMA_PAGAMENTO];
 
-/** Segmento A e' usado para as formas de credito/TED; J para boleto. */
+/** Segmento A e' usado para as formas de credito/TED/PIX; J para boleto. */
 export function segmentoDaForma(forma: string): "A" | "J" {
   if (forma === FORMA_PAGAMENTO.BOLETO_ITAU || forma === FORMA_PAGAMENTO.BOLETO_OUTROS_BANCOS) return "J";
   return "A";
 }
+
+// PIX Transferencia (manual pag. 9, 22, 71 -- Notas 35/36/37): vai pelo
+// Segmento A normal, mas com 3 diferencas em relacao a credito/TED comuns:
+//   1. Posicao 018-020 do Segmento A leva "009" (codigo de compensacao do
+//      SPI), nao a camara/zeros de um TED comum.
+//   2. Posicao 113-114 do Segmento A leva o tipo de transferencia (Nota 36).
+//   3. Segmento B fica OBRIGATORIO quando o modelo e' "Chave" (tipo 04) --
+//      e' ele que carrega a chave Pix de verdade (posicoes 128-227).
+// Alem disso, pagamentos PIX tem que ir em arquivo SEPARADO das demais
+// formas (pag. 8, "2.2 Explicacoes gerais sobre o arquivo") -- nao da pra
+// misturar PIX com TED/boleto no mesmo arquivo de remessa.
+export const CODIGO_COMPENSACAO_PIX = "009";
+
+/** Nota 36 do manual: tipo de transferencia nas posicoes 113-114 do Segmento A, so' quando a forma for PIX. */
+export const TIPO_TRANSFERENCIA_PIX = {
+  CONTA_CORRENTE: "01",
+  CONTA_PAGAMENTO: "PG",
+  CONTA_POUPANCA: "03",
+  CHAVE: "04",
+} as const;
+
+/** Nota 37 do manual: tipo de chave Pix no Segmento B (mesmo codigo do TPCPIX da Senior: 1 a 4). */
+export const TIPO_CHAVE_PIX = {
+  TELEFONE: "01",
+  EMAIL: "02",
+  CPF_CNPJ: "03",
+  ALEATORIA: "04",
+} as const;
 
 /** Nota 10 do manual: tipo de movimento no registro de detalhe. */
 export const TIPO_MOVIMENTO = {
