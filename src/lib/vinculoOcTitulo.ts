@@ -165,6 +165,24 @@ export function prefixoParcela(valor: string | null | undefined) {
 
 const PADRAO_NAO_OC = /SECRETARIA DE (ESTADO|FAZENDA)|GOVERNO FEDERAL|MINISTERIO DA FAZENDA|RECEITA FEDERAL|PREFEITURA|MUNICIPIO DE|INSS\b|FGTS\b|CAIXA ECON.MICA|FOPAG|FORNECEDORES DIVERSOS|SALARIO|INPS/i;
 
+// Puras, sem estado -- extraídas do motor pra reaproveitar fora dele (ex:
+// achar o candidato de uma OC específica sem rodar o motor pra todos os
+// títulos). Usadas também dentro de criarMotorVinculo, mesma implementação.
+export function distanciaDias(a: Date | null | undefined, b: Date | null | undefined) {
+  if (!a || !b) return null;
+  return Math.abs(a.getTime() - b.getTime()) / 86400000;
+}
+
+export function mesmoValor(a: number, b: number) {
+  return Math.abs(a - b) < 0.01;
+}
+
+export function dataCompativel(oc: OcParaVinculo, titulo: TituloParaVinculo) {
+  const previsao = distanciaDias(oc.previsaoPagamento, titulo.vencimentoProgramado);
+  const emissao = distanciaDias(oc.dataEmissao, titulo.dataEmissao);
+  return (previsao !== null && previsao <= 3) || (emissao !== null && emissao <= 45);
+}
+
 // Exceção confirmada pelo João diretamente no Senior em 14/09/2026. Chaveia
 // pelo título e pelo fornecedor, não por todos os lançamentos do mesmo
 // fornecedor -- outro título só poderá ser liberado quando tiver sua
@@ -253,21 +271,6 @@ export function criarMotorVinculo(ocs: OcParaVinculo[]) {
 
   function filtrarCandidatasValidas(titulo: TituloParaVinculo, candidatas: OcParaVinculo[]) {
     return candidatas.filter((oc) => fornecedorCompativel(titulo, oc) && filialCompativel(titulo, oc));
-  }
-
-  function distanciaDias(a: Date | null | undefined, b: Date | null | undefined) {
-    if (!a || !b) return null;
-    return Math.abs(a.getTime() - b.getTime()) / 86400000;
-  }
-
-  function mesmoValor(a: number, b: number) {
-    return Math.abs(a - b) < 0.01;
-  }
-
-  function dataCompativel(oc: OcParaVinculo, titulo: TituloParaVinculo) {
-    const previsao = distanciaDias(oc.previsaoPagamento, titulo.vencimentoProgramado);
-    const emissao = distanciaDias(oc.dataEmissao, titulo.dataEmissao);
-    return (previsao !== null && previsao <= 3) || (emissao !== null && emissao <= 45);
   }
 
   // Uma referência pode aparecer em mais de uma OC (reprocessamento, compra
