@@ -9,7 +9,12 @@ import { prisma } from "@/lib/prisma";
 // resultado -- nao mexe em nada do motor de vinculoOcTitulo.ts, e' so' um
 // rastro de acompanhamento pra saber o que ja foi olhado.
 const bodySchema = z.object({
-  revisadoStatus: z.enum(["APROVADO", "CORRIGIDO", "SEM_OC_CONFIRMADO", "AGUARDANDO_COMPRAS"]).nullable(),
+  // ENVIADO_AGUARDANDO_BAIXA (01/10/2026): pagamento ja' foi enviado ao banco
+  // fora deste app (ou via remessa gerada aqui), mas a baixa no Senior ainda
+  // nao foi lancada por quem cuida disso -- "pago" continua vindo SO' do
+  // VLRABE da Senior (nunca forcado por aqui), isso e' so' um rastro pra
+  // nao confundir "ja mandei, falta so' a baixa" com "backlog esquecido".
+  revisadoStatus: z.enum(["APROVADO", "CORRIGIDO", "SEM_OC_CONFIRMADO", "AGUARDANDO_COMPRAS", "ENVIADO_AGUARDANDO_BAIXA"]).nullable(),
   revisadoObs: z.string().max(500).nullable().optional(),
 });
 

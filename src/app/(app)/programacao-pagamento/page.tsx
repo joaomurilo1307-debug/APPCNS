@@ -10,12 +10,19 @@ const REVISAO_LABEL: Record<string, string> = {
   CORRIGIDO: "Corrigido",
   SEM_OC_CONFIRMADO: "Sem OC (confirmado)",
   AGUARDANDO_COMPRAS: "Aguardando compras",
+  // 01/10/2026: pagamento ja' foi enviado ao banco, mas o Senior ainda nao
+  // tem a baixa lancada (confirmado na fonte: VLRABE continua positivo,
+  // ULTPGT vazio) -- "Não pago" continua tecnicamente certo (vem so' do
+  // Senior, nunca forcado por aqui), isso so' evita confundir "ja mandei,
+  // falta so' a baixa" com um backlog esquecido de verdade.
+  ENVIADO_AGUARDANDO_BAIXA: "Enviado (aguarda baixa Senior)",
 };
 const REVISAO_COR: Record<string, string> = {
   APROVADO: "bg-brand text-white",
   CORRIGIDO: "bg-emerald-100 text-emerald-800",
   SEM_OC_CONFIRMADO: "bg-gray-200 text-gray-700",
   AGUARDANDO_COMPRAS: "bg-amber-100 text-amber-800",
+  ENVIADO_AGUARDANDO_BAIXA: "bg-sky-100 text-sky-800",
 };
 
 // Achado 30/09/2026: o Senior tem 7 status de título (AB, LQ, CA, PE, AV,
@@ -1078,6 +1085,7 @@ export default function ProgramacaoPagamentoPage() {
                     <option value="CORRIGIDO">Corrigido</option>
                     <option value="SEM_OC_CONFIRMADO">Sem OC (confirmado)</option>
                     <option value="AGUARDANDO_COMPRAS">Aguardando compras</option>
+                    <option value="ENVIADO_AGUARDANDO_BAIXA">Enviado (aguarda baixa Senior)</option>
                   </select>
                 </td>
               </tr>
