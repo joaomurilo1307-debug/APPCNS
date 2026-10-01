@@ -71,6 +71,14 @@ function tipoChavePixCnab(tpcpix: string | null): "01" | "02" | "03" | "04" | un
   return tpcpix ? mapa[tpcpix] : undefined;
 }
 
+type RetornoDaRemessa = {
+  id: string;
+  nomeArquivo: string;
+  processadoEm: string;
+  totalReconhecidos: number;
+  temArquivo: boolean;
+};
+
 type Remessa = {
   id: string;
   status: string;
@@ -84,6 +92,7 @@ type Remessa = {
   qtdPendentes: number;
   qtdPagos: number;
   qtdRejeitados: number;
+  retornos: RetornoDaRemessa[];
 };
 
 // Guarda o rascunho (carrinho, conta escolhida, filtros) no navegador -- sair
@@ -966,6 +975,32 @@ export default function PagamentosItauPage() {
                 </td>
               </tr>
             ))}
+            {remessas.flatMap((r) =>
+              r.retornos.map((ret) => (
+                <tr key={ret.id} className="border-t border-gray-50 bg-gray-50/40 text-gray-500">
+                  <td className="px-3 py-1 pl-6 text-[12px]" colSpan={3}>
+                    ↳ retorno importado: {ret.nomeArquivo} ({formatData(ret.processadoEm)}, {ret.totalReconhecidos}{" "}
+                    reconhecido(s))
+                  </td>
+                  <td className="px-3 py-1" colSpan={3} />
+                  <td className="px-3 py-1 text-right">
+                    {ret.temArquivo ? (
+                      <a
+                        href={`/api/pagamentos-itau/retornos/${ret.id}/arquivo-senior`}
+                        title="Mesmo retorno (CNAB240), com quebra de linha CRLF e extensão .REM, pra importar em Finanças > Contas a Pagar > Pagamento Eletrônico > Retorno (F510PRT) na Sênior"
+                        className="text-[11px] text-brand underline decoration-dotted underline-offset-2"
+                      >
+                        baixar p/ Sênior (.REM)
+                      </a>
+                    ) : (
+                      <span className="text-[11px] text-gray-300" title="Retorno importado antes desta função existir — sem conteúdo salvo pra reexportar">
+                        —
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
             {remessas.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-6 text-center text-gray-400">

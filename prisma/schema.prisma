@@ -1240,6 +1240,11 @@ model RetornoPagamentoArquivo {
   totalReconhecidos Int     @default(0) // linhas cujo "Seu Numero" bateu com algum RemessaItemPagamento
   processadoPorId  String?
   processadoEm     DateTime @default(now())
+  // 01/10/2026: conteudo bruto do .ret recebido do Itau, guardado pra poder
+  // re-exportar pra Senior (F510PRT exige CNAB240 com extensao valida --
+  // .TXT/.REM/.DOC -- nao a .ret que o banco entrega). Mesmo padrao do
+  // RemessaPagamento.conteudoArquivo.
+  conteudoArquivo  String?  @db.Text
 
   remessa     RemessaPagamento? @relation(fields: [remessaId], references: [id], onDelete: SetNull)
   processadoPor User?           @relation(fields: [processadoPorId], references: [id], onDelete: SetNull)

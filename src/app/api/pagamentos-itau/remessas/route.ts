@@ -66,7 +66,7 @@ export async function GET() {
       contaBancaria: { select: { apelido: true } },
       criadoPor: { select: { name: true } },
       itens: { select: { id: true, status: true, valor: true } },
-      retornos: { select: { id: true, nomeArquivo: true, processadoEm: true, totalReconhecidos: true } },
+      retornos: { select: { id: true, nomeArquivo: true, processadoEm: true, totalReconhecidos: true, conteudoArquivo: true } },
     },
     orderBy: { criadoEm: "desc" },
   });
@@ -86,7 +86,13 @@ export async function GET() {
       qtdPendentes: r.itens.filter((i) => i.status === "PENDENTE").length,
       qtdPagos: r.itens.filter((i) => i.status === "PAGO").length,
       qtdRejeitados: r.itens.filter((i) => i.status === "REJEITADO").length,
-      retornos: r.retornos,
+      retornos: r.retornos.map((ret) => ({
+        id: ret.id,
+        nomeArquivo: ret.nomeArquivo,
+        processadoEm: ret.processadoEm,
+        totalReconhecidos: ret.totalReconhecidos,
+        temArquivo: !!ret.conteudoArquivo,
+      })),
     })),
   });
 }

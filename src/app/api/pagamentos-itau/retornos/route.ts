@@ -85,6 +85,7 @@ export async function POST(req: Request) {
       totalRegistros: lido.itens.length,
       totalReconhecidos: reconhecidos,
       processadoPorId: user.id,
+      conteudoArquivo: parsed.data.conteudo,
     },
   });
 
