@@ -294,6 +294,10 @@ export default function PagamentosItauPage() {
     setCarrinho((c) => [...c, item]);
   }
 
+  // Fire-and-forget (30/09/2026): a rota so' dispara o webhook e volta na
+  // hora -- a sincronizacao de verdade roda no VPS (SSH, sem proxy no meio,
+  // ver nota na rota). Por isso aqui so' avisa que foi disparado e recarrega
+  // a lista sozinho depois de alguns minutos, igual a Programacao de Pagamento.
   async function sincronizarComSenior() {
     setSincronizando(true);
     setErro(null);
@@ -301,11 +305,11 @@ export default function PagamentosItauPage() {
     try {
       const res = await fetch("/api/pagamentos-itau/sincronizar-titulos", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao consultar a Senior");
-      setMensagemSync(
-        `Atualizado agora: ${data.totalSenior} título(s) em aberto na Senior, ${data.comContaCompleta} com conta bancária completa.`
-      );
-      carregarTudo();
+      if (!res.ok) throw new Error(data.error || "Erro ao disparar a sincronização");
+      setMensagemSync(data.mensagem || "Sincronização disparada.");
+      setTimeout(() => {
+        carregarTudo().then(() => setMensagemSync("Lista atualizada com o retrato mais recente do Senior."));
+      }, 150000);
     } catch (e: any) {
       setErro(e.message);
     } finally {
@@ -423,8 +427,9 @@ export default function PagamentosItauPage() {
         <h1 className="text-xl font-semibold">Pagamentos Itaú (SISPAG)</h1>
         <p className="mt-0.5 max-w-3xl text-sm text-gray-500">
           Gera o arquivo de remessa CNAB240 (padrão SISPAG do Itaú) a partir de títulos em aberto e processa o arquivo de retorno
-          para atualizar o status de cada pagamento. Dados bancários/código de barras do favorecido são preenchidos aqui pois o
-          sincronismo do Senior ainda não os traz — ver docs/integracao-itau.md.
+          para atualizar o status de cada pagamento. Dados bancários/CPF-CNPJ/código de barras vêm direto da sincronização com a
+          Senior (atualize com o botão abaixo se o título for recente) — quando algum vier vazio, é porque a Senior não tem
+          esse cadastro pra esse fornecedor, não falta nada aqui pra preencher automaticamente.
         </p>
       </div>
 
@@ -510,10 +515,10 @@ export default function PagamentosItauPage() {
               <button
                 onClick={sincronizarComSenior}
                 disabled={sincronizando}
-                title="Busca os títulos em aberto direto na Senior agora, em vez de confiar só no último `npm run senior:sync` rodado manualmente."
+                title="Dispara a sincronização com a Senior (títulos + dados bancários). Roda em segundo plano, leva 2-3 minutos pra refletir aqui."
                 className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
               >
-                {sincronizando ? "Consultando a Senior... (pode levar alguns minutos)" : "Atualizar do Senior agora"}
+                {sincronizando ? "Disparando..." : "Atualizar do Senior agora"}
               </button>
             </div>
             {mensagemSync && <p className="mb-2 text-[11px] text-gray-500">{mensagemSync}</p>}
