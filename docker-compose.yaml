@@ -52,6 +52,15 @@ services:
       - "traefik.http.routers.consominas-gestao.entrypoints=websecure"
       - "traefik.http.routers.consominas-gestao.tls.certresolver=letsencrypt"
       - "traefik.http.services.consominas-gestao.loadbalancer.server.port=3000"
+      # Achado 30/09/2026 (sistema lento): GET /api/titulos-pagar devolve
+      # ~25MB de JSON SEM NENHUMA compressao (confirmado com Accept-Encoding:
+      # gzip explicito, de fora do navegador -- Content-Encoding vinha nulo e
+      # os bytes crus batiam com o tamanho decodificado) -- 40-65s so' de
+      # transferencia, servidor processa em ~4s. JSON comprime ~90%+; isso
+      # sozinho deve cortar a maior parte do tempo em QUALQUER rota com
+      # resposta grande, nao so' essa.
+      - "traefik.http.middlewares.consominas-gestao-compress.compress=true"
+      - "traefik.http.routers.consominas-gestao.middlewares=consominas-gestao-compress"
 
   db:
     image: postgres:16-alpine
