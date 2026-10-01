@@ -6,7 +6,6 @@ import { prisma } from "@/lib/prisma";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { linhaDigitavelParaCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
 import type { ItemRemessa } from "@/lib/cnab240/itau/tipos";
-import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 
 const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const ROLES_ESCRITA = ["ADMIN", "DIRETOR"];
@@ -93,49 +92,21 @@ export async function POST(req: Request) {
   const conta = await prisma.contaBancaria.findUnique({ where: { id: parsed.data.contaBancariaId } });
   if (!conta || !conta.ativo) return NextResponse.json({ error: "Conta bancária inválida" }, { status: 422 });
 
-  // Portão de segurança (30/09/2026): a remessa vira arquivo de pagamento
-  // de verdade no banco -- nenhum título que precisa de OC pode entrar sem
-  // uma OC confirmada. Reaproveita o MESMO motor da Programação de
-  // Pagamento (src/lib/vinculoOcTitulo.ts) pra não haver 2 fontes de
-  // verdade sobre "isso tem OC ou não" que possam divergir.
+  // Pedido do Gabriel (30/09/2026): removido o portão que exigia OC
+  // confirmada pra entrar na remessa -- só o vínculo automático travava
+  // demais enquanto o sync de OC/título ainda não pegou tudo. O vínculo
+  // continua calculado e visível na Programação de Pagamento e na
+  // Conferência de OC; só não bloqueia mais a geração do arquivo aqui.
+  //
+  // Mantido: título com SITTIT fora de AB/LQ (ex: "PE" -- achado ao vivo,
+  // Fort Minas 1765$01/2071$01/2072$01/2072$02) pode já estar comprometido
+  // em outro fluxo de pagamento do próprio Senior -- incluir de novo numa
+  // remessa nossa arriscaria pagar em dobro. A tela já trava a seleção,
+  // isso aqui é o mesmo motor de decisão do lado do servidor, pra quem
+  // tentar contornar a tela.
   const idsComTitulo = parsed.data.itens.map((i) => i.tituloId).filter((id): id is string => !!id);
   if (idsComTitulo.length > 0) {
-    const [titulosDaRemessa, ocs] = await Promise.all([
-      prisma.tituloContasAPagar.findMany({ where: { id: { in: idsComTitulo } } }),
-      prisma.aprovacaoSenior.findMany({
-        select: {
-          numOcp: true, codFil: true, fornecedorCodigo: true, fornecedorNome: true,
-          valor: true, dataEmissao: true, situacaoAtual: true, usuNumTit: true,
-          usuNumNfc: true, codccu: true, contratoNome: true, temRateio: true, previsaoPagamento: true,
-        },
-      }),
-    ]);
-    const motor = criarMotorVinculo(ocs);
-    const semOC = titulosDaRemessa
-      .map((t) => ({ titulo: t, vinculo: motor.ocRelacionadaDe(t) }))
-      .filter(({ vinculo }) => vinculo.ocEsperada && !vinculo.ocRelacionada);
-
-    if (semOC.length > 0) {
-      return NextResponse.json(
-        {
-          error: `${semOC.length} título(s) sem OC confirmada não podem entrar na remessa`,
-          titulosSemOC: semOC.map(({ titulo, vinculo }) => ({
-            numTit: titulo.numTit,
-            fornecedor: titulo.fornecedorNome ?? `código ${titulo.codFor}`,
-            valor: titulo.valorAberto,
-            motivo: vinculo.motivoSemOC,
-          })),
-        },
-        { status: 422 }
-      );
-    }
-
-    // Portão de segurança (30/09/2026): título com SITTIT fora de AB/LQ (ex:
-    // "PE" -- achado ao vivo, Fort Minas 1765$01/2071$01/2072$01/2072$02)
-    // pode já estar comprometido em outro fluxo de pagamento do próprio
-    // Senior -- incluir de novo numa remessa nossa arriscaria pagar em dobro.
-    // A tela já trava a seleção, isso aqui é o mesmo motor de decisão do lado
-    // do servidor, pra quem tentar contornar a tela.
+    const titulosDaRemessa = await prisma.tituloContasAPagar.findMany({ where: { id: { in: idsComTitulo } } });
     const bloqueados = titulosDaRemessa.filter((t) => !t.pago && t.situacao !== "AB");
     if (bloqueados.length > 0) {
       return NextResponse.json(
