@@ -30,6 +30,7 @@ export const config = {
     "/chat/:path*",
     "/usuarios/:path*",
     "/aprovacoes/:path*",
+    "/inicio",
     "/portal-cliente/:path*",
     "/completar-cadastro",
   ],
