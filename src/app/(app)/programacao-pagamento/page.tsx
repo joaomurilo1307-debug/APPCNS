@@ -93,6 +93,7 @@ type Titulo = {
   revisadoPorNome: string | null;
   revisadoEm: string | null;
   revisadoObs: string | null;
+  numOcpCorrigido: string | null;
 };
 
 type FiltrosColuna = {
@@ -233,6 +234,63 @@ export default function ProgramacaoPagamentoPage() {
   const [carregandoOC, setCarregandoOC] = useState<string | null>(null);
   const [erroOC, setErroOC] = useState<string | null>(null);
 
+  // Painel "OCs programadas": pedido do João 01/10/2026 depois de uma
+  // auditoria manual achar 15 OCs com título real no Senior mas sem o
+  // vínculo confirmado (algumas com o vencimento do título desatualizado,
+  // diferente da previsão de pagamento real da OC -- E420OCP.USU_DATVECT).
+  // Mostra, pra um intervalo de datas, toda OC com previsão de pagamento
+  // nesse período e o motivo de cada uma estar ou não pronta pra entrar
+  // aqui -- o mesmo diagnóstico que antes só dava pra fazer manualmente.
+  const [mostrarProgramadas, setMostrarProgramadas] = useState(false);
+  const hoje = new Date().toISOString().slice(0, 10);
+  const amanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const [progDe, setProgDe] = useState(hoje);
+  const [progAte, setProgAte] = useState(amanha);
+  const [carregandoProg, setCarregandoProg] = useState(false);
+  const [erroProg, setErroProg] = useState<string | null>(null);
+  const [dadosProg, setDadosProg] = useState<{
+    resumo: Record<string, number>;
+    ocs: Array<{
+      numOcp: string;
+      fornecedorNome: string | null;
+      valor: number;
+      previsaoPagamento: string | null;
+      status: "vinculado" | "candidato_pendente" | "sem_titulo" | "em_aprovacao" | "indeterminado";
+      detalhe: string;
+      titulo?: { numTit: string; valorAberto: number; vencimentoProgramado: string | null };
+      situacaoLabel?: string;
+    }>;
+  } | null>(null);
+
+  function carregarProgramadas() {
+    setCarregandoProg(true);
+    setErroProg(null);
+    fetch(`/api/senior/aprovacoes/programadas?de=${progDe}&ate=${progAte}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Erro ao carregar OCs programadas");
+        }
+        return res.json();
+      })
+      .then((data) => setDadosProg(data))
+      .catch((e) => setErroProg(e.message))
+      .finally(() => setCarregandoProg(false));
+  }
+
+  useEffect(() => {
+    if (mostrarProgramadas) carregarProgramadas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mostrarProgramadas, progDe, progAte]);
+
+  const PROG_STATUS: Record<string, { label: string; cor: string }> = {
+    vinculado: { label: "Já vinculada", cor: "bg-emerald-100 text-emerald-800" },
+    candidato_pendente: { label: "Título existe, falta confirmar", cor: "bg-amber-100 text-amber-800" },
+    sem_titulo: { label: "Sem título no Senior ainda", cor: "bg-gray-200 text-gray-700" },
+    em_aprovacao: { label: "Em aprovação na Senior", cor: "bg-sky-100 text-sky-800" },
+    indeterminado: { label: "Precisa checar manualmente", cor: "bg-red-100 text-red-700" },
+  };
+
   function abrirOC(numOcp: string) {
     setCarregandoOC(numOcp);
     setErroOC(null);
@@ -305,13 +363,17 @@ export default function ProgramacaoPagamentoPage() {
   // sincronização roda em segundo plano no VPS (~2 mil títulos, leva alguns
   // minutos).
   const [salvandoRevisao, setSalvandoRevisao] = useState<string | null>(null);
+  // Input de "qual OC" aberto ao escolher CORRIGIDO -- guarda o numero
+  // digitado por titulo antes de confirmar, pra nao precisar de outro
+  // componente/modal so' pra isso.
+  const [ocCorrigidoInput, setOcCorrigidoInput] = useState<Record<string, string>>({});
 
-  function atualizarRevisao(id: string, revisadoStatus: string | null) {
+  function atualizarRevisao(id: string, revisadoStatus: string | null, numOcpCorrigido?: string | null) {
     setSalvandoRevisao(id);
     fetch(`/api/titulos-pagar/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ revisadoStatus }),
+      body: JSON.stringify({ revisadoStatus, numOcpCorrigido: numOcpCorrigido || null }),
     })
       .then(async (res) => {
         const data = await res.json();
@@ -319,10 +381,17 @@ export default function ProgramacaoPagamentoPage() {
         setTitulos((anterior) =>
           anterior.map((t) =>
             t.id === id
-              ? { ...t, revisadoStatus: data.revisadoStatus, revisadoPorNome: data.revisadoPorNome, revisadoEm: data.revisadoEm }
+              ? {
+                  ...t,
+                  revisadoStatus: data.revisadoStatus,
+                  revisadoPorNome: data.revisadoPorNome,
+                  revisadoEm: data.revisadoEm,
+                  numOcpCorrigido: data.numOcpCorrigido,
+                }
               : t
           )
         );
+        carregar().catch(() => {}); // o vinculo manual muda a coluna OC de verdade -- recarrega pra refletir
       })
       .catch((e) => setErroOC(e.message))
       .finally(() => setSalvandoRevisao(null));
@@ -639,6 +708,13 @@ export default function ProgramacaoPagamentoPage() {
             className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
           >
             {mostrarRegras ? "Ocultar regras" : "Quando um título tem (ou não) OC?"}
+          </button>
+          <button
+            onClick={() => setMostrarProgramadas(true)}
+            title="OCs com previsão de pagamento (USU_DATVECT) num período, e o que falta pra cada uma entrar aqui"
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+          >
+            📋 OCs programadas
           </button>
         </div>
       </div>
@@ -1087,6 +1163,40 @@ export default function ProgramacaoPagamentoPage() {
                     <option value="AGUARDANDO_COMPRAS">Aguardando compras</option>
                     <option value="ENVIADO_AGUARDANDO_BAIXA">Enviado (aguarda baixa Senior)</option>
                   </select>
+                  {t.revisadoStatus === "CORRIGIDO" && (
+                    <div className="mt-1 flex items-center gap-1">
+                      {t.numOcpCorrigido ? (
+                        <span
+                          className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+                          title="Vinculada manualmente, sem precisar de NF/referência"
+                        >
+                          → OC {t.numOcpCorrigido}
+                        </span>
+                      ) : (
+                        <>
+                          <input
+                            type="text"
+                            placeholder="nº da OC"
+                            value={ocCorrigidoInput[t.id] ?? ""}
+                            onChange={(e) => setOcCorrigidoInput((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && ocCorrigidoInput[t.id]) atualizarRevisao(t.id, "CORRIGIDO", ocCorrigidoInput[t.id]);
+                            }}
+                            disabled={salvandoRevisao === t.id}
+                            className="w-20 rounded border border-gray-200 px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                          />
+                          <button
+                            onClick={() => ocCorrigidoInput[t.id] && atualizarRevisao(t.id, "CORRIGIDO", ocCorrigidoInput[t.id])}
+                            disabled={!ocCorrigidoInput[t.id] || salvandoRevisao === t.id}
+                            title="Vincula esta OC ao título direto, sem precisar bater NF -- confere fornecedor antes de salvar"
+                            className="rounded border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                          >
+                            vincular
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -1117,6 +1227,94 @@ export default function ProgramacaoPagamentoPage() {
           onClose={() => setOcAberta(null)}
           onAtualizado={() => abrirOC(ocAberta.numOcp)}
         />
+      )}
+      {mostrarProgramadas && (
+        <div className="fixed inset-0 z-40 flex justify-end bg-black/20" onClick={() => setMostrarProgramadas(false)}>
+          <div className="flex h-full w-full max-w-md flex-col bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-800">OCs programadas</h2>
+                <p className="text-[11px] text-gray-500">
+                  Previsão de pagamento da OC no Senior (USU_DATVECT) — separado do vencimento do título.
+                </p>
+              </div>
+              <button onClick={() => setMostrarProgramadas(false)} className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2.5">
+              <label className="text-[11px] text-gray-500">
+                De
+                <input
+                  type="date"
+                  value={progDe}
+                  onChange={(e) => setProgDe(e.target.value)}
+                  className="ml-1.5 rounded border border-gray-200 px-1.5 py-1 text-xs"
+                />
+              </label>
+              <label className="text-[11px] text-gray-500">
+                até
+                <input
+                  type="date"
+                  value={progAte}
+                  onChange={(e) => setProgAte(e.target.value)}
+                  className="ml-1.5 rounded border border-gray-200 px-1.5 py-1 text-xs"
+                />
+              </label>
+              <button
+                onClick={carregarProgramadas}
+                disabled={carregandoProg}
+                className="ml-auto rounded-full border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {carregandoProg ? "Carregando…" : "↻ Atualizar"}
+              </button>
+            </div>
+
+            {dadosProg?.resumo && (
+              <div className="flex flex-wrap gap-1.5 border-b border-gray-100 px-4 py-2.5 text-[11px]">
+                {Object.entries(dadosProg.resumo)
+                  .filter(([k]) => k !== "total")
+                  .map(([k, v]) =>
+                    v > 0 ? (
+                      <span key={k} className={`rounded-full px-2 py-0.5 font-medium ${PROG_STATUS[k]?.cor ?? "bg-gray-100 text-gray-600"}`}>
+                        {v} {PROG_STATUS[k]?.label ?? k}
+                      </span>
+                    ) : null
+                  )}
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              {erroProg && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{erroProg}</p>}
+              {!carregandoProg && dadosProg?.ocs.length === 0 && (
+                <p className="py-6 text-center text-xs text-gray-400">Nenhuma OC com previsão de pagamento nesse período.</p>
+              )}
+              <div className="space-y-1.5">
+                {dadosProg?.ocs.map((oc) => (
+                  <button
+                    key={oc.numOcp}
+                    onClick={() => abrirOC(oc.numOcp)}
+                    className="block w-full rounded-lg border border-gray-100 px-3 py-2 text-left text-xs hover:border-gray-300 hover:bg-gray-50"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono font-semibold text-gray-800">OC {oc.numOcp}</span>
+                      <span className="font-mono text-gray-600">{formatMoeda(oc.valor)}</span>
+                    </div>
+                    <div className="mt-0.5 text-gray-500">{oc.fornecedorNome}</div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${PROG_STATUS[oc.status]?.cor}`}>
+                        {PROG_STATUS[oc.status]?.label}
+                      </span>
+                      {oc.titulo && <span className="font-mono text-[10px] text-gray-400">título {oc.titulo.numTit}</span>}
+                    </div>
+                    <div className="mt-1 text-[11px] text-gray-400">{oc.detalhe}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

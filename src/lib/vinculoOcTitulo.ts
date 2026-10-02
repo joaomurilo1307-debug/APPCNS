@@ -165,6 +165,24 @@ export function prefixoParcela(valor: string | null | undefined) {
 
 const PADRAO_NAO_OC = /SECRETARIA DE (ESTADO|FAZENDA)|GOVERNO FEDERAL|MINISTERIO DA FAZENDA|RECEITA FEDERAL|PREFEITURA|MUNICIPIO DE|INSS\b|FGTS\b|CAIXA ECON.MICA|FOPAG|FORNECEDORES DIVERSOS|SALARIO|INPS/i;
 
+// Puras, sem estado -- extraídas do motor pra reaproveitar fora dele (ex:
+// achar o candidato de uma OC específica sem rodar o motor pra todos os
+// títulos). Usadas também dentro de criarMotorVinculo, mesma implementação.
+export function distanciaDias(a: Date | null | undefined, b: Date | null | undefined) {
+  if (!a || !b) return null;
+  return Math.abs(a.getTime() - b.getTime()) / 86400000;
+}
+
+export function mesmoValor(a: number, b: number) {
+  return Math.abs(a - b) < 0.01;
+}
+
+export function dataCompativel(oc: OcParaVinculo, titulo: TituloParaVinculo) {
+  const previsao = distanciaDias(oc.previsaoPagamento, titulo.vencimentoProgramado);
+  const emissao = distanciaDias(oc.dataEmissao, titulo.dataEmissao);
+  return (previsao !== null && previsao <= 3) || (emissao !== null && emissao <= 45);
+}
+
 // Exceção confirmada pelo João diretamente no Senior em 14/09/2026. Chaveia
 // pelo título e pelo fornecedor, não por todos os lançamentos do mesmo
 // fornecedor -- outro título só poderá ser liberado quando tiver sua
@@ -253,21 +271,6 @@ export function criarMotorVinculo(ocs: OcParaVinculo[]) {
 
   function filtrarCandidatasValidas(titulo: TituloParaVinculo, candidatas: OcParaVinculo[]) {
     return candidatas.filter((oc) => fornecedorCompativel(titulo, oc) && filialCompativel(titulo, oc));
-  }
-
-  function distanciaDias(a: Date | null | undefined, b: Date | null | undefined) {
-    if (!a || !b) return null;
-    return Math.abs(a.getTime() - b.getTime()) / 86400000;
-  }
-
-  function mesmoValor(a: number, b: number) {
-    return Math.abs(a - b) < 0.01;
-  }
-
-  function dataCompativel(oc: OcParaVinculo, titulo: TituloParaVinculo) {
-    const previsao = distanciaDias(oc.previsaoPagamento, titulo.vencimentoProgramado);
-    const emissao = distanciaDias(oc.dataEmissao, titulo.dataEmissao);
-    return (previsao !== null && previsao <= 3) || (emissao !== null && emissao <= 45);
   }
 
   // Uma referência pode aparecer em mais de uma OC (reprocessamento, compra
@@ -440,4 +443,34 @@ export function criarMotorVinculo(ocs: OcParaVinculo[]) {
   }
 
   return { ocRelacionadaDe };
+}
+
+// Vínculo manual (01/10/2026): quando alguém revisa um título "Sem OC" e
+// confirma a OC certa olhando direto o Senior -- sem NF batendo, sem
+// referência cruzada, só a conferência humana mesmo -- isso tem prioridade
+// sobre o motor automático acima. Nunca substitui o motor de verdade: um
+// título sem correção manual continua resolvido só pelas regras de
+// ocRelacionadaDe. `buscarOc` é só uma função de consulta (ex:
+// `(numOcp) => mapa.get(numOcp)`) pra não precisar reconstruir os índices
+// do motor só pra achar uma OC pelo número.
+export function aplicarCorrecaoManual(
+  titulo: { numOcpCorrigido?: string | null },
+  buscarOc: (numOcp: string) => OcParaVinculo | undefined,
+  automatico: ResultadoVinculo
+): ResultadoVinculo {
+  if (!titulo.numOcpCorrigido) return automatico;
+  const oc = buscarOc(normalizarReferencia(titulo.numOcpCorrigido));
+  if (!oc) return automatico; // numero digitado nao existe/nao sincronizou -- nao quebra, so' ignora
+  return {
+    ocRelacionada: {
+      numOcp: oc.numOcp,
+      situacao: oc.situacaoAtual,
+      situacaoLabel: situacaoLabel(oc.situacaoAtual),
+      parcela: false,
+      motivo: "Vínculo manual: conferido direto no Senior e corrigido na revisão, sem precisar de NF.",
+      centroCusto: oc.temRateio ? "Rateio por múltiplos centros" : oc.contratoNome || (oc.codccu ? `CC ${oc.codccu}` : null),
+    },
+    motivoSemOC: null,
+    ocEsperada: true,
+  };
 }

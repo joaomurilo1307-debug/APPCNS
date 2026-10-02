@@ -8,7 +8,7 @@ import JSZip from "jszip";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/uploadValidation";
-import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
+import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
 
 // Pacote pra mandar pra fora do sistema (30/09/2026, pedido do João: "quando
@@ -66,9 +66,10 @@ export async function POST(req: Request) {
     }),
   ]);
   const motor = criarMotorVinculo(ocs);
+  const ocPorNumero = new Map(ocs.map((o) => [o.numOcp, o]));
   const indiceDossies = criarIndiceDossies(dossies);
   function dossieDe(t: (typeof titulos)[number]) {
-    const numOcpVinculado = motor.ocRelacionadaDe(t).ocRelacionada?.numOcp;
+    const numOcpVinculado = aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada?.numOcp;
     return indiceDossies.dossieDoTitulo({ numTit: t.numTit, codFor: t.codFor, numOcp: numOcpVinculado });
   }
 

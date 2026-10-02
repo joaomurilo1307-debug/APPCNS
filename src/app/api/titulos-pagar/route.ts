@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
+import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
 
 // Programação de Contas a Pagar por título, escopo histórico completo.
@@ -60,6 +60,7 @@ export async function GET() {
 
   const motor = criarMotorVinculo(ocs);
   const indiceDossies = criarIndiceDossies(dossies);
+  const ocPorNumero = new Map(ocs.map((o) => [o.numOcp, o]));
 
   function dossieDe(titulo: { numTit: string; codFor: string }, numOcpVinculado: string | null | undefined) {
     const achado = indiceDossies.dossieDoTitulo({ numTit: titulo.numTit, codFor: titulo.codFor, numOcp: numOcpVinculado });
@@ -89,7 +90,7 @@ export async function GET() {
 
   return NextResponse.json({
     titulos: titulos.map((t) => {
-      const vinculo = motor.ocRelacionadaDe(t);
+      const vinculo = aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t));
       return {
         id: t.id,
         numTit: t.numTit,
@@ -130,6 +131,7 @@ export async function GET() {
         revisadoPorNome: t.revisadoPorNome,
         revisadoEm: t.revisadoEm,
         revisadoObs: t.revisadoObs,
+        numOcpCorrigido: t.numOcpCorrigido,
       };
     }),
     totalAberto,
