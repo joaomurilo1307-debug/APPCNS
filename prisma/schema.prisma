@@ -1146,6 +1146,11 @@ model ContaBancaria {
   agencia   String
   conta     String
   dac       String // digito verificador agencia/conta
+  // Conta interna da Senior (E600CCO.NUMCCO, tela F600CCO) correspondente a esta
+  // conta -- obrigatoria pra dar baixa via GerarBaixaPorLoteCP. Ex.: ag 5605 cc
+  // 99624-7 = "341" ("Banco Itau"). Nao da pra derivar da agencia/conta: a Senior
+  // guarda NUMCTA com e sem DAC conforme o cadastro.
+  numCcoSenior String?
   ativo     Boolean  @default(true)
   criadoEm  DateTime @default(now())
 
@@ -1217,6 +1222,15 @@ model RemessaItemPagamento {
   dataEfetivacao     DateTime?
   valorEfetivado     Float?
   ocorrencias        String?  @db.Text // JSON: [{codigo, descricao, recebidoEm}], historico de ocorrencias do retorno (Nota 8)
+
+  // Baixa do titulo na Senior (GerarBaixaPorLoteCP) depois que o banco confirmou
+  // o pagamento. null = ainda nao tentada; ENVIADA = Senior respondeu OK;
+  // ERRO = Senior recusou (motivo em baixaSeniorMsg); JA_BAIXADO = a Senior ja
+  // tinha o titulo liquidado quando conferimos (nada foi enviado).
+  baixaSeniorStatus  String?
+  baixaSeniorEm      DateTime?
+  baixaSeniorMsg     String?  @db.Text
+  baixaSeniorPorId   String?
 
   criadoEm           DateTime @default(now())
   atualizadoEm       DateTime @updatedAt

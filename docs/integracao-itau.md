@@ -123,3 +123,42 @@ Pré-requisito: acesso ao Internet Banking Itaú Empresas com o produto SISPAG h
 9. **Importar o retorno** de volta na tela `/pagamentos-itau`, botão "Importar arquivo de retorno", selecionando o `.ret` baixado do banco. Confira que os pagamentos mudaram de status (mesmo que "Rejeitado" — o objetivo deste primeiro teste é validar que o Itaú aceita a *estrutura* do arquivo, não necessariamente que o pagamento específico esteja 100% correto).
 
 10. Se algo vier rejeitado por causa não óbvia, o código da ocorrência (ex: "AL", "AM", "IN"...) está descrito na Nota 8 do manual `Layout-de-Arquivos_CNAB-Versa-o-086_SISPAG.pdf` — a tela já traduz os códigos mais comuns automaticamente.
+
+## Baixa do título na Senior depois do pagamento (GerarBaixaPorLoteCP)
+
+O retorno do Itaú fecha o ciclo **aqui**, mas a Senior continua com o título "Não pago" até alguém lançar a baixa lá — e a tela de
+retorno da Senior (F510PRT) **não serve** pra isso: ela importa CNAB240 pelo vínculo com o `NUMPGE` gerado pelo módulo de Pagamento
+Eletrônico da própria Senior, e o nosso arquivo não nasceu lá. O caminho certo é o web service `GerarBaixaPorLoteCP`
+(`com.senior.g5.co.mfi.cpa.titulos`, situação "atual", substituto oficial do descontinuado `BaixarTitulosCP`), que baixa **direto pelo
+número do título**. Implementado em `src/lib/senior/baixaTitulos.ts` e `POST /api/pagamentos-itau/remessas/[id]/baixa-senior`
+(botão "Baixar N pago(s) na Sênior" em `/pagamentos-itau`, só ADMIN/DIRETOR).
+
+**Valores deste tenant, confirmados em dado real da Senior (01/10/2026):**
+
+| Campo | Valor | Origem |
+|---|---|---|
+| `tnsBai` | `90550` | Faixa 90550-90579 = "Pagamento de Título" (F001TPA); é a mais usada nas baixas (17 mil movimentos) |
+| `tnsCxb` | `90650` | "Débito Pagamento Contas a Pagar (CP)" (E001TNS). As baixas pela conta interna `341` usam 90650. **Não** usar 90665 ("Débito Cheque - CP") nem 90656 (transferência entre contas) |
+| `numCco` | `341` p/ ag 5605 cc 99624-7 | Conta interna "Banco Itaú" (E600CCO, F600CCO). É obrigatório e **não dá pra derivar** da agência/conta (a Senior guarda NUMCTA com e sem DAC conforme o cadastro) — fica em `ContaBancaria.numCcoSenior`, informado no painel de baixa na primeira vez |
+| `codEmp` | `1` | Todos os 20.174 títulos são da empresa 1 |
+| `codTpt`, `codFor`, `codFil`, `numTit` | do próprio título | `TituloContasAPagar.tipo/codFor/codFil/numTit` |
+
+A conta 84193-0 ("CONSOMINAS GAR") **não tem nenhuma baixa de fornecedor** na Senior — não configurar `numCcoSenior` nela sem confirmar
+com o financeiro qual conta interna eles usam ao baixar pagamentos feitos por ela.
+
+**Formato (manual, "Campos numéricos"):** campos declarados `String` (ex.: `vlrBai`) vão com **vírgula decimal e sempre 2 casas**
+(`1658,55`), sem milhar; campos `Double` iriam com ponto. Datas `dd/MM/aaaa`.
+
+**Salvaguardas (é escrita no razão financeiro):**
+- Sem `confirmar: true` só **simula** (lê a Senior, não grava) — o painel mostra a prévia antes do botão de confirmar.
+- Cada título é conferido **ao vivo** na Senior (`E501TCP`: `SITTIT`/`VLRABE`) antes de enviar: já liquidado → `JA_BAIXADO` (nunca baixa
+  duas vezes); `CA`/`PE`/`AV`/`LS`/`LV` → bloqueado; valor pago ≠ valor em aberto → bloqueado (desconto/juros/parcial é decisão
+  contábil, baixa manual).
+- Só entra item com status `PAGO` (ocorrência "00" do retorno) e título vinculado.
+- Resposta da Senior diferente de `resultado = "OK"` (ou com `erroExecucao`) **nunca** vira sucesso: o item fica `ERRO` com a mensagem,
+  e a nova tentativa passa pela conferência ao vivo (se a Senior tiver gravado apesar da falha de rede, aparece `JA_BAIXADO`).
+- Estado por item em `RemessaItemPagamento.baixaSeniorStatus/Em/Msg/PorId`.
+
+**Ainda não validado em produção** (precisa de um primeiro teste real, supervisionado, com **um** título): permissão de escrita do
+usuário da Senior usado pelo app nesse web service; se a Senior exige `seqChe`/`codFpg`/`numDoc` mesmo sendo opcionais no manual; e
+o que aparece em Tesouraria. O usuário da integração fica registrado como autor da baixa (`USUGER`) — vale usar uma conta de serviço.

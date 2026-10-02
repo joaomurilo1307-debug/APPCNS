@@ -63,9 +63,9 @@ export async function GET() {
 
   const remessas = await prisma.remessaPagamento.findMany({
     include: {
-      contaBancaria: { select: { apelido: true } },
+      contaBancaria: { select: { apelido: true, numCcoSenior: true } },
       criadoPor: { select: { name: true } },
-      itens: { select: { id: true, status: true, valor: true } },
+      itens: { select: { id: true, status: true, valor: true, tituloId: true, baixaSeniorStatus: true } },
       retornos: { select: { id: true, nomeArquivo: true, processadoEm: true, totalReconhecidos: true, conteudoArquivo: true } },
     },
     orderBy: { criadoEm: "desc" },
@@ -77,6 +77,7 @@ export async function GET() {
       status: r.status,
       nomeArquivo: r.nomeArquivo,
       contaApelido: r.contaBancaria.apelido,
+      contaNumCcoSenior: r.contaBancaria.numCcoSenior,
       criadoPorNome: r.criadoPor?.name ?? null,
       criadoEm: r.criadoEm,
       geradoEm: r.geradoEm,
@@ -86,6 +87,9 @@ export async function GET() {
       qtdPendentes: r.itens.filter((i) => i.status === "PENDENTE").length,
       qtdPagos: r.itens.filter((i) => i.status === "PAGO").length,
       qtdRejeitados: r.itens.filter((i) => i.status === "REJEITADO").length,
+      qtdPagosSemBaixa: r.itens.filter(
+        (i) => i.status === "PAGO" && !!i.tituloId && i.baixaSeniorStatus !== "ENVIADA" && i.baixaSeniorStatus !== "JA_BAIXADO"
+      ).length,
       retornos: r.retornos.map((ret) => ({
         id: ret.id,
         nomeArquivo: ret.nomeArquivo,

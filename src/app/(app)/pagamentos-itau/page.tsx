@@ -79,6 +79,19 @@ type RetornoDaRemessa = {
   temArquivo: boolean;
 };
 
+type ItemBaixa = { itemId: string; numTit: string; fornecedor: string; valor: number; dataPagamento: string | null; motivo: string | null };
+type PreviaBaixa = {
+  numCco: string;
+  elegiveis: ItemBaixa[];
+  jaBaixados: ItemBaixa[];
+  bloqueados: ItemBaixa[];
+  totalElegivel: number;
+  enviados?: number;
+  comErro?: number;
+  erros?: { numTit: string; erro: string }[];
+  simulacao: boolean;
+};
+
 type Remessa = {
   id: string;
   status: string;
@@ -92,6 +105,8 @@ type Remessa = {
   qtdPendentes: number;
   qtdPagos: number;
   qtdRejeitados: number;
+  qtdPagosSemBaixa: number;
+  contaNumCcoSenior: string | null;
   retornos: RetornoDaRemessa[];
 };
 
@@ -169,6 +184,14 @@ export default function PagamentosItauPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
+  const [painelBaixa, setPainelBaixa] = useState<{
+    remessaId: string;
+    arquivo: string;
+    numCco: string;
+    previa: PreviaBaixa | null;
+    carregando: boolean;
+    erro: string | null;
+  } | null>(null);
   const [gerando, setGerando] = useState(false);
   const [mostrarFormConta, setMostrarFormConta] = useState(false);
   const [novaConta, setNovaConta] = useState({ apelido: "", cnpj: "", agencia: "", conta: "", dac: "" });
@@ -516,6 +539,28 @@ export default function PagamentosItauPage() {
     } finally {
       setGerando(false);
     }
+  }
+
+  async function chamarBaixa(confirmar: boolean) {
+    if (!painelBaixa) return;
+    setPainelBaixa((p) => (p ? { ...p, carregando: true, erro: null } : p));
+    try {
+      const res = await fetch(`/api/pagamentos-itau/remessas/${painelBaixa.remessaId}/baixa-senior`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmar, ...(painelBaixa.numCco.trim() ? { numCcoSenior: painelBaixa.numCco.trim() } : {}) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao conferir a baixa");
+      setPainelBaixa((p) => (p ? { ...p, previa: data, numCco: data.numCco ?? p.numCco, carregando: false } : p));
+      if (confirmar) carregarTudo();
+    } catch (e: any) {
+      setPainelBaixa((p) => (p ? { ...p, carregando: false, erro: e.message } : p));
+    }
+  }
+
+  function abrirBaixa(r: Remessa) {
+    setPainelBaixa({ remessaId: r.id, arquivo: r.nomeArquivo ?? r.id, numCco: r.contaNumCcoSenior ?? "", previa: null, carregando: false, erro: null });
   }
 
   async function enviarRetorno(file: File) {
@@ -935,6 +980,99 @@ export default function PagamentosItauPage() {
             />
           </label>
         </div>
+        {painelBaixa && (
+          <div className="space-y-3 border-b border-gray-100 bg-sky-50/50 p-4 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-gray-800">Baixa na Sênior — {painelBaixa.arquivo}</p>
+                <p className="text-xs text-gray-500">
+                  Cada título é conferido ao vivo na Sênior antes de enviar. Só entram os que o banco confirmou como pagos, ainda abertos na Sênior
+                  e com valor pago igual ao em aberto.
+                </p>
+              </div>
+              <button onClick={() => setPainelBaixa(null)} className="text-xs text-gray-500 underline">
+                fechar
+              </button>
+            </div>
+            <label className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+              Conta interna da Sênior (numCco, tela F600CCO):
+              <input
+                value={painelBaixa.numCco}
+                onChange={(e) => setPainelBaixa((p) => (p ? { ...p, numCco: e.target.value, previa: null } : p))}
+                maxLength={14}
+                placeholder="ex.: 341"
+                className="w-36 rounded-lg border border-gray-200 px-2 py-1 text-sm"
+              />
+              <button
+                onClick={() => chamarBaixa(false)}
+                disabled={painelBaixa.carregando || !painelBaixa.numCco.trim()}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 disabled:opacity-50"
+              >
+                {painelBaixa.carregando ? "Conferindo na Sênior..." : "Conferir prévia (não grava)"}
+              </button>
+            </label>
+            {painelBaixa.erro && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{painelBaixa.erro}</p>}
+            {painelBaixa.previa && (
+              <div className="space-y-2">
+                {painelBaixa.previa.simulacao ? (
+                  <p className="text-xs font-medium text-gray-700">
+                    Prévia: {painelBaixa.previa.elegiveis.length} título(s) prontos para baixa ({formatMoeda(painelBaixa.previa.totalElegivel)}),{" "}
+                    {painelBaixa.previa.jaBaixados.length} já baixado(s) na Sênior, {painelBaixa.previa.bloqueados.length} que exigem baixa manual.
+                  </p>
+                ) : (
+                  <p className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-800">
+                    Resultado: {painelBaixa.previa.enviados ?? 0} baixado(s) com sucesso, {painelBaixa.previa.comErro ?? 0} com erro,{" "}
+                    {painelBaixa.previa.jaBaixados.length} já estavam baixados na Sênior.
+                  </p>
+                )}
+                {painelBaixa.previa.elegiveis.length > 0 && (
+                  <ul className="max-h-40 overflow-auto rounded-lg bg-white p-2 text-xs text-gray-700">
+                    {painelBaixa.previa.elegiveis.map((i) => (
+                      <li key={i.itemId}>
+                        {i.numTit} — {i.fornecedor} — {formatMoeda(i.valor)} — pago em {formatData(i.dataPagamento)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {painelBaixa.previa.bloqueados.length > 0 && (
+                  <ul className="max-h-40 overflow-auto rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+                    {painelBaixa.previa.bloqueados.map((i) => (
+                      <li key={i.itemId}>
+                        {i.numTit} — {i.fornecedor}: {i.motivo}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {(painelBaixa.previa.erros ?? []).length > 0 && (
+                  <ul className="max-h-40 overflow-auto rounded-lg bg-red-50 p-2 text-xs text-red-700">
+                    {painelBaixa.previa.erros!.map((e, idx) => (
+                      <li key={idx}>
+                        {e.numTit}: {e.erro}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {painelBaixa.previa.simulacao && painelBaixa.previa.elegiveis.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Gravar a baixa de ${painelBaixa.previa!.elegiveis.length} título(s), total ${formatMoeda(painelBaixa.previa!.totalElegivel)}, ` +
+                            `na conta interna "${painelBaixa.numCco}" da Sênior? Isso escreve no contas a pagar e na tesouraria da Sênior.`
+                        )
+                      )
+                        chamarBaixa(true);
+                    }}
+                    disabled={painelBaixa.carregando}
+                    className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                  >
+                    Confirmar baixa na Sênior
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <table className="w-full text-[13px]">
           <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
             <tr>
@@ -969,6 +1107,15 @@ export default function PagamentosItauPage() {
                 </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{formatMoeda(r.totalValor)}</td>
                 <td className="px-3 py-1.5 text-right">
+                  {r.qtdPagosSemBaixa > 0 && (
+                    <button
+                      onClick={() => abrirBaixa(r)}
+                      className="mr-3 rounded-lg bg-brand px-2 py-1 text-[11px] font-medium text-white hover:brightness-95"
+                      title="Dá baixa na Senior (GerarBaixaPorLoteCP) dos pagamentos que o banco confirmou. Mostra uma prévia antes de gravar."
+                    >
+                      Baixar {r.qtdPagosSemBaixa} pago(s) na Sênior
+                    </button>
+                  )}
                   <a href={`/api/pagamentos-itau/remessas/${r.id}/arquivo`} className="text-xs text-brand underline">
                     baixar .rem
                   </a>
