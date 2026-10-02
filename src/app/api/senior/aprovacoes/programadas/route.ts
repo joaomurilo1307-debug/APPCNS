@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   criarMotorVinculo,
+  aplicarCorrecaoManual,
   chavesFornecedor,
   normalizarReferencia,
   mesmoValor,
@@ -67,6 +68,7 @@ export async function GET(req: Request) {
   );
 
   const motor = criarMotorVinculo(todasOcs);
+  const ocPorNumero = new Map(todasOcs.map((o) => [o.numOcp, o]));
 
   // Índice fornecedor -> títulos, só pra esta rota (não mexe no motor
   // compartilhado): usado pra achar candidato e pra saber se o fornecedor
@@ -108,7 +110,9 @@ export async function GET(req: Request) {
     for (const t of candidatosBrutos) dedup.set(t.numTit + t.codFor, t);
     const titulosDoFornecedor = [...dedup.values()].filter((t) => filialCompativelOc(t, oc));
 
-    const vinculado = titulosDoFornecedor.find((t) => motor.ocRelacionadaDe(t).ocRelacionada?.numOcp === oc.numOcp);
+    const vinculado = titulosDoFornecedor.find(
+      (t) => aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada?.numOcp === oc.numOcp
+    );
     if (vinculado) {
       return {
         numOcp: oc.numOcp,

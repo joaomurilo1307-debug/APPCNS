@@ -93,6 +93,7 @@ type Titulo = {
   revisadoPorNome: string | null;
   revisadoEm: string | null;
   revisadoObs: string | null;
+  numOcpCorrigido: string | null;
 };
 
 type FiltrosColuna = {
@@ -362,13 +363,17 @@ export default function ProgramacaoPagamentoPage() {
   // sincronização roda em segundo plano no VPS (~2 mil títulos, leva alguns
   // minutos).
   const [salvandoRevisao, setSalvandoRevisao] = useState<string | null>(null);
+  // Input de "qual OC" aberto ao escolher CORRIGIDO -- guarda o numero
+  // digitado por titulo antes de confirmar, pra nao precisar de outro
+  // componente/modal so' pra isso.
+  const [ocCorrigidoInput, setOcCorrigidoInput] = useState<Record<string, string>>({});
 
-  function atualizarRevisao(id: string, revisadoStatus: string | null) {
+  function atualizarRevisao(id: string, revisadoStatus: string | null, numOcpCorrigido?: string | null) {
     setSalvandoRevisao(id);
     fetch(`/api/titulos-pagar/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ revisadoStatus }),
+      body: JSON.stringify({ revisadoStatus, numOcpCorrigido: numOcpCorrigido || null }),
     })
       .then(async (res) => {
         const data = await res.json();
@@ -376,10 +381,17 @@ export default function ProgramacaoPagamentoPage() {
         setTitulos((anterior) =>
           anterior.map((t) =>
             t.id === id
-              ? { ...t, revisadoStatus: data.revisadoStatus, revisadoPorNome: data.revisadoPorNome, revisadoEm: data.revisadoEm }
+              ? {
+                  ...t,
+                  revisadoStatus: data.revisadoStatus,
+                  revisadoPorNome: data.revisadoPorNome,
+                  revisadoEm: data.revisadoEm,
+                  numOcpCorrigido: data.numOcpCorrigido,
+                }
               : t
           )
         );
+        carregar().catch(() => {}); // o vinculo manual muda a coluna OC de verdade -- recarrega pra refletir
       })
       .catch((e) => setErroOC(e.message))
       .finally(() => setSalvandoRevisao(null));
@@ -1151,6 +1163,40 @@ export default function ProgramacaoPagamentoPage() {
                     <option value="AGUARDANDO_COMPRAS">Aguardando compras</option>
                     <option value="ENVIADO_AGUARDANDO_BAIXA">Enviado (aguarda baixa Senior)</option>
                   </select>
+                  {t.revisadoStatus === "CORRIGIDO" && (
+                    <div className="mt-1 flex items-center gap-1">
+                      {t.numOcpCorrigido ? (
+                        <span
+                          className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+                          title="Vinculada manualmente, sem precisar de NF/referência"
+                        >
+                          → OC {t.numOcpCorrigido}
+                        </span>
+                      ) : (
+                        <>
+                          <input
+                            type="text"
+                            placeholder="nº da OC"
+                            value={ocCorrigidoInput[t.id] ?? ""}
+                            onChange={(e) => setOcCorrigidoInput((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && ocCorrigidoInput[t.id]) atualizarRevisao(t.id, "CORRIGIDO", ocCorrigidoInput[t.id]);
+                            }}
+                            disabled={salvandoRevisao === t.id}
+                            className="w-20 rounded border border-gray-200 px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                          />
+                          <button
+                            onClick={() => ocCorrigidoInput[t.id] && atualizarRevisao(t.id, "CORRIGIDO", ocCorrigidoInput[t.id])}
+                            disabled={!ocCorrigidoInput[t.id] || salvandoRevisao === t.id}
+                            title="Vincula esta OC ao título direto, sem precisar bater NF -- confere fornecedor antes de salvar"
+                            className="rounded border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                          >
+                            vincular
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

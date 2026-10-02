@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
+import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 
 // Busca UMA OC por numOcp, com o mapa completo (rateio, níveis, eventos) +
 // o(s) título(s) que essa OC gerou (sentido inverso do vínculo, mesmo motor
@@ -66,8 +66,9 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
     }),
   ]);
   const motor = criarMotorVinculo(todasOcs);
+  const ocPorNumero = new Map(todasOcs.map((o) => [o.numOcp, o]));
   const titulosVinculados = titulos
-    .filter((t) => motor.ocRelacionadaDe(t).ocRelacionada?.numOcp === params.numOcp)
+    .filter((t) => aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada?.numOcp === params.numOcp)
     .map((t) => ({
       numTit: t.numTit,
       tipo: t.tipo,

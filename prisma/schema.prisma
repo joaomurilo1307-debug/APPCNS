@@ -474,6 +474,15 @@ model TituloContasAPagar {
   revisadoPorNome String?
   revisadoEm      DateTime?
   revisadoObs     String?
+  // Vinculo manual (01/10/2026, pedido do Joao: "deveria ter como vincular
+  // uma oc ao titulo sem nf"): preenchido junto com revisadoStatus=CORRIGIDO
+  // quando quem revisou confirma a OC certa olhando o Senior, mesmo sem NF
+  // batendo em lugar nenhum (caso real: Mercado Livre e varios "OUT" sem NF
+  // rastreavel). Validado contra AprovacaoSenior.numOcp na propria rota --
+  // tem prioridade sobre o motor automatico de vinculoOcTitulo.ts, nunca o
+  // substitui de verdade (o motor continua rodando do mesmo jeito pra quem
+  // nao tiver correcao manual).
+  numOcpCorrigido String?
 
   remessaItens RemessaItemPagamento[]
 
