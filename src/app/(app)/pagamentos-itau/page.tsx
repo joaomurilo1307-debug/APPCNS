@@ -82,6 +82,7 @@ type RetornoDaRemessa = {
 type ItemBaixa = { itemId: string; numTit: string; fornecedor: string; valor: number; dataPagamento: string | null; motivo: string | null };
 type PreviaBaixa = {
   numCco: string;
+  contaSenior?: { descricao: string; banco: string; agencia: string; conta: string };
   elegiveis: ItemBaixa[];
   jaBaixados: ItemBaixa[];
   bloqueados: ItemBaixa[];
@@ -106,6 +107,8 @@ type Remessa = {
   qtdPagos: number;
   qtdRejeitados: number;
   qtdPagosSemBaixa: number;
+  qtdBaixados: number;
+  qtdErroBaixa: number;
   contaNumCcoSenior: string | null;
   retornos: RetornoDaRemessa[];
 };
@@ -577,9 +580,16 @@ export default function PagamentosItauPage() {
       setErro(data.error || "Erro ao processar retorno");
       return;
     }
+    const r = data.resumoStatus ?? {};
     setMensagem(
-      `Retorno processado: ${data.totalReconhecidos} de ${data.totalLido} pagamento(s) reconhecidos.` +
-        (data.naoReconhecidos.length > 0 ? ` ${data.naoReconhecidos.length} sem correspondência.` : "")
+      `Retorno processado: ${data.totalReconhecidos} de ${data.totalLido} pagamento(s) reconhecidos` +
+        ` — ${r.PAGO ?? 0} pago(s), ${r.AGENDADO ?? 0} agendado(s), ${r.REJEITADO ?? 0} rejeitado(s), ${r.CANCELADO ?? 0} cancelado(s).` +
+        (data.naoReconhecidos.length > 0 ? ` ${data.naoReconhecidos.length} sem correspondência.` : "") +
+        (data.prontosParaBaixa > 0
+          ? ` ${data.prontosParaBaixa} pronto(s) para baixa na Sênior (botão "Baixar pago(s) na Sênior" na remessa).`
+          : (r.AGENDADO ?? 0) > 0
+            ? " Os agendados só ficam prontos para baixa no retorno do dia do pagamento."
+            : "")
     );
     carregarTudo();
   }
@@ -1012,6 +1022,12 @@ export default function PagamentosItauPage() {
               </button>
             </label>
             {painelBaixa.erro && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{painelBaixa.erro}</p>}
+            {painelBaixa.previa?.contaSenior && (
+              <p className="text-xs text-emerald-700">
+                ✓ Conta interna {painelBaixa.previa.numCco} = {painelBaixa.previa.contaSenior.descricao} (banco {painelBaixa.previa.contaSenior.banco}, ag{" "}
+                {painelBaixa.previa.contaSenior.agencia}, cc {painelBaixa.previa.contaSenior.conta}) — confere com a conta bancária da remessa.
+              </p>
+            )}
             {painelBaixa.previa && (
               <div className="space-y-2">
                 {painelBaixa.previa.simulacao ? (
@@ -1022,7 +1038,8 @@ export default function PagamentosItauPage() {
                 ) : (
                   <p className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-800">
                     Resultado: {painelBaixa.previa.enviados ?? 0} baixado(s) com sucesso, {painelBaixa.previa.comErro ?? 0} com erro,{" "}
-                    {painelBaixa.previa.jaBaixados.length} já estavam baixados na Sênior.
+                    {painelBaixa.previa.jaBaixados.length} já estavam baixados na Sênior. A Programação de Pagamento mostra "Pago" na próxima
+                    sincronização com a Sênior (até ~10 min).
                   </p>
                 )}
                 {painelBaixa.previa.elegiveis.length > 0 && (
@@ -1102,6 +1119,16 @@ export default function PagamentosItauPage() {
                   {r.qtdRejeitados > 0 && (
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ITEM_STATUS_LABEL.REJEITADO}`}>
                       {r.qtdRejeitados} rejeitados
+                    </span>
+                  )}
+                  {r.qtdBaixados > 0 && (
+                    <span className="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700" title="Baixa já lançada na Sênior">
+                      {r.qtdBaixados} baixados na Sênior
+                    </span>
+                  )}
+                  {r.qtdErroBaixa > 0 && (
+                    <span className="ml-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700" title="A Sênior recusou a baixa — abra o painel para ver o motivo e tentar de novo">
+                      {r.qtdErroBaixa} erro de baixa
                     </span>
                   )}
                 </td>

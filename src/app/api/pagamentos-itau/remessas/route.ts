@@ -87,6 +87,8 @@ export async function GET() {
       qtdPendentes: r.itens.filter((i) => i.status === "PENDENTE").length,
       qtdPagos: r.itens.filter((i) => i.status === "PAGO").length,
       qtdRejeitados: r.itens.filter((i) => i.status === "REJEITADO").length,
+      qtdBaixados: r.itens.filter((i) => i.baixaSeniorStatus === "ENVIADA" || i.baixaSeniorStatus === "JA_BAIXADO").length,
+      qtdErroBaixa: r.itens.filter((i) => i.baixaSeniorStatus === "ERRO").length,
       qtdPagosSemBaixa: r.itens.filter(
         (i) => i.status === "PAGO" && !!i.tituloId && i.baixaSeniorStatus !== "ENVIADA" && i.baixaSeniorStatus !== "JA_BAIXADO"
       ).length,

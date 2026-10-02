@@ -41,6 +41,7 @@ type Analise = {
 };
 
 const chaveData = (d: Date) => d.toISOString().slice(0, 10);
+const soDigitos = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -68,6 +69,38 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       { error: "Informe a conta interna da Senior (numCco, tela F600CCO) correspondente a esta conta bancária." },
       { status: 422 }
     );
+  }
+
+  // Confere na Senior (E600CCO / F600CCO) que a conta interna existe, esta ativa e e'
+  // MESMO o banco/agencia/conta desta remessa -- evita baixar na conta errada
+  // (ex.: "CONSOMINAS GAR" no lugar de "341") por numero digitado errado.
+  let contaSenior: { descricao: string; banco: string; agencia: string; conta: string };
+  try {
+    const linhas = await consultarSenior(
+      `SELECT NUMCCO, DESCCO, CODBAN, CODAGE, NUMCTA, SITCCO FROM E600CCO WHERE CODEMP = ${COD_EMP_PADRAO} AND NUMCCO = '${numCco.replace(/'/g, "''")}'`
+    );
+    const l = linhas[0];
+    if (!l) {
+      return NextResponse.json({ error: `A conta interna "${numCco}" não existe na Senior (F600CCO). Confira o código.` }, { status: 422 });
+    }
+    if (l.SITCCO !== "A") {
+      return NextResponse.json({ error: `A conta interna "${numCco}" (${l.DESCCO}) não está ativa na Senior.` }, { status: 422 });
+    }
+    const c = remessa.contaBancaria;
+    const contaOk = [soDigitos(c.conta), soDigitos(c.conta) + soDigitos(c.dac)].includes(soDigitos(l.NUMCTA));
+    if (soDigitos(l.CODBAN) !== soDigitos(c.banco) || soDigitos(l.CODAGE) !== soDigitos(c.agencia) || !contaOk) {
+      return NextResponse.json(
+        {
+          error:
+            `A conta interna "${numCco}" (${l.DESCCO}: banco ${l.CODBAN}, ag ${l.CODAGE}, cc ${l.NUMCTA}) não corresponde à conta bancária desta remessa ` +
+            `(banco ${c.banco}, ag ${c.agencia}, cc ${c.conta}-${c.dac}). Informe a conta interna correta.`,
+        },
+        { status: 422 }
+      );
+    }
+    contaSenior = { descricao: l.DESCCO, banco: l.CODBAN, agencia: l.CODAGE, conta: l.NUMCTA };
+  } catch (e: any) {
+    return NextResponse.json({ error: `Não foi possível conferir a conta interna na Senior agora (${String(e.message).slice(0, 150)}).` }, { status: 502 });
   }
 
   const pendentes = remessa.itens.filter((i) => i.baixaSeniorStatus !== "ENVIADA" && i.baixaSeniorStatus !== "JA_BAIXADO");
@@ -145,6 +178,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   });
   const previa = {
     numCco,
+    contaSenior,
     elegiveis: elegiveis.map(resumo),
     jaBaixados: analises.filter((a) => a.situacao === "JA_BAIXADO").map(resumo),
     bloqueados: analises.filter((a) => a.situacao === "BLOQUEADO").map(resumo),
@@ -219,6 +253,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         }
       }
     }
+  }
+
+  // Baixa lancada (ou ja existente): sai a marca "Enviado (aguarda baixa Senior)".
+  // "Pago" na Programacao de Pagamento vem da proxima sincronizacao (VLRABE).
+  const baixados = await prisma.remessaItemPagamento.findMany({
+    where: { remessaId: remessa.id, baixaSeniorStatus: { in: ["ENVIADA", "JA_BAIXADO"] }, tituloId: { not: null } },
+    select: { tituloId: true },
+  });
+  if (baixados.length > 0) {
+    await prisma.tituloContasAPagar.updateMany({
+      where: { id: { in: baixados.map((b) => b.tituloId!) }, revisadoStatus: "ENVIADO_AGUARDANDO_BAIXA" },
+      data: { revisadoStatus: null, revisadoPorNome: null, revisadoEm: null },
+    });
   }
 
   return NextResponse.json({

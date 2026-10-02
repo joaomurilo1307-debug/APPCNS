@@ -159,6 +159,21 @@ com o financeiro qual conta interna eles usam ao baixar pagamentos feitos por el
   e a nova tentativa passa pela conferência ao vivo (se a Senior tiver gravado apesar da falha de rede, aparece `JA_BAIXADO`).
 - Estado por item em `RemessaItemPagamento.baixaSeniorStatus/Em/Msg/PorId`.
 
+**Vínculos entre os dois sistemas (02/10/2026):**
+- **Contrato conferido no servidor real:** o WSDL/XSD do tenant (`...cpa_titulos?wsdl` / `?xsd`) confirma a operação `GerarBaixaPorLoteCP` com
+  todos os campos que enviamos e tipos certos; o envelope sai **na ordem do XSD** (`xs:sequence`, alfabética), não na do exemplo do manual.
+  Existe também `GerarBaixaPorLoteCP2` (só acrescenta campos de moeda estrangeira) — não usada.
+- **Conta interna conferida na Senior antes de qualquer baixa:** o `numCco` informado precisa existir em `E600CCO`, estar ativo (`SITCCO = A`)
+  e bater banco/agência/conta com a conta bancária da remessa — senão a baixa nem é simulada (erro 422 com a explicação). Impede baixar na
+  conta errada (ex.: "CONSOMINAS GAR" no lugar de "341").
+- **Retorno -> Programação de Pagamento:** ao importar o retorno, o título cujo pagamento o banco confirmou (`00`) ou agendou (`BD`) passa
+  sozinho a "Enviado (aguarda baixa Senior)" — só se estava sem revisão ou "Aprovado" (nunca sobrescreve "Corrigido", que guarda o vínculo manual
+  de OC). Efeito colateral bom: título já enviado sai do atalho "Selecionar aprovados" e não é selecionado de novo por engano.
+- **Baixa lançada (ou já existente) -> limpa essa marca;** "Pago" aparece na Programação de Pagamento na próxima sincronização com a Senior
+  (VLRABE = 0, até ~10 min) — o app nunca força o "pago".
+- **Retorno em duas etapas:** o 1º retorno costuma vir "agendado" (`BD`); só o retorno do dia do pagamento (`00`) deixa o item pronto para baixa.
+  A tela de importação avisa quantos estão prontos e quantos ainda agendados.
+
 **Ainda não validado em produção** (precisa de um primeiro teste real, supervisionado, com **um** título): permissão de escrita do
 usuário da Senior usado pelo app nesse web service; se a Senior exige `seqChe`/`codFpg`/`numDoc` mesmo sendo opcionais no manual; e
 o que aparece em Tesouraria. O usuário da integração fica registrado como autor da baixa (`USUGER`) — vale usar uma conta de serviço.

@@ -84,19 +84,22 @@ export function montarEnvelopeBaixa(lote: LoteBaixa, usuario: string, senha: str
   if (lote.titulos.length === 0) throw new Error("Lote de baixa vazio.");
   if (!lote.numCco.trim() || lote.numCco.length > 14) throw new Error("numCco invalido (1 a 14 caracteres).");
 
+  // Os campos saem na ordem do XSD real do servidor (xs:sequence, alfabetica,
+  // conferido em ...cpa_titulos?xsd em 02/10/2026), nao na ordem do exemplo do
+  // manual -- assim nao depende de o servidor ser tolerante com a ordem.
   const dataBaixa = dataSenior(lote.datBai);
   const grade = lote.titulos
     .map(
       (t) =>
         `<gridTitulosBaixar>` +
-        `<numInt>${escaparXml(t.numInt.slice(0, 100))}</numInt>` +
-        `<numCco>${escaparXml(lote.numCco)}</numCco>` +
         `<codFil>${t.codFil}</codFil>` +
-        `<numTit>${escaparXml(t.numTit.slice(0, 15))}</numTit>` +
-        `<codTpt>${escaparXml(t.codTpt.slice(0, 3))}</codTpt>` +
         `<codFor>${t.codFor}</codFor>` +
-        `<vlrBai>${valorSenior(t.valor)}</vlrBai>` +
+        `<codTpt>${escaparXml(t.codTpt.slice(0, 3))}</codTpt>` +
+        `<numCco>${escaparXml(lote.numCco)}</numCco>` +
+        `<numInt>${escaparXml(t.numInt.slice(0, 100))}</numInt>` +
+        `<numTit>${escaparXml(t.numTit.slice(0, 15))}</numTit>` +
         (t.obs ? `<obsMcp>${escaparXml(t.obs.slice(0, 250))}</obsMcp>` : "") +
+        `<vlrBai>${valorSenior(t.valor)}</vlrBai>` +
         `</gridTitulosBaixar>`
     )
     .join("");
@@ -105,13 +108,13 @@ export function montarEnvelopeBaixa(lote: LoteBaixa, usuario: string, senha: str
     `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ser="http://services.senior.com.br">` +
     `<soapenv:Header/><soapenv:Body><ser:GerarBaixaPorLoteCP>` +
     `<user>${escaparXml(usuario)}</user><password>${escaparXml(senha)}</password><encryption>0</encryption>` +
-    `<parameters>${grade}` +
+    `<parameters>` +
     `<codEmp>${lote.codEmp}</codEmp><codFil>${lote.codFil}</codFil>` +
-    `<datBai>${dataBaixa}</datBai>` +
+    `<datBai>${dataBaixa}</datBai><datCxb>${dataBaixa}</datCxb>` +
+    grade +
+    `<numCco>${escaparXml(lote.numCco)}</numCco>` +
     `<tnsBai>${escaparXml(lote.tnsBai ?? TNS_BAIXA_CP)}</tnsBai>` +
     `<tnsCxb>${escaparXml(lote.tnsCxb ?? TNS_TESOURARIA_CP)}</tnsCxb>` +
-    `<datCxb>${dataBaixa}</datCxb>` +
-    `<numCco>${escaparXml(lote.numCco)}</numCco>` +
     `</parameters></ser:GerarBaixaPorLoteCP></soapenv:Body></soapenv:Envelope>`
   );
 }

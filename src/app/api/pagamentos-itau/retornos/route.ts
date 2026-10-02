@@ -47,6 +47,9 @@ export async function POST(req: Request) {
   const remessasAtingidas = new Set<string>();
   let reconhecidos = 0;
   const naoReconhecidos: string[] = [];
+  const resumoStatus: Record<string, number> = { PAGO: 0, AGENDADO: 0, CANCELADO: 0, REJEITADO: 0 };
+  let prontosParaBaixa = 0;
+  const titulosEnviados = new Set<string>();
 
   for (const item of lido.itens) {
     const registro = await prisma.remessaItemPagamento.findUnique({ where: { referenciaEmpresa: item.referenciaEmpresa } });
@@ -61,16 +64,22 @@ export async function POST(req: Request) {
     const recebidoEm = new Date().toISOString();
     const ocorrenciasNovas = item.ocorrencias.map((o) => ({ ...o, recebidoEm }));
 
+    const novoStatus = statusDoItem(item);
     await prisma.remessaItemPagamento.update({
       where: { id: registro.id },
       data: {
         nossoNumero: item.nossoNumero ?? registro.nossoNumero,
         dataEfetivacao: item.dataEfetiva ?? registro.dataEfetivacao,
         valorEfetivado: item.valorEfetivo ?? registro.valorEfetivado,
-        status: statusDoItem(item),
+        status: novoStatus,
         ocorrencias: JSON.stringify([...ocorrenciasAnteriores, ...ocorrenciasNovas]),
       },
     });
+    resumoStatus[novoStatus] += 1;
+    if (registro.tituloId && (novoStatus === "PAGO" || novoStatus === "AGENDADO")) titulosEnviados.add(registro.tituloId);
+    if (novoStatus === "PAGO" && registro.tituloId && registro.baixaSeniorStatus !== "ENVIADA" && registro.baixaSeniorStatus !== "JA_BAIXADO") {
+      prontosParaBaixa += 1;
+    }
 
     remessasAtingidas.add(registro.remessaId);
     reconhecidos += 1;
@@ -89,6 +98,17 @@ export async function POST(req: Request) {
     },
   });
 
+  // O banco confirmou/agendou: o titulo passa a "Enviado (aguarda baixa Senior)"
+  // na Programacao de Pagamento (so' se ainda estava sem revisao ou APROVADO --
+  // nao pisa em CORRIGIDO/SEM_OC/AGUARDANDO_COMPRAS, que guardam outra conferencia).
+  // "Pago" continua vindo so' do VLRABE da Senior.
+  if (titulosEnviados.size > 0) {
+    await prisma.tituloContasAPagar.updateMany({
+      where: { id: { in: [...titulosEnviados] }, OR: [{ revisadoStatus: null }, { revisadoStatus: "APROVADO" }] },
+      data: { revisadoStatus: "ENVIADO_AGUARDANDO_BAIXA", revisadoPorNome: "Retorno Itaú (automático)", revisadoEm: new Date() },
+    });
+  }
+
   if (remessasAtingidas.size > 0) {
     await prisma.remessaPagamento.updateMany({
       where: { id: { in: [...remessasAtingidas] } },
@@ -101,5 +121,7 @@ export async function POST(req: Request) {
     totalLido: lido.itens.length,
     totalReconhecidos: reconhecidos,
     naoReconhecidos,
+    resumoStatus,
+    prontosParaBaixa,
   });
 }
