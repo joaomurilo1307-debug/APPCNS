@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Consominas | Gestão de Projetos e Rotinas",
     short_name: "Consominas Gestão",
     description: "Ferramenta interna de gestão de projetos, equipes e rotinas da Consominas.",
-    start_url: "/dashboard",
+    start_url: "/",
     scope: "/",
     display: "standalone",
     background_color: "#ffffff",

@@ -162,14 +162,5 @@ export function isReadOnlyRole(role: string) {
 
 /** Rota inicial recomendada por papel, após login. */
 export function landingPathForRole(role: string) {
-  switch (role) {
-    case "APROVADOR":
-      return "/aprovacoes";
-    case "CLIENTE":
-      return "/portal-cliente";
-    case "VISUALIZADOR":
-      return "/dashboard";
-    default:
-      return "/dashboard";
-  }
+  return role === "CLIENTE" ? "/portal-cliente" : "/inicio";
 }

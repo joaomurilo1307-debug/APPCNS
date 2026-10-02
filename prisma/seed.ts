@@ -32,7 +32,8 @@ async function main() {
     create: { userId: admin.id, teamId: nucleo.id, role: "GESTOR" },
   });
 
-  console.log(`Seed concluído. Login: ${adminEmail} / senha: ${adminPassword}`);
+  // Senha fora do log: o seed roda a cada boot e docker logs fica legivel na VPS.
+  console.log(`Seed concluído. Admin: ${adminEmail}`);
 }
 
 main()

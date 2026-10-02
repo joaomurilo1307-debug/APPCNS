@@ -25,38 +25,54 @@ import {
   IconUsers,
 } from "./NavIcons";
 
-const baseLinks = [
-  { href: "/dashboard", label: "Início", icon: IconHome, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/projetos", label: "Projetos", icon: IconFolders, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/tarefas", label: "Tarefas (todas)", icon: IconCheckSquare, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/sprint", label: "Sprint da Semana", icon: IconZap, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/gantt", label: "Gantt", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"] },
-  { href: "/calendario", label: "Calendário", icon: IconCalendar, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/chat", label: "Chat", icon: IconChat, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+export type Modulo = "gestao" | "financeiro";
+
+// Cada link pertence a um modulo (escolhido em /inicio); "comum" aparece nos dois.
+const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: any; roles: string[] }[] = [
+  { href: "/dashboard", module: "gestao", label: "Painel", icon: IconHome, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/projetos", module: "gestao", label: "Projetos", icon: IconFolders, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/tarefas", module: "gestao", label: "Tarefas (todas)", icon: IconCheckSquare, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/sprint", module: "gestao", label: "Sprint da Semana", icon: IconZap, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/gantt", module: "gestao", label: "Gantt", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"] },
+  { href: "/calendario", module: "gestao", label: "Calendário", icon: IconCalendar, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/chat", module: "comum", label: "Chat", icon: IconChat, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   // Equipes restaurado no menu em 14/09/2026 (pedido do Joao: admin precisa
   // conseguir cadastrar pessoas nos projetos/equipes) -- a pagina e a API
   // ja existiam prontas, so estavam fora do menu desde antes. Nucleos
   // continua escondido (Joao ainda nao pediu).
-  { href: "/equipes", label: "Equipes", icon: IconUsers, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
-  { href: "/metas", label: "Metas", icon: IconTarget, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/relatorios", label: "Relatórios", icon: IconReport, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/pdi", label: "PDI", icon: IconTrendingUp, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/aprovacoes", label: "Aprovações", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/aprovacoes/senior", label: "Aprovações (OC Senior)", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/programacao-pagamento", label: "Programação de Pagamento", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/pagamentos-itau", label: "Pagamentos Itaú (SISPAG)", icon: IconBarChart, roles: ["ADMIN", "DIRETOR"] },
-  { href: "/conferencia-oc", label: "Conferência de OC", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/custos/plano-de-contas", label: "Custo por Plano de Contas", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/usuarios", label: "Usuários", icon: IconShieldUser, roles: ["ADMIN"] },
-  { href: "/usuarios/senior", label: "Usuários do Senior", icon: IconShieldUser, roles: ["ADMIN"] },
+  { href: "/equipes", module: "gestao", label: "Equipes", icon: IconUsers, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
+  { href: "/metas", module: "gestao", label: "Metas", icon: IconTarget, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/relatorios", module: "gestao", label: "Relatórios", icon: IconReport, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/pdi", module: "gestao", label: "PDI", icon: IconTrendingUp, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/aprovacoes", module: "gestao", label: "Aprovações", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/aprovacoes/senior", module: "financeiro", label: "Aprovações (OC Senior)", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
+  { href: "/programacao-pagamento", module: "financeiro", label: "Programação de Pagamento", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
+  { href: "/pagamentos-itau", module: "financeiro", label: "Pagamentos Itaú (SISPAG)", icon: IconBarChart, roles: ["ADMIN", "DIRETOR"] },
+  { href: "/conferencia-oc", module: "financeiro", label: "Conferência de OC", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
+  { href: "/custos/plano-de-contas", module: "financeiro", label: "Custo por Plano de Contas", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/usuarios", module: "comum", label: "Usuários", icon: IconShieldUser, roles: ["ADMIN"] },
+  { href: "/usuarios/senior", module: "comum", label: "Usuários do Senior", icon: IconShieldUser, roles: ["ADMIN"] },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const role = (session?.user as any)?.role;
-  const links = baseLinks.filter((l) => !role || l.roles.includes(role));
   const { open, setOpen } = useSidebar();
+
+  // Modulo atual vem da rota; em rota sem modulo (ex: /chat, /minha-conta) mantem o ultimo escolhido.
+  const [modulo, setModulo] = useState<Modulo | null>(null);
+  useEffect(() => {
+    if (pathname === "/inicio") return setModulo(null);
+    const match = baseLinks
+      .filter((l) => l.module !== "comum" && pathname?.startsWith(l.href))
+      .sort((a, b) => b.href.length - a.href.length)[0];
+    if (match) setModulo(match.module as Modulo);
+  }, [pathname]);
+
+  const links = baseLinks.filter(
+    (l) => (!role || l.roles.includes(role)) && (l.module === "comum" || l.module === modulo)
+  );
 
   const [unreadTotal, setUnreadTotal] = useState(0);
   const prevTotal = useRef<number | null>(null);
@@ -189,6 +205,20 @@ export default function Sidebar() {
             </button>
           </div>
           <nav className="flex flex-col gap-0.5">
+            <Link
+              href="/inicio"
+              className={`mb-2 flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+                pathname === "/inicio"
+                  ? "bg-gradient-to-r from-brand to-brand-dark text-white shadow-soft"
+                  : "text-gray-600 hover:bg-brand/[0.06] hover:text-brand-dark"
+              }`}
+            >
+              <IconHome className="shrink-0" />
+              <span className="flex-1 truncate">
+                {modulo === "financeiro" ? "Financeiro" : modulo === "gestao" ? "Projetos e Gestão" : "Módulos"}
+              </span>
+              {modulo && <span className="text-[10px] text-gray-400">trocar</span>}
+            </Link>
             {links.map((link) => {
               const Icon = link.icon;
               const active = pathname?.startsWith(link.href);
