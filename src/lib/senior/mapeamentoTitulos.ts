@@ -8,7 +8,7 @@ import type { LinhaSenior } from "./getDbInfo";
 export const CAMPOS_TITULO = [
   "CODEMP", "CODFIL", "NUMTIT", "CODTPT", "CODFOR", "SITTIT", "DATEMI", "VCTORI", "VCTPRO", "VLRORI", "VLRABE",
   "CODCCU", "NUMNFC", "OBSTCP", "USUGER", "DATGER", "CODBAN", "TIPTCC", "CODAGE", "CCBFOR", "CODBAR", "DOCIDEFAV",
-  "TPCPIX", "CHVPIX",
+  "TPCPIX", "CHVPIX", "CODFPG",
 ] as const;
 
 export type ItemSyncTitulo = {
@@ -41,6 +41,7 @@ export type ItemSyncTitulo = {
   chavePix: string | null;
   tipoChavePix: string | null;
   documentoFavorecido: string | null;
+  codFpg: string | null;
 };
 
 /** Campo "preenchido" no dialeto da Senior: nao vazio e nao "0". */
@@ -148,6 +149,7 @@ export function mapearTitulo(
     dacFavorecido: temConta && conta.dv ? conta.dv : null,
     tipoContaFavorecido: preenchido(fonte.TIPTCC) ? fonte.TIPTCC : null,
     chavePix: preenchido(t.CHVPIX) ? t.CHVPIX.trim() : null,
+    codFpg: preenchido(t.CODFPG) ? t.CODFPG.trim() : null,
     tipoChavePix: preenchido(t.TPCPIX) ? t.TPCPIX : null,
     documentoFavorecido:
       documentoValido(t.DOCIDEFAV, fornecedor?.TIPFOR) ??

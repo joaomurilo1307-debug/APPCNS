@@ -9,6 +9,8 @@ type Dossie = {
   codFil: string;
   titulos: string[];
   fornecedorNome: string | null;
+  codFpg?: string | null;
+  formaPagamento?: string | null;
   vencimento: string | null;
   valorTotal: number | null;
   status: string;
@@ -308,6 +310,8 @@ export default function ConferenciaOcPage() {
               <th className="px-3 py-2 font-medium">Título(s)</th>
               <th className="px-3 py-2 font-medium">OC</th>
               <th className="px-3 py-2 font-medium">Fornecedor</th>
+              <th className="px-3 py-2 font-medium">Cód. forma pgto</th>
+              <th className="px-3 py-2 font-medium">Forma de pagamento</th>
               <th className="px-3 py-2 font-medium">Vencimento</th>
               <th className="px-3 py-2 text-right font-medium">Valor</th>
               <th className="px-3 py-2 font-medium">Origem</th>
@@ -339,6 +343,10 @@ export default function ConferenciaOcPage() {
                 </td>
                 <td className="max-w-[220px] truncate px-3 py-1.5" title={d.fornecedorNome ?? ""}>
                   {d.fornecedorNome || "—"}
+                </td>
+                <td className="px-3 py-1.5 tabular-nums text-gray-600">{d.codFpg ?? <span className="text-gray-300">—</span>}</td>
+                <td className="max-w-[200px] truncate px-3 py-1.5 text-gray-600" title={d.formaPagamento ?? undefined}>
+                  {d.formaPagamento ?? <span className="text-gray-300">—</span>}
                 </td>
                 <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(d.vencimento)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{formatMoeda(d.valorTotal)}</td>
@@ -374,7 +382,7 @@ export default function ConferenciaOcPage() {
             ))}
             {filtrados.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={11} className="px-4 py-6 text-center text-gray-400">
                   {dossies.length === 0
                     ? "Nenhum dossiê recebido ainda. A automação do n8n envia para cá assim que publica um documento."
                     : "Nenhum dossiê encontrado com esse filtro."}

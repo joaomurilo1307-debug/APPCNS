@@ -4,6 +4,11 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
+import {
+  aguardarPrimeiraCarga,
+  carregarCatalogoFormasPagamento,
+  garantirFormasPagamentoAtualizadas,
+} from "@/lib/senior/formasPagamento";
 
 // Programação de Contas a Pagar por título, escopo histórico completo.
 // Mesmo nível de acesso das Aprovações OC do Senior. Motor de conciliação
@@ -16,6 +21,16 @@ export async function GET() {
   const user = session.user as any;
   if (!["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"].includes(user.role)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  }
+
+  // Forma de pagamento (CODFPG + descricao do catalogo F066FPG): o app busca na
+  // Senior em segundo plano (a cada 15 min); na 1a vez espera um pouco pra a
+  // tela ja abrir preenchida. Falha aqui nunca derruba a lista.
+  let catalogoFpg = await carregarCatalogoFormasPagamento();
+  const tarefaFpg = garantirFormasPagamentoAtualizadas();
+  if (catalogoFpg.size === 0) {
+    await aguardarPrimeiraCarga(true, tarefaFpg);
+    catalogoFpg = await carregarCatalogoFormasPagamento();
   }
 
   const [titulos, ocs, usuariosSenior, dossies] = await Promise.all([
@@ -116,6 +131,8 @@ export async function GET() {
         entradaManual: !t.numNfc || t.numNfc === "0",
         numNfc: t.numNfc && t.numNfc !== "0" ? t.numNfc : null,
         dossie: dossieDe(t, vinculo.ocRelacionada?.numOcp),
+        codFpg: t.codFpg,
+        formaPagamento: t.codFpg ? catalogoFpg.get(t.codFpg) ?? null : null,
         // Preenchimento automatico do Pagamentos Itaú (SISPAG), quando o
         // sincronismo já trouxer isso -- ver docs/integracao-itau.md.
         codigoBarrasBoleto: t.codigoBarrasBoleto,

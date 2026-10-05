@@ -417,6 +417,15 @@ model HistoricoCcuColaborador {
 // repetidos (inclusive dentro do MESMO fornecedor) somando 161 títulos que
 // se perderiam num upsert simples. (numTit,codFil,codFor,tipo,dataEmissao)
 // é 100% único na base real (checado título a título antes de assumir).
+// Catalogo de formas de pagamento da Senior (tela F066FPG): codigo -> descricao.
+// Atualizado pelo proprio app (src/lib/senior/formasPagamento.ts).
+model FormaPagamentoSenior {
+  codigo       String   @id
+  descricao    String
+  abreviatura  String?
+  atualizadoEm DateTime @updatedAt
+}
+
 model TituloContasAPagar {
   id                  String    @id @default(cuid())
   numTit              String
@@ -464,6 +473,9 @@ model TituloContasAPagar {
   chavePix            String? // CHVPIX
   tipoChavePix        String? // TPCPIX cru
   documentoFavorecido String? // CPF/CNPJ so' digitos: DOCIDEFAV do titulo, ou CGCCPF do fornecedor
+  // Forma de pagamento do titulo na Senior (E501TCP.CODFPG; descricao no catalogo
+  // FormaPagamentoSenior). null = nao informado ("0" na Senior tambem vira null).
+  codFpg String?
   atualizadoEm        DateTime  @updatedAt
 
   // Controle manual de conferencia (30/09/2026): quando o vinculo com OC nao

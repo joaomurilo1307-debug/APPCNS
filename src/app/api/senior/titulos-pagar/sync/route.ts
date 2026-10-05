@@ -61,6 +61,8 @@ const itemSchema = z.object({
   chavePix: z.string().nullable().optional(),
   tipoChavePix: z.string().nullable().optional(),
   documentoFavorecido: z.string().nullable().optional(),
+  // Forma de pagamento (E501TCP.CODFPG). Ausente = nao mexe (o app tambem a busca sozinho na Senior).
+  codFpg: z.string().nullable().optional(),
 });
 
 const bodySchema = z.object({ itens: z.array(itemSchema) });
@@ -80,6 +82,7 @@ function camposDePagamento(item: ItemSync) {
     ...(item.chavePix !== undefined ? { chavePix: item.chavePix } : {}),
     ...(item.tipoChavePix !== undefined ? { tipoChavePix: item.tipoChavePix } : {}),
     ...(item.documentoFavorecido !== undefined ? { documentoFavorecido: item.documentoFavorecido } : {}),
+    ...(item.codFpg !== undefined ? { codFpg: item.codFpg } : {}),
   };
 }
 
