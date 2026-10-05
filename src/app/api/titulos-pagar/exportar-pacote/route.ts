@@ -10,7 +10,6 @@ import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/uploadValidation";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
-import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
 
 // Pacote pra mandar pra fora do sistema (30/09/2026, pedido do João: "quando
 // eu exportar os que selecionei já vem uma pasta com o dossiê deles"): um
@@ -66,7 +65,6 @@ export async function POST(req: Request) {
       orderBy: { geradoEm: "desc" },
     }),
   ]);
-  const catalogoFpg = await carregarCatalogoFormasPagamento();
   const motor = criarMotorVinculo(ocs);
   const ocPorNumero = new Map(ocs.map((o) => [o.numOcp, o]));
   const indiceDossies = criarIndiceDossies(dossies);
@@ -79,8 +77,6 @@ export async function POST(req: Request) {
   const linhas = titulos.map((t) => ({
     "Título": t.numTit,
     "Fornecedor": t.fornecedorNome ?? `código ${t.codFor}`,
-    "Cód. forma pgto": t.codFpg ?? "",
-    "Forma de pagamento": t.codFpg ? catalogoFpg.get(t.codFpg) ?? "" : "",
     "Status revisão": t.revisadoStatus ? REVISAO_LABEL[t.revisadoStatus] || t.revisadoStatus : "Não revisado",
     "Revisado por": t.revisadoPorNome || "",
     "Centro de custo": t.ccuNome || "",
@@ -92,7 +88,7 @@ export async function POST(req: Request) {
   }));
   linhas.push({
     "Título": "TOTAL",
-    "Fornecedor": "", "Cód. forma pgto": "", "Forma de pagamento": "", "Status revisão": "", "Revisado por": "", "Centro de custo": "", "Vencto programado": "",
+    "Fornecedor": "", "Status revisão": "", "Revisado por": "", "Centro de custo": "", "Vencto programado": "",
     "Valor original": titulos.reduce((s, t) => s + t.valorOriginal, 0),
     "Valor em aberto": titulos.reduce((s, t) => s + t.valorAberto, 0),
     "Situação": `${titulos.length} título(s)`,
@@ -100,7 +96,7 @@ export async function POST(req: Request) {
   });
   const ws = XLSX.utils.json_to_sheet(linhas);
   ws["!cols"] = [
-    { wch: 14 }, { wch: 38 }, { wch: 12 }, { wch: 26 }, { wch: 20 }, { wch: 20 }, { wch: 22 },
+    { wch: 14 }, { wch: 38 }, { wch: 20 }, { wch: 20 }, { wch: 22 },
     { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 14 },
   ];
   const wb = XLSX.utils.book_new();

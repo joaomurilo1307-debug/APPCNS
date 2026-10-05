@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
+import { carregarCatalogoFormasPagamento, garantirFormasPagamentoAtualizadas } from "@/lib/senior/formasPagamento";
 
 // Busca UMA OC por numOcp, com o mapa completo (rateio, níveis, eventos) +
 // o(s) título(s) que essa OC gerou (sentido inverso do vínculo, mesmo motor
@@ -45,6 +46,11 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
   // contra TODAS as OCs (mesmo índice de /api/titulos-pagar) pra garantir
   // que os dois sentidos batem exatamente igual -- só filtra o resultado
   // pra esta OC no final, não recalcula uma regra própria.
+  // Forma de pagamento (codigo da Senior + descricao do catalogo F066FPG): o app mantem os dois
+  // atualizados em segundo plano; aqui so' le o que ja esta salvo.
+  garantirFormasPagamentoAtualizadas();
+  const catalogoFpg = await carregarCatalogoFormasPagamento();
+
   const [titulos, todasOcs] = await Promise.all([
     prisma.tituloContasAPagar.findMany(),
     prisma.aprovacaoSenior.findMany({
@@ -82,6 +88,8 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
       dataLancamento: t.dataLancamento,
       lancadoPorNome: t.lancadoPorCod && t.lancadoPorCod !== "0" ? codToNome[t.lancadoPorCod] || `Usuário Senior #${t.lancadoPorCod}` : null,
       entradaManual: !t.numNfc || t.numNfc === "0",
+      codFpg: t.codFpg,
+      formaPagamento: t.codFpg ? catalogoFpg.get(t.codFpg) ?? null : null,
     }));
 
   return NextResponse.json({ aprovacao, codToNome, titulosVinculados });

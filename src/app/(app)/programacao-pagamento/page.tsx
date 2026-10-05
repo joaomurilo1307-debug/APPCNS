@@ -89,8 +89,6 @@ type Titulo = {
   lancadoPorNome: string | null;
   entradaManual: boolean;
   numNfc: string | null;
-  codFpg: string | null;
-  formaPagamento: string | null;
   revisadoStatus: string | null;
   revisadoPorNome: string | null;
   revisadoEm: string | null;
@@ -103,8 +101,6 @@ type FiltrosColuna = {
   tipo: string;
   criacao: string;
   fornecedor: string;
-  codFpg: string;
-  formaPagamento: string;
   centroCusto: string;
   vencimento: string;
   pagamento: string;
@@ -119,8 +115,6 @@ const FILTROS_COLUNA_VAZIOS: FiltrosColuna = {
   tipo: "",
   criacao: "",
   fornecedor: "",
-  codFpg: "",
-  formaPagamento: "",
   centroCusto: "",
   vencimento: "",
   pagamento: "",
@@ -425,8 +419,6 @@ export default function ProgramacaoPagamentoPage() {
       "Tipo": t.tipo,
       "Criação": formatData(t.dataEmissao),
       "Fornecedor": t.fornecedorNome,
-      "Cód. forma pgto": t.codFpg ?? "",
-      "Forma de pagamento": t.formaPagamento ?? "",
       "Centro de custo": t.ccuNome || "",
       "Vencto programado": formatData(t.vencimentoProgramado),
       "Pago em": t.dataPagamento ? formatData(t.dataPagamento) : "",
@@ -437,7 +429,7 @@ export default function ProgramacaoPagamentoPage() {
     const ws = XLSX.utils.json_to_sheet(linhas);
     ws["!cols"] = [
       { wch: 14 }, { wch: 22 }, { wch: 40 }, { wch: 20 }, { wch: 20 }, { wch: 16 },
-      { wch: 8 }, { wch: 12 }, { wch: 38 }, { wch: 12 }, { wch: 26 }, { wch: 22 }, { wch: 14 }, { wch: 14 },
+      { wch: 8 }, { wch: 12 }, { wch: 38 }, { wch: 22 }, { wch: 14 }, { wch: 14 },
       { wch: 16 }, { wch: 16 }, { wch: 12 },
     ];
     const wb = XLSX.utils.book_new();
@@ -589,8 +581,6 @@ export default function ProgramacaoPagamentoPage() {
           t.fornecedorNome.toLowerCase().includes(termo) ||
           (t.ccuNome ?? "").toLowerCase().includes(termo) ||
           (t.tipo ?? "").toLowerCase().includes(termo) ||
-          (t.formaPagamento ?? "").toLowerCase().includes(termo) ||
-          (t.codFpg ?? "").toLowerCase().includes(termo) ||
           (t.ocRelacionada?.numOcp ?? "").toLowerCase().includes(termo) ||
           (t.motivoSemOC ?? "").toLowerCase().includes(termo)
       )
@@ -602,8 +592,6 @@ export default function ProgramacaoPagamentoPage() {
         if (!textoContem(t.tipo, f.tipo)) return false;
         if (!dataIgual(t.dataEmissao, f.criacao)) return false;
         if (!textoContem(t.fornecedorNome, f.fornecedor)) return false;
-        if (!textoContem(t.codFpg, f.codFpg)) return false;
-        if (!textoContem(t.formaPagamento, f.formaPagamento)) return false;
         if (!textoContem(t.ccuNome, f.centroCusto)) return false;
         if (!dataIgual(t.vencimentoProgramado, f.vencimento)) return false;
         if (mostrarColunaPagamento && !dataIgual(t.dataPagamento, f.pagamento)) return false;
@@ -890,8 +878,6 @@ export default function ProgramacaoPagamentoPage() {
               <th className="px-3 py-2 font-medium">Criação</th>
               <th className="px-3 py-2 font-medium">Lançado no Senior</th>
               <th className="px-3 py-2 font-medium">Fornecedor</th>
-              <th className="px-3 py-2 font-medium">Cód. forma pgto</th>
-              <th className="px-3 py-2 font-medium">Forma de pagamento</th>
               <th className="px-3 py-2 font-medium">Centro de custo</th>
               <th className="px-3 py-2 font-medium">Vencto programado</th>
               {mostrarColunaPagamento && <th className="px-3 py-2 font-medium">Pago em</th>}
@@ -956,26 +942,6 @@ export default function ProgramacaoPagamentoPage() {
                   value={filtrosColuna.fornecedor}
                   onChange={(e) => atualizarFiltroColuna("fornecedor", e.target.value)}
                   className="w-full min-w-[150px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
-                />
-              </th>
-              <th className="px-2 py-2">
-                <input
-                  aria-label="Filtrar código da forma de pagamento"
-                  type="text"
-                  placeholder="cód..."
-                  value={filtrosColuna.codFpg}
-                  onChange={(e) => atualizarFiltroColuna("codFpg", e.target.value)}
-                  className="w-full min-w-[60px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
-                />
-              </th>
-              <th className="px-2 py-2">
-                <input
-                  aria-label="Filtrar forma de pagamento"
-                  type="text"
-                  placeholder="forma..."
-                  value={filtrosColuna.formaPagamento}
-                  onChange={(e) => atualizarFiltroColuna("formaPagamento", e.target.value)}
-                  className="w-full min-w-[120px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
               <th className="px-2 py-2">
@@ -1139,10 +1105,6 @@ export default function ProgramacaoPagamentoPage() {
                 <td className="max-w-[200px] truncate px-3 py-1.5" title={t.fornecedorNome}>
                   {t.fornecedorNome}
                 </td>
-                <td className="px-3 py-1.5 tabular-nums text-gray-600">{t.codFpg ?? <span className="text-gray-300">—</span>}</td>
-                <td className="max-w-[170px] truncate px-3 py-1.5 text-gray-600" title={t.formaPagamento ?? undefined}>
-                  {t.formaPagamento ?? <span className="text-gray-300">—</span>}
-                </td>
                 <td className="px-3 py-1.5 text-gray-500">
                   {t.ccuNome ? (
                     t.ccuNome
@@ -1249,7 +1211,7 @@ export default function ProgramacaoPagamentoPage() {
             ))}
             {filtradosMostrados.length === 0 && (
               <tr>
-                <td colSpan={mostrarColunaPagamento ? 17 : 16} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={mostrarColunaPagamento ? 15 : 14} className="px-4 py-6 text-center text-gray-400">
                   Nenhum título encontrado com esse filtro.
                 </td>
               </tr>

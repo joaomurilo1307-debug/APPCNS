@@ -178,23 +178,25 @@ com o financeiro qual conta interna eles usam ao baixar pagamentos feitos por el
 usuário da Senior usado pelo app nesse web service; se a Senior exige `seqChe`/`codFpg`/`numDoc` mesmo sendo opcionais no manual; e
 o que aparece em Tesouraria. O usuário da integração fica registrado como autor da baixa (`USUGER`) — vale usar uma conta de serviço.
 
-## Forma de pagamento da Senior nas abas Programação de Pagamento e Conferência de OC (05/10/2026)
+## Forma de pagamento da Senior dentro da OC (05/10/2026)
 
-Duas colunas novas nas duas abas: **código** da forma de pagamento (`E501TCP.CODFPG`, do próprio título) e a **descrição por extenso**
-(catálogo da tela F066FPG, tabela `E066FPG`). Também entram no Excel exportado (relatório e pacote), na busca geral e no filtro por coluna da
-Programação de Pagamento.
+Ao clicar na OC (Programação de Pagamento, Conferência de OC, Aprovações Senior e Plano de Contas — todas usam o mesmo modal `MapaOC`), o
+descritivo mostra a **forma de pagamento**: **código** (`E501TCP.CODFPG`, do próprio título) e **descrição por extenso** (catálogo da tela F066FPG,
+tabela `E066FPG`). Aparece em dois lugares do modal: um resumo no topo ("Forma de pagamento (do título real)") e uma linha em cada título gerado
+pela OC. Títulos de formas diferentes listam todas; sem forma informada mostra "não informada na Senior". Não há coluna nas tabelas das abas.
 
+- **É do título, não da OC:** segue a mesma regra do "Pagamento (do título real, não da OC)" que já existia no modal.
+- **A Conferência de OC passou a repassar ao modal a lista de títulos gerados pela OC** (a API já devolvia; essa tela não a repassava) — por isso agora
+  ela também mostra o bloco "Título(s) gerado(s) por esta OC", como as outras telas.
 - **Catálogo por empresa:** `E066FPG` tem uma linha por `CODEMP` (as empresas-modelo 9997/9998/9999 e 1 a 8). Vale a descrição da empresa 1;
   as outras só preenchem códigos que a empresa 1 não tenha. Empresa 1: 1 = Cobrança Bancária, 3 = Depósito em Conta, 4 = Ordem de Pagto,
   17 = Fatura, **18 = Boleto, 19 = PIX**, 20 = Cartão de Crédito, 21 = Remessa.
-- **`CODFPG = 0` na Senior significa "não informado"** (803 dos 1.394 títulos abertos em 05/10/2026): a coluna fica "—", é o dado real.
+- **`CODFPG = 0` na Senior significa "não informado"** (803 dos 1.394 títulos abertos em 05/10/2026) — é o dado real, não falha.
 - **Esquisitice do GetDBInfo:** em `E066FPG`, `SELECT *` responde (5 a 26 s), mas `SELECT CODFPG, DESFPG ...` com colunas explícitas **não responde**
   (timeout). `E028FPG` (condição de pagamento) não serve — erro "Empty string". Por isso o catálogo é lido com `SELECT *`.
 - **Quem busca:** o sincronismo automático de títulos roda no VPS (script Python via n8n, fora deste repositório) e **não envia** o `CODFPG`.
   Então o próprio app lê da Senior (somente leitura, mesmas credenciais do GetDBInfo) em segundo plano — `src/lib/senior/formasPagamento.ts`,
-  disparado ao abrir as duas telas: catálogo + `CODFPG` dos títulos **abertos** a cada 15 min, e uma varredura de **todos** os títulos
-  (histórico) a cada 12 h. Na 1ª abertura após subir o app a tela espera até 20 s pelos dados (uma vez); depois nunca bloqueia.
-  Se o script do VPS passar a enviar `codFpg`, a rota de sync grava igual (campo ausente = não mexe) — os dois caminhos convivem.
-- **Conferência de OC:** o dossiê mostra a(s) forma(s) dos títulos que apontam para ele, pelo mesmo casamento dossiê↔título da Programação
-  de Pagamento. Dossiê com títulos de formas diferentes lista todas ("3, 19" / "Deposito em Conta / PIX"). Só vale se o fornecedor bate
-  (ou se o dossiê não tem fornecedor) — o casamento só pelo número do título pegava título de outro fornecedor com o mesmo número.
+  disparado ao abrir a Programação de Pagamento, a Conferência de OC ou o modal da OC: catálogo + `CODFPG` dos títulos **abertos** a cada 15 min, e uma
+  varredura de **todos** os títulos (histórico) a cada 12 h. Nenhuma tela espera por isso; logo após subir o app, o primeiro modal aberto pode ainda
+  mostrar "não informada" até a primeira busca terminar (segundos). Se o script do VPS passar a enviar `codFpg`, a rota de sync grava igual
+  (campo ausente = não mexe) — os dois caminhos convivem.

@@ -133,13 +133,3 @@ export async function carregarCatalogoFormasPagamento(): Promise<Map<string, str
   const itens = await prisma.formaPagamentoSenior.findMany({ select: { codigo: true, descricao: true } });
   return new Map(itens.map((i) => [i.codigo, i.descricao]));
 }
-
-let jaEsperou = false;
-
-/** Na primeira vez (catalogo vazio) espera um pouco pra a tela abrir com dado -- so' UMA vez por processo,
- *  pra uma Senior lenta nunca atrasar toda abertura de tela. */
-export async function aguardarPrimeiraCarga(catalogoVazio: boolean, tarefa: Promise<void> | null) {
-  if (!catalogoVazio || !tarefa || jaEsperou) return;
-  jaEsperou = true;
-  await Promise.race([tarefa, new Promise((r) => setTimeout(r, 20_000))]);
-}

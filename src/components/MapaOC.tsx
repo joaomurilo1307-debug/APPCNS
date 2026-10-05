@@ -61,6 +61,8 @@ export type TituloVinculado = {
   dataLancamento?: string | null;
   lancadoPorNome?: string | null;
   entradaManual?: boolean | null;
+  codFpg?: string | null;
+  formaPagamento?: string | null;
 };
 
 export type Aprovacao = {
@@ -147,6 +149,16 @@ function formatDataHora(iso: string | null | undefined) {
 // (bug real reportado pelo João 15/09/2026, print da OC 12394: cabeçalho
 // dizia "Não pago" e o título gerado por ela já mostrava "Pago em X").
 // Deriva sempre dos títulos REAIS gerados por esta OC.
+// Forma de pagamento da OC = a dos titulos que ela gerou (dado real da Senior, E501TCP.CODFPG +
+// catalogo F066FPG). Titulos de formas diferentes listam todas. CODFPG 0 na Senior = nao informado.
+function formasDePagamento(titulos: TituloVinculado[] | undefined) {
+  const porCodigo = new Map<string, string>();
+  for (const t of titulos ?? []) {
+    if (t.codFpg) porCodigo.set(t.codFpg, t.formaPagamento ?? `Forma ${t.codFpg}`);
+  }
+  return [...porCodigo].sort((a, b) => Number(a[0]) - Number(b[0])).map(([codigo, descricao]) => ({ codigo, descricao }));
+}
+
 function statusPagamento(titulos: TituloVinculado[] | undefined) {
   if (!titulos || titulos.length === 0) {
     return { label: "Sem título gerado ainda", style: "bg-gray-100 text-gray-500" as const, data: null as string | null };
@@ -400,6 +412,22 @@ export default function MapaOC({
                 )}
               </dd>
             </div>
+            {titulosVinculados && titulosVinculados.length > 0 && (
+              <div>
+                <dt className="text-xs text-gray-500">Forma de pagamento (do título real)</dt>
+                <dd className="font-medium">
+                  {formasDePagamento(titulosVinculados).length > 0 ? (
+                    formasDePagamento(titulosVinculados).map((f) => (
+                      <span key={f.codigo} className="mr-2 inline-block">
+                        <span className="tabular-nums text-gray-500">{f.codigo}</span> — {f.descricao}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="font-normal text-gray-400">não informada na Senior</span>
+                  )}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs text-gray-500">Emissão</dt>
               <dd>{new Date(a.dataEmissao).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</dd>
@@ -453,6 +481,16 @@ export default function MapaOC({
                           : "Não pago"}
                       </span>
                     </div>
+                    <p className="mt-0.5 text-[11px] text-gray-500">
+                      Forma de pagamento:{" "}
+                      {t.codFpg ? (
+                        <span className="font-medium text-gray-700">
+                          <span className="tabular-nums">{t.codFpg}</span> — {t.formaPagamento ?? `Forma ${t.codFpg}`}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">não informada na Senior</span>
+                      )}
+                    </p>
                     <p className="mt-0.5 text-[11px] text-gray-400">
                       Lançado no Senior {t.lancadoPorNome ? `por ${t.lancadoPorNome}` : "(sem usuário identificado)"}
                       {formatDataHora(t.dataLancamento) ? ` em ${formatDataHora(t.dataLancamento)}` : ""}
