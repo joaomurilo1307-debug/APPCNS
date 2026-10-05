@@ -233,6 +233,8 @@ export default function ProgramacaoPagamentoPage() {
   const [codToNomeOC, setCodToNomeOC] = useState<Record<string, string>>({});
   const [carregandoOC, setCarregandoOC] = useState<string | null>(null);
   const [erroOC, setErroOC] = useState<string | null>(null);
+  // Resultado do e-mail de retorno pro criador da OC (ao aprovar um titulo).
+  const [avisoEmail, setAvisoEmail] = useState<{ ok: boolean; texto: string } | null>(null);
 
   // Painel "OCs programadas": pedido do João 01/10/2026 depois de uma
   // auditoria manual achar 15 OCs com título real no Senior mas sem o
@@ -391,6 +393,13 @@ export default function ProgramacaoPagamentoPage() {
               : t
           )
         );
+        if (data.avisoCriadorOc) {
+          const a = data.avisoCriadorOc;
+          setAvisoEmail({
+            ok: a.enviado,
+            texto: a.enviado ? `E-mail enviado ao criador da OC ${a.numOcp} (${a.para})` : `E-mail ao criador da OC não enviado: ${a.motivo}`,
+          });
+        }
         carregar().catch(() => {}); // o vinculo manual muda a coluna OC de verdade -- recarrega pra refletir
       })
       .catch((e) => setErroOC(e.message))
@@ -1211,6 +1220,14 @@ export default function ProgramacaoPagamentoPage() {
         </table>
       </div>
 
+      {avisoEmail && (
+        <div
+          className={`fixed inset-x-0 bottom-16 z-50 mx-auto w-fit rounded-lg px-4 py-2 text-sm shadow-lg ${avisoEmail.ok ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}
+          onClick={() => setAvisoEmail(null)}
+        >
+          {avisoEmail.texto} (clique pra fechar)
+        </div>
+      )}
       {erroOC && (
         <div
           className="fixed inset-x-0 bottom-4 z-50 mx-auto w-fit rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700 shadow-lg"

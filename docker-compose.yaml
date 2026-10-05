@@ -44,6 +44,12 @@ services:
       SMTP_SECURE: ${SMTP_SECURE}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
+      # Remetente dos avisos automaticos (ex: informar@) -- HOST/PORT/SECURE vazios caem pro SMTP_*
+      AVISO_SMTP_HOST: ${AVISO_SMTP_HOST:-}
+      AVISO_SMTP_PORT: ${AVISO_SMTP_PORT:-}
+      AVISO_SMTP_SECURE: ${AVISO_SMTP_SECURE:-}
+      AVISO_SMTP_USER: ${AVISO_SMTP_USER:-}
+      AVISO_SMTP_PASS: ${AVISO_SMTP_PASS:-}
     volumes:
       - uploads:/app/uploads
     labels:

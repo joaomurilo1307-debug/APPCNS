@@ -143,6 +143,42 @@ export async function sendNotificationEmail(opts: {
   }
 }
 
+// Remetente separado pros avisos automaticos (ex: informar@consominas.com.br),
+// pra nao trocar a conta que ja envia convites/recuperacao de senha.
+// AVISO_SMTP_HOST/PORT/SECURE caem pro SMTP_* se vazios (|| e nao ??: o
+// docker-compose entrega variavel nao definida como string vazia).
+let transporterAviso: nodemailer.Transporter | null = null;
+
+export async function sendAvisoEmail(opts: {
+  to: { email: string; name: string }[];
+  subject: string;
+  text: string;
+}): Promise<boolean> {
+  const host = process.env.AVISO_SMTP_HOST || process.env.SMTP_HOST;
+  if (!host || !process.env.AVISO_SMTP_USER || !process.env.AVISO_SMTP_PASS) return false;
+  if (opts.to.length === 0) return false;
+
+  transporterAviso ??= nodemailer.createTransport({
+    host,
+    port: Number(process.env.AVISO_SMTP_PORT || process.env.SMTP_PORT || 465),
+    secure: (process.env.AVISO_SMTP_SECURE || process.env.SMTP_SECURE || "true") === "true",
+    auth: { user: process.env.AVISO_SMTP_USER, pass: process.env.AVISO_SMTP_PASS },
+  });
+
+  try {
+    await transporterAviso.sendMail({
+      from: `"Consominas Gestão" <${process.env.AVISO_SMTP_USER}>`,
+      to: opts.to.map((a) => `"${a.name}" <${a.email}>`).join(", "),
+      subject: opts.subject,
+      text: opts.text,
+    });
+    return true;
+  } catch (err) {
+    console.error("Falha ao enviar e-mail de aviso:", err);
+    return false;
+  }
+}
+
 export async function sendMeetingInvite(opts: {
   eventId: string;
   sequence: number;

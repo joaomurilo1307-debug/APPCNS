@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { chavesFornecedor, normalizarReferencia } from "@/lib/vinculoOcTitulo";
+import { avisarCriadorOc, type ResultadoAviso } from "@/lib/avisoPagamentoAprovado";
 
 // Marcacao manual de conferencia (30/09/2026): quando o vinculo com OC nao
 // e' automatico, alguem confere na origem (Senior) e registra aqui o
@@ -78,6 +79,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     },
   });
 
+  // Retorno de OC: so' na transicao pra APROVADO (salvar de novo nao reenvia).
+  let avisoCriadorOc: ResultadoAviso | null = null;
+  if (atualizado.revisadoStatus === "APROVADO" && existente.revisadoStatus !== "APROVADO") {
+    avisoCriadorOc = await avisarCriadorOc(atualizado.id, user.name ?? "Usuário");
+  }
+
   return NextResponse.json({
     id: atualizado.id,
     revisadoStatus: atualizado.revisadoStatus,
@@ -85,5 +92,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     revisadoEm: atualizado.revisadoEm,
     revisadoObs: atualizado.revisadoObs,
     numOcpCorrigido: atualizado.numOcpCorrigido,
+    avisoCriadorOc,
   });
 }
