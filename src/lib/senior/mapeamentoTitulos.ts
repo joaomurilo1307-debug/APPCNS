@@ -4,6 +4,7 @@
 // numerico vazio vem "0" (nao NULL) -- ver GabrielOS/senior_conhecimento_tecnico.md.
 
 import type { LinhaSenior } from "./getDbInfo";
+import { cnpjValido, cpfValido } from "../cnab240/itau/validacaoItem";
 
 export const CAMPOS_TITULO = [
   "CODEMP", "CODFIL", "NUMTIT", "CODTPT", "CODFOR", "SITTIT", "DATEMI", "VCTORI", "VCTPRO", "VLRORI", "VLRABE",
@@ -86,6 +87,18 @@ export function separarDv(valor: string | undefined): { base: string; dv: string
  */
 export function documentoValido(valor: string | undefined, tipoPessoa?: string): string | null {
   let d = soDigitos(valor);
+  // 06/10/2026 (Lex, CODFOR 713960: CGCCPF "686746000109" = CNPJ 00.686.746/0001-09
+  // chegou com 12 digitos): o campo e' NUMBER e perde TODOS os zeros a esquerda,
+  // nao so' um. Recupera os zeros que faltam quando o tipo de pessoa confirma o
+  // tamanho E o digito verificador fecha -- assim nao inventa digito num documento
+  // que esta errado por outro motivo.
+  if (tipoPessoa === "J" && d.length >= 8 && d.length < 14) {
+    const completo = d.padStart(14, "0");
+    if (cnpjValido(completo)) d = completo;
+  } else if (tipoPessoa === "F" && d.length >= 8 && d.length < 11) {
+    const completo = d.padStart(11, "0");
+    if (cpfValido(completo)) d = completo;
+  }
   if (tipoPessoa === "F" && d.length === 10) d = "0" + d;
   if (tipoPessoa === "J" && d.length === 13) d = "0" + d;
   if (d.length !== 11 && d.length !== 14) return null;

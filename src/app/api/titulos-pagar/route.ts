@@ -144,6 +144,7 @@ export async function GET() {
         chavePix: t.chavePix,
         tipoChavePix: t.tipoChavePix,
         documentoFavorecido: t.documentoFavorecido,
+        codFpg: t.codFpg,
         revisadoStatus: t.revisadoStatus,
         revisadoPorNome: t.revisadoPorNome,
         revisadoEm: t.revisadoEm,

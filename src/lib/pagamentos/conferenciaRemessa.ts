@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { linhaDigitavelParaCodigoBarras, parseCodigoBarras, valorDoCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
 import { FORMA_PAGAMENTO, segmentoDaForma } from "@/lib/cnab240/itau/constantes";
@@ -199,6 +200,8 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
       numTit: true,
       fornecedorNome: true,
       codFor: true,
+      tipo: true,
+      codFpg: true,
       situacao: true,
       pago: true,
       numNfc: true,
@@ -206,6 +209,7 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
     },
   });
   const porId = new Map(titulos.map((t) => [t.id, t]));
+  const catalogoForma = await carregarCatalogoFormasPagamento().catch(() => new Map<string, string>());
 
   // Itens desse titulo que ja estao numa remessa gerada e ainda valem
   // (pendente/agendado/pago): gerar outra vez pode pagar em dobro.
@@ -238,6 +242,37 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
       );
     }
     if (titulo) {
+      // 06/10/2026 (programacao dos dias 7 e 8: 7 dos 25 eram PRV): provisao e'
+      // lancamento contabil de despesa futura (folha, ISS, retirada...), nao uma
+      // divida com fornecedor -- nao tem conta, boleto nem CPF/CNPJ e nunca vai
+      // pra remessa.
+      if (titulo.tipo === "PRV") {
+        problemas.splice(0); // o resto (CPF/CNPJ, conta...) nao se aplica a provisao -- so' esta explicacao
+        problemas.push(
+          problema(
+            "titulo",
+            "Este título é uma PROVISÃO contábil (tipo PRV) — lançamento de despesa futura, não um pagamento a fornecedor. Não entra em remessa: tire do carrinho.",
+            "erro"
+          )
+        );
+      }
+      const descricaoForma = titulo.codFpg ? catalogoForma.get(titulo.codFpg) ?? null : null;
+      if (descricaoForma && /cart[aã]o/i.test(descricaoForma)) {
+        problemas.push(
+          problema(
+            "formaPagamento",
+            `Na Senior este título está como "${descricaoForma}" (forma ${titulo.codFpg}) — é pago na fatura do cartão, não por remessa. Se mandar pela remessa, paga duas vezes. Confirme se a forma está certa na Senior.`,
+            "aviso"
+          )
+        );
+      }
+      if (descricaoForma && /boleto/i.test(descricaoForma)) {
+        for (const p of problemas) {
+          if (p.campo === "codigoBarras" && p.gravidade === "erro" && p.mensagem.startsWith("Boleto sem código de barras")) {
+            p.mensagem += ` Na Senior este título está como "${descricaoForma}", mas a Senior não guarda a linha digitável (o campo vem vazio em todos os títulos) — copie do boleto/PDF do fornecedor.`;
+          }
+        }
+      }
       if (titulo.pago) {
         problemas.push(problema("titulo", "Este título já está pago/baixado no Senior -- tire do carrinho.", "erro"));
       } else if (titulo.situacao !== "AB") {

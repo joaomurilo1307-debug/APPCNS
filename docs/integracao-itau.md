@@ -265,3 +265,23 @@ digitar uma vez e o sistema guardar. Conta de consumo/concessionária (48 dígit
 - Os itens que já estão no carrinho **recebem os dados novos da Senior** quando a lista é relida (botão "↻ Atualizar dados dos itens", "Atualizar do Senior
   agora" ou ao reabrir a tela): CPF/CNPJ em branco é preenchido, e conta/PIX/boleto vindos da Senior substituem o do item **só se ninguém tiver digitado por
   cima** (o item guarda uma "foto" do que veio da Senior pra saber isso). O que foi digitado à mão nunca é sobrescrito.
+
+## Leitura ao vivo da Senior pro carrinho (06/10/2026)
+
+Achado na programação dos dias 7 e 8/10 (25 títulos, 15 "sem dados"): o sistema só enxergava o que o sincronismo agendado (script Python no VPS, **fora deste
+repo**) tinha gravado. Parte do que faltava **existia na Senior** e não chegava (CPF/CNPJ da Lex perdendo zeros à esquerda; conta digitada só na OC; forma de
+pagamento). Por isso, `POST /api/pagamentos-itau/dados-senior` (`src/lib/senior/dadosPagamentoTitulos.ts`) consulta a Senior **ao vivo, só leitura**, pros títulos
+do carrinho e devolve, **sem gravar nada**: CPF/CNPJ, conta, chave PIX, linha digitável (se algum dia vier), forma de pagamento (`E501TCP.CODFPG` → catálogo F066FPG)
+e a OC do título.
+
+- **Ordem de confiança:** o próprio título (`E501TCP`) > cadastro do fornecedor (`E095HFO` / `E095FOR`) > **OC** (`E420OCP.USU_*`, texto livre digitado pelo
+  comprador). Dado vindo da OC só entra quando a leitura é inequívoca (banco identificado pelo nome, agência ≠ conta, DAC presente; chave PIX reconhecível) e a
+  tela marca **"da OC — confira"**.
+- **CPF/CNPJ:** `documentoValido` recupera os zeros perdidos (campo numérico da Senior) **só se o dígito verificador fecha**.
+- A tela dispara a leitura ao carregar/trazer títulos, ao adicionar um título manualmente (antes de perguntar "não tem nada na Senior", pra não afirmar isso com dado
+  velho) e no botão "↻ Atualizar dados dos itens" (todos os itens). Só preenche **campo em branco** — o que foi digitado nunca é sobrescrito.
+- **Forma da Senior pré-seleciona o tipo do item** (18 Boleto → segmento J; 19 PIX → forma 45) pra a conferência cobrar o dado certo (linha digitável/chave) em vez
+  de "agência/conta não informadas". Boleto: a Senior **não guarda a linha digitável**, e a mensagem diz isso.
+- **PRV (provisão contábil)** não aparece em "Títulos em aberto" e, se entrar no carrinho, a conferência bloqueia ("não é pagamento a fornecedor").
+  **Cartão de crédito** (forma 20) gera aviso: é pago na fatura, remessa pagaria em dobro.
+- Limite: o sincronismo agendado continua sendo o que grava `E501TCP` no banco do app; a leitura ao vivo cobre o hiato e o que o sync não traz, mas não o substitui.

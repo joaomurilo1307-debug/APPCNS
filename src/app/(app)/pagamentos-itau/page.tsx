@@ -22,7 +22,24 @@ type Titulo = {
   chavePix: string | null;
   tipoChavePix: string | null;
   documentoFavorecido: string | null;
+  tipo: string; // PRV = provisão contábil (não é pagamento)
+  codFpg: string | null; // forma de pagamento na Senior (18 boleto, 19 PIX...)
 };
+
+// Resposta de POST /api/pagamentos-itau/dados-senior (leitura ao vivo da Senior).
+type DadosSenior = {
+  tituloId: string;
+  numOcp: string | null;
+  documento: string | null;
+  conta: { banco: string; agencia: string; conta: string; dac: string; fonte: "titulo" | "cadastro" | "oc"; nota?: string } | null;
+  chavePix: { tipo: "01" | "02" | "03" | "04"; valor: string; fonte: "titulo" | "cadastro" | "oc" } | null;
+  codigoBarras: string | null;
+  codFpg: string | null;
+  formaPagamento: string | null;
+  achouNoSenior: boolean;
+};
+
+type ResultadoSenior = { dados: Map<string, DadosSenior>; provisoes: Set<string>; avisos: string[]; consultadoEm: string };
 
 // Nota 37 do manual SISPAG (mesmos códigos do TPCPIX da Senior).
 const TIPO_CHAVE_PIX: Record<string, string> = { "1": "telefone", "2": "e-mail", "3": "CPF/CNPJ", "4": "aleatória" };
@@ -69,6 +86,11 @@ type ItemCarrinho = {
   // automaticamente). Serve pra, quando a Senior mudar esse dado, atualizar o item
   // SÓ se ninguém tiver mexido nele à mão (bloco ainda igual à foto).
   snapshotAuto?: string;
+  // Última leitura ao vivo na Senior deste título: o que ela tinha na hora.
+  senior?: { consultadoEm: string; temPagamento: boolean; forma: string | null; numOcp: string | null };
+  // Conta/PIX que vieram da OC (texto digitado pelo comprador), não do cadastro
+  // da Senior -- a tela pede conferência. Só vale enquanto o bloco está intacto.
+  dadosDaOc?: string;
 };
 
 type BlocoPagamento = Pick<
@@ -99,6 +121,92 @@ function soDigitosTexto(v: string) {
 function tipoChavePixCnab(tpcpix: string | null): "01" | "02" | "03" | "04" | undefined {
   const mapa: Record<string, "01" | "02" | "03" | "04"> = { "1": "01", "2": "02", "3": "03", "4": "04" };
   return tpcpix ? mapa[tpcpix] : undefined;
+}
+
+// Forma de pagamento da Senior -> o que a tela pré-seleciona. Só boleto e PIX
+// mudam o que precisa ser preenchido (linha digitável / chave); o resto segue
+// o padrão da tela. Pela descrição do catálogo F066FPG; sem ela, pelo código
+// (18 = Boleto, 19 = PIX, confirmados no catálogo E066FPG da Consominas).
+function formaDaSenior(codFpg: string | null | undefined, descricao?: string | null): "boleto" | "pix" | null {
+  if (descricao) {
+    if (/boleto/i.test(descricao)) return "boleto";
+    if (/pix/i.test(descricao)) return "pix";
+  }
+  if (codFpg === "18") return "boleto";
+  if (codFpg === "19") return "pix";
+  return null;
+}
+
+function itemSemDadoDePagamento(i: ItemCarrinho) {
+  return !i.codigoBarras.trim() && !i.agenciaFavorecido.trim() && !i.contaFavorecido.trim() && !i.dacFavorecido.trim() && !(i.chavePixValor ?? "").trim();
+}
+
+// Aplica o que a Senior tem AGORA num item do carrinho -- só em branco: nada do
+// que foi digitado à mão é sobrescrito. Ordem: boleto > conta > chave PIX.
+// Conta/PIX que só existem na OC entram marcados (`dadosDaOc`).
+function aplicarDadosSenior(item: ItemCarrinho, d: DadosSenior, consultadoEm: string): { item: ItemCarrinho; preencheu: string[] } {
+  const preencheu: string[] = [];
+  const proximo: ItemCarrinho = { ...item };
+  const temPagamento = !!(d.codigoBarras || d.conta || d.chavePix);
+  proximo.senior = { consultadoEm, temPagamento, forma: d.formaPagamento, numOcp: d.numOcp };
+
+  if (!soDigitosTexto(item.favorecidoDocumento) && d.documento) {
+    proximo.favorecidoDocumento = d.documento;
+    proximo.favorecidoTipoDoc = d.documento.length === 11 ? "1" : "2";
+    preencheu.push("CPF/CNPJ");
+  }
+
+  if (itemSemDadoDePagamento(item)) {
+    const daOc = d.conta?.fonte === "oc" || (!d.conta && d.chavePix?.fonte === "oc");
+    let aplicou = false;
+    if (d.codigoBarras) {
+      Object.assign(proximo, { segmento: "J", formaPagamento: "31", codigoBarras: d.codigoBarras });
+      preencheu.push("código de barras");
+      aplicou = true;
+    } else if (d.conta) {
+      const itau = d.conta.banco === "341" || d.conta.banco === "409";
+      Object.assign(proximo, {
+        segmento: "A",
+        formaPagamento: d.chavePix ? "45" : itau ? "01" : "41",
+        bancoFavorecido: d.conta.banco,
+        agenciaFavorecido: d.conta.agencia,
+        contaFavorecido: d.conta.conta,
+        dacFavorecido: d.conta.dac,
+        chavePixTipo: d.chavePix?.tipo,
+        chavePixValor: d.chavePix?.valor,
+        chavePix: d.chavePix ? d.chavePix.valor : undefined,
+      });
+      preencheu.push(daOc ? "conta (da OC)" : "conta");
+      aplicou = true;
+    } else if (d.chavePix) {
+      Object.assign(proximo, {
+        segmento: "A",
+        formaPagamento: "45",
+        bancoFavorecido: "",
+        agenciaFavorecido: "",
+        contaFavorecido: "",
+        dacFavorecido: "",
+        chavePixTipo: d.chavePix.tipo,
+        chavePixValor: d.chavePix.valor,
+        chavePix: d.chavePix.valor,
+      });
+      preencheu.push(daOc ? "chave PIX (da OC)" : "chave PIX");
+      aplicou = true;
+    }
+    if (aplicou) {
+      proximo.preenchidoAutomaticamente = true;
+      proximo.snapshotAuto = blocoPagamento(proximo);
+      proximo.dadosDaOc = daOc ? (d.numOcp ? `OC ${d.numOcp}` : "OC") : undefined;
+    } else if (item.formaPagamento === "01" && !item.preenchidoAutomaticamente) {
+      // Nada a preencher, mas a Senior diz como esse título é pago: já deixa a
+      // forma certa pra a conferência cobrar o dado certo (linha digitável ou chave).
+      const forma = formaDaSenior(d.codFpg, d.formaPagamento);
+      if (forma === "boleto") Object.assign(proximo, { segmento: "J", formaPagamento: "31", bancoFavorecido: "", codigoBarras: "" });
+      if (forma === "pix") Object.assign(proximo, { segmento: "A", formaPagamento: "45", bancoFavorecido: "" });
+    }
+  }
+
+  return { item: proximo, preencheu };
 }
 
 type RetornoDaRemessa = {
@@ -238,11 +346,17 @@ export default function PagamentosItauPage() {
   const [relatorio, setRelatorio] = useState<RelatorioConferencia | null>(null);
   const [conferindo, setConferindo] = useState(false);
   const sequenciaConferencia = useRef(0);
+  // Leitura ao vivo na Senior (CPF/CNPJ, conta, PIX, forma de pagamento) dos
+  // itens do carrinho. `pedidoConsulta` dispara a leitura depois que o carrinho
+  // novo já foi pintado (carrinhoRef atualizado).
+  const [consultandoSenior, setConsultandoSenior] = useState(false);
+  const [pedidoConsulta, setPedidoConsulta] = useState<{ n: number; todos: boolean }>({ n: 0, todos: false });
+  const [adicionandoId, setAdicionandoId] = useState<string | null>(null);
   // Carrinho atual acessível de dentro do carregamento assíncrono dos títulos.
   const carrinhoRef = useRef<ItemCarrinho[]>([]);
   carrinhoRef.current = carrinho;
 
-  function carregarTudo() {
+  function carregarTudo(consultarTodos = false) {
     setLoading(true);
     Promise.all([
       fetch("/api/titulos-pagar").then((r) => r.json()),
@@ -250,7 +364,10 @@ export default function PagamentosItauPage() {
       fetch("/api/pagamentos-itau/remessas").then((r) => r.json()),
     ])
       .then(([tit, cont, rem]) => {
-        const titulosAbertos: Titulo[] = (tit.titulos ?? []).filter((t: Titulo) => !t.pago);
+        const todosAbertos: Titulo[] = (tit.titulos ?? []).filter((t: Titulo) => !t.pago);
+        // Provisão (PRV) é lançamento contábil de despesa futura (folha, ISS,
+        // retirada...), não pagamento a fornecedor: não aparece pra remessa.
+        const titulosAbertos = todosAbertos.filter((t) => t.tipo !== "PRV");
         setTitulos(titulosAbertos);
 
         // Itens que já estavam no carrinho recebem os dados novos da Senior
@@ -280,7 +397,9 @@ export default function PagamentosItauPage() {
           try {
             const ids: string[] = JSON.parse(pendente);
             const porId = new Map(titulosAbertos.map((t) => [t.id, t]));
-            const encontrados = ids.map((id) => porId.get(id)).filter((t): t is Titulo => !!t);
+            const provisoes = ids.map((id) => todosAbertos.find((t) => t.id === id)).filter((t): t is Titulo => !!t && t.tipo === "PRV");
+            const jaNoCarrinho = new Set(carrinhoRef.current.map((i) => i.tituloId));
+            const encontrados = ids.map((id) => porId.get(id)).filter((t): t is Titulo => !!t && !jaNoCarrinho.has(t.id));
             const itensMontados = encontrados.map((t) => montarItemCarrinho(t));
             setCarrinho((c) => [...c, ...itensMontados]);
             const semForma = itensMontados.filter(semFormaDePagamento);
@@ -288,17 +407,28 @@ export default function PagamentosItauPage() {
               setMensagem(
                 `${encontrados.length} título(s) trazido(s) da Programação de Pagamento` +
                   (semForma.length > 0
-                    ? ` (${semForma.length} sem boleto/conta/PIX na Senior, precisam de dado manual: ${semForma.map((i) => i.numTit).join(", ")}).`
+                    ? ` — conferindo agora na Senior o que ela tem de boleto/conta/PIX pra ${semForma.length} deles (sem isso no sistema)...`
                     : ".")
               );
             }
-            if (encontrados.length < ids.length) {
-              setErro(`${ids.length - encontrados.length} título(s) selecionado(s) não foram encontrados aqui (já pago ou não sincronizado) e não entraram no carrinho.`);
+            if (provisoes.length > 0) {
+              setMensagem(
+                (m) =>
+                  `${m ? `${m} ` : ""}${provisoes.length} provisão(ões) contábil(is) (PRV) ficaram de fora — não são pagamento a fornecedor: ${provisoes.map((t) => t.numTit).join(", ")}.`
+              );
+            }
+            const faltaram = ids.length - encontrados.length - provisoes.length - ids.filter((id) => jaNoCarrinho.has(id)).length;
+            if (faltaram > 0) {
+              setErro(`${faltaram} título(s) selecionado(s) não foram encontrados aqui (já pago ou não sincronizado) e não entraram no carrinho.`);
             }
           } catch {
             // handoff corrompido -- ignora silenciosamente, pessoa so' nao ve o carrinho pre-preenchido
           }
         }
+
+        // Depois de montar/atualizar o carrinho, confere na Senior ao vivo o que
+        // ela tem de dado de pagamento (o sistema pode estar atrás do sincronismo).
+        setPedidoConsulta((p) => ({ n: p.n + 1, todos: consultarTodos }));
       })
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false));
@@ -321,6 +451,102 @@ export default function PagamentosItauPage() {
     setRascunhoRestaurado(true);
     carregarTudo();
   }, []);
+
+  // Lê na Senior (somente leitura, ao vivo) o que ela tem de CPF/CNPJ, conta,
+  // chave PIX, boleto e forma de pagamento desses títulos. Devolve null se a
+  // Senior não respondeu -- quem chama decide o que fazer.
+  async function buscarNaSenior(ids: string[], limiteMs: number): Promise<ResultadoSenior | null> {
+    const dados = new Map<string, DadosSenior>();
+    const provisoes = new Set<string>();
+    const avisos: string[] = [];
+    let consultadoEm = new Date().toISOString();
+    for (let i = 0; i < ids.length; i += 100) {
+      const controle = new AbortController();
+      const timer = setTimeout(() => controle.abort(), limiteMs);
+      try {
+        const res = await fetch("/api/pagamentos-itau/dados-senior", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tituloIds: ids.slice(i, i + 100) }),
+          signal: controle.signal,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
+        for (const d of data.dados as DadosSenior[]) dados.set(d.tituloId, d);
+        for (const p of data.provisoes as string[]) provisoes.add(p);
+        avisos.push(...(data.avisos as string[]));
+        consultadoEm = data.consultadoEm ?? consultadoEm;
+      } catch (e: any) {
+        avisos.push(e?.name === "AbortError" ? "A Senior demorou demais pra responder." : String(e?.message ?? e));
+        if (dados.size === 0 && provisoes.size === 0) return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return { dados, provisoes, avisos, consultadoEm };
+  }
+
+  // Encaixa o resultado da leitura nos itens que estão no carrinho AGORA (não nos
+  // de quando a leitura começou -- a pessoa pode ter digitado nesse meio-tempo).
+  function aplicarResultadoSenior(resultado: ResultadoSenior, notificar: boolean) {
+    const atual = carrinhoRef.current;
+    const preenchidos: string[] = [];
+    const semNada: string[] = [];
+    const daOc: string[] = [];
+    const itens = atual.map((item) => {
+      const d = item.tituloId ? resultado.dados.get(item.tituloId) : undefined;
+      if (!d) return item;
+      const { item: novo, preencheu } = aplicarDadosSenior(item, d, resultado.consultadoEm);
+      if (preencheu.length > 0) preenchidos.push(`${item.numTit} (${preencheu.join(", ")})`);
+      if (novo.dadosDaOc) daOc.push(item.numTit);
+      if (!novo.senior?.temPagamento && !novo.preenchidoAutomaticamente && itemSemDadoDePagamento(novo)) semNada.push(item.numTit);
+      return novo;
+    });
+    setCarrinho(itens);
+    if (notificar) {
+      const hora = new Date(resultado.consultadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+      const partes = [`Senior consultada agora (${hora}).`];
+      partes.push(preenchidos.length > 0 ? `Dado novo em ${preenchidos.length} item(ns): ${preenchidos.join("; ")}.` : "Nenhum dado novo pra preencher.");
+      if (daOc.length > 0) partes.push(`Conta/PIX que só existiam na OC (confira com o fornecedor): ${daOc.join(", ")}.`);
+      if (semNada.length > 0) partes.push(`A Senior não tem boleto, conta nem chave PIX pra: ${semNada.join(", ")} — precisam de dado novo.`);
+      if (resultado.provisoes.size > 0) partes.push(`${resultado.provisoes.size} provisão(ões) (PRV) no carrinho não são pagamento — tire.`);
+      if (resultado.avisos.length > 0) partes.push(`Atenção: ${resultado.avisos.join(" · ")}`);
+      setMensagem(partes.join(" "));
+    }
+  }
+
+  // Dispara a leitura ao vivo: quando o carrinho foi (re)carregado ou a pessoa
+  // clicou em "Atualizar dados dos itens". Automático = só itens ainda não
+  // consultados (ou com leitura de mais de 5 min); manual = todos.
+  useEffect(() => {
+    if (pedidoConsulta.n === 0) return;
+    const agora = Date.now();
+    const alvo = carrinhoRef.current.filter(
+      (i) => i.tituloId && (pedidoConsulta.todos || !i.senior || agora - new Date(i.senior.consultadoEm).getTime() > 5 * 60 * 1000)
+    );
+    if (alvo.length === 0) {
+      setConsultandoSenior(false);
+      return;
+    }
+    let cancelado = false;
+    setConsultandoSenior(true);
+    buscarNaSenior(alvo.map((i) => i.tituloId!), 90_000)
+      .then((r) => {
+        if (cancelado) return;
+        if (!r) {
+          if (pedidoConsulta.todos) setErro("A Senior não respondeu agora — os dados do carrinho continuam os do último sincronismo. Tente de novo em instantes.");
+          return;
+        }
+        aplicarResultadoSenior(r, true);
+      })
+      .finally(() => {
+        if (!cancelado) setConsultandoSenior(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoConsulta]);
 
   // Salva a cada mudança -- só depois de restaurar uma vez, pra não sobrescrever
   // um rascunho existente com o estado inicial vazio antes da leitura acima.
@@ -493,6 +719,12 @@ export default function PagamentosItauPage() {
         chavePixTipo: tipoChaveCnab,
         chavePixValor: t.chavePix,
       };
+    } else {
+      // Sem dado de pagamento no sistema, mas a Senior diz COMO é pago: a forma
+      // já entra certa e a conferência cobra o dado certo (linha digitável / chave).
+      const forma = formaDaSenior(t.codFpg);
+      if (forma === "boleto") item = { ...base, segmento: "J", formaPagamento: "31", bancoFavorecido: "" };
+      else if (forma === "pix") item = { ...base, formaPagamento: "45", bancoFavorecido: "" };
     }
 
     return item.preenchidoAutomaticamente ? { ...item, snapshotAuto: blocoPagamento(item) } : item;
@@ -543,6 +775,7 @@ export default function PagamentosItauPage() {
         proximo.chavePix = novo.chavePix;
         proximo.preenchidoAutomaticamente = true;
         proximo.snapshotAuto = novo.snapshotAuto;
+        proximo.dadosDaOc = undefined;
         mudou = true;
       }
 
@@ -568,13 +801,32 @@ export default function PagamentosItauPage() {
   // quando não sobra nenhuma forma automática, avisa o motivo e confirma
   // antes de adicionar, em vez de só jogar no carrinho sem a pessoa perceber
   // que falta tudo.
-  function adicionarAoCarrinho(t: Titulo) {
-    const item = montarItemCarrinho(t);
+  //
+  // 06/10/2026: antes de perguntar, confere na Senior AO VIVO -- o sistema pode
+  // estar atrás do sincronismo, e perguntar "não tem nada na Senior" com dado
+  // velho seria dizer uma coisa que não é verdade. Se a Senior não responder
+  // em 25s, cai no que o sistema tem (como antes).
+  async function adicionarAoCarrinho(t: Titulo) {
+    if (adicionandoId) return;
+    let item = montarItemCarrinho(t);
+    if (semFormaDePagamento(item) || !soDigitosTexto(item.favorecidoDocumento)) {
+      setAdicionandoId(t.id);
+      try {
+        const r = await buscarNaSenior([t.id], 25_000);
+        const d = r?.dados.get(t.id);
+        if (r && d) {
+          item = aplicarDadosSenior(item, d, r.consultadoEm).item;
+          if (r.provisoes.has(t.id)) return;
+        }
+      } finally {
+        setAdicionandoId(null);
+      }
+    }
     if (semFormaDePagamento(item)) {
       const confirmado = window.confirm(`${t.numTit} — ${t.fornecedorNome}\n\n${motivoSemFormaDePagamento(item)}\n\nAdicionar mesmo assim?`);
       if (!confirmado) return;
     }
-    setCarrinho((c) => [...c, item]);
+    setCarrinho((c) => (c.some((i) => i.chave === item.chave) ? c : [...c, item]));
   }
 
   // Fire-and-forget (30/09/2026): a rota so' dispara o webhook e volta na
@@ -845,11 +1097,12 @@ export default function PagamentosItauPage() {
               </p>
             </div>
             <button
-              onClick={carregarTudo}
-              title="Relê os dados dos títulos no sistema. Se alguém completou CPF/CNPJ, conta ou PIX (e a sincronização com a Senior já rodou), os itens do carrinho recebem o dado novo — sem apagar o que você digitou."
-              className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
+              onClick={() => carregarTudo(true)}
+              disabled={consultandoSenior}
+              title="Consulta a Senior AGORA (ao vivo) pra cada item do carrinho. Se alguém completou CPF/CNPJ, conta, chave PIX ou forma de pagamento lá, o item recebe o dado novo — sem apagar o que você digitou."
+              className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
             >
-              ↻ Atualizar dados dos itens
+              {consultandoSenior ? "Consultando a Senior…" : "↻ Atualizar dados dos itens"}
             </button>
             {relatorio ? (
               relatorio.resumo.comErro === 0 && !relatorio.erroGeral ? (
@@ -1016,9 +1269,11 @@ export default function PagamentosItauPage() {
                     <td className="px-2 py-1.5 text-right">
                       <button
                         onClick={() => adicionarAoCarrinho(t)}
-                        className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand hover:bg-brand/20"
+                        disabled={!!adicionandoId}
+                        title={adicionandoId === t.id ? "Conferindo na Senior o que ela tem de dado de pagamento…" : undefined}
+                        className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand hover:bg-brand/20 disabled:opacity-50"
                       >
-                        adicionar
+                        {adicionandoId === t.id ? "consultando…" : "adicionar"}
                       </button>
                     </td>
                   </tr>
@@ -1067,6 +1322,19 @@ export default function PagamentosItauPage() {
                           title="Preenchido automaticamente pelo sincronismo — confira antes de gerar a remessa."
                         >
                           auto
+                        </span>
+                      )}
+                      {item.dadosDaOc && blocoPagamento(item) === item.snapshotAuto && (
+                        <span
+                          className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-800"
+                          title="Conta/chave PIX que o comprador digitou na OC (texto livre) — não vieram do cadastro do fornecedor na Senior. Confira com o fornecedor antes de gerar."
+                        >
+                          da {item.dadosDaOc} — confira
+                        </span>
+                      )}
+                      {item.senior?.forma && (
+                        <span className="ml-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-medium text-sky-800" title="Forma de pagamento cadastrada na Senior pra este título/OC.">
+                          Senior: {item.senior.forma}
                         </span>
                       )}
                     </span>
@@ -1225,6 +1493,15 @@ export default function PagamentosItauPage() {
                       </p>
                     )}
                   </div>
+                  {item.senior && !item.senior.temPagamento && itemSemDadoDePagamento(item) && (
+                    <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
+                      Conferi na Senior às{" "}
+                      {new Date(item.senior.consultadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}:{" "}
+                      {/boleto/i.test(item.senior.forma ?? "")
+                        ? `este título é "${item.senior.forma}" na Senior, mas ela não guarda a linha digitável — copie do boleto/PDF que o fornecedor mandou e cole no campo do código de barras.`
+                        : `sem boleto, sem conta bancária e sem chave PIX pra este fornecedor${item.senior.numOcp ? ` (nem na OC ${item.senior.numOcp})` : ""}. Preencha aqui com o que o fornecedor mandar — ou cadastre na Senior e clique em “↻ Atualizar dados dos itens”.`}
+                    </p>
+                  )}
                   {(problemasPorChave.get(item.chave) ?? []).length > 0 && (
                     <ul className="mt-2 space-y-0.5 rounded-lg bg-gray-50 p-2 text-[11px]">
                       {(problemasPorChave.get(item.chave) ?? []).map((p, i) => (
