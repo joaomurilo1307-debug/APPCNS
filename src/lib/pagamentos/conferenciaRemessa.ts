@@ -13,7 +13,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
-import { linhaDigitavelParaCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
+import { linhaDigitavelParaCodigoBarras, parseCodigoBarras, valorDoCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
 import { FORMA_PAGAMENTO, segmentoDaForma } from "@/lib/cnab240/itau/constantes";
 import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
 import {
@@ -194,7 +194,16 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
 
   const titulos = await prisma.tituloContasAPagar.findMany({
     where: { id: { in: ids } },
-    select: { id: true, numTit: true, fornecedorNome: true, codFor: true, situacao: true, pago: true },
+    select: {
+      id: true,
+      numTit: true,
+      fornecedorNome: true,
+      codFor: true,
+      situacao: true,
+      pago: true,
+      numNfc: true,
+      vencimentoProgramado: true,
+    },
   });
   const porId = new Map(titulos.map((t) => [t.id, t]));
 
@@ -267,6 +276,129 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
       situacao,
     };
   });
+
+  // ---- Checagens entre titulos/boletos (06/10/2026, pedido do Joao) ----
+  // "1 boleto para 2 titulos" (NF de servico + NF de produto no mesmo boleto):
+  // se os dois entram na remessa cada um com o seu valor, o boleto e' pago duas
+  // vezes ou o banco recusa por valor menor que o do boleto. Aqui avisa quais
+  // sao, com a prova (o valor do boleto = soma dos dois) quando ha codigo de barras.
+  const codFors = [...new Set(titulos.map((t) => t.codFor))];
+  const abertosDoFornecedor = await prisma.tituloContasAPagar.findMany({
+    where: { codFor: { in: codFors }, pago: false, situacao: "AB" },
+    select: { id: true, numTit: true, codFor: true, numNfc: true, valorAberto: true, vencimentoProgramado: true },
+  });
+
+  // Valor nominal do boleto (embutido no proprio codigo de barras), por item.
+  const boletoDoItem = itens.map((item) => {
+    if (segmentoDaForma(item.formaPagamento ?? "") !== "J") return null;
+    try {
+      const cb = linhaDigitavelParaCodigoBarras(item.codigoBarras ?? "");
+      return { cb, nominal: valorDoCodigoBarras(parseCodigoBarras(cb).valor) };
+    } catch {
+      return null; // codigo invalido ja foi apontado por validarItemRemessa
+    }
+  });
+
+  const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const rotuloLinha = (i: number) => linhas[i].numTit || (itens[i].favorecidoNome ?? "").trim() || `item ${i + 1}`;
+
+  // (a) o MESMO boleto em mais de um item -- so' pode ser pago uma vez.
+  const itensPorBoleto = new Map<string, number[]>();
+  boletoDoItem.forEach((b, i) => {
+    if (b) itensPorBoleto.set(b.cb, [...(itensPorBoleto.get(b.cb) ?? []), i]);
+  });
+  for (const [, indices] of itensPorBoleto) {
+    if (indices.length < 2) continue;
+    const quais = indices.map(rotuloLinha).join(", ");
+    for (const i of indices) {
+      linhas[i].problemas.push(
+        problema(
+          "codigoBarras",
+          `Este mesmo boleto aparece em ${indices.length} itens (${quais}). Um boleto só pode ser pago uma vez — se ele cobre mais de um título (ex.: NF de serviço + NF de produto), deixe só UM item com o valor total do boleto e tire os outros.`,
+          "erro"
+        )
+      );
+    }
+  }
+
+  // (b) valor do item diferente do valor do boleto.
+  itens.forEach((item, i) => {
+    const b = boletoDoItem[i];
+    if (!b || !(b.nominal > 0) || typeof item.valor !== "number") return;
+    const valor = item.valor;
+    if (Math.abs(b.nominal - valor) <= 0.01) return;
+    const meuId = linhas[i].tituloId;
+    const parceiro = abertosDoFornecedor.find((s) => s.id !== meuId && Math.abs(valor + s.valorAberto - b.nominal) <= 0.01);
+    if (parceiro) {
+      linhas[i].problemas.push(
+        problema(
+          "codigoBarras",
+          `BOLETO ÚNICO PARA 2 TÍTULOS: este boleto é de ${brl(b.nominal)} = este título (${brl(valor)}) + o título ${parceiro.numTit} (${brl(parceiro.valorAberto)}) do mesmo fornecedor. Pague os dois num item só, com o valor do boleto (${brl(b.nominal)}) — e atenção: a baixa automática na Senior não vai fechar os dois títulos nesse caso, a do outro fica manual.`,
+          "erro"
+        )
+      );
+    } else {
+      linhas[i].problemas.push(
+        problema(
+          "valor",
+          `O valor do item (${brl(valor)}) é diferente do valor do boleto (${brl(b.nominal)}). Se for juros, multa ou desconto, tudo bem; se o boleto cobre mais de um título, ajuste o valor.`,
+          "aviso"
+        )
+      );
+    }
+  });
+
+  // (c) possivel titulo duplicado e (d) mesma NF + mesmo vencimento (possivel boleto unico),
+  // so' quando nao ha prova de que o boleto e' so' deste titulo.
+  const chaveTitulo = (numTit: string) => {
+    const t = numTit.toUpperCase().replace(/\s+/g, "");
+    const m = t.match(/^(.+?)[$=_]0*(\d+)$/);
+    return m ? `${m[1]}#${Number(m[2])}` : `${t}#1`; // "485", "485=1" e "485$01" sao a mesma parcela 1
+  };
+  const mesmoDia = (a: Date | null, b: Date | null) => !!a && !!b && a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+
+  linhas.forEach((l, i) => {
+    const t = l.tituloId ? porId.get(l.tituloId) : undefined;
+    const valor = itens[i].valor;
+    if (!t || typeof valor !== "number") return;
+    const outros = abertosDoFornecedor.filter((s) => s.id !== t.id);
+
+    const duplicado = outros.find((s) => chaveTitulo(s.numTit) === chaveTitulo(t.numTit) && Math.abs(s.valorAberto - valor) <= 0.01);
+    if (duplicado) {
+      l.problemas.push(
+        problema(
+          "titulo",
+          `Possível título duplicado: o título ${duplicado.numTit} tem o mesmo número, a mesma parcela e o mesmo valor (${brl(valor)}) — confira antes de pagar pra não pagar duas vezes.`,
+          "aviso"
+        )
+      );
+    }
+
+    const b = boletoDoItem[i];
+    const boletoProprio = !!b && b.nominal > 0 && Math.abs(b.nominal - valor) <= 0.01;
+    if (!boletoProprio && t.numNfc && t.numNfc !== "0") {
+      const mesmaNf = outros.find(
+        (s) =>
+          s.id !== duplicado?.id &&
+          s.numNfc === t.numNfc &&
+          mesmoDia(s.vencimentoProgramado, t.vencimentoProgramado) &&
+          Math.abs(s.valorAberto - valor) > 0.01
+      );
+      if (mesmaNf) {
+        l.problemas.push(
+          problema(
+            "titulo",
+            `Pode ser 1 boleto para 2 títulos: o título ${mesmaNf.numTit} (${brl(mesmaNf.valorAberto)}) é da mesma NF e vence no mesmo dia. Confira se o boleto cobre os dois — se sim, o valor dele é a soma (${brl(valor + mesmaNf.valorAberto)}) e deve ir num item só.`,
+            "aviso"
+          )
+        );
+      }
+    }
+  });
+
+  for (const l of linhas) {
+    l.situacao = temErroBloqueante(l.problemas) ? "erro" : l.problemas.length > 0 ? "aviso" : "ok";
+  }
 
   // Ensaio do arquivo CNAB com quem passou na conferencia (nada e' gravado):
   // pega o que so' apareceria na hora de montar o arquivo e diz QUAL titulo

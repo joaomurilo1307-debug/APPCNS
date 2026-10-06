@@ -1197,8 +1197,8 @@ model TituloAdiamento {
   marcadoPorNome    String
   marcadoEm         DateTime  @default(now())
   motivo            String?
-  resolvidoEm       DateTime? // quando saiu de "proxima programacao" (reprogramado) ou foi pago
-  resolvidoComo     String? // REPROGRAMADO | PAGO
+  resolvidoEm       DateTime? // quando o lembrete foi tratado (devolvido a programacao ou enviado em remessa)
+  resolvidoComo     String? // DEVOLVIDO | REMESSA (pago e' lido do proprio titulo)
 
   titulo TituloContasAPagar? @relation(fields: [tituloId], references: [id], onDelete: SetNull)
 

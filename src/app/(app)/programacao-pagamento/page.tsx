@@ -17,9 +17,6 @@ const REVISAO_LABEL: Record<string, string> = {
   // Senior, nunca forcado por aqui), isso so' evita confundir "ja mandei,
   // falta so' a baixa" com um backlog esquecido de verdade.
   ENVIADO_AGUARDANDO_BAIXA: "Enviado (aguarda baixa Senior)",
-  // 06/10/2026: titulo "jogado" pra proxima programacao de pagamento -- vai
-  // pra aba propria e fica de aviso na programacao de onde saiu.
-  PROXIMA_PROGRAMACAO: "Próxima programação",
 };
 const REVISAO_COR: Record<string, string> = {
   APROVADO: "bg-brand text-white",
@@ -27,7 +24,6 @@ const REVISAO_COR: Record<string, string> = {
   SEM_OC_CONFIRMADO: "bg-gray-200 text-gray-700",
   AGUARDANDO_COMPRAS: "bg-amber-100 text-amber-800",
   ENVIADO_AGUARDANDO_BAIXA: "bg-sky-100 text-sky-800",
-  PROXIMA_PROGRAMACAO: "bg-violet-100 text-violet-800",
 };
 
 // Achado 30/09/2026: o Senior tem 7 status de título (AB, LQ, CA, PE, AV,
@@ -248,9 +244,11 @@ const ABAS: [Filtro, string][] = [
   ["todos", "Todos"],
 ];
 
-// Título que está (agora) marcado pra próxima programação e ainda não foi pago.
-function naProximaProgramacao(t: Pick<Titulo, "revisadoStatus" | "pago">) {
-  return t.revisadoStatus === "PROXIMA_PROGRAMACAO" && !t.pago;
+// Título com lembrete de "próxima programação" aberto e ainda não pago. É um
+// lembrete À PARTE do status de revisão: não troca o status e não tira o
+// título da lista onde ele está.
+function naProximaProgramacao(t: Pick<Titulo, "adiamento" | "pago">) {
+  return !!t.adiamento && !t.adiamento.resolvidoEm && !t.pago;
 }
 
 export default function ProgramacaoPagamentoPage() {
@@ -437,9 +435,9 @@ export default function ProgramacaoPagamentoPage() {
   // componente/modal so' pra isso.
   const [ocCorrigidoInput, setOcCorrigidoInput] = useState<Record<string, string>>({});
 
-  // Motivo (opcional) de "jogar pra próxima programação", digitado depois de
-  // escolher o status; guarda o texto por título até salvar.
+  // Motivo (opcional) do lembrete de "próxima programação", por título, até salvar.
   const [motivoAdiamentoInput, setMotivoAdiamentoInput] = useState<Record<string, string>>({});
+  const [salvandoAdiamento, setSalvandoAdiamento] = useState<string | null>(null);
 
   // Histórico dos adiamentos (por programação de origem), carregado ao abrir a
   // aba "Próxima programação". Vem do próprio registro de adiamento, então
@@ -461,16 +459,43 @@ export default function ProgramacaoPagamentoPage() {
     return [...grupos.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   }, [adiamentosHistorico]);
 
-  function atualizarRevisao(id: string, revisadoStatus: string | null, numOcpCorrigido?: string | null, obs?: string | null) {
+  // Lembrete "próxima programação": deixa (POST, com motivo opcional) ou devolve
+  // o título à programação normal (DELETE). Não mexe no status de revisão e não
+  // tira o título de nenhuma lista.
+  function mudarAdiamento(id: string, acao: "deixar" | "devolver", motivo?: string) {
+    setSalvandoAdiamento(id);
+    fetch(`/api/titulos-pagar/${id}/adiamento`, {
+      method: acao === "deixar" ? "POST" : "DELETE",
+      ...(acao === "deixar"
+        ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ motivo: motivo ?? null }) }
+        : {}),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Erro ao atualizar o lembrete");
+        setTitulos((anterior) => anterior.map((t) => (t.id === id ? { ...t, adiamento: data.adiamento ?? undefined } : t)));
+        setMotivoAdiamentoInput((prev) => {
+          const novo = { ...prev };
+          delete novo[id];
+          return novo;
+        });
+      })
+      .catch((e) => setErroOC(e.message))
+      .finally(() => setSalvandoAdiamento(null));
+  }
+
+  // Manda só este título pra tela de remessa (mesmo caminho da seleção em lote).
+  function enviarUmParaRemessa(id: string) {
+    sessionStorage.setItem("handoffRemessaItau", JSON.stringify([id]));
+    router.push("/pagamentos-itau");
+  }
+
+  function atualizarRevisao(id: string, revisadoStatus: string | null, numOcpCorrigido?: string | null) {
     setSalvandoRevisao(id);
     fetch(`/api/titulos-pagar/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        revisadoStatus,
-        numOcpCorrigido: numOcpCorrigido || null,
-        ...(obs !== undefined ? { revisadoObs: obs } : {}),
-      }),
+      body: JSON.stringify({ revisadoStatus, numOcpCorrigido: numOcpCorrigido || null }),
     })
       .then(async (res) => {
         const data = await res.json();
@@ -485,19 +510,6 @@ export default function ProgramacaoPagamentoPage() {
                   revisadoEm: data.revisadoEm,
                   revisadoObs: data.revisadoObs ?? null,
                   numOcpCorrigido: data.numOcpCorrigido,
-                  // Ao jogar pra próxima programação o servidor devolve o registro do
-                  // adiamento; ao sair do status, mantém o que já existia (vira "reprogramado"
-                  // na próxima carga).
-                  adiamento: data.adiamento
-                    ? {
-                        programacaoOrigem: data.adiamento.programacaoOrigem,
-                        marcadoPorNome: data.adiamento.marcadoPorNome,
-                        marcadoEm: data.adiamento.marcadoEm,
-                        motivo: data.adiamento.motivo,
-                        resolvidoEm: null,
-                        resolvidoComo: null,
-                      }
-                    : t.adiamento,
                 }
               : t
           )
@@ -675,7 +687,7 @@ export default function ProgramacaoPagamentoPage() {
   function naSemana(t: Titulo) {
     if (t.pago) return false;
     if (dentroDaSemana(t.vencimentoProgramado, inicioSemana, fimSemana)) return true;
-    return !!t.adiamento && dentroDaSemana(t.adiamento.programacaoOrigem, inicioSemana, fimSemana);
+    return naProximaProgramacao(t) && dentroDaSemana(t.adiamento!.programacaoOrigem, inicioSemana, fimSemana);
   }
 
   const qtdSemana = useMemo(
@@ -688,7 +700,7 @@ export default function ProgramacaoPagamentoPage() {
 
   // Dia da programação em que o título "mora": se foi adiado, o de origem.
   function diaDaProgramacao(t: Titulo) {
-    return t.adiamento && !t.pago ? t.adiamento.programacaoOrigem ?? t.vencimentoProgramado : t.vencimentoProgramado;
+    return naProximaProgramacao(t) ? t.adiamento!.programacaoOrigem ?? t.vencimentoProgramado : t.vencimentoProgramado;
   }
 
   const filtrados = useMemo(() => {
@@ -716,7 +728,7 @@ export default function ProgramacaoPagamentoPage() {
           (!dataDe && !dataAte) ||
           dataDentroDoIntervalo(t.vencimentoProgramado, dataDe, dataAte) ||
           // adiado a partir desse dia continua aparecendo no intervalo de origem
-          (!!t.adiamento && !t.pago && dataDentroDoIntervalo(t.adiamento.programacaoOrigem, dataDe, dataAte))
+          (naProximaProgramacao(t) && dataDentroDoIntervalo(t.adiamento!.programacaoOrigem, dataDe, dataAte))
       )
       .filter((t) => !somenteComOC || !!t.ocRelacionada)
       .filter((t) => {
@@ -959,11 +971,13 @@ export default function ProgramacaoPagamentoPage() {
 
       {filtro === "proxima" && (
         <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/40 p-4 text-sm">
-          <p className="font-semibold text-violet-900">Títulos jogados pra próxima programação</p>
+          <p className="font-semibold text-violet-900">Lembrete: títulos deixados pra próxima programação</p>
           <p className="mt-0.5 text-xs text-gray-600">
-            Escolha “Próxima programação” na coluna Revisão pra mover um título pra cá. Ele continua marcado como adiado na programação de onde
-            saiu (aba Semana atual), mesmo depois que o vencimento mudar no Senior — assim ninguém perde o que foi jogado pra outra semana.
-            Pra devolver o título à programação normal, troque o status dele.
+            É só um lembrete: o título <span className="font-medium">não sai</span> da lista onde estava nem muda de status (use o botão “deixar
+            pra próxima programação” na coluna Revisão, em qualquer aba). Aqui você trata cada um: <span className="font-medium">“mandar pra
+            remessa”</span> leva o título pra tela de Pagamentos Itaú, ou <span className="font-medium">“devolver à programação”</span> tira o
+            lembrete. Também dá pra marcar vários e usar “Enviar para remessa Itaú” no topo. Tudo fica no histórico abaixo, por programação de
+            origem, mesmo depois que o vencimento mudar no Senior.
           </p>
           <details className="mt-3">
             <summary className="cursor-pointer text-xs font-medium text-violet-900">
@@ -996,9 +1010,11 @@ export default function ProgramacaoPagamentoPage() {
                               <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800">pago</span>
                             ) : !a.resolvidoEm ? (
                               <span className="rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-800">na próxima programação</span>
+                            ) : a.resolvidoComo === "REMESSA" ? (
+                              <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-800">enviado em remessa</span>
                             ) : (
                               <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-600">
-                                reprogramado{a.vencimentoAtual ? ` · venc. ${formatData(a.vencimentoAtual)}` : ""}
+                                devolvido à programação{a.vencimentoAtual ? ` · venc. ${formatData(a.vencimentoAtual)}` : ""}
                               </span>
                             )}
                           </td>
@@ -1362,52 +1378,75 @@ export default function ProgramacaoPagamentoPage() {
                     <option value="SEM_OC_CONFIRMADO">Sem OC (confirmado)</option>
                     <option value="AGUARDANDO_COMPRAS">Aguardando compras</option>
                     <option value="ENVIADO_AGUARDANDO_BAIXA">Enviado (aguarda baixa Senior)</option>
-                    <option value="PROXIMA_PROGRAMACAO">Próxima programação</option>
                   </select>
-                  {t.adiamento && (
-                    <div className="mt-1 max-w-[260px] rounded-md bg-violet-50 px-2 py-1 text-[10px] leading-snug text-violet-900">
-                      <span className="font-semibold">
-                        {naProximaProgramacao(t)
-                          ? "↪ Jogado p/ próxima programação"
-                          : t.adiamento.resolvidoComo === "REPROGRAMADO"
-                            ? "↪ Foi adiado e já reprogramado"
-                            : "↪ Foi adiado"}
-                      </span>{" "}
-                      — saiu da programação de {formatData(t.adiamento.programacaoOrigem)} · por {t.adiamento.marcadoPorNome} em{" "}
-                      {formatDataHora(t.adiamento.marcadoEm)}
-                      {t.adiamento.motivo ? <> · “{t.adiamento.motivo}”</> : null}
-                      {naProximaProgramacao(t) &&
-                        t.adiamento.programacaoOrigem &&
+                  {/* Lembrete "próxima programação": separado do status e sem tirar o título de lugar. */}
+                  {!t.pago && !naProximaProgramacao(t) && (
+                    <div className="mt-1">
+                      <button
+                        onClick={() => mudarAdiamento(t.id, "deixar")}
+                        disabled={salvandoAdiamento === t.id}
+                        title="Deixa um lembrete de que este título foi deixado pra próxima programação. Não muda o status nem tira o título desta lista."
+                        className="rounded-full border border-violet-200 px-2 py-0.5 text-[10px] font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50"
+                      >
+                        ↪ deixar pra próxima programação
+                      </button>
+                      {t.adiamento && (
+                        <span className="mt-0.5 block text-[10px] text-gray-400">
+                          já foi deixado antes (programação de {formatData(t.adiamento.programacaoOrigem)}) —{" "}
+                          {t.adiamento.resolvidoComo === "REMESSA" ? "foi pra remessa" : "voltou à programação"}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {naProximaProgramacao(t) && t.adiamento && (
+                    <div className="mt-1 max-w-[270px] rounded-md bg-violet-50 px-2 py-1.5 text-[10px] leading-snug text-violet-900">
+                      <span className="font-semibold">↪ Deixado pra próxima programação</span> — saiu da programação de{" "}
+                      {formatData(t.adiamento.programacaoOrigem)} · por {t.adiamento.marcadoPorNome} em {formatDataHora(t.adiamento.marcadoEm)}
+                      {t.adiamento.programacaoOrigem &&
                         t.vencimentoProgramado &&
                         t.vencimentoProgramado.slice(0, 10) <= t.adiamento.programacaoOrigem.slice(0, 10) && (
                           <span className="mt-0.5 block font-semibold text-amber-700">
-                            ⚠ O vencimento no Senior ainda é {formatData(t.vencimentoProgramado)} — altere a data lá pra valer na próxima
-                            programação.
+                            ⚠ O vencimento no Senior ainda é {formatData(t.vencimentoProgramado)} — se for adiar de verdade, altere a data lá.
                           </span>
                         )}
-                    </div>
-                  )}
-                  {t.revisadoStatus === "PROXIMA_PROGRAMACAO" && (
-                    <div className="mt-1 flex items-center gap-1">
-                      <input
-                        type="text"
-                        placeholder="motivo (opcional)"
-                        maxLength={200}
-                        value={motivoAdiamentoInput[t.id] ?? t.adiamento?.motivo ?? ""}
-                        onChange={(e) => setMotivoAdiamentoInput((prev) => ({ ...prev, [t.id]: e.target.value }))}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") atualizarRevisao(t.id, "PROXIMA_PROGRAMACAO", undefined, motivoAdiamentoInput[t.id] ?? "");
-                        }}
-                        disabled={salvandoRevisao === t.id}
-                        className="w-32 rounded border border-gray-200 px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
-                      />
-                      <button
-                        onClick={() => atualizarRevisao(t.id, "PROXIMA_PROGRAMACAO", undefined, motivoAdiamentoInput[t.id] ?? "")}
-                        disabled={salvandoRevisao === t.id || motivoAdiamentoInput[t.id] === undefined}
-                        className="rounded border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                      >
-                        salvar
-                      </button>
+                      <div className="mt-1 flex items-center gap-1">
+                        <input
+                          type="text"
+                          placeholder="motivo (opcional)"
+                          maxLength={200}
+                          value={motivoAdiamentoInput[t.id] ?? t.adiamento.motivo ?? ""}
+                          onChange={(e) => setMotivoAdiamentoInput((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") mudarAdiamento(t.id, "deixar", motivoAdiamentoInput[t.id] ?? "");
+                          }}
+                          disabled={salvandoAdiamento === t.id}
+                          className="w-28 rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand"
+                        />
+                        <button
+                          onClick={() => mudarAdiamento(t.id, "deixar", motivoAdiamentoInput[t.id] ?? "")}
+                          disabled={salvandoAdiamento === t.id || motivoAdiamentoInput[t.id] === undefined}
+                          className="rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] text-violet-700 hover:bg-violet-50 disabled:opacity-40"
+                        >
+                          salvar
+                        </button>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <button
+                          onClick={() => enviarUmParaRemessa(t.id)}
+                          title="Leva só este título pra tela de Pagamentos Itaú"
+                          className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          → mandar pra remessa
+                        </button>
+                        <button
+                          onClick={() => mudarAdiamento(t.id, "devolver")}
+                          disabled={salvandoAdiamento === t.id}
+                          title="Tira o lembrete: o título volta pra programação normal (o histórico fica guardado)"
+                          className="rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50"
+                        >
+                          devolver à programação
+                        </button>
+                      </div>
                     </div>
                   )}
                   {t.revisadoStatus === "CORRIGIDO" && (

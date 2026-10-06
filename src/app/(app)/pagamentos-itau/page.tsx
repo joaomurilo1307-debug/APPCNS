@@ -65,7 +65,34 @@ type ItemCarrinho = {
   // só preenchido quando formaPagamento = "45" e não há conta bancária completa.
   chavePixTipo?: "01" | "02" | "03" | "04";
   chavePixValor?: string;
+  // Foto do bloco de pagamento como veio da Senior (só quando preenchido
+  // automaticamente). Serve pra, quando a Senior mudar esse dado, atualizar o item
+  // SÓ se ninguém tiver mexido nele à mão (bloco ainda igual à foto).
+  snapshotAuto?: string;
 };
+
+type BlocoPagamento = Pick<
+  ItemCarrinho,
+  "formaPagamento" | "segmento" | "bancoFavorecido" | "agenciaFavorecido" | "contaFavorecido" | "dacFavorecido" | "codigoBarras" | "chavePixTipo" | "chavePixValor"
+>;
+
+function blocoPagamento(i: BlocoPagamento) {
+  return JSON.stringify([
+    i.formaPagamento,
+    i.segmento,
+    i.bancoFavorecido,
+    i.agenciaFavorecido,
+    i.contaFavorecido,
+    i.dacFavorecido,
+    i.codigoBarras,
+    i.chavePixTipo ?? "",
+    i.chavePixValor ?? "",
+  ]);
+}
+
+function soDigitosTexto(v: string) {
+  return v.replace(/\D/g, "");
+}
 
 // Nota 37 do manual: código de 2 dígitos no CNAB. Mesma numeração do TPCPIX
 // da Senior ("1" a "4"), só com zero à esquerda.
@@ -211,6 +238,9 @@ export default function PagamentosItauPage() {
   const [relatorio, setRelatorio] = useState<RelatorioConferencia | null>(null);
   const [conferindo, setConferindo] = useState(false);
   const sequenciaConferencia = useRef(0);
+  // Carrinho atual acessível de dentro do carregamento assíncrono dos títulos.
+  const carrinhoRef = useRef<ItemCarrinho[]>([]);
+  carrinhoRef.current = carrinho;
 
   function carregarTudo() {
     setLoading(true);
@@ -222,6 +252,14 @@ export default function PagamentosItauPage() {
       .then(([tit, cont, rem]) => {
         const titulosAbertos: Titulo[] = (tit.titulos ?? []).filter((t: Titulo) => !t.pago);
         setTitulos(titulosAbertos);
+
+        // Itens que já estavam no carrinho recebem os dados novos da Senior
+        // (CPF/CNPJ, conta, PIX) -- sem sobrescrever o que foi digitado.
+        const { itens: carrinhoAtualizado, atualizados } = mesclarComDadosNovos(carrinhoRef.current, titulosAbertos);
+        if (atualizados.length > 0) {
+          setCarrinho(carrinhoAtualizado);
+          setMensagem(`Dados novos da Senior chegaram em ${atualizados.length} item(ns) do carrinho: ${atualizados.join(", ")}.`);
+        }
         setContas(cont.contas ?? []);
         setContaSelecionadaId((atual) => atual || (cont.contas ?? [])[0]?.id || "");
         setRemessas(rem.remessas ?? []);
@@ -457,7 +495,61 @@ export default function PagamentosItauPage() {
       };
     }
 
-    return item;
+    return item.preenchidoAutomaticamente ? { ...item, snapshotAuto: blocoPagamento(item) } : item;
+  }
+
+  // Dados que chegaram depois (sincronização da Senior, CPF/CNPJ ou conta que
+  // alguém cadastrou/corrigiu lá): atualiza os itens que JÁ estão no carrinho,
+  // sem nunca sobrescrever o que foi digitado à mão.
+  //  - CPF/CNPJ em branco no item e agora disponível -> preenche.
+  //  - Item sem nenhum dado de pagamento digitado e a Senior agora tem boleto/
+  //    conta/PIX -> adota o bloco de pagamento da Senior.
+  //  - Item preenchido pela Senior e ainda igual à foto de quando entrou, mas a
+  //    Senior mudou -> adota o bloco novo (correção feita lá chega aqui).
+  function mesclarComDadosNovos(carrinhoAtual: ItemCarrinho[], titulosAtuais: Titulo[]) {
+    const porId = new Map(titulosAtuais.map((t) => [t.id, t]));
+    const atualizados: string[] = [];
+    const itens = carrinhoAtual.map((item) => {
+      const t = item.tituloId ? porId.get(item.tituloId) : undefined;
+      if (!t) return item;
+      const novo = montarItemCarrinho(t);
+      const proximo: ItemCarrinho = { ...item };
+      let mudou = false;
+
+      if (!soDigitosTexto(item.favorecidoDocumento) && soDigitosTexto(novo.favorecidoDocumento)) {
+        proximo.favorecidoDocumento = novo.favorecidoDocumento;
+        proximo.favorecidoTipoDoc = novo.favorecidoTipoDoc;
+        mudou = true;
+      }
+
+      const semDadoDePagamento =
+        !item.codigoBarras.trim() &&
+        !item.agenciaFavorecido.trim() &&
+        !item.contaFavorecido.trim() &&
+        !item.dacFavorecido.trim() &&
+        !(item.chavePixValor ?? "").trim();
+      const intactoDesdeASenior = !!item.preenchidoAutomaticamente && !!item.snapshotAuto && blocoPagamento(item) === item.snapshotAuto;
+      const seniorMudou = novo.preenchidoAutomaticamente && blocoPagamento(novo) !== (item.snapshotAuto ?? "");
+      if (novo.preenchidoAutomaticamente && seniorMudou && (semDadoDePagamento || intactoDesdeASenior)) {
+        proximo.formaPagamento = novo.formaPagamento;
+        proximo.segmento = novo.segmento;
+        proximo.bancoFavorecido = novo.bancoFavorecido;
+        proximo.agenciaFavorecido = novo.agenciaFavorecido;
+        proximo.contaFavorecido = novo.contaFavorecido;
+        proximo.dacFavorecido = novo.dacFavorecido;
+        proximo.codigoBarras = novo.codigoBarras;
+        proximo.chavePixTipo = novo.chavePixTipo;
+        proximo.chavePixValor = novo.chavePixValor;
+        proximo.chavePix = novo.chavePix;
+        proximo.preenchidoAutomaticamente = true;
+        proximo.snapshotAuto = novo.snapshotAuto;
+        mudou = true;
+      }
+
+      if (mudou) atualizados.push(item.numTit);
+      return mudou ? proximo : item;
+    });
+    return { itens, atualizados };
   }
 
   // true quando a Senior não tem boleto, conta nem chave Pix pra esse título
@@ -752,6 +844,13 @@ export default function PagamentosItauPage() {
                 enquanto houver problema.
               </p>
             </div>
+            <button
+              onClick={carregarTudo}
+              title="Relê os dados dos títulos no sistema. Se alguém completou CPF/CNPJ, conta ou PIX (e a sincronização com a Senior já rodou), os itens do carrinho recebem o dado novo — sem apagar o que você digitou."
+              className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
+            >
+              ↻ Atualizar dados dos itens
+            </button>
             {relatorio ? (
               relatorio.resumo.comErro === 0 && !relatorio.erroGeral ? (
                 <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">

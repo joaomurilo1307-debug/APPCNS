@@ -233,8 +233,35 @@ dar certo. Agora há um **relatório de conferência** que roda antes e diz, por
 
 - **Seleção salva:** os títulos marcados na Programação de Pagamento ficam no navegador (`src/lib/selecaoProgramacao.ts`, `localStorage`) e voltam ao
   reabrir a tela; a cada recarga saem da seleção os que foram pagos ou sumiram, e Pagamentos Itaú tira o que virou remessa.
-- **Status "Próxima programação"** (coluna Revisão) → aba própria. Jogar um título pra cá grava um `TituloAdiamento` (programação de origem = vencimento do
-  título naquele momento, quem, quando, motivo opcional). O vencimento muda **no Senior** (o app só lê o Senior); enquanto não mudar, a linha avisa.
-  O título adiado **continua aparecendo, sinalizado, na semana de onde saiu** ("Semana atual" e filtro por data), e o histórico por programação
-  (`GET /api/titulos-pagar/adiamentos`) guarda uma cópia do título (nº, fornecedor, valor), então sobrevive se o sincronismo apagar/recriar o título.
-  Trocar o status fecha o adiamento como "reprogramado"; título pago aparece como "pago" no histórico.
+- **"Próxima programação" é um lembrete, não um status.** O botão "↪ deixar pra próxima programação" (coluna Revisão, em qualquer aba) grava um
+  `TituloAdiamento` (programação de origem = vencimento do título naquele momento, quem, quando, motivo opcional) **sem trocar o status de revisão e sem
+  tirar o título de nenhuma lista** (`POST/DELETE /api/titulos-pagar/[id]/adiamento`). A aba "Próxima programação" lista os que têm lembrete aberto e dali
+  se trata cada um: **"mandar pra remessa"** (leva o título pra Pagamentos Itaú) ou **"devolver à programação"** (tira o lembrete); marcar vários e usar
+  "Enviar para remessa Itaú" no topo também vale. O lembrete se encerra sozinho (`REMESSA`) quando o título entra numa remessa gerada. O vencimento muda
+  **no Senior** (o app só lê o Senior); enquanto não mudar, a linha avisa. O histórico por programação (`GET /api/titulos-pagar/adiamentos`) guarda uma
+  cópia do título (nº, fornecedor, valor), então sobrevive se o sincronismo apagar/recriar o título.
+
+## Boletos: 1 boleto para 2 títulos, repetidos e duplicados (06/10/2026)
+
+A conferência da remessa (`conferenciaRemessa.ts`) também olha **entre** títulos/boletos, porque NF de serviço + NF de produto às vezes vêm num boleto só:
+
+- **Mesmo boleto em 2+ itens** do carrinho → **erro** (um boleto só se paga uma vez).
+- **Valor do item ≠ valor do boleto** (o valor nominal está dentro do próprio código de barras): se `valor do item + valor de outro título aberto do mesmo
+  fornecedor = valor do boleto`, é **"boleto único para 2 títulos"** → **erro** com os dois títulos citados e a orientação (um item só, com o valor do
+  boleto; a baixa automática na Senior não fecha os dois, a do outro é manual). Se não fecha a soma, só **aviso** (pode ser juros/multa/desconto).
+- **Mesma NF + mesmo vencimento + valores diferentes** (ex.: `14A3`/`14A4` da Gestão e Negócio) sem prova de boleto próprio → **aviso** "pode ser 1 boleto
+  para 2 títulos".
+- **Possível título duplicado** (mesmo fornecedor, mesmo número-base e parcela, mesmo valor — ex.: `485` e `485=1`, `62698$01` e `62698$1`) → **aviso**.
+
+**O que ainda falta pro boleto no CNAB:** o gerador de boleto (Segmento J + J-52) já existe e está validado; falta **a fonte do código de barras / linha digitável**.
+O Senior não preenche `E501TCP.CODBAR` em nenhum título, então hoje alguém digita 47 dígitos por boleto (e é aí que dá erro). Caminhos: **DDA do Itaú** (lista
+dos boletos emitidos contra o CNPJ, com a linha digitável — protocolos IT-000233088/091 em implantação, ver "Fase 2"), ler o PDF do boleto que chega com a NF, ou
+digitar uma vez e o sistema guardar. Conta de consumo/concessionária (48 dígitos) exige outro segmento do CNAB e não está coberta.
+
+## Simulação da geração e atualização do carrinho (06/10/2026)
+
+- `POST /api/pagamentos-itau/remessas` aceita `simular: true`: executa tudo (conferência, gravação dos itens, montagem dos arquivos) **dentro da transação e
+  desfaz no fim** — nada fica salvo. Serve pra provar que a geração completa funciona com um conjunto de dados sem criar remessa de verdade.
+- Os itens que já estão no carrinho **recebem os dados novos da Senior** quando a lista é relida (botão "↻ Atualizar dados dos itens", "Atualizar do Senior
+  agora" ou ao reabrir a tela): CPF/CNPJ em branco é preenchido, e conta/PIX/boleto vindos da Senior substituem o do item **só se ninguém tiver digitado por
+  cima** (o item guarda uma "foto" do que veio da Senior pra saber isso). O que foi digitado à mão nunca é sobrescrito.

@@ -23,7 +23,17 @@ const bodySchema = z.object({
   // "Gerar so' com os itens sem erro": a conferencia continua a mesma, so'
   // deixa de fora (e lista) quem barrou em vez de recusar tudo.
   somenteValidos: z.boolean().optional(),
+  // Simulacao: faz TUDO (conferencia, gravacao dos itens, montagem do arquivo)
+  // dentro da transacao e desfaz no fim -- nada fica salvo. Serve pra provar
+  // que a geracao completa funciona com estes dados sem criar remessa de verdade.
+  simular: z.boolean().optional(),
 });
+
+class SimulacaoConcluida extends Error {
+  constructor(public resumo: unknown) {
+    super("simulacao concluida");
+  }
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -132,6 +142,7 @@ export async function POST(req: Request) {
           qtdItens: number;
           totalValor: number;
           lotes: ReturnType<typeof gerarArquivoRemessa>["lotes"];
+          linhasDoArquivo: number;
         }[] = [];
         for (const grupo of grupos) {
           const remessa = await tx.remessaPagamento.create({
@@ -198,12 +209,26 @@ export async function POST(req: Request) {
             qtdItens: grupo.length,
             totalValor: gerado.totalValor,
             lotes: gerado.lotes,
+            linhasDoArquivo: gerado.conteudo.split("\r\n").filter((l) => l.length > 0).length,
           });
         }
+        if (parsed.data.simular) throw new SimulacaoConcluida(geradas);
         return geradas;
       },
       { timeout: 60_000, maxWait: 10_000 }
     );
+
+    // Titulo que entrou numa remessa deixa de ser "lembrete de proxima
+    // programacao" -- foi tratado. O registro continua no historico.
+    const idsNaRemessa = itensProntos.map((i) => i.tituloId).filter((id): id is string => !!id);
+    if (idsNaRemessa.length > 0) {
+      await prisma.tituloAdiamento
+        .updateMany({
+          where: { tituloId: { in: idsNaRemessa }, resolvidoEm: null },
+          data: { resolvidoEm: new Date(), resolvidoComo: "REMESSA" },
+        })
+        .catch(() => {});
+    }
 
     return NextResponse.json(
       {
@@ -215,6 +240,9 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (e: any) {
+    if (e instanceof SimulacaoConcluida) {
+      return NextResponse.json({ simulacao: true, desfeita: true, remessas: e.resumo, ignorados: linhasComErro });
+    }
     return NextResponse.json(
       { error: `Falha ao gravar a remessa (nada foi salvo): ${String(e?.message ?? e).slice(0, 300)}`, conferencia },
       { status: 500 }
