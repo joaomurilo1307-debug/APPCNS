@@ -302,38 +302,52 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
   const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const rotuloLinha = (i: number) => linhas[i].numTit || (itens[i].favorecidoNome ?? "").trim() || `item ${i + 1}`;
 
-  // (a) o MESMO boleto em mais de um item -- so' pode ser pago uma vez.
+  const mesmoDia = (a: Date | null, b: Date | null) => !!a && !!b && a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+
+  // (a) o MESMO boleto em mais de um item -- so' pode ser pago uma vez. Se os
+  // valores dos itens somam o valor do boleto, e' o caso "1 boleto para N titulos".
   const itensPorBoleto = new Map<string, number[]>();
   boletoDoItem.forEach((b, i) => {
     if (b) itensPorBoleto.set(b.cb, [...(itensPorBoleto.get(b.cb) ?? []), i]);
   });
-  for (const [, indices] of itensPorBoleto) {
+  const emBoletoRepetido = new Set<number>(); // esses itens ja' tem a explicacao completa abaixo
+  for (const indices of itensPorBoleto.values()) {
     if (indices.length < 2) continue;
+    const nominal = boletoDoItem[indices[0]]!.nominal;
+    const soma = indices.reduce((s, i) => s + (itens[i].valor ?? 0), 0);
     const quais = indices.map(rotuloLinha).join(", ");
+    const texto =
+      nominal > 0 && Math.abs(soma - nominal) <= 0.01
+        ? `BOLETO ÚNICO PARA ${indices.length} TÍTULOS: este mesmo boleto (${brl(nominal)}) está em ${indices.length} itens (${quais}) e os valores deles somam o valor do boleto. Ele só pode ser pago uma vez: deixe UM item com o valor do boleto (${brl(nominal)}) e tire os outros — a baixa dos demais títulos na Senior fica manual.`
+        : `Este mesmo boleto aparece em ${indices.length} itens (${quais}). Um boleto só pode ser pago uma vez — se ele cobre mais de um título (ex.: NF de serviço + NF de produto), deixe só UM item com o valor total do boleto e tire os outros.`;
     for (const i of indices) {
-      linhas[i].problemas.push(
-        problema(
-          "codigoBarras",
-          `Este mesmo boleto aparece em ${indices.length} itens (${quais}). Um boleto só pode ser pago uma vez — se ele cobre mais de um título (ex.: NF de serviço + NF de produto), deixe só UM item com o valor total do boleto e tire os outros.`,
-          "erro"
-        )
-      );
+      emBoletoRepetido.add(i);
+      linhas[i].problemas.push(problema("codigoBarras", texto, "erro"));
     }
   }
 
-  // (b) valor do item diferente do valor do boleto.
+  // (b) valor do item diferente do valor do boleto. Se outro titulo aberto do
+  // mesmo fornecedor completa a soma, e' "1 boleto para 2 titulos"; entre
+  // candidatos de mesmo valor (parcelas de meses diferentes) vale o mais provavel:
+  // mesma NF e mesmo vencimento primeiro.
   itens.forEach((item, i) => {
     const b = boletoDoItem[i];
-    if (!b || !(b.nominal > 0) || typeof item.valor !== "number") return;
+    if (emBoletoRepetido.has(i) || !b || !(b.nominal > 0) || typeof item.valor !== "number") return;
     const valor = item.valor;
     if (Math.abs(b.nominal - valor) <= 0.01) return;
     const meuId = linhas[i].tituloId;
-    const parceiro = abertosDoFornecedor.find((s) => s.id !== meuId && Math.abs(valor + s.valorAberto - b.nominal) <= 0.01);
+    const meu = meuId ? porId.get(meuId) : undefined;
+    const pontos = (s: (typeof abertosDoFornecedor)[number]) =>
+      (meu && s.numNfc && s.numNfc !== "0" && s.numNfc === meu.numNfc ? 2 : 0) + (meu && mesmoDia(s.vencimentoProgramado, meu.vencimentoProgramado) ? 1 : 0);
+    const candidatos = abertosDoFornecedor
+      .filter((s) => s.id !== meuId && Math.abs(valor + s.valorAberto - b.nominal) <= 0.01)
+      .sort((x, y) => pontos(y) - pontos(x));
+    const parceiro = candidatos[0];
     if (parceiro) {
       linhas[i].problemas.push(
         problema(
           "codigoBarras",
-          `BOLETO ÚNICO PARA 2 TÍTULOS: este boleto é de ${brl(b.nominal)} = este título (${brl(valor)}) + o título ${parceiro.numTit} (${brl(parceiro.valorAberto)}) do mesmo fornecedor. Pague os dois num item só, com o valor do boleto (${brl(b.nominal)}) — e atenção: a baixa automática na Senior não vai fechar os dois títulos nesse caso, a do outro fica manual.`,
+          `BOLETO ÚNICO PARA 2 TÍTULOS: este boleto é de ${brl(b.nominal)} = este título (${brl(valor)}) + o título ${parceiro.numTit} (${brl(parceiro.valorAberto)}) do mesmo fornecedor${candidatos.length > 1 ? ` (há outros títulos de ${brl(parceiro.valorAberto)} — conferir qual é)` : ""}. Pague os dois num item só, com o valor do boleto (${brl(b.nominal)}) — a baixa automática na Senior não fecha os dois títulos nesse caso, a do outro fica manual.`,
           "erro"
         )
       );
@@ -355,7 +369,6 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
     const m = t.match(/^(.+?)[$=_]0*(\d+)$/);
     return m ? `${m[1]}#${Number(m[2])}` : `${t}#1`; // "485", "485=1" e "485$01" sao a mesma parcela 1
   };
-  const mesmoDia = (a: Date | null, b: Date | null) => !!a && !!b && a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 
   linhas.forEach((l, i) => {
     const t = l.tituloId ? porId.get(l.tituloId) : undefined;
@@ -374,9 +387,12 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
       );
     }
 
+    // So' sugere "pode ser 1 boleto para 2 titulos" quando NAO ha como saber pelo
+    // boleto: se o valor do boleto ja' e' conhecido, ou e' o proprio titulo (valor
+    // igual) ou a regra (b)/(a) acima ja' explicou a diferenca.
     const b = boletoDoItem[i];
-    const boletoProprio = !!b && b.nominal > 0 && Math.abs(b.nominal - valor) <= 0.01;
-    if (!boletoProprio && t.numNfc && t.numNfc !== "0") {
+    const valorDoBoletoConhecido = !!b && b.nominal > 0;
+    if (!valorDoBoletoConhecido && t.numNfc && t.numNfc !== "0") {
       const mesmaNf = outros.find(
         (s) =>
           s.id !== duplicado?.id &&
