@@ -128,6 +128,16 @@ export function garantirFormasPagamentoAtualizadas(): Promise<void> | null {
   return emAndamento;
 }
 
+/**
+ * Atualizacao em andamento (sem iniciar uma). A Senior atende uma consulta por
+ * vez por credencial: enquanto a varredura de todos os titulos abertos roda
+ * (~1 min), qualquer outra leitura fica na fila. Quem faz leitura ao vivo
+ * espera isto terminar em vez de estourar o tempo e voltar vazio.
+ */
+export function sincronizacaoEmCurso(): Promise<void> | null {
+  return emAndamento;
+}
+
 /** Catalogo em memoria pra montar a descricao: codigo -> descricao. */
 export async function carregarCatalogoFormasPagamento(): Promise<Map<string, string>> {
   const itens = await prisma.formaPagamentoSenior.findMany({ select: { codigo: true, descricao: true } });

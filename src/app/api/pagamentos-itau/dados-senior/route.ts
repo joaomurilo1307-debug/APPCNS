@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { aplicarCorrecaoManual, criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 import { buscarDadosPagamento, type PedidoTitulo } from "@/lib/senior/dadosPagamentoTitulos";
+import { sincronizacaoEmCurso } from "@/lib/senior/formasPagamento";
 
 const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
@@ -60,9 +61,19 @@ export async function POST(req: Request) {
     pedidos.push({ tituloId: t.id, numTit: t.numTit, codFil: t.codFil, codFor: t.codFor, numOcp });
   }
 
+  // A varredura em segundo plano dos titulos abertos (formas de pagamento) ocupa
+  // a fila da Senior por ~1 min; consultar junto estoura o tempo. Espera ela
+  // terminar (no maximo 75s) antes de perguntar.
+  const emCurso = sincronizacaoEmCurso();
+  if (emCurso) {
+    await Promise.race([emCurso.catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 75_000))]);
+  }
+
   const { dados, avisos } = await buscarDadosPagamento(pedidos);
   return NextResponse.json({
     consultadoEm: new Date().toISOString(),
+    // Todas as consultas à Senior responderam? Sem isso a tela não pode afirmar "a Senior não tem nada".
+    completo: avisos.length === 0,
     dados: dados.map((d) => ({ ...d, numOcp: ocDoTitulo.get(d.tituloId) ?? null })),
     provisoes: naoPagamento.map((t) => t.id),
     avisos,

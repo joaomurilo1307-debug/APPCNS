@@ -39,7 +39,8 @@ type DadosSenior = {
   achouNoSenior: boolean;
 };
 
-type ResultadoSenior = { dados: Map<string, DadosSenior>; provisoes: Set<string>; avisos: string[]; consultadoEm: string };
+// `completo` = todas as consultas à Senior responderam (só então vale dizer "a Senior não tem nada").
+type ResultadoSenior = { dados: Map<string, DadosSenior>; provisoes: Set<string>; avisos: string[]; consultadoEm: string; completo: boolean };
 
 // Nota 37 do manual SISPAG (mesmos códigos do TPCPIX da Senior).
 const TIPO_CHAVE_PIX: Record<string, string> = { "1": "telefone", "2": "e-mail", "3": "CPF/CNPJ", "4": "aleatória" };
@@ -87,7 +88,7 @@ type ItemCarrinho = {
   // SÓ se ninguém tiver mexido nele à mão (bloco ainda igual à foto).
   snapshotAuto?: string;
   // Última leitura ao vivo na Senior deste título: o que ela tinha na hora.
-  senior?: { consultadoEm: string; temPagamento: boolean; forma: string | null; numOcp: string | null };
+  senior?: { consultadoEm: string; temPagamento: boolean; completo: boolean; forma: string | null; numOcp: string | null };
   // Conta/PIX que vieram da OC (texto digitado pelo comprador), não do cadastro
   // da Senior -- a tela pede conferência. Só vale enquanto o bloco está intacto.
   dadosDaOc?: string;
@@ -144,11 +145,11 @@ function itemSemDadoDePagamento(i: ItemCarrinho) {
 // Aplica o que a Senior tem AGORA num item do carrinho -- só em branco: nada do
 // que foi digitado à mão é sobrescrito. Ordem: boleto > conta > chave PIX.
 // Conta/PIX que só existem na OC entram marcados (`dadosDaOc`).
-function aplicarDadosSenior(item: ItemCarrinho, d: DadosSenior, consultadoEm: string): { item: ItemCarrinho; preencheu: string[] } {
+function aplicarDadosSenior(item: ItemCarrinho, d: DadosSenior, consultadoEm: string, completo: boolean): { item: ItemCarrinho; preencheu: string[] } {
   const preencheu: string[] = [];
   const proximo: ItemCarrinho = { ...item };
   const temPagamento = !!(d.codigoBarras || d.conta || d.chavePix);
-  proximo.senior = { consultadoEm, temPagamento, forma: d.formaPagamento, numOcp: d.numOcp };
+  proximo.senior = { consultadoEm, temPagamento, completo, forma: d.formaPagamento, numOcp: d.numOcp };
 
   if (!soDigitosTexto(item.favorecidoDocumento) && d.documento) {
     proximo.favorecidoDocumento = d.documento;
@@ -460,6 +461,7 @@ export default function PagamentosItauPage() {
     const provisoes = new Set<string>();
     const avisos: string[] = [];
     let consultadoEm = new Date().toISOString();
+    let completo = true;
     for (let i = 0; i < ids.length; i += 100) {
       const controle = new AbortController();
       const timer = setTimeout(() => controle.abort(), limiteMs);
@@ -475,15 +477,17 @@ export default function PagamentosItauPage() {
         for (const d of data.dados as DadosSenior[]) dados.set(d.tituloId, d);
         for (const p of data.provisoes as string[]) provisoes.add(p);
         avisos.push(...(data.avisos as string[]));
+        if (data.completo === false) completo = false;
         consultadoEm = data.consultadoEm ?? consultadoEm;
       } catch (e: any) {
         avisos.push(e?.name === "AbortError" ? "A Senior demorou demais pra responder." : String(e?.message ?? e));
+        completo = false;
         if (dados.size === 0 && provisoes.size === 0) return null;
       } finally {
         clearTimeout(timer);
       }
     }
-    return { dados, provisoes, avisos, consultadoEm };
+    return { dados, provisoes, avisos, consultadoEm, completo };
   }
 
   // Encaixa o resultado da leitura nos itens que estão no carrinho AGORA (não nos
@@ -496,16 +500,16 @@ export default function PagamentosItauPage() {
     const itens = atual.map((item) => {
       const d = item.tituloId ? resultado.dados.get(item.tituloId) : undefined;
       if (!d) return item;
-      const { item: novo, preencheu } = aplicarDadosSenior(item, d, resultado.consultadoEm);
+      const { item: novo, preencheu } = aplicarDadosSenior(item, d, resultado.consultadoEm, resultado.completo);
       if (preencheu.length > 0) preenchidos.push(`${item.numTit} (${preencheu.join(", ")})`);
       if (novo.dadosDaOc) daOc.push(item.numTit);
-      if (!novo.senior?.temPagamento && !novo.preenchidoAutomaticamente && itemSemDadoDePagamento(novo)) semNada.push(item.numTit);
+      if (resultado.completo && !novo.senior?.temPagamento && !novo.preenchidoAutomaticamente && itemSemDadoDePagamento(novo)) semNada.push(item.numTit);
       return novo;
     });
     setCarrinho(itens);
     if (notificar) {
       const hora = new Date(resultado.consultadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-      const partes = [`Senior consultada agora (${hora}).`];
+      const partes = [resultado.completo ? `Senior consultada agora (${hora}).` : `Senior consultada às ${hora}, mas parte das consultas não respondeu — o resultado abaixo pode estar incompleto.`];
       partes.push(preenchidos.length > 0 ? `Dado novo em ${preenchidos.length} item(ns): ${preenchidos.join("; ")}.` : "Nenhum dado novo pra preencher.");
       if (daOc.length > 0) partes.push(`Conta/PIX que só existiam na OC (confira com o fornecedor): ${daOc.join(", ")}.`);
       if (semNada.length > 0) partes.push(`A Senior não tem boleto, conta nem chave PIX pra: ${semNada.join(", ")} — precisam de dado novo.`);
@@ -530,11 +534,13 @@ export default function PagamentosItauPage() {
     }
     let cancelado = false;
     setConsultandoSenior(true);
-    buscarNaSenior(alvo.map((i) => i.tituloId!), 90_000)
+    buscarNaSenior(alvo.map((i) => i.tituloId!), 160_000)
       .then((r) => {
         if (cancelado) return;
         if (!r) {
-          if (pedidoConsulta.todos) setErro("A Senior não respondeu agora — os dados do carrinho continuam os do último sincronismo. Tente de novo em instantes.");
+          const texto = "A Senior não respondeu agora — os dados do carrinho continuam os do último sincronismo. Clique em “↻ Atualizar dados dos itens” em instantes.";
+          if (pedidoConsulta.todos) setErro(texto);
+          else setMensagem(texto);
           return;
         }
         aplicarResultadoSenior(r, true);
@@ -805,17 +811,19 @@ export default function PagamentosItauPage() {
   // 06/10/2026: antes de perguntar, confere na Senior AO VIVO -- o sistema pode
   // estar atrás do sincronismo, e perguntar "não tem nada na Senior" com dado
   // velho seria dizer uma coisa que não é verdade. Se a Senior não responder
-  // em 25s, cai no que o sistema tem (como antes).
+  // em 30s, cai no que o sistema tem e a pergunta diz isso.
   async function adicionarAoCarrinho(t: Titulo) {
     if (adicionandoId) return;
     let item = montarItemCarrinho(t);
+    let consultou = false;
     if (semFormaDePagamento(item) || !soDigitosTexto(item.favorecidoDocumento)) {
       setAdicionandoId(t.id);
       try {
-        const r = await buscarNaSenior([t.id], 25_000);
+        const r = await buscarNaSenior([t.id], 30_000);
         const d = r?.dados.get(t.id);
         if (r && d) {
-          item = aplicarDadosSenior(item, d, r.consultadoEm).item;
+          consultou = r.completo;
+          item = aplicarDadosSenior(item, d, r.consultadoEm, r.completo).item;
           if (r.provisoes.has(t.id)) return;
         }
       } finally {
@@ -823,7 +831,8 @@ export default function PagamentosItauPage() {
       }
     }
     if (semFormaDePagamento(item)) {
-      const confirmado = window.confirm(`${t.numTit} — ${t.fornecedorNome}\n\n${motivoSemFormaDePagamento(item)}\n\nAdicionar mesmo assim?`);
+      const aviso = consultou ? "" : "\n\n(Não consegui consultar a Senior agora — isto é o que o sistema tem do último sincronismo. Clique em “↻ Atualizar dados dos itens” depois pra conferir ao vivo.)";
+      const confirmado = window.confirm(`${t.numTit} — ${t.fornecedorNome}\n\n${motivoSemFormaDePagamento(item)}${aviso}\n\nAdicionar mesmo assim?`);
       if (!confirmado) return;
     }
     setCarrinho((c) => (c.some((i) => i.chave === item.chave) ? c : [...c, item]));
@@ -1493,7 +1502,7 @@ export default function PagamentosItauPage() {
                       </p>
                     )}
                   </div>
-                  {item.senior && !item.senior.temPagamento && itemSemDadoDePagamento(item) && (
+                  {item.senior && item.senior.completo && !item.senior.temPagamento && itemSemDadoDePagamento(item) && (
                     <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
                       Conferi na Senior às{" "}
                       {new Date(item.senior.consultadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}:{" "}
