@@ -5,6 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { seuNumeroSenior } from "@/lib/cnab240/itau/seuNumero";
+import { lerArquivoRetorno } from "@/lib/cnab240/itau/retorno";
+import { casarItemDoRetorno, montarRetornoSimulado } from "@/lib/pagamentos/casarRetorno";
 import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
 import {
   agruparPorArquivo,
@@ -153,6 +155,7 @@ export async function POST(req: Request) {
           lotes: ReturnType<typeof gerarArquivoRemessa>["lotes"];
           linhasDoArquivo: number;
           seusNumeros: { numTit: string | null; seuNumero: string; formatoSenior: boolean }[];
+          retornoSimulado?: unknown;
         }[] = [];
         for (const grupo of grupos) {
           const remessa = await tx.remessaPagamento.create({
@@ -161,6 +164,7 @@ export async function POST(req: Request) {
 
           const itensCnab: ItemRemessa[] = [];
           const seusNumeros: { numTit: string | null; seuNumero: string; formatoSenior: boolean }[] = [];
+          const criados: { id: string; escrito: string }[] = [];
           let seq = 0;
           for (const item of grupo) {
             seq += 1;
@@ -177,7 +181,7 @@ export async function POST(req: Request) {
             const seuNumero = titulo ? seuNumeroSenior(titulo) : null;
             seusNumeros.push({ numTit: titulo?.numTit ?? null, seuNumero: seuNumero ?? referenciaEmpresa, formatoSenior: !!seuNumero });
 
-            await tx.remessaItemPagamento.create({
+            const itemCriado = await tx.remessaItemPagamento.create({
               data: {
                 remessaId: remessa.id,
                 tituloId: item.tituloId,
@@ -200,6 +204,7 @@ export async function POST(req: Request) {
                 dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
               },
             });
+            criados.push({ id: itemCriado.id, escrito: seuNumero ?? referenciaEmpresa });
             itensCnab.push(itemParaCnab(item, seuNumero ?? referenciaEmpresa, seq));
           }
 
@@ -219,6 +224,36 @@ export async function POST(req: Request) {
             },
           });
 
+          // Prova do ciclo remessa -> retorno (so' na simulacao, que e' desfeita): monta um
+          // retorno a partir do proprio arquivo (ocorrencia 00 = pago), le com o leitor de
+          // retorno de verdade e casa cada linha com o item -- o mesmo caminho do import real.
+          let retornoSimulado: unknown;
+          if (parsed.data.simular) {
+            try {
+              const lido = lerArquivoRetorno(montarRetornoSimulado(gerado.conteudo));
+              let certos = 0;
+              let noItemErrado = 0;
+              const naoCasadas: string[] = [];
+              for (const l of lido.itens) {
+                const achado = await casarItemDoRetorno(tx, l.referenciaEmpresa);
+                const esperado = criados.find((c) => c.escrito === l.referenciaEmpresa);
+                if (!achado) naoCasadas.push(l.referenciaEmpresa);
+                else if (esperado && achado.id === esperado.id) certos += 1;
+                else noItemErrado += 1;
+              }
+              retornoSimulado = {
+                itensNaRemessa: grupo.length,
+                linhasLidasNoRetorno: lido.itens.length,
+                lidasComoPagas: lido.itens.filter((i) => i.ocorrencias[i.ocorrencias.length - 1]?.codigo === "00").length,
+                casadasNoItemCerto: certos,
+                casadasNoItemErrado: noItemErrado,
+                naoCasadas,
+              };
+            } catch (e: any) {
+              retornoSimulado = { erro: String(e?.message ?? e) };
+            }
+          }
+
           geradas.push({
             id: atualizada.id,
             nomeArquivo: atualizada.nomeArquivo,
@@ -228,6 +263,7 @@ export async function POST(req: Request) {
             lotes: gerado.lotes,
             linhasDoArquivo: gerado.conteudo.split("\r\n").filter((l) => l.length > 0).length,
             seusNumeros,
+            ...(retornoSimulado !== undefined ? { retornoSimulado } : {}),
           });
         }
         if (parsed.data.simular) throw new SimulacaoConcluida(geradas);

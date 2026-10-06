@@ -67,7 +67,9 @@ export function lerArquivoRetorno(conteudo: string): ArquivoRetornoLido {
     if (tipoRegistro !== "3") continue; // so' registros de detalhe
     const segmento = fatia(linha, 14, 14);
     if (segmento === "A") itens.push(lerSegmentoA(linha));
-    else if (segmento === "J") itens.push(lerSegmentoJ(linha));
+    // J-52 (dados do pagador/beneficiario, posicoes 18-19 = "52") nao e' pagamento: so'
+    // complementa o J anterior. Sem esse filtro virava um item fantasma sem "Seu Numero".
+    else if (segmento === "J" && fatia(linha, 18, 19) !== "52") itens.push(lerSegmentoJ(linha));
     // demais segmentos (B, C, J-52, N, O, W, Z...) ficam fora do escopo.
   }
 

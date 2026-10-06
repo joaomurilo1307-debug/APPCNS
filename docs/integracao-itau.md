@@ -262,6 +262,10 @@ digitar uma vez e o sistema guardar. Conta de consumo/concessionária (48 dígit
 
 - `POST /api/pagamentos-itau/remessas` aceita `simular: true`: executa tudo (conferência, gravação dos itens, montagem dos arquivos) **dentro da transação e
   desfaz no fim** — nada fica salvo. Serve pra provar que a geração completa funciona com um conjunto de dados sem criar remessa de verdade.
+- A simulação também **prova o ciclo remessa → retorno** (`retornoSimulado` na resposta): monta um retorno a partir do próprio arquivo (ocorrência `00` nas posições
+  231-240), lê com o leitor de retorno real e casa cada linha com o item (`lib/pagamentos/casarRetorno.ts`, o mesmo caminho do import real), tudo dentro da
+  transação desfeita. Prova a consistência **interna** (formato, casamento por "Seu Número"/referência); **não** prova o que o Itaú de verdade devolve — isso só
+  um retorno real prova (até 06/10/2026 nenhuma das 5 remessas geradas teve retorno importado). O leitor de retorno passou a ignorar o registro J-52.
 - Os itens que já estão no carrinho **recebem os dados novos da Senior** quando a lista é relida (botão "↻ Atualizar dados dos itens", "Atualizar do Senior
   agora" ou ao reabrir a tela): CPF/CNPJ em branco é preenchido, e conta/PIX/boleto vindos da Senior substituem o do item **só se ninguém tiver digitado por
   cima** (o item guarda uma "foto" do que veio da Senior pra saber isso). O que foi digitado à mão nunca é sobrescrito.
