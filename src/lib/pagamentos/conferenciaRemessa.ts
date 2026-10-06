@@ -14,6 +14,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
 import { motivoSemSeuNumeroSenior } from "@/lib/cnab240/itau/seuNumero";
+import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { linhaDigitavelParaCodigoBarras, parseCodigoBarras, valorDoCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
 import { FORMA_PAGAMENTO, segmentoDaForma } from "@/lib/cnab240/itau/constantes";
@@ -118,6 +119,8 @@ export function prepararItem(item: ItemConferencia): ItemPronto {
   // a declarar (o gerador usa "000"/modelo Chave) -- nao deixa passar um banco
   // "341" residual do preenchimento padrao da tela.
   const usaConta = segmento === "A" && !(pix && !(banco && agencia && conta && dac));
+  // Mesma correcao da conferencia: chave que e' o CPF/CNPJ digitado como telefone vai como CPF/CNPJ.
+  const chave = pix ? corrigirChavePix(item.chavePixTipo, item.chavePixValor, item.favorecidoDocumento) : null;
   return {
     tituloId: item.tituloId ?? null,
     segmento,
@@ -130,8 +133,8 @@ export function prepararItem(item: ItemConferencia): ItemPronto {
     contaFavorecido: usaConta ? conta : undefined,
     dacFavorecido: usaConta ? dac : undefined,
     codigoBarras: segmento === "J" ? linhaDigitavelParaCodigoBarras(item.codigoBarras ?? "") : undefined,
-    chavePixTipo: pix ? vazioParaUndefined(item.chavePixTipo) : undefined,
-    chavePixValor: pix ? vazioParaUndefined(item.chavePixValor) : undefined,
+    chavePixTipo: chave ? vazioParaUndefined(chave.tipo) : undefined,
+    chavePixValor: chave ? vazioParaUndefined(chave.valor) : undefined,
     valor: item.valor ?? 0,
     dataPagamento: item.dataPagamento ?? "",
   };
@@ -191,8 +194,16 @@ export function resumirConferencia(linhas: LinhaConferencia[]): ResumoConferenci
   };
 }
 
-export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito?: ContaDebito): Promise<RelatorioConferencia> {
-  const ids = [...new Set(itens.map((i) => i.tituloId).filter((id): id is string => !!id))];
+export async function conferirItensRemessa(itensOriginais: ItemConferencia[], contaDebito?: ContaDebito): Promise<RelatorioConferencia> {
+  // Chave PIX que e' o CPF/CNPJ do favorecido digitado como telefone e' corrigida sozinha (tipo 03) e
+  // vira aviso -- o mesmo ajuste que prepararItem faz na hora de montar o arquivo.
+  const correcoesChave = itensOriginais.map((i) =>
+    i.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA ? corrigirChavePix(i.chavePixTipo, i.chavePixValor, i.favorecidoDocumento) : null
+  );
+  const itens = itensOriginais.map((i, k) =>
+    correcoesChave[k]?.correcao ? { ...i, chavePixTipo: correcoesChave[k]!.tipo, chavePixValor: correcoesChave[k]!.valor } : i
+  );
+  const ids =[...new Set(itens.map((i) => i.tituloId).filter((id): id is string => !!id))];
 
   const titulos = await prisma.tituloContasAPagar.findMany({
     where: { id: { in: ids } },
@@ -235,6 +246,8 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
 
   const linhas: LinhaConferencia[] = itens.map((item, indice) => {
     const problemas = validarItemRemessa(item);
+    const correcaoDaChave = correcoesChave[indice]?.correcao;
+    if (correcaoDaChave) problemas.push(problema("chavePix", correcaoDaChave, "aviso"));
     const titulo = item.tituloId ? porId.get(item.tituloId) : undefined;
 
     if (item.tituloId && !titulo) {

@@ -190,8 +190,25 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
       } else if (chave) {
         const tiposValidos = Object.values(TIPO_CHAVE_PIX) as string[];
         const d = soDigitos(chave);
+        const semPais = tipo === TIPO_CHAVE_PIX.TELEFONE && d.startsWith("55") && d.length >= 12 ? d.slice(2) : d;
+        const nomeDoTipo: Record<string, string> = { "01": "telefone", "02": "e-mail", "04": "aleatória" };
         if (!tiposValidos.includes(tipo)) {
           add("chavePix", "Tipo da chave PIX inválido (telefone, e-mail, CPF/CNPJ ou aleatória).");
+        } else if (tipo !== TIPO_CHAVE_PIX.CPF_CNPJ && (doc.length === 11 || doc.length === 14) && (d === doc || semPais === doc)) {
+          // 06/10/2026 (título 007940, Anna Clara): na Senior a chave era "+55" + os dígitos do CPF dela,
+          // marcada como telefone -- o banco não acha essa chave.
+          add(
+            "chavePix",
+            `A chave PIX (${chave}) tem os mesmos dígitos do CPF/CNPJ do favorecido, mas o tipo está como ${nomeDoTipo[tipo] ?? tipo}. Provavelmente é um CPF/CNPJ digitado no tipo errado: use o tipo CPF/CNPJ (03) ou apague a chave${temConta ? " (a conta bancária completa já basta)" : ""}. Corrija também na Senior.`
+          );
+        } else if (tipo === TIPO_CHAVE_PIX.TELEFONE && d.length >= 10 && d.length <= 13 && !/^(?:55)?[1-9]\d9\d{8}$/.test(d)) {
+          // PIX por telefone é só celular: DDD (2) + 9 + 8 dígitos, com ou sem o 55. Com conta completa o pagamento
+          // ainda sai pela conta, então só avisa; sem conta, é a chave que leva o dinheiro.
+          add(
+            "chavePix",
+            `A chave PIX do tipo telefone (${chave}) não é um celular válido (DDD + 9 dígitos começando com 9, ex.: +5531999990000). Confira com o fornecedor.`,
+            temConta ? "aviso" : "erro"
+          );
         } else if (tipo === TIPO_CHAVE_PIX.EMAIL && !chave.includes("@")) {
           add("chavePix", "Chave PIX do tipo e-mail sem '@'.", "aviso");
         } else if (tipo === TIPO_CHAVE_PIX.CPF_CNPJ && d.length !== 11 && d.length !== 14) {

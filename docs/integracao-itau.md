@@ -211,6 +211,12 @@ explícitas em `E420OCP` responde normalmente (a esquisitice de timeout é só d
 
 ## Conferência antes de gerar a remessa (06/10/2026)
 
+**Correção automática de chave PIX (06/10/2026, caso 007940):** chave cadastrada como *telefone* cujos dígitos (com ou sem o `55`) são exatamente o CPF/CNPJ do
+favorecido (na Senior estava `+5515131589614` = `+55` + CPF) é **corrigida sozinha para tipo 03 (CPF/CNPJ)** na conferência, na tela e na montagem do arquivo
+(`lib/cnab240/itau/chavePix.ts`), com aviso pedindo pra corrigir também na Senior. Telefone que não é celular válido (DDD + 9 dígitos começando com 9) vira erro
+quando a chave é o único destino e aviso quando há conta bancária completa. Dúvida em aberto pro teste no Itaú: com conta completa (tipo de transferência `01`)
+mandamos também o Segmento B com a chave — o manual só o exige no modelo "Chave" (`04`); o retorno do Teste dirá se o Itaú valida esse B.
+
 Problema: a geração falhava com "Dados inválidos" ou com a exceção crua do CNAB, sem dizer **qual título** nem **qual campo**; ficava-se tentando gerar até
 dar certo. Agora há um **relatório de conferência** que roda antes e diz, por título, o que falta ou está errado:
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CampoItem, ProblemaItem } from "@/lib/cnab240/itau/validacaoItem";
 import type { RelatorioConferencia } from "@/lib/pagamentos/conferenciaRemessa";
 import { removerDaSelecaoSalva } from "@/lib/selecaoProgramacao";
+import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
 
 type Titulo = {
   id: string;
@@ -113,6 +114,15 @@ function blocoPagamento(i: BlocoPagamento) {
   ]);
 }
 
+// Chave PIX que é o CPF/CNPJ do favorecido digitado como telefone na Senior (caso 007940) entra já
+// como CPF/CNPJ (tipo 03) -- o servidor faz a mesma correção ao conferir e ao gerar o arquivo.
+function ajustarChavePix(item: ItemCarrinho): ItemCarrinho {
+  if (item.formaPagamento !== "45") return item;
+  const c = corrigirChavePix(item.chavePixTipo, item.chavePixValor, item.favorecidoDocumento);
+  if (!c.correcao) return item;
+  return { ...item, chavePixTipo: c.tipo as ItemCarrinho["chavePixTipo"], chavePixValor: c.valor, chavePix: `${c.valor} (CPF/CNPJ)` };
+}
+
 function soDigitosTexto(v: string) {
   return v.replace(/\D/g, "");
 }
@@ -195,6 +205,7 @@ function aplicarDadosSenior(item: ItemCarrinho, d: DadosSenior, consultadoEm: st
       aplicou = true;
     }
     if (aplicou) {
+      Object.assign(proximo, ajustarChavePix(proximo));
       proximo.preenchidoAutomaticamente = true;
       proximo.snapshotAuto = blocoPagamento(proximo);
       proximo.dadosDaOc = daOc ? (d.numOcp ? `OC ${d.numOcp}` : "OC") : undefined;
@@ -859,7 +870,8 @@ export default function PagamentosItauPage() {
       else if (forma === "pix") item = { ...base, formaPagamento: "45", bancoFavorecido: "" };
     }
 
-    return item.preenchidoAutomaticamente ? { ...item, snapshotAuto: blocoPagamento(item) } : item;
+    const ajustado = ajustarChavePix(item);
+    return ajustado.preenchidoAutomaticamente ? { ...ajustado, snapshotAuto: blocoPagamento(ajustado) } : ajustado;
   }
 
   // Dados que chegaram depois (sincronização da Senior, CPF/CNPJ ou conta que
