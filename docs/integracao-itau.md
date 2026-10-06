@@ -284,4 +284,8 @@ e a OC do título.
   de "agência/conta não informadas". Boleto: a Senior **não guarda a linha digitável**, e a mensagem diz isso.
 - **PRV (provisão contábil)** não aparece em "Títulos em aberto" e, se entrar no carrinho, a conferência bloqueia ("não é pagamento a fornecedor").
   **Cartão de crédito** (forma 20) gera aviso: é pago na fatura, remessa pagaria em dobro.
+- **Desempenho (medido em 06/10/2026):** cada consulta à Senior leva ~1,5 s sozinha. Quatro ao mesmo tempo (ou junto da varredura em segundo plano de
+  `formasPagamento.ts`, que lê todos os títulos abertos e a cada 12 h todos os títulos) ficam na fila e estouram o tempo. Por isso a leitura ao vivo faz as
+  consultas **uma por vez** e, se a varredura de fundo estiver rodando, **espera ela terminar** (até 75 s). A resposta traz `completo`: só quando todas as
+  consultas responderam a tela afirma "a Senior não tem nada"; senão diz que a leitura ficou incompleta.
 - Limite: o sincronismo agendado continua sendo o que grava `E501TCP` no banco do app; a leitura ao vivo cobre o hiato e o que o sync não traz, mas não o substitui.

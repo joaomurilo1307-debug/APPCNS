@@ -148,45 +148,47 @@ export async function buscarDadosPagamento(pedidos: PedidoTitulo[]): Promise<{ d
   const ocs = [...new Set(pedidos.map((p) => p.numOcp).filter((n): n is string => !!n && /^\d+$/.test(n)))];
   if (fornecedores.length === 0) return { dados: [], avisos: ["Nenhum fornecedor válido pra consultar."] };
 
-  const tentar = async <T,>(fonte: string, consulta: Promise<T>, vazio: T): Promise<T> => {
+  // Uma consulta por vez: a Senior atende mal várias ao mesmo tempo (medido em
+  // 06/10/2026: 4 simultâneas -> 3 estouraram 60s; uma por vez leva ~1,5s cada).
+  const tentar = async <T,>(fonte: string, consulta: () => Promise<T>, vazio: T): Promise<T> => {
     try {
-      return await comLimite(consulta, LIMITE_MS, fonte);
+      return await comLimite(consulta(), LIMITE_MS, fonte);
     } catch (e: any) {
       avisos.push(String(e?.message ?? e).replace(/<[^>]+>/g, " ").slice(0, 160));
       return vazio;
     }
   };
 
-  const [titulosSenior, cadastros, fornecedoresSenior, ocsSenior, catalogo] = await Promise.all([
-    tentar(
-      "títulos",
-      consultarSenior(`SELECT ${CAMPOS_TITULO.join(", ")} FROM E501TCP WHERE CODFOR IN (${lista(fornecedores)}) AND SITTIT = 'AB'`),
-      [] as LinhaSenior[]
-    ),
-    tentar(
-      "cadastro bancário do fornecedor",
+  const fornecedoresSenior = await tentar(
+    "cadastro do fornecedor",
+    () => consultarSenior(`SELECT CODFOR, NOMFOR, CGCCPF, TIPFOR FROM E095FOR WHERE CODFOR IN (${lista(fornecedores)})`),
+    [] as LinhaSenior[]
+  );
+  const titulosSenior = await tentar(
+    "títulos",
+    () => consultarSenior(`SELECT ${CAMPOS_TITULO.join(", ")} FROM E501TCP WHERE CODFOR IN (${lista(fornecedores)}) AND SITTIT = 'AB'`),
+    [] as LinhaSenior[]
+  );
+  const cadastros = await tentar(
+    "cadastro bancário do fornecedor",
+    () =>
       consultarSenior(
         `SELECT ${CAMPOS_CADASTRO_BANCARIO.join(", ")} FROM E095HFO WHERE CODEMP = 1 AND CODFIL = 1 AND CODFOR IN (${lista(fornecedores)})`
       ),
-      [] as LinhaSenior[]
-    ),
-    tentar(
-      "cadastro do fornecedor",
-      consultarSenior(`SELECT CODFOR, NOMFOR, CGCCPF, TIPFOR FROM E095FOR WHERE CODFOR IN (${lista(fornecedores)})`),
-      [] as LinhaSenior[]
-    ),
+    [] as LinhaSenior[]
+  );
+  const ocsSenior =
     ocs.length > 0
-      ? tentar(
+      ? await tentar(
           "OC",
-          consultarSenior(
-            `SELECT NUMOCP, CODFPG, USU_CHVPIX, USU_CODAGE, USU_NUMCCO, USU_DESCCO, USU_CGCCPF FROM E420OCP WHERE CODEMP = 1 AND NUMOCP IN (${lista(ocs)})`
-          ),
+          () =>
+            consultarSenior(
+              `SELECT NUMOCP, CODFPG, USU_CHVPIX, USU_CODAGE, USU_NUMCCO, USU_DESCCO, USU_CGCCPF FROM E420OCP WHERE CODEMP = 1 AND NUMOCP IN (${lista(ocs)})`
+            ),
           [] as LinhaSenior[]
         )
-      : Promise.resolve([] as LinhaSenior[]),
-    carregarCatalogoFormasPagamento().catch(() => new Map<string, string>()),
-  ]);
-
+      : ([] as LinhaSenior[]);
+  const catalogo = await carregarCatalogoFormasPagamento().catch(() => new Map<string, string>());
   const fornecedorPorCodigo = new Map(fornecedoresSenior.map((f) => [f.CODFOR.trim(), f]));
   const cadastrosPorFornecedor = new Map<string, LinhaSenior[]>();
   for (const c of cadastros) cadastrosPorFornecedor.set(c.CODFOR.trim(), [...(cadastrosPorFornecedor.get(c.CODFOR.trim()) ?? []), c]);
