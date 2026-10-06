@@ -293,6 +293,75 @@ function formatData(iso: string | null) {
   return new Date(iso).toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
+// Um pagamento que já foi gerado em remessa (linha do Histórico de pagamentos).
+type ItemHistorico = {
+  id: string;
+  remessaId: string;
+  arquivo: string | null;
+  geradaEm: string;
+  contaApelido: string;
+  tituloId: string | null;
+  numTit: string | null;
+  fornecedorNome: string | null;
+  favorecidoNome: string;
+  favorecidoTipoDoc: string;
+  favorecidoDocumento: string;
+  segmento: string;
+  formaPagamento: string;
+  bancoFavorecido: string | null;
+  agenciaFavorecido: string | null;
+  contaFavorecido: string | null;
+  dacFavorecido: string | null;
+  codigoBarras: string | null;
+  chavePixTipo: string | null;
+  chavePixValor: string | null;
+  valor: number;
+  dataPagamento: string;
+  status: string;
+  valorEfetivado: number | null;
+  dataEfetivacao: string | null;
+  baixaSeniorStatus: string | null;
+};
+
+const TIPO_CHAVE_PIX_ITAU: Record<string, string> = { "01": "telefone", "02": "e-mail", "03": "CPF/CNPJ", "04": "aleatória" };
+
+const STATUS_ITEM_ROTULO: Record<string, string> = {
+  PENDENTE: "Aguardando o banco",
+  AGENDADO: "Agendado",
+  PAGO: "Pago",
+  REJEITADO: "Rejeitado",
+  CANCELADO: "Cancelado",
+};
+
+function formatDataHora(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
+}
+
+function formatarDocumento(doc: string) {
+  const d = (doc ?? "").replace(/\D/g, "");
+  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  return doc || "—";
+}
+
+// O mesmo dado que o item tinha no carrinho: boleto -> código de barras; PIX -> chave;
+// crédito/TED -> banco/agência/conta.
+function dadosDePagamentoDoHistorico(i: ItemHistorico): string {
+  if (i.segmento === "J") return i.codigoBarras ? `Boleto: ${i.codigoBarras}` : "—";
+  if (i.chavePixValor) return `PIX (${TIPO_CHAVE_PIX_ITAU[i.chavePixTipo ?? ""] ?? "chave"}): ${i.chavePixValor}`;
+  if (i.agenciaFavorecido || i.contaFavorecido) {
+    return [
+      i.bancoFavorecido ? `banco ${i.bancoFavorecido}` : null,
+      i.agenciaFavorecido ? `ag ${i.agenciaFavorecido}` : null,
+      i.contaFavorecido ? `cc ${i.contaFavorecido}${i.dacFavorecido ? `-${i.dacFavorecido}` : ""}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return "—";
+}
+
 const FORMAS: { valor: string; segmento: Segmento; label: string }[] = [
   { valor: "01", segmento: "A", label: "Crédito em conta corrente Itaú" },
   { valor: "41", segmento: "A", label: "TED — outro titular" },
@@ -321,6 +390,16 @@ export default function PagamentosItauPage() {
   const [contas, setContas] = useState<ContaBancaria[]>([]);
   const [contaSelecionadaId, setContaSelecionadaId] = useState("");
   const [remessas, setRemessas] = useState<Remessa[]>([]);
+  // Histórico de pagamentos já gerados em remessa + os títulos que já viraram remessa ativa
+  // (pendente/agendado/pago): não ficam no carrinho nem na lista de títulos em aberto.
+  const [historico, setHistorico] = useState<{ itens: ItemHistorico[]; total: number }>({ itens: [], total: 0 });
+  const [idsGerados, setIdsGerados] = useState<Set<string>>(new Set());
+  const [mostrarJaGerados, setMostrarJaGerados] = useState(false);
+  const [buscaHistorico, setBuscaHistorico] = useState("");
+  // Aviso de "isso já virou remessa e saiu do carrinho": fica em banner próprio porque a
+  // `mensagem` comum é trocada pela próxima (ex.: o resultado da leitura ao vivo da Senior)
+  // e a pessoa nem chegaria a ver.
+  const [avisoJaGerados, setAvisoJaGerados] = useState<string | null>(null);
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(true);
@@ -363,20 +442,44 @@ export default function PagamentosItauPage() {
       fetch("/api/titulos-pagar").then((r) => r.json()),
       fetch("/api/pagamentos-itau/contas").then((r) => r.json()),
       fetch("/api/pagamentos-itau/remessas").then((r) => r.json()),
+      // Sem o histórico a tela segue funcionando (só não consegue tirar do carrinho o que já virou remessa).
+      fetch("/api/pagamentos-itau/historico")
+        .then((r) => (r.ok ? r.json() : { itens: [], total: 0, tituloIdsGerados: [] }))
+        .catch(() => ({ itens: [], total: 0, tituloIdsGerados: [] })),
     ])
-      .then(([tit, cont, rem]) => {
+      .then(([tit, cont, rem, hist]) => {
         const todosAbertos: Titulo[] = (tit.titulos ?? []).filter((t: Titulo) => !t.pago);
         // Provisão (PRV) é lançamento contábil de despesa futura (folha, ISS,
         // retirada...), não pagamento a fornecedor: não aparece pra remessa.
         const titulosAbertos = todosAbertos.filter((t) => t.tipo !== "PRV");
         setTitulos(titulosAbertos);
 
+        // Histórico + títulos que já viraram remessa (pendente/agendado/pago).
+        const gerados = new Set<string>(hist.tituloIdsGerados ?? []);
+        setIdsGerados(gerados);
+        setHistorico({ itens: hist.itens ?? [], total: hist.total ?? 0 });
+
+        // O carrinho guarda só o que foi selecionado e AINDA NÃO virou remessa: o rascunho
+        // salvo no navegador pode ter item que, nesse meio-tempo, foi gerado (em outra aba,
+        // por outra pessoa, ou antes de o rascunho ser limpo). Esses saem daqui e ficam no
+        // Histórico de pagamentos.
+        const atualNoCarrinho = carrinhoRef.current;
+        const jaGeradosNoCarrinho = atualNoCarrinho.filter((i) => i.tituloId && gerados.has(i.tituloId));
+        const carrinhoSemGerados =
+          jaGeradosNoCarrinho.length > 0 ? atualNoCarrinho.filter((i) => !(i.tituloId && gerados.has(i.tituloId))) : atualNoCarrinho;
+        if (jaGeradosNoCarrinho.length > 0) removerDaSelecaoSalva(jaGeradosNoCarrinho.map((i) => i.tituloId));
+
         // Itens que já estavam no carrinho recebem os dados novos da Senior
         // (CPF/CNPJ, conta, PIX) -- sem sobrescrever o que foi digitado.
-        const { itens: carrinhoAtualizado, atualizados } = mesclarComDadosNovos(carrinhoRef.current, titulosAbertos);
-        if (atualizados.length > 0) {
+        const { itens: carrinhoAtualizado, atualizados } = mesclarComDadosNovos(carrinhoSemGerados, titulosAbertos);
+        if (atualizados.length > 0 || jaGeradosNoCarrinho.length > 0) {
           setCarrinho(carrinhoAtualizado);
-          setMensagem(`Dados novos da Senior chegaram em ${atualizados.length} item(ns) do carrinho: ${atualizados.join(", ")}.`);
+          if (jaGeradosNoCarrinho.length > 0) {
+            setAvisoJaGerados(
+              `${jaGeradosNoCarrinho.length} item(ns) do carrinho já tinham virado remessa e saíram dele (estão no Histórico de pagamentos): ${jaGeradosNoCarrinho.map((i) => i.numTit).join(", ")}.`
+            );
+          }
+          if (atualizados.length > 0) setMensagem(`Dados novos da Senior chegaram em ${atualizados.length} item(ns) do carrinho: ${atualizados.join(", ")}.`);
         }
         setContas(cont.contas ?? []);
         setContaSelecionadaId((atual) => atual || (cont.contas ?? [])[0]?.id || "");
@@ -400,7 +503,12 @@ export default function PagamentosItauPage() {
             const porId = new Map(titulosAbertos.map((t) => [t.id, t]));
             const provisoes = ids.map((id) => todosAbertos.find((t) => t.id === id)).filter((t): t is Titulo => !!t && t.tipo === "PRV");
             const jaNoCarrinho = new Set(carrinhoRef.current.map((i) => i.tituloId));
-            const encontrados = ids.map((id) => porId.get(id)).filter((t): t is Titulo => !!t && !jaNoCarrinho.has(t.id));
+            // Título que já virou remessa (pendente/agendado/pago) não volta pro carrinho.
+            const jaGeradosDaProgramacao = ids.filter((id) => gerados.has(id) && !jaNoCarrinho.has(id));
+            if (jaGeradosDaProgramacao.length > 0) removerDaSelecaoSalva(jaGeradosDaProgramacao);
+            const encontrados = ids
+              .map((id) => porId.get(id))
+              .filter((t): t is Titulo => !!t && !jaNoCarrinho.has(t.id) && !gerados.has(t.id));
             const itensMontados = encontrados.map((t) => montarItemCarrinho(t));
             setCarrinho((c) => [...c, ...itensMontados]);
             const semForma = itensMontados.filter(semFormaDePagamento);
@@ -418,7 +526,12 @@ export default function PagamentosItauPage() {
                   `${m ? `${m} ` : ""}${provisoes.length} provisão(ões) contábil(is) (PRV) ficaram de fora — não são pagamento a fornecedor: ${provisoes.map((t) => t.numTit).join(", ")}.`
               );
             }
-            const faltaram = ids.length - encontrados.length - provisoes.length - ids.filter((id) => jaNoCarrinho.has(id)).length;
+            if (jaGeradosDaProgramacao.length > 0) {
+              const textoHandoff = `${jaGeradosDaProgramacao.length} título(s) trazido(s) da Programação já tinham virado remessa e ficaram de fora (veja no Histórico de pagamentos).`;
+              setAvisoJaGerados((a) => (a ? `${a} ${textoHandoff}` : textoHandoff));
+            }
+            const faltaram =
+              ids.length - encontrados.length - provisoes.length - ids.filter((id) => jaNoCarrinho.has(id)).length - jaGeradosDaProgramacao.length;
             if (faltaram > 0) {
               setErro(`${faltaram} título(s) selecionado(s) não foram encontrados aqui (já pago ou não sincronizado) e não entraram no carrinho.`);
             }
@@ -632,6 +745,7 @@ export default function PagamentosItauPage() {
     const jaNoCarrinho = new Set(carrinho.map((i) => i.chave));
     return titulos
       .filter((t) => !jaNoCarrinho.has(`${t.numTit}|${t.codFil}|${t.codFor}`))
+      .filter((t) => mostrarJaGerados || !idsGerados.has(t.id))
       .filter(
         (t) =>
           !termo || t.numTit.toLowerCase().includes(termo) || t.fornecedorNome.toLowerCase().includes(termo)
@@ -639,7 +753,19 @@ export default function PagamentosItauPage() {
       .filter((t) => !vencDe || (t.vencimentoProgramado ?? "").slice(0, 10) >= vencDe)
       .filter((t) => !vencAte || (t.vencimentoProgramado ?? "").slice(0, 10) <= vencAte)
       .slice(0, 200);
-  }, [titulos, busca, carrinho, vencDe, vencAte]);
+  }, [titulos, busca, carrinho, vencDe, vencAte, idsGerados, mostrarJaGerados]);
+
+  const qtdJaGeradosOcultos = useMemo(() => titulos.filter((t) => idsGerados.has(t.id)).length, [titulos, idsGerados]);
+
+  const historicoFiltrado = useMemo(() => {
+    const termo = buscaHistorico.trim().toLowerCase();
+    if (!termo) return historico.itens;
+    return historico.itens.filter((i) =>
+      [i.numTit, i.fornecedorNome, i.favorecidoNome, i.arquivo, i.favorecidoDocumento]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(termo))
+    );
+  }, [historico, buscaHistorico]);
 
   // Monta o item do carrinho a partir de um título, sem efeito colateral --
   // separado de adicionarAoCarrinho pra poder ser chamado tanto no clique
@@ -1022,6 +1148,19 @@ export default function PagamentosItauPage() {
       </div>
 
       {erro && <div className="mb-4 whitespace-pre-wrap rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{erro}</div>}
+      {avisoJaGerados && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <span>{avisoJaGerados}</span>
+          <div className="flex shrink-0 gap-3 text-xs">
+            <a href="#historico-pagamentos" className="underline decoration-dotted underline-offset-2">
+              ver histórico
+            </a>
+            <button onClick={() => setAvisoJaGerados(null)} className="underline decoration-dotted underline-offset-2">
+              fechar
+            </button>
+          </div>
+        </div>
+      )}
       {mensagem && <div className="mb-4 rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-800">{mensagem}</div>}
 
       <div className="mb-5 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -1255,6 +1394,14 @@ export default function PagamentosItauPage() {
                 </button>
               )}
             </div>
+            {qtdJaGeradosOcultos > 0 && (
+              <label className="mt-2 flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-500">
+                <input type="checkbox" checked={mostrarJaGerados} onChange={(e) => setMostrarJaGerados(e.target.checked)} />
+                {mostrarJaGerados
+                  ? `Mostrando também os ${qtdJaGeradosOcultos} título(s) que já viraram remessa (aguardando banco ou baixa)`
+                  : `${qtdJaGeradosOcultos} título(s) já viraram remessa e estão ocultos — veja no Histórico de pagamentos`}
+              </label>
+            )}
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             <table className="w-full text-[13px]">
@@ -1264,6 +1411,14 @@ export default function PagamentosItauPage() {
                     <td className="max-w-[110px] truncate px-3 py-1.5 font-medium text-gray-800">{t.numTit}</td>
                     <td className="max-w-[160px] truncate px-3 py-1.5" title={t.fornecedorNome}>
                       {t.fornecedorNome}
+                      {idsGerados.has(t.id) && (
+                        <span
+                          className="ml-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-medium text-sky-700"
+                          title="Já está numa remessa gerada (aguardando o banco ou a baixa). Adicionar de novo pode pagar em dobro."
+                        >
+                          já em remessa
+                        </span>
+                      )}
                       {(t.codigoBarrasBoleto || contaCompleta(t)) && (
                         <span
                           className="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700"
@@ -1739,6 +1894,83 @@ export default function PagamentosItauPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div id="historico-pagamentos" className="mt-5 rounded-xl border border-gray-100 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 p-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-700">Histórico de pagamentos</p>
+            <p className="text-[11px] text-gray-400">
+              Tudo que já foi gerado em remessa, com o dia em que o arquivo foi gerado.
+              {historico.total > historico.itens.length
+                ? ` Mostrando os ${historico.itens.length} mais recentes de ${historico.total}.`
+                : historico.total > 0
+                  ? ` ${historico.total} pagamento(s).`
+                  : ""}
+            </p>
+          </div>
+          <input
+            type="text"
+            placeholder="buscar título, favorecido, CPF/CNPJ ou arquivo..."
+            value={buscaHistorico}
+            onChange={(e) => setBuscaHistorico(e.target.value)}
+            className="w-72 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+          />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Remessa gerada em</th>
+                <th className="px-3 py-2 font-medium">Arquivo</th>
+                <th className="px-3 py-2 font-medium">Título</th>
+                <th className="px-3 py-2 font-medium">Favorecido</th>
+                <th className="px-3 py-2 font-medium">CPF/CNPJ</th>
+                <th className="px-3 py-2 font-medium">Forma</th>
+                <th className="px-3 py-2 font-medium">Dados de pagamento</th>
+                <th className="px-3 py-2 font-medium">Pagamento em</th>
+                <th className="px-3 py-2 text-right font-medium">Valor</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historicoFiltrado.map((i) => (
+                <tr key={i.id} className="border-t border-gray-50 align-top">
+                  <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-gray-600">{formatDataHora(i.geradaEm)}</td>
+                  <td className="max-w-[170px] truncate px-3 py-1.5 text-gray-500" title={i.arquivo ?? undefined}>
+                    {i.arquivo ?? "—"}
+                  </td>
+                  <td className="px-3 py-1.5 font-medium text-gray-800">{i.numTit ?? "—"}</td>
+                  <td className="max-w-[200px] truncate px-3 py-1.5" title={i.favorecidoNome}>
+                    {i.favorecidoNome}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-gray-600">{formatarDocumento(i.favorecidoDocumento)}</td>
+                  <td className="px-3 py-1.5 text-gray-600">{FORMAS.find((f) => f.valor === i.formaPagamento)?.label ?? i.formaPagamento}</td>
+                  <td className="max-w-[260px] break-all px-3 py-1.5 font-mono text-[11px] text-gray-600">{dadosDePagamentoDoHistorico(i)}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-gray-500">{formatData(i.dataPagamento)}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">{formatMoeda(i.valor)}</td>
+                  <td className="px-3 py-1.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ITEM_STATUS_LABEL[i.status] ?? "bg-gray-100 text-gray-600"}`}>
+                      {STATUS_ITEM_ROTULO[i.status] ?? i.status}
+                    </span>
+                    {i.baixaSeniorStatus === "ENVIADA" || i.baixaSeniorStatus === "JA_BAIXADO" ? (
+                      <span className="ml-1 text-[10px] text-emerald-700" title="Baixa lançada na Senior">
+                        baixado na Senior
+                      </span>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+              {historicoFiltrado.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="px-4 py-6 text-center text-gray-400">
+                    {historico.itens.length === 0 ? "Nenhum pagamento gerado ainda." : "Nenhum pagamento encontrado com essa busca."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

@@ -312,3 +312,21 @@ da forma (`src/lib/pagamentos/conteudoPagamento.ts`, regra pura e testada):
 - **Visibilidade:** `/api/senior/aprovacoes/[numOcp]` passou a devolver o dado de pagamento de cada título (código de barras, chave PIX, conta) a quem pode abrir
   o modal — o mesmo público que já via a chave PIX/conta digitadas na OC (inclui gerência/coordenação). Se for para restringir ao financeiro, é uma checagem de papel
   nessa rota.
+
+## Pagamentos Itaú: o que já virou remessa sai do carrinho; Histórico de pagamentos (06/10/2026)
+
+**Problema:** o carrinho é guardado no navegador (rascunho) e voltava exatamente como foi salvo — inclusive com título que, nesse meio-tempo, já tinha virado
+remessa (gerada em outra aba ou por outra pessoa, ou trazido de novo da Programação de Pagamento). Havia risco de pagar em dobro.
+
+- **Critério de "já gerado":** o MESMO da conferência da remessa (`conferenciaRemessa.ts`) — item de remessa com status `PENDENTE`, `AGENDADO` ou `PAGO`, em remessa
+  que não seja `RASCUNHO`. **Rejeitado e cancelado não contam** (o banco não pagou; o título pode ir pra uma remessa nova).
+- **Carrinho:** ao abrir/recarregar a tela, os itens do rascunho que já viraram remessa saem do carrinho (e do rascunho salvo e da seleção salva da Programação) e a tela
+  avisa quais foram, num banner próprio (a mensagem comum é trocada pela do resultado da leitura ao vivo da Senior e a pessoa não veria). O que fica é só o que foi
+  selecionado e **ainda não foi gerado**. O envio da Programação de Pagamento ("Enviar para remessa Itaú") também deixa de fora o que já virou remessa.
+- **Lista "Títulos em aberto":** títulos que já viraram remessa ficam ocultos (eles seguem abertos na Senior até a baixa), com um interruptor "mostrar também os N que já
+  viraram remessa" — saída de emergência se um arquivo foi gerado mas não aceito pelo banco (fica "aguardando o banco" para sempre) e precisa ser refeito. Quando
+  mostrados, levam o selo "já em remessa".
+- **Histórico de pagamentos (seção nova, no fim da página):** todo pagamento já gerado, um por linha, com as mesmas informações do carrinho — título, favorecido,
+  CPF/CNPJ, forma, dados de pagamento (código de barras no boleto, chave PIX no PIX, banco/agência/conta no crédito/TED), data do pagamento, valor e status — mais o
+  **dia e a hora em que o arquivo remessa foi gerado** (`RemessaPagamento.geradoEm`) e o nome do arquivo. Busca por título, favorecido, CPF/CNPJ ou arquivo. Mostra os
+  300 mais recentes (total informado). `GET /api/pagamentos-itau/historico` devolve os itens e também `tituloIdsGerados`, que a tela usa pra tudo acima.
