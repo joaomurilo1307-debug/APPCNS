@@ -4,15 +4,14 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
-import { linhaDigitavelParaCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
-import { FORMA_PAGAMENTO, segmentoDaForma } from "@/lib/cnab240/itau/constantes";
-import { ROTULO_CAMPO } from "@/lib/cnab240/itau/validacaoItem";
 import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
 import {
+  agruparPorArquivo,
   conferirItensRemessa,
+  ehPix,
+  itemParaCnab,
   itemRemessaSchema,
-  resumirConferencia,
-  type LinhaConferencia,
+  prepararItem,
 } from "@/lib/pagamentos/conferenciaRemessa";
 
 const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
@@ -74,96 +73,6 @@ export async function GET() {
   });
 }
 
-// Item ja conferido (sem erro bloqueante): campos obrigatorios garantidos por
-// validarItemRemessa, so' normaliza pro formato do CNAB. Tipo de documento e
-// segmento saem do proprio dado (tamanho do CPF/CNPJ, forma de pagamento) --
-// assim um "tipo" desencontrado na tela nunca derruba a geracao.
-type ItemPronto = {
-  tituloId: string | null;
-  segmento: "A" | "J";
-  formaPagamento: string;
-  favorecidoNome: string;
-  favorecidoTipoDoc: "1" | "2";
-  favorecidoDocumento: string;
-  bancoFavorecido?: string;
-  agenciaFavorecido?: string;
-  contaFavorecido?: string;
-  dacFavorecido?: string;
-  codigoBarras?: string; // 44 digitos
-  chavePixTipo?: string;
-  chavePixValor?: string;
-  valor: number;
-  dataPagamento: string;
-};
-
-function prepararItem(item: z.infer<typeof itemRemessaSchema>): ItemPronto {
-  const forma = item.formaPagamento ?? "";
-  const segmento = segmentoDaForma(forma);
-  const documento = (item.favorecidoDocumento ?? "").replace(/\D/g, "");
-  const ehPix = forma === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
-  const vazioParaUndefined = (v: string | undefined) => (v && v.trim() ? v.trim() : undefined);
-  const banco = vazioParaUndefined(item.bancoFavorecido);
-  const agencia = vazioParaUndefined(item.agenciaFavorecido);
-  const conta = vazioParaUndefined(item.contaFavorecido);
-  const dac = vazioParaUndefined(item.dacFavorecido);
-  // PIX por chave sem conta completa: nao existe banco/agencia/conta de verdade
-  // a declarar (o gerador usa "000"/modelo Chave) -- nao deixa passar um banco
-  // "341" residual do preenchimento padrao da tela.
-  const usaConta = segmento === "A" && !(ehPix && !(banco && agencia && conta && dac));
-  return {
-    tituloId: item.tituloId ?? null,
-    segmento,
-    formaPagamento: forma,
-    favorecidoNome: (item.favorecidoNome ?? "").trim(),
-    favorecidoTipoDoc: documento.length === 11 ? "1" : "2",
-    favorecidoDocumento: documento,
-    bancoFavorecido: usaConta ? banco : undefined,
-    agenciaFavorecido: usaConta ? agencia : undefined,
-    contaFavorecido: usaConta ? conta : undefined,
-    dacFavorecido: usaConta ? dac : undefined,
-    codigoBarras: segmento === "J" ? linhaDigitavelParaCodigoBarras(item.codigoBarras ?? "") : undefined,
-    chavePixTipo: ehPix ? vazioParaUndefined(item.chavePixTipo) : undefined,
-    chavePixValor: ehPix ? vazioParaUndefined(item.chavePixValor) : undefined,
-    valor: item.valor ?? 0,
-    dataPagamento: item.dataPagamento ?? "",
-  };
-}
-
-function itemParaCnab(item: ItemPronto, referenciaEmpresa: string, numeroSequencial: number): ItemRemessa {
-  return {
-    referenciaEmpresa,
-    numeroSequencial,
-    formaPagamento: item.formaPagamento as ItemRemessa["formaPagamento"],
-    favorecidoNome: item.favorecidoNome,
-    favorecidoTipoDocumento: item.favorecidoTipoDoc,
-    favorecidoDocumento: item.favorecidoDocumento,
-    valor: item.valor,
-    dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
-    bancoFavorecido: item.bancoFavorecido,
-    agenciaFavorecido: item.agenciaFavorecido,
-    contaFavorecido: item.contaFavorecido,
-    dacFavorecido: item.dacFavorecido,
-    codigoBarras: item.codigoBarras,
-    chavePixTipo: item.chavePixTipo as ItemRemessa["chavePixTipo"],
-    chavePixValor: item.chavePixValor,
-  };
-}
-
-// Rede de seguranca: a conferencia ja cobre os campos, mas se o gerador do
-// CNAB ainda recusar algo que ela nao previu, isola QUAL item e' o culpado
-// (gera um a um) em vez de devolver uma excecao solta sem dizer o titulo.
-function isolarItensQueQuebramOCnab(conta: ContaDebito, itens: ItemPronto[], dataGeracao: Date) {
-  const culpados: { indice: number; mensagem: string }[] = [];
-  itens.forEach((item, indice) => {
-    try {
-      gerarArquivoRemessa(conta, [itemParaCnab(item, `PREVIA-${String(indice + 1).padStart(4, "0")}`, 1)], dataGeracao);
-    } catch (e: any) {
-      culpados.push({ indice, mensagem: String(e?.message ?? e) });
-    }
-  });
-  return culpados;
-}
-
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
@@ -182,13 +91,19 @@ export async function POST(req: Request) {
   // demais. Mantido: título fora de Aberto (pago ou em situação especial como
   // "PE") não entra, porque pode já estar comprometido em outro fluxo do
   // Senior e pagaria em dobro -- agora esse bloqueio faz parte da conferência.
-  const conferencia = await conferirItensRemessa(parsed.data.itens);
+  const contaDebito: ContaDebito = { cnpj: conta.cnpj, agencia: conta.agencia, conta: conta.conta, dac: conta.dac, nomeEmpresa: conta.apelido };
+
+  // A conferencia inclui o ensaio do arquivo CNAB (sem gravar nada): se algo so'
+  // quebraria na hora de montar o arquivo, ela ja aponta qual titulo.
+  const conferencia = await conferirItensRemessa(parsed.data.itens, contaDebito);
   const linhasComErro = conferencia.linhas.filter((l) => l.situacao === "erro");
 
-  if (linhasComErro.length > 0 && !parsed.data.somenteValidos) {
+  if ((linhasComErro.length > 0 && !parsed.data.somenteValidos) || conferencia.erroGeral) {
     return NextResponse.json(
       {
-        error: `${linhasComErro.length} de ${conferencia.linhas.length} item(ns) com problema -- nenhum arquivo foi gerado. Corrija os dados indicados e gere de novo.`,
+        error: conferencia.erroGeral
+          ? `${conferencia.erroGeral} -- nenhum arquivo foi gerado.`
+          : `${linhasComErro.length} de ${conferencia.linhas.length} item(ns) com problema -- nenhum arquivo foi gerado. Corrija os dados indicados e gere de novo.`,
         conferencia,
       },
       { status: 422 }
@@ -196,56 +111,16 @@ export async function POST(req: Request) {
   }
 
   const indicesExcluidos = new Set(linhasComErro.map((l) => l.indice));
-  const itensProntos = parsed.data.itens.filter((_, i) => !indicesExcluidos.has(i)).map(prepararItem);
+  const itensProntos = parsed.data.itens.filter((_, i) => !indicesExcluidos.has(i)).map((item) => prepararItem(item));
   if (itensProntos.length === 0) {
     return NextResponse.json({ error: "Nenhum item válido pra gerar a remessa.", conferencia }, { status: 422 });
   }
 
-  const contaDebito: ContaDebito = { cnpj: conta.cnpj, agencia: conta.agencia, conta: conta.conta, dac: conta.dac, nomeEmpresa: conta.apelido };
-
   // O Itau exige PIX em arquivo SEPARADO das demais formas (manual SISPAG,
   // "Instrucoes de Procedimentos"). Uma geracao so' -- que sai em 1 arquivo, ou
   // em 2 quando o carrinho mistura PIX com boleto/TED/credito.
-  const grupos = [
-    itensProntos.filter((i) => i.formaPagamento !== FORMA_PAGAMENTO.PIX_TRANSFERENCIA),
-    itensProntos.filter((i) => i.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA),
-  ].filter((g) => g.length > 0);
-
+  const grupos = agruparPorArquivo(itensProntos);
   const dataGeracao = new Date();
-
-  // Ensaio antes de gravar qualquer coisa: se o gerador recusar, nada foi salvo
-  // e o relatorio diz qual item quebrou.
-  const problemasDeArquivo: LinhaConferencia[] = [];
-  for (const grupo of grupos) {
-    try {
-      gerarArquivoRemessa(contaDebito, grupo.map((item, i) => itemParaCnab(item, `PREVIA-${String(i + 1).padStart(4, "0")}`, i + 1)), dataGeracao);
-    } catch (e: any) {
-      const culpados = isolarItensQueQuebramOCnab(contaDebito, grupo, dataGeracao);
-      const mensagens = culpados.length > 0 ? culpados : [{ indice: -1, mensagem: String(e?.message ?? e) }];
-      for (const c of mensagens) {
-        const item = c.indice >= 0 ? grupo[c.indice] : undefined;
-        problemasDeArquivo.push({
-          indice: -1,
-          tituloId: item?.tituloId ?? null,
-          numTit: null,
-          fornecedor: item?.favorecidoNome ?? "—",
-          valor: item?.valor ?? null,
-          problemas: [{ campo: "arquivo", rotulo: ROTULO_CAMPO.arquivo, mensagem: c.mensagem, gravidade: "erro" }],
-          situacao: "erro",
-        });
-      }
-    }
-  }
-  if (problemasDeArquivo.length > 0) {
-    const linhas = [...conferencia.linhas, ...problemasDeArquivo];
-    return NextResponse.json(
-      {
-        error: `O arquivo da remessa não pôde ser montado (${problemasDeArquivo.length} problema(s)) -- nenhum arquivo foi gerado.`,
-        conferencia: { linhas, resumo: resumirConferencia(linhas) },
-      },
-      { status: 422 }
-    );
-  }
 
   try {
     const resultado = await prisma.$transaction(
@@ -301,8 +176,8 @@ export async function POST(req: Request) {
           }
 
           const gerado = gerarArquivoRemessa(contaDebito, itensCnab, dataGeracao);
-          const ehPix = grupo[0].formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
-          const nomeArquivo = `SISPAG_${dataGeracao.toISOString().slice(0, 10).replace(/-/g, "")}_${ehPix ? "PIX_" : ""}${remessa.id.slice(-6)}.rem`;
+          const arquivoPix = ehPix(grupo[0]);
+          const nomeArquivo = `SISPAG_${dataGeracao.toISOString().slice(0, 10).replace(/-/g, "")}_${arquivoPix ? "PIX_" : ""}${remessa.id.slice(-6)}.rem`;
 
           const atualizada = await tx.remessaPagamento.update({
             where: { id: remessa.id },
@@ -319,7 +194,7 @@ export async function POST(req: Request) {
           geradas.push({
             id: atualizada.id,
             nomeArquivo: atualizada.nomeArquivo,
-            tipo: ehPix ? ("PIX" as const) : ("BOLETO_TED_CREDITO" as const),
+            tipo: arquivoPix ? ("PIX" as const) : ("BOLETO_TED_CREDITO" as const),
             qtdItens: grupo.length,
             totalValor: gerado.totalValor,
             lotes: gerado.lotes,

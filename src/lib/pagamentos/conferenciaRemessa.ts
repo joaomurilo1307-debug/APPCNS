@@ -12,6 +12,10 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
+import { linhaDigitavelParaCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
+import { FORMA_PAGAMENTO, segmentoDaForma } from "@/lib/cnab240/itau/constantes";
+import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
 import {
   ROTULO_CAMPO,
   temErroBloqueante,
@@ -68,7 +72,101 @@ export type ResumoConferencia = {
 export type RelatorioConferencia = {
   linhas: LinhaConferencia[];
   resumo: ResumoConferencia;
+  // Falha do arquivo como um todo (nao de um item especifico), vista no ensaio.
+  erroGeral?: string;
 };
+
+// Item ja conferido (sem erro bloqueante): campos obrigatorios garantidos por
+// validarItemRemessa, so' normaliza pro formato do CNAB. Tipo de documento e
+// segmento saem do proprio dado (tamanho do CPF/CNPJ, forma de pagamento) --
+// assim um "tipo" desencontrado na tela nunca derruba a geracao.
+export type ItemPronto = {
+  tituloId: string | null;
+  segmento: "A" | "J";
+  formaPagamento: string;
+  favorecidoNome: string;
+  favorecidoTipoDoc: "1" | "2";
+  favorecidoDocumento: string;
+  bancoFavorecido?: string;
+  agenciaFavorecido?: string;
+  contaFavorecido?: string;
+  dacFavorecido?: string;
+  codigoBarras?: string; // 44 digitos
+  chavePixTipo?: string;
+  chavePixValor?: string;
+  valor: number;
+  dataPagamento: string;
+};
+
+export function ehPix(item: { formaPagamento: string }) {
+  return item.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
+}
+
+export function prepararItem(item: ItemConferencia): ItemPronto {
+  const forma = item.formaPagamento ?? "";
+  const segmento = segmentoDaForma(forma);
+  const documento = (item.favorecidoDocumento ?? "").replace(/\D/g, "");
+  const pix = forma === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
+  const vazioParaUndefined = (v: string | undefined) => (v && v.trim() ? v.trim() : undefined);
+  const banco = vazioParaUndefined(item.bancoFavorecido);
+  const agencia = vazioParaUndefined(item.agenciaFavorecido);
+  const conta = vazioParaUndefined(item.contaFavorecido);
+  const dac = vazioParaUndefined(item.dacFavorecido);
+  // PIX por chave sem conta completa: nao existe banco/agencia/conta de verdade
+  // a declarar (o gerador usa "000"/modelo Chave) -- nao deixa passar um banco
+  // "341" residual do preenchimento padrao da tela.
+  const usaConta = segmento === "A" && !(pix && !(banco && agencia && conta && dac));
+  return {
+    tituloId: item.tituloId ?? null,
+    segmento,
+    formaPagamento: forma,
+    favorecidoNome: (item.favorecidoNome ?? "").trim(),
+    favorecidoTipoDoc: documento.length === 11 ? "1" : "2",
+    favorecidoDocumento: documento,
+    bancoFavorecido: usaConta ? banco : undefined,
+    agenciaFavorecido: usaConta ? agencia : undefined,
+    contaFavorecido: usaConta ? conta : undefined,
+    dacFavorecido: usaConta ? dac : undefined,
+    codigoBarras: segmento === "J" ? linhaDigitavelParaCodigoBarras(item.codigoBarras ?? "") : undefined,
+    chavePixTipo: pix ? vazioParaUndefined(item.chavePixTipo) : undefined,
+    chavePixValor: pix ? vazioParaUndefined(item.chavePixValor) : undefined,
+    valor: item.valor ?? 0,
+    dataPagamento: item.dataPagamento ?? "",
+  };
+}
+
+export function itemParaCnab(item: ItemPronto, referenciaEmpresa: string, numeroSequencial: number): ItemRemessa {
+  return {
+    referenciaEmpresa,
+    numeroSequencial,
+    formaPagamento: item.formaPagamento as ItemRemessa["formaPagamento"],
+    favorecidoNome: item.favorecidoNome,
+    favorecidoTipoDocumento: item.favorecidoTipoDoc,
+    favorecidoDocumento: item.favorecidoDocumento,
+    valor: item.valor,
+    dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
+    bancoFavorecido: item.bancoFavorecido,
+    agenciaFavorecido: item.agenciaFavorecido,
+    contaFavorecido: item.contaFavorecido,
+    dacFavorecido: item.dacFavorecido,
+    codigoBarras: item.codigoBarras,
+    chavePixTipo: item.chavePixTipo as ItemRemessa["chavePixTipo"],
+    chavePixValor: item.chavePixValor,
+  };
+}
+
+/**
+ * O Itau exige PIX em arquivo SEPARADO das demais formas (manual SISPAG,
+ * "Instrucoes de Procedimentos"). Uma geracao so' -- que sai em 1 arquivo, ou
+ * em 2 quando o carrinho mistura PIX com boleto/TED/credito.
+ */
+export function agruparPorArquivo<T extends { formaPagamento: string }>(itens: T[]): T[][] {
+  return [itens.filter((i) => !ehPix(i)), itens.filter((i) => ehPix(i))].filter((g) => g.length > 0);
+}
+
+function mensagemDe(e: unknown) {
+  return String((e as any)?.message ?? e);
+}
 
 function problema(campo: ProblemaItem["campo"], mensagem: string, gravidade: ProblemaItem["gravidade"]): ProblemaItem {
   return { campo, rotulo: ROTULO_CAMPO[campo], mensagem, gravidade };
@@ -91,7 +189,7 @@ export function resumirConferencia(linhas: LinhaConferencia[]): ResumoConferenci
   };
 }
 
-export async function conferirItensRemessa(itens: ItemConferencia[]): Promise<RelatorioConferencia> {
+export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito?: ContaDebito): Promise<RelatorioConferencia> {
   const ids = [...new Set(itens.map((i) => i.tituloId).filter((id): id is string => !!id))];
 
   const titulos = await prisma.tituloContasAPagar.findMany({
@@ -170,5 +268,33 @@ export async function conferirItensRemessa(itens: ItemConferencia[]): Promise<Re
     };
   });
 
-  return { linhas, resumo: resumirConferencia(linhas) };
+  // Ensaio do arquivo CNAB com quem passou na conferencia (nada e' gravado):
+  // pega o que so' apareceria na hora de montar o arquivo e diz QUAL titulo
+  // causou, em vez de uma excecao solta. So' roda com a conta de debito.
+  let erroGeral: string | undefined;
+  if (contaDebito) {
+    const ensaio = new Date();
+    const prontos = linhas.filter((l) => l.situacao !== "erro").map((l) => ({ indice: l.indice, item: prepararItem(itens[l.indice]) }));
+    const cnab = (lista: { item: ItemPronto }[]) => lista.map((p, k) => itemParaCnab(p.item, `PREVIA-${String(k + 1).padStart(4, "0")}`, k + 1));
+    for (const grupo of agruparPorArquivo(prontos.map((p) => ({ ...p, formaPagamento: p.item.formaPagamento })))) {
+      try {
+        gerarArquivoRemessa(contaDebito, cnab(grupo), ensaio);
+      } catch (e) {
+        let isolou = false;
+        for (const p of grupo) {
+          try {
+            gerarArquivoRemessa(contaDebito, cnab([p]), ensaio);
+          } catch (e2) {
+            isolou = true;
+            const linha = linhas[p.indice];
+            linha.problemas.push(problema("arquivo", mensagemDe(e2), "erro"));
+            linha.situacao = "erro";
+          }
+        }
+        if (!isolou) erroGeral = `Falha ao montar o arquivo da remessa: ${mensagemDe(e)}`;
+      }
+    }
+  }
+
+  return { linhas, resumo: resumirConferencia(linhas), ...(erroGeral ? { erroGeral } : {}) };
 }

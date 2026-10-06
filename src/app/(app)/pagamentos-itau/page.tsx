@@ -308,7 +308,7 @@ export default function PagamentosItauPage() {
       fetch("/api/pagamentos-itau/remessas/conferir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itens: carrinho.map(itemParaApi) }),
+        body: JSON.stringify({ itens: carrinho.map(itemParaApi), contaBancariaId: contaSelecionadaId || undefined }),
       })
         .then(async (res) => {
           const data = await res.json();
@@ -327,7 +327,7 @@ export default function PagamentosItauPage() {
     }, 450);
     return () => clearTimeout(espera);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rascunhoRestaurado, carrinho]);
+  }, [rascunhoRestaurado, carrinho, contaSelecionadaId]);
 
   // Problemas por item do carrinho (pra marcar o campo certo e listar embaixo
   // do item). Só vale se o relatório é do carrinho atual -- enquanto a
@@ -753,20 +753,26 @@ export default function PagamentosItauPage() {
               </p>
             </div>
             {relatorio ? (
-              relatorio.resumo.comErro === 0 ? (
+              relatorio.resumo.comErro === 0 && !relatorio.erroGeral ? (
                 <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
                   ✓ Tudo certo pra gerar · {relatorio.resumo.total} item(ns) · {formatMoeda(relatorio.resumo.valorTotal)}
                   {relatorio.resumo.comAviso > 0 ? ` · ${relatorio.resumo.comAviso} com aviso` : ""}
                 </span>
               ) : (
                 <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
-                  ✗ {relatorio.resumo.comErro} de {relatorio.resumo.total} item(ns) com dado faltando ou errado
+                  {relatorio.resumo.comErro > 0
+                    ? `✗ ${relatorio.resumo.comErro} de ${relatorio.resumo.total} item(ns) com dado faltando ou errado`
+                    : "✗ O arquivo não pôde ser montado — veja o motivo abaixo"}
                 </span>
               )
             ) : (
               <span className="text-xs text-gray-400">{conferindo ? "Conferindo…" : "—"}</span>
             )}
           </div>
+
+          {relatorio?.erroGeral && (
+            <p className="border-b border-red-100 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-700">{relatorio.erroGeral}</p>
+          )}
 
           {relatorio && relatorio.linhas.some((l) => l.problemas.length > 0) && (
             <div className="max-h-[340px] overflow-y-auto">
@@ -935,9 +941,9 @@ export default function PagamentosItauPage() {
             <p className="text-sm font-semibold text-gray-700">Itens da remessa ({carrinho.length})</p>
             <button
               onClick={() => gerarRemessa(false)}
-              disabled={gerando || carrinho.length === 0 || !contaSelecionadaId || (relatorio?.resumo.comErro ?? 0) > 0}
+              disabled={gerando || carrinho.length === 0 || !contaSelecionadaId || (relatorio?.resumo.comErro ?? 0) > 0 || !!relatorio?.erroGeral}
               title={
-                (relatorio?.resumo.comErro ?? 0) > 0
+                (relatorio?.resumo.comErro ?? 0) > 0 || !!relatorio?.erroGeral
                   ? "Há itens com dado faltando ou errado -- veja a Conferência acima e corrija antes de gerar."
                   : !contaSelecionadaId
                     ? "Selecione a conta de débito."
