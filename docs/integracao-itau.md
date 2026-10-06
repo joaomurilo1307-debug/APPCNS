@@ -200,3 +200,41 @@ pela OC. Títulos de formas diferentes listam todas; sem forma informada mostra 
   varredura de **todos** os títulos (histórico) a cada 12 h. Nenhuma tela espera por isso; logo após subir o app, o primeiro modal aberto pode ainda
   mostrar "não informada" até a primeira busca terminar (segundos). Se o script do VPS passar a enviar `codFpg`, a rota de sync grava igual
   (campo ausente = não mexe) — os dois caminhos convivem.
+
+### Tipo de pagamento definido na própria OC (06/10/2026)
+
+A forma acima vem do **título**; OC que ainda não gerou título não mostrava nada. O modal agora também tem **"Tipo de pagamento (definido na OC)"**:
+`E420OCP.CODFPG` + descrição do mesmo catálogo, lido **ao vivo** da Senior (`src/lib/senior/pagamentoDaOc.ts`, cache de 10 min em memória) por uma rota
+própria — `GET /api/senior/aprovacoes/[numOcp]/pagamento` — pra o modal abrir na hora e esse campo entrar quando a Senior responder (~2 s). Quando o
+comprador digitou dados de pagamento na OC (`USU_CHVPIX`, `USU_CODAGE`, `USU_NUMCCO`, `USU_DESCCO`) eles aparecem logo abaixo. Consulta com colunas
+explícitas em `E420OCP` responde normalmente (a esquisitice de timeout é só do `E066FPG`).
+
+## Conferência antes de gerar a remessa (06/10/2026)
+
+Problema: a geração falhava com "Dados inválidos" ou com a exceção crua do CNAB, sem dizer **qual título** nem **qual campo**; ficava-se tentando gerar até
+dar certo. Agora há um **relatório de conferência** que roda antes e diz, por título, o que falta ou está errado:
+
+- **Regras por item** (`src/lib/cnab240/itau/validacaoItem.ts`, funções puras): CPF/CNPJ obrigatório (Nota 15 do manual — BACEN, TED/PIX), com aviso se o
+  dígito verificador não bate; conta de Itaú/Unibanco (341/409) aceita agência até 4 e conta até 6 dígitos, outros bancos 5 e 12, DAC com 1 caractere;
+  PIX vale **chave (com tipo) OU conta completa**; boleto precisa de linha digitável de 47 (ou código de barras de 44) dígitos com DV conferido — **48
+  dígitos é conta de consumo/concessionária, que este layout não cobre** (a mensagem manda pagar por outro meio); data inválida/passada vira aviso.
+- **Checagens que dependem do banco** (`src/lib/pagamentos/conferenciaRemessa.ts`): título já pago, em situação especial (≠ AB), repetido no carrinho
+  (erros) e já presente em remessa gerada ainda válida — pendente/agendado/pago (aviso: pagaria em dobro).
+- **Ensaio do arquivo CNAB** em memória (sem gravar), pra qualquer falha que só apareceria na hora de montar o arquivo apontar o título culpado.
+- `POST /api/pagamentos-itau/remessas/conferir` devolve o relatório; a tela de Pagamentos Itaú o pede sozinha (450 ms após cada mudança no carrinho),
+  pinta de vermelho o campo errado de cada item e trava o botão "Gerar remessa" enquanto houver erro.
+- **Geração única:** `POST /remessas` roda a **mesma** conferência em todos os itens antes de gravar qualquer coisa. Com erro, não gera nada e devolve o
+  relatório completo (HTTP 422). Sem erro, grava numa transação só. `somenteValidos: true` (botão "Gerar só com os N sem problema") gera apenas com
+  quem passou e devolve os `ignorados`. O PIX **sai em arquivo separado** dos demais (exigência do Itaú — "Instruções de Procedimentos": remessa com
+  PIX, transferência ou QR Code, deve ir apartada), então um carrinho misto produz **2 arquivos numa geração só**; a tela avisa isso.
+- Tipo de documento (CPF/CNPJ) e segmento (A/J) saem do próprio dado — um "tipo" desencontrado na tela não derruba mais a geração.
+
+## Próxima programação e seleção salva (06/10/2026)
+
+- **Seleção salva:** os títulos marcados na Programação de Pagamento ficam no navegador (`src/lib/selecaoProgramacao.ts`, `localStorage`) e voltam ao
+  reabrir a tela; a cada recarga saem da seleção os que foram pagos ou sumiram, e Pagamentos Itaú tira o que virou remessa.
+- **Status "Próxima programação"** (coluna Revisão) → aba própria. Jogar um título pra cá grava um `TituloAdiamento` (programação de origem = vencimento do
+  título naquele momento, quem, quando, motivo opcional). O vencimento muda **no Senior** (o app só lê o Senior); enquanto não mudar, a linha avisa.
+  O título adiado **continua aparecendo, sinalizado, na semana de onde saiu** ("Semana atual" e filtro por data), e o histórico por programação
+  (`GET /api/titulos-pagar/adiamentos`) guarda uma cópia do título (nº, fornecedor, valor), então sobrevive se o sincronismo apagar/recriar o título.
+  Trocar o status fecha o adiamento como "reprogramado"; título pago aparece como "pago" no histórico.
