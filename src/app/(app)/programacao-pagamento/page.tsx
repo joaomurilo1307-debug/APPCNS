@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
+import { lerSelecaoSalva, salvarSelecao } from "@/lib/selecaoProgramacao";
 
 const REVISAO_LABEL: Record<string, string> = {
   APROVADO: "Aprovado",
@@ -16,6 +17,9 @@ const REVISAO_LABEL: Record<string, string> = {
   // Senior, nunca forcado por aqui), isso so' evita confundir "ja mandei,
   // falta so' a baixa" com um backlog esquecido de verdade.
   ENVIADO_AGUARDANDO_BAIXA: "Enviado (aguarda baixa Senior)",
+  // 06/10/2026: titulo "jogado" pra proxima programacao de pagamento -- vai
+  // pra aba propria e fica de aviso na programacao de onde saiu.
+  PROXIMA_PROGRAMACAO: "Próxima programação",
 };
 const REVISAO_COR: Record<string, string> = {
   APROVADO: "bg-brand text-white",
@@ -23,6 +27,7 @@ const REVISAO_COR: Record<string, string> = {
   SEM_OC_CONFIRMADO: "bg-gray-200 text-gray-700",
   AGUARDANDO_COMPRAS: "bg-amber-100 text-amber-800",
   ENVIADO_AGUARDANDO_BAIXA: "bg-sky-100 text-sky-800",
+  PROXIMA_PROGRAMACAO: "bg-violet-100 text-violet-800",
 };
 
 // Achado 30/09/2026: o Senior tem 7 status de título (AB, LQ, CA, PE, AV,
@@ -94,6 +99,33 @@ type Titulo = {
   revisadoEm: string | null;
   revisadoObs: string | null;
   numOcpCorrigido: string | null;
+  // Só vem nos títulos que já foram "jogados pra próxima programação".
+  adiamento?: AdiamentoDoTitulo;
+};
+
+type AdiamentoDoTitulo = {
+  programacaoOrigem: string | null; // vencimento do título no momento em que foi adiado = programação de onde saiu
+  marcadoPorNome: string;
+  marcadoEm: string;
+  motivo: string | null;
+  resolvidoEm: string | null;
+  resolvidoComo: string | null;
+};
+
+type AdiamentoHistorico = {
+  id: string;
+  tituloId: string | null;
+  numTit: string;
+  fornecedorNome: string;
+  valor: number;
+  programacaoOrigem: string | null;
+  marcadoPorNome: string;
+  marcadoEm: string;
+  motivo: string | null;
+  resolvidoEm: string | null;
+  resolvidoComo: string | null;
+  pagoAgora: boolean | null;
+  vencimentoAtual: string | null;
 };
 
 type FiltrosColuna = {
@@ -206,14 +238,20 @@ function dentroDaSemana(iso: string | null, inicio: Date, fim: Date) {
   return dUTC >= inicio && dUTC <= fim;
 }
 
-type Filtro = "semana" | "aberto" | "pagos" | "todos";
+type Filtro = "semana" | "proxima" | "aberto" | "pagos" | "todos";
 
 const ABAS: [Filtro, string][] = [
   ["semana", "Semana atual"],
+  ["proxima", "Próxima programação"],
   ["aberto", "Em aberto"],
   ["pagos", "Histórico (pagos)"],
   ["todos", "Todos"],
 ];
+
+// Título que está (agora) marcado pra próxima programação e ainda não foi pago.
+function naProximaProgramacao(t: Pick<Titulo, "revisadoStatus" | "pago">) {
+  return t.revisadoStatus === "PROXIMA_PROGRAMACAO" && !t.pago;
+}
 
 export default function ProgramacaoPagamentoPage() {
   const router = useRouter();
@@ -345,6 +383,35 @@ export default function ProgramacaoPagamentoPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Seleção salva no navegador (06/10/2026, pedido do João): sair da tela --
+  // por exemplo pra gerar a remessa e voltar -- não apaga mais os títulos
+  // selecionados. Restaura uma vez quando a lista chega e, a cada recarga,
+  // tira da seleção o que foi pago ou sumiu. Pagamentos Itaú também tira da
+  // seleção o que virou remessa.
+  const [selecaoRestaurada, setSelecaoRestaurada] = useState(false);
+  useEffect(() => {
+    if (titulos.length === 0) return;
+    const porId = new Map(titulos.map((t) => [t.id, t]));
+    const valido = (id: string) => {
+      const t = porId.get(id);
+      return !!t && !t.pago && !situacaoEspecial(t);
+    };
+    if (!selecaoRestaurada) {
+      setSelecionados(new Set(lerSelecaoSalva().filter(valido)));
+      setSelecaoRestaurada(true);
+      return;
+    }
+    setSelecionados((anterior) => {
+      const filtrado = [...anterior].filter(valido);
+      return filtrado.length === anterior.size ? anterior : new Set(filtrado);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [titulos]);
+
+  useEffect(() => {
+    if (selecaoRestaurada) salvarSelecao(selecionados);
+  }, [selecionados, selecaoRestaurada]);
+
   // Reduzido de 10 pra 2 minutos (30/09/2026, pedido do João: "tudo tem que
   // atualizar muito rápido"). Só recarrega a lista (direto do Postgres da
   // app, sem chamar o Senior) -- ainda assim não dá pra ir muito abaixo
@@ -370,12 +437,40 @@ export default function ProgramacaoPagamentoPage() {
   // componente/modal so' pra isso.
   const [ocCorrigidoInput, setOcCorrigidoInput] = useState<Record<string, string>>({});
 
-  function atualizarRevisao(id: string, revisadoStatus: string | null, numOcpCorrigido?: string | null) {
+  // Motivo (opcional) de "jogar pra próxima programação", digitado depois de
+  // escolher o status; guarda o texto por título até salvar.
+  const [motivoAdiamentoInput, setMotivoAdiamentoInput] = useState<Record<string, string>>({});
+
+  // Histórico dos adiamentos (por programação de origem), carregado ao abrir a
+  // aba "Próxima programação". Vem do próprio registro de adiamento, então
+  // mostra também título que o sincronismo já removeu.
+  const [adiamentosHistorico, setAdiamentosHistorico] = useState<AdiamentoHistorico[] | null>(null);
+  useEffect(() => {
+    if (filtro !== "proxima") return;
+    fetch("/api/titulos-pagar/adiamentos")
+      .then((r) => r.json())
+      .then((d) => setAdiamentosHistorico(d.adiamentos ?? []))
+      .catch(() => setAdiamentosHistorico([]));
+  }, [filtro, titulos]);
+  const historicoPorDia = useMemo(() => {
+    const grupos = new Map<string, AdiamentoHistorico[]>();
+    for (const a of adiamentosHistorico ?? []) {
+      const dia = a.programacaoOrigem ? a.programacaoOrigem.slice(0, 10) : "sem-data";
+      grupos.set(dia, [...(grupos.get(dia) ?? []), a]);
+    }
+    return [...grupos.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [adiamentosHistorico]);
+
+  function atualizarRevisao(id: string, revisadoStatus: string | null, numOcpCorrigido?: string | null, obs?: string | null) {
     setSalvandoRevisao(id);
     fetch(`/api/titulos-pagar/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ revisadoStatus, numOcpCorrigido: numOcpCorrigido || null }),
+      body: JSON.stringify({
+        revisadoStatus,
+        numOcpCorrigido: numOcpCorrigido || null,
+        ...(obs !== undefined ? { revisadoObs: obs } : {}),
+      }),
     })
       .then(async (res) => {
         const data = await res.json();
@@ -388,7 +483,21 @@ export default function ProgramacaoPagamentoPage() {
                   revisadoStatus: data.revisadoStatus,
                   revisadoPorNome: data.revisadoPorNome,
                   revisadoEm: data.revisadoEm,
+                  revisadoObs: data.revisadoObs ?? null,
                   numOcpCorrigido: data.numOcpCorrigido,
+                  // Ao jogar pra próxima programação o servidor devolve o registro do
+                  // adiamento; ao sair do status, mantém o que já existia (vira "reprogramado"
+                  // na próxima carga).
+                  adiamento: data.adiamento
+                    ? {
+                        programacaoOrigem: data.adiamento.programacaoOrigem,
+                        marcadoPorNome: data.adiamento.marcadoPorNome,
+                        marcadoEm: data.adiamento.marcadoEm,
+                        motivo: data.adiamento.motivo,
+                        resolvidoEm: null,
+                        resolvidoComo: null,
+                      }
+                    : t.adiamento,
                 }
               : t
           )
@@ -559,17 +668,35 @@ export default function ProgramacaoPagamentoPage() {
 
   const { inicio: inicioSemana, fim: fimSemana } = useMemo(() => semanaAtual(), []);
 
+  // "Semana atual" = vence nesta semana OU foi jogado pra próxima programação
+  // a partir desta semana. O adiado continua aqui, sinalizado, porque o
+  // vencimento muda no Senior e ele sumiria da programação de origem sem
+  // aviso (pedido do João 06/10/2026).
+  function naSemana(t: Titulo) {
+    if (t.pago) return false;
+    if (dentroDaSemana(t.vencimentoProgramado, inicioSemana, fimSemana)) return true;
+    return !!t.adiamento && dentroDaSemana(t.adiamento.programacaoOrigem, inicioSemana, fimSemana);
+  }
+
   const qtdSemana = useMemo(
-    () => titulos.filter((t) => !t.pago && dentroDaSemana(t.vencimentoProgramado, inicioSemana, fimSemana)).length,
+    () => titulos.filter((t) => naSemana(t)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [titulos, inicioSemana, fimSemana]
   );
+  const qtdProxima = useMemo(() => titulos.filter((t) => naProximaProgramacao(t)).length, [titulos]);
   const mostrarColunaPagamento = filtro === "pagos" || filtro === "todos";
+
+  // Dia da programação em que o título "mora": se foi adiado, o de origem.
+  function diaDaProgramacao(t: Titulo) {
+    return t.adiamento && !t.pago ? t.adiamento.programacaoOrigem ?? t.vencimentoProgramado : t.vencimentoProgramado;
+  }
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return titulos
       .filter((t) => {
-        if (filtro === "semana") return !t.pago && dentroDaSemana(t.vencimentoProgramado, inicioSemana, fimSemana);
+        if (filtro === "semana") return naSemana(t);
+        if (filtro === "proxima") return naProximaProgramacao(t);
         if (filtro === "aberto") return !t.pago;
         if (filtro === "pagos") return t.pago;
         return true;
@@ -584,7 +711,13 @@ export default function ProgramacaoPagamentoPage() {
           (t.ocRelacionada?.numOcp ?? "").toLowerCase().includes(termo) ||
           (t.motivoSemOC ?? "").toLowerCase().includes(termo)
       )
-      .filter((t) => (!dataDe && !dataAte) || dataDentroDoIntervalo(t.vencimentoProgramado, dataDe, dataAte))
+      .filter(
+        (t) =>
+          (!dataDe && !dataAte) ||
+          dataDentroDoIntervalo(t.vencimentoProgramado, dataDe, dataAte) ||
+          // adiado a partir desse dia continua aparecendo no intervalo de origem
+          (!!t.adiamento && !t.pago && dataDentroDoIntervalo(t.adiamento.programacaoOrigem, dataDe, dataAte))
+      )
       .filter((t) => !somenteComOC || !!t.ocRelacionada)
       .filter((t) => {
         const f = filtrosColuna;
@@ -608,7 +741,8 @@ export default function ProgramacaoPagamentoPage() {
         return true;
       })
       .sort((a, b) => {
-        if (filtro === "semana") return (a.vencimentoProgramado || "").localeCompare(b.vencimentoProgramado || "");
+        if (filtro === "semana") return (diaDaProgramacao(a) || "").localeCompare(diaDaProgramacao(b) || "");
+        if (filtro === "proxima") return (a.adiamento?.programacaoOrigem || "").localeCompare(b.adiamento?.programacaoOrigem || "");
         if (filtro === "pagos") return (b.dataPagamento || "").localeCompare(a.dataPagamento || ""); // pago mais recente primeiro
         return (b.dataEmissao || "").localeCompare(a.dataEmissao || ""); // aberto/todos: criado mais recente primeiro
       });
@@ -767,6 +901,7 @@ export default function ProgramacaoPagamentoPage() {
             >
               {label}
               {v === "semana" ? ` (${qtdSemana})` : ""}
+              {v === "proxima" ? ` (${qtdProxima})` : ""}
             </button>
           ))}
         </div>
@@ -821,6 +956,62 @@ export default function ProgramacaoPagamentoPage() {
           )}
         </div>
       </div>
+
+      {filtro === "proxima" && (
+        <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/40 p-4 text-sm">
+          <p className="font-semibold text-violet-900">Títulos jogados pra próxima programação</p>
+          <p className="mt-0.5 text-xs text-gray-600">
+            Escolha “Próxima programação” na coluna Revisão pra mover um título pra cá. Ele continua marcado como adiado na programação de onde
+            saiu (aba Semana atual), mesmo depois que o vencimento mudar no Senior — assim ninguém perde o que foi jogado pra outra semana.
+            Pra devolver o título à programação normal, troque o status dele.
+          </p>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-violet-900">
+              Histórico por programação — de onde cada título foi adiado ({(adiamentosHistorico ?? []).length})
+            </summary>
+            <div className="mt-2 space-y-3">
+              {adiamentosHistorico === null && <p className="text-xs text-gray-400">Carregando…</p>}
+              {adiamentosHistorico !== null && historicoPorDia.length === 0 && (
+                <p className="text-xs text-gray-400">Nenhum título foi adiado ainda.</p>
+              )}
+              {historicoPorDia.map(([dia, lista]) => (
+                <div key={dia} className="overflow-hidden rounded-lg border border-violet-100 bg-white">
+                  <p className="bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-900">
+                    Programação de {dia === "sem-data" ? "data não informada" : formatData(`${dia}T00:00:00Z`)} · {lista.length} título(s) adiado(s) ·{" "}
+                    {formatMoeda(lista.reduce((s, a) => s + a.valor, 0))}
+                  </p>
+                  <table className="w-full text-[11px]">
+                    <tbody>
+                      {lista.map((a) => (
+                        <tr key={a.id} className="border-t border-gray-50 align-top">
+                          <td className="whitespace-nowrap px-3 py-1.5 font-medium text-gray-800">{a.numTit}</td>
+                          <td className="px-3 py-1.5 text-gray-600">{a.fornecedorNome}</td>
+                          <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">{formatMoeda(a.valor)}</td>
+                          <td className="px-3 py-1.5 text-gray-500">
+                            por {a.marcadoPorNome} em {formatDataHora(a.marcadoEm)}
+                            {a.motivo ? ` · “${a.motivo}”` : ""}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-1.5">
+                            {a.pagoAgora ? (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800">pago</span>
+                            ) : !a.resolvidoEm ? (
+                              <span className="rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-800">na próxima programação</span>
+                            ) : (
+                              <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-600">
+                                reprogramado{a.vencimentoAtual ? ` · venc. ${formatData(a.vencimentoAtual)}` : ""}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          </details>
+        </div>
+      )}
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
@@ -1171,7 +1362,54 @@ export default function ProgramacaoPagamentoPage() {
                     <option value="SEM_OC_CONFIRMADO">Sem OC (confirmado)</option>
                     <option value="AGUARDANDO_COMPRAS">Aguardando compras</option>
                     <option value="ENVIADO_AGUARDANDO_BAIXA">Enviado (aguarda baixa Senior)</option>
+                    <option value="PROXIMA_PROGRAMACAO">Próxima programação</option>
                   </select>
+                  {t.adiamento && (
+                    <div className="mt-1 max-w-[260px] rounded-md bg-violet-50 px-2 py-1 text-[10px] leading-snug text-violet-900">
+                      <span className="font-semibold">
+                        {naProximaProgramacao(t)
+                          ? "↪ Jogado p/ próxima programação"
+                          : t.adiamento.resolvidoComo === "REPROGRAMADO"
+                            ? "↪ Foi adiado e já reprogramado"
+                            : "↪ Foi adiado"}
+                      </span>{" "}
+                      — saiu da programação de {formatData(t.adiamento.programacaoOrigem)} · por {t.adiamento.marcadoPorNome} em{" "}
+                      {formatDataHora(t.adiamento.marcadoEm)}
+                      {t.adiamento.motivo ? <> · “{t.adiamento.motivo}”</> : null}
+                      {naProximaProgramacao(t) &&
+                        t.adiamento.programacaoOrigem &&
+                        t.vencimentoProgramado &&
+                        t.vencimentoProgramado.slice(0, 10) <= t.adiamento.programacaoOrigem.slice(0, 10) && (
+                          <span className="mt-0.5 block font-semibold text-amber-700">
+                            ⚠ O vencimento no Senior ainda é {formatData(t.vencimentoProgramado)} — altere a data lá pra valer na próxima
+                            programação.
+                          </span>
+                        )}
+                    </div>
+                  )}
+                  {t.revisadoStatus === "PROXIMA_PROGRAMACAO" && (
+                    <div className="mt-1 flex items-center gap-1">
+                      <input
+                        type="text"
+                        placeholder="motivo (opcional)"
+                        maxLength={200}
+                        value={motivoAdiamentoInput[t.id] ?? t.adiamento?.motivo ?? ""}
+                        onChange={(e) => setMotivoAdiamentoInput((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") atualizarRevisao(t.id, "PROXIMA_PROGRAMACAO", undefined, motivoAdiamentoInput[t.id] ?? "");
+                        }}
+                        disabled={salvandoRevisao === t.id}
+                        className="w-32 rounded border border-gray-200 px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-brand"
+                      />
+                      <button
+                        onClick={() => atualizarRevisao(t.id, "PROXIMA_PROGRAMACAO", undefined, motivoAdiamentoInput[t.id] ?? "")}
+                        disabled={salvandoRevisao === t.id || motivoAdiamentoInput[t.id] === undefined}
+                        className="rounded border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                      >
+                        salvar
+                      </button>
+                    </div>
+                  )}
                   {t.revisadoStatus === "CORRIGIDO" && (
                     <div className="mt-1 flex items-center gap-1">
                       {t.numOcpCorrigido ? (

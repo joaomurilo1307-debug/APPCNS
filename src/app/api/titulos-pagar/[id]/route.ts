@@ -16,7 +16,13 @@ const bodySchema = z.object({
   // nao foi lancada por quem cuida disso -- "pago" continua vindo SO' do
   // VLRABE da Senior (nunca forcado por aqui), isso e' so' um rastro pra
   // nao confundir "ja mandei, falta so' a baixa" com "backlog esquecido".
-  revisadoStatus: z.enum(["APROVADO", "CORRIGIDO", "SEM_OC_CONFIRMADO", "AGUARDANDO_COMPRAS", "ENVIADO_AGUARDANDO_BAIXA"]).nullable(),
+  // PROXIMA_PROGRAMACAO (06/10/2026): "jogado" pra proxima programacao de
+  // pagamento -- vai pra aba propria e deixa rastro (TituloAdiamento) da
+  // programacao de onde saiu, porque o vencimento muda no Senior e o titulo
+  // sumia da semana de origem sem aviso. O motivo (opcional) vai em revisadoObs.
+  revisadoStatus: z
+    .enum(["APROVADO", "CORRIGIDO", "SEM_OC_CONFIRMADO", "AGUARDANDO_COMPRAS", "ENVIADO_AGUARDANDO_BAIXA", "PROXIMA_PROGRAMACAO"])
+    .nullable(),
   revisadoObs: z.string().max(500).nullable().optional(),
   // numOcpCorrigido (01/10/2026, pedido do Joao: "deveria ter como vincular
   // uma oc ao titulo sem nf") -- so' aceito junto com revisadoStatus =
@@ -79,6 +85,48 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     },
   });
 
+  // Adiamento ("proxima programacao"): abre o registro na primeira vez que o
+  // titulo e' jogado (guarda a programacao de ORIGEM = vencimento de agora,
+  // antes de alguem mudar a data no Senior); salvar de novo so' atualiza o
+  // motivo. Sair desse status (ou ser reprogramado) fecha o registro, mas ele
+  // fica no historico da programacao de origem.
+  let adiamento: { id: string; programacaoOrigem: Date | null; marcadoPorNome: string; marcadoEm: Date; motivo: string | null } | null = null;
+  if (parsed.data.revisadoStatus === "PROXIMA_PROGRAMACAO") {
+    const aberto = await prisma.tituloAdiamento.findFirst({
+      where: { tituloId: existente.id, resolvidoEm: null },
+      orderBy: { marcadoEm: "desc" },
+    });
+    const motivo = parsed.data.revisadoObs?.trim() || null;
+    if (!aberto) {
+      adiamento = await prisma.tituloAdiamento.create({
+        data: {
+          tituloId: existente.id,
+          numTit: existente.numTit,
+          codFor: existente.codFor,
+          fornecedorNome: existente.fornecedorNome,
+          valor: existente.valorAberto,
+          programacaoOrigem: existente.vencimentoProgramado,
+          marcadoPorNome: user.name ?? "Usuário",
+          motivo,
+        },
+        select: { id: true, programacaoOrigem: true, marcadoPorNome: true, marcadoEm: true, motivo: true },
+      });
+    } else if (parsed.data.revisadoObs !== undefined) {
+      adiamento = await prisma.tituloAdiamento.update({
+        where: { id: aberto.id },
+        data: { motivo },
+        select: { id: true, programacaoOrigem: true, marcadoPorNome: true, marcadoEm: true, motivo: true },
+      });
+    } else {
+      adiamento = aberto;
+    }
+  } else if (existente.revisadoStatus === "PROXIMA_PROGRAMACAO") {
+    await prisma.tituloAdiamento.updateMany({
+      where: { tituloId: existente.id, resolvidoEm: null },
+      data: { resolvidoEm: new Date(), resolvidoComo: "REPROGRAMADO" },
+    });
+  }
+
   // Retorno de OC: so' na transicao pra APROVADO (salvar de novo nao reenvia).
   let avisoCriadorOc: ResultadoAviso | null = null;
   if (atualizado.revisadoStatus === "APROVADO" && existente.revisadoStatus !== "APROVADO") {
@@ -92,6 +140,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     revisadoEm: atualizado.revisadoEm,
     revisadoObs: atualizado.revisadoObs,
     numOcpCorrigido: atualizado.numOcpCorrigido,
+    adiamento,
     avisoCriadorOc,
   });
 }

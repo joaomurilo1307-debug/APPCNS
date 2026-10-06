@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CampoItem, ProblemaItem } from "@/lib/cnab240/itau/validacaoItem";
+import type { RelatorioConferencia } from "@/lib/pagamentos/conferenciaRemessa";
+import { removerDaSelecaoSalva } from "@/lib/selecaoProgramacao";
 
 type Titulo = {
   id: string;
@@ -203,6 +206,11 @@ export default function PagamentosItauPage() {
   const [vencDe, setVencDe] = useState("");
   const [vencAte, setVencAte] = useState("");
   const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
+  // Relatório de conferência do carrinho (o que falta/está errado em cada
+  // título), atualizado sozinho a cada mudança no carrinho.
+  const [relatorio, setRelatorio] = useState<RelatorioConferencia | null>(null);
+  const [conferindo, setConferindo] = useState(false);
+  const sequenciaConferencia = useRef(0);
 
   function carregarTudo() {
     setLoading(true);
@@ -282,6 +290,72 @@ export default function PagamentosItauPage() {
     if (!rascunhoRestaurado) return;
     salvarRascunho({ carrinho, contaSelecionadaId, busca, vencDe, vencAte });
   }, [rascunhoRestaurado, carrinho, contaSelecionadaId, busca, vencDe, vencAte]);
+
+  // Conferência automática: 450ms depois da última mudança no carrinho, pede
+  // ao servidor o relatório do que falta em cada título (mesma regra que a
+  // geração usa pra recusar). `sequenciaConferencia` descarta resposta velha
+  // que chegar depois de uma mais nova.
+  useEffect(() => {
+    if (!rascunhoRestaurado) return;
+    if (carrinho.length === 0) {
+      setRelatorio(null);
+      setConferindo(false);
+      return;
+    }
+    const minhaVez = ++sequenciaConferencia.current;
+    setConferindo(true);
+    const espera = setTimeout(() => {
+      fetch("/api/pagamentos-itau/remessas/conferir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itens: carrinho.map(itemParaApi) }),
+      })
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Erro ao conferir");
+          return data as RelatorioConferencia;
+        })
+        .then((data) => {
+          if (minhaVez === sequenciaConferencia.current) setRelatorio(data);
+        })
+        .catch(() => {
+          if (minhaVez === sequenciaConferencia.current) setRelatorio(null);
+        })
+        .finally(() => {
+          if (minhaVez === sequenciaConferencia.current) setConferindo(false);
+        });
+    }, 450);
+    return () => clearTimeout(espera);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rascunhoRestaurado, carrinho]);
+
+  // Problemas por item do carrinho (pra marcar o campo certo e listar embaixo
+  // do item). Só vale se o relatório é do carrinho atual -- enquanto a
+  // conferência nova não chega, não mostra marca velha de outro conteúdo.
+  const problemasPorChave = useMemo(() => {
+    const mapa = new Map<string, ProblemaItem[]>();
+    if (!relatorio) return mapa;
+    const linhasDosItens = relatorio.linhas.filter((l) => l.indice >= 0);
+    if (linhasDosItens.length !== carrinho.length) return mapa;
+    for (const l of linhasDosItens) {
+      const item = carrinho[l.indice];
+      if (item) mapa.set(item.chave, l.problemas);
+    }
+    return mapa;
+  }, [relatorio, carrinho]);
+
+  function classeCampo(chave: string, ...campos: CampoItem[]) {
+    const doCampo = (problemasPorChave.get(chave) ?? []).filter((p) => campos.includes(p.campo));
+    const base = "mt-0.5 w-full rounded border px-2 py-1";
+    if (doCampo.some((p) => p.gravidade === "erro")) return `${base} border-red-400 bg-red-50`;
+    if (doCampo.length > 0) return `${base} border-amber-400 bg-amber-50`;
+    return `${base} border-gray-200`;
+  }
+
+  function irParaItem(chave: string) {
+    const el = document.getElementById(`item-remessa-${chave}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   const titulosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -480,65 +554,49 @@ export default function PagamentosItauPage() {
     };
   }
 
-  async function postRemessa(itens: ItemCarrinho[]) {
-    const res = await fetch("/api/pagamentos-itau/remessas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contaBancariaId: contaSelecionadaId, itens: itens.map(itemParaApi) }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      if (Array.isArray(data.titulosSemOC) && data.titulosSemOC.length > 0) {
-        const lista = data.titulosSemOC
-          .map((t: any) => `• ${t.numTit} (${t.fornecedor}, ${formatMoeda(t.valor)}): ${t.motivo}`)
-          .join("\n");
-        throw new Error(`${data.error}\n\n${lista}\n\nResolva o vínculo na Programação de Pagamento antes de gerar a remessa.`);
-      }
-      if (Array.isArray(data.titulosBloqueados) && data.titulosBloqueados.length > 0) {
-        const lista = data.titulosBloqueados
-          .map((t: any) => `• ${t.numTit} (${t.fornecedor}, ${formatMoeda(t.valor)}): situação "${t.situacao}" no Senior`)
-          .join("\n");
-        throw new Error(
-          `${data.error}\n\n${lista}\n\nPodem já estar comprometidos em outro fluxo de pagamento do Senior -- remova-os do carrinho.`
-        );
-      }
-      throw new Error(data.error || "Erro ao gerar remessa");
-    }
-    return data;
-  }
-
-  // ACHADO 01/10/2026 (pedido do João: "tudo é um fluxo", programação do dia
-  // tem que sair rápido): o manual do SISPAG exige PIX numa remessa SEPARADA
-  // de boleto/TED/crédito -- um lote vindo da Programação de Pagamento
-  // quase sempre mistura as três formas. Em vez de travar tudo com um erro
-  // e obrigar a pessoa a filtrar o carrinho na mão, separa sozinho e gera
-  // uma remessa por grupo (1 ou 2 chamadas, conforme o que tiver no carrinho).
-  async function gerarRemessa() {
+  // Uma geração só (06/10/2026, pedido do João: "a remessa deve ser uma só"):
+  // o servidor confere TODOS os itens juntos antes de gravar qualquer coisa. Se
+  // sobrar problema, nada é gerado e volta o relatório completo do que falta
+  // em cada título (nada de remessa parcial nem erro genérico). Quando está
+  // tudo certo, gera de uma vez -- em 1 arquivo, ou em 2 quando o carrinho
+  // mistura PIX com boleto/TED/crédito (o Itaú exige o PIX em arquivo separado).
+  // `somenteValidos`: gera só com os itens sem erro e deixa os outros no
+  // carrinho, já marcados, pra corrigir e gerar depois.
+  async function gerarRemessa(somenteValidos = false) {
     if (!contaSelecionadaId || carrinho.length === 0) return;
     setGerando(true);
     setErro(null);
     setMensagem(null);
-    const pix = carrinho.filter((i) => i.formaPagamento === "45");
-    const outros = carrinho.filter((i) => i.formaPagamento !== "45");
-    const grupos = [outros, pix].filter((g) => g.length > 0);
     try {
-      const resultados: string[] = [];
-      for (const grupo of grupos) {
-        await postRemessa(grupo);
-        const ehPix = grupo[0].formaPagamento === "45";
-        resultados.push(
-          `${grupo.length} pagamento(s) ${ehPix ? "PIX" : "boleto/TED/crédito"}, ${formatMoeda(grupo.reduce((s, i) => s + i.valor, 0))}`
-        );
-        // Tira do carrinho assim que o grupo gera com sucesso -- se o
-        // próximo grupo (quando há 2) falhar, quem já foi gerado não fica
-        // disponível pra gerar de novo por engano num retry.
-        const chavesDoGrupo = new Set(grupo.map((i) => i.chave));
-        setCarrinho((c) => c.filter((i) => !chavesDoGrupo.has(i.chave)));
+      const res = await fetch("/api/pagamentos-itau/remessas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contaBancariaId: contaSelecionadaId, itens: carrinho.map(itemParaApi), somenteValidos }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.conferencia) setRelatorio(data.conferencia as RelatorioConferencia);
+        setErro(data.error || "Não foi possível gerar a remessa.");
+        document.getElementById("conferencia-remessa")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
       }
-      setMensagem(`Remessa${grupos.length > 1 ? "s" : ""} gerada${grupos.length > 1 ? "s" : ""}: ${resultados.join(" · ")}.`);
+      const geradas: { nomeArquivo: string | null; tipo: string; qtdItens: number; totalValor: number }[] = data.remessas ?? [];
+      const ignorados: { indice: number }[] = data.ignorados ?? [];
+      const chavesFicaram = new Set(ignorados.map((l) => carrinho[l.indice]?.chave).filter((c): c is string => !!c));
+      setCarrinho((c) => c.filter((i) => chavesFicaram.has(i.chave)));
+      removerDaSelecaoSalva(carrinho.filter((i) => !chavesFicaram.has(i.chave)).map((i) => i.tituloId));
+      setMensagem(
+        `Remessa gerada: ${geradas
+          .map((g) => `${g.nomeArquivo ?? "arquivo"} (${g.qtdItens} ${g.tipo === "PIX" ? "PIX" : "boleto/TED/crédito"}, ${formatMoeda(g.totalValor)})`)
+          .join(" + ")}.` +
+          (geradas.length > 1 ? " São 2 arquivos porque o Itaú exige o PIX separado dos demais pagamentos." : "") +
+          (ignorados.length > 0
+            ? ` ${ignorados.length} item(ns) com problema ficaram no carrinho — corrija o que a conferência aponta e gere de novo.`
+            : "")
+      );
       carregarTudo();
     } catch (e: any) {
-      setErro(e.message);
+      setErro(`Falha de comunicação ao gerar a remessa: ${e.message}. Nada foi gerado.`);
     } finally {
       setGerando(false);
     }
@@ -603,9 +661,10 @@ export default function PagamentosItauPage() {
         <p className="mt-0.5 max-w-3xl text-sm text-gray-500">
           Gera o arquivo de remessa CNAB240 (padrão SISPAG do Itaú) a partir de títulos em aberto e processa o arquivo de retorno
           para atualizar o status de cada pagamento. Boleto, conta bancária ou chave PIX vêm direto da sincronização com a
-          Senior (atualize com o botão abaixo se o título for recente), na prioridade boleto → conta → chave PIX. PIX via chave
-          exige remessa separada de boleto/TED (exigência do próprio manual do banco — gere em arquivos diferentes). Quando tudo
-          vier vazio, é porque a Senior não tem nenhum cadastro de pagamento pra esse fornecedor — peça direto a ele.
+          Senior (atualize com o botão abaixo se o título for recente), na prioridade boleto → conta → chave PIX. O Itaú exige o PIX
+          em arquivo separado de boleto/TED — o sistema separa sozinho, numa geração só. Antes de gerar, a Conferência mostra o que
+          falta em cada título; só gera quando não sobra nenhum problema. Quando tudo vier vazio, é porque a Senior não tem nenhum
+          cadastro de pagamento pra esse fornecedor — peça direto a ele.
         </p>
       </div>
 
@@ -682,6 +741,103 @@ export default function PagamentosItauPage() {
           </div>
         )}
       </div>
+
+      {carrinho.length > 0 && (
+        <div id="conferencia-remessa" className="mb-5 rounded-xl border border-gray-100 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-700">Conferência antes de gerar</p>
+              <p className="text-[11px] text-gray-500">
+                O que falta ou está errado em cada título, calculado a cada mudança no carrinho. Corrija direto nos itens ao lado — nada é gerado
+                enquanto houver problema.
+              </p>
+            </div>
+            {relatorio ? (
+              relatorio.resumo.comErro === 0 ? (
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                  ✓ Tudo certo pra gerar · {relatorio.resumo.total} item(ns) · {formatMoeda(relatorio.resumo.valorTotal)}
+                  {relatorio.resumo.comAviso > 0 ? ` · ${relatorio.resumo.comAviso} com aviso` : ""}
+                </span>
+              ) : (
+                <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                  ✗ {relatorio.resumo.comErro} de {relatorio.resumo.total} item(ns) com dado faltando ou errado
+                </span>
+              )
+            ) : (
+              <span className="text-xs text-gray-400">{conferindo ? "Conferindo…" : "—"}</span>
+            )}
+          </div>
+
+          {relatorio && relatorio.linhas.some((l) => l.problemas.length > 0) && (
+            <div className="max-h-[340px] overflow-y-auto">
+              <table className="w-full text-[12px]">
+                <thead className="sticky top-0 bg-gray-50 text-left text-[11px] text-gray-500">
+                  <tr>
+                    <th className="px-3 py-1.5 font-medium">Título</th>
+                    <th className="px-3 py-1.5 font-medium">Fornecedor</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Valor</th>
+                    <th className="px-3 py-1.5 font-medium">O que falta / o que está errado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {relatorio.linhas
+                    .filter((l) => l.problemas.length > 0)
+                    .map((l, pos) => {
+                      const item = l.indice >= 0 ? carrinho[l.indice] : undefined;
+                      return (
+                        <tr key={`${l.indice}-${pos}`} className="border-t border-gray-50 align-top">
+                          <td className="whitespace-nowrap px-3 py-2 font-medium text-gray-800">
+                            {l.numTit ?? item?.numTit ?? "—"}
+                            {item && (
+                              <button onClick={() => irParaItem(item.chave)} className="ml-2 text-[11px] font-normal text-brand underline decoration-dotted">
+                                ir ao item
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-gray-600">{l.fornecedor}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{l.valor !== null ? formatMoeda(l.valor) : "—"}</td>
+                          <td className="px-3 py-2">
+                            <ul className="space-y-1">
+                              {l.problemas.map((p, i) => (
+                                <li key={i} className={p.gravidade === "erro" ? "text-red-700" : "text-amber-700"}>
+                                  <span className="mr-1 font-semibold">{p.gravidade === "erro" ? "Falta/erro" : "Atenção"} · {p.rotulo}:</span>
+                                  {p.mensagem}
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {relatorio && relatorio.resumo.comErro > 0 && relatorio.resumo.total - relatorio.resumo.comErro > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 bg-gray-50/60 p-3 text-[12px] text-gray-600">
+              <span>
+                Quer sair com o que já está certo? Os {relatorio.resumo.total - relatorio.resumo.comErro} item(ns) sem problema (
+                {formatMoeda(relatorio.resumo.valorPronto)}) saem agora; os com problema continuam aqui, marcados, pra você corrigir e gerar depois.
+              </span>
+              <button
+                onClick={() => gerarRemessa(true)}
+                disabled={gerando || !contaSelecionadaId}
+                className="rounded-lg border border-brand px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand-light disabled:opacity-40"
+              >
+                Gerar só com os {relatorio.resumo.total - relatorio.resumo.comErro} sem problema
+              </button>
+            </div>
+          )}
+
+          {relatorio && relatorio.resumo.comErro === 0 && carrinho.some((i) => i.formaPagamento === "45") && carrinho.some((i) => i.formaPagamento !== "45") && (
+            <p className="border-t border-gray-100 p-3 text-[11px] text-gray-500">
+              Esta geração vai produzir <span className="font-semibold">2 arquivos</span>: o Itaú exige que os pagamentos PIX vão em arquivo separado dos
+              demais (boleto/TED/crédito). É uma geração só — você baixa os dois na lista de remessas.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
@@ -778,8 +934,15 @@ export default function PagamentosItauPage() {
           <div className="flex items-center justify-between border-b border-gray-100 p-3">
             <p className="text-sm font-semibold text-gray-700">Itens da remessa ({carrinho.length})</p>
             <button
-              onClick={gerarRemessa}
-              disabled={gerando || carrinho.length === 0 || !contaSelecionadaId}
+              onClick={() => gerarRemessa(false)}
+              disabled={gerando || carrinho.length === 0 || !contaSelecionadaId || (relatorio?.resumo.comErro ?? 0) > 0}
+              title={
+                (relatorio?.resumo.comErro ?? 0) > 0
+                  ? "Há itens com dado faltando ou errado -- veja a Conferência acima e corrija antes de gerar."
+                  : !contaSelecionadaId
+                    ? "Selecione a conta de débito."
+                    : undefined
+              }
               className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
             >
               {gerando ? "Gerando..." : "Gerar remessa"}
@@ -789,7 +952,7 @@ export default function PagamentosItauPage() {
             {carrinho.map((item) => {
               const formaInfo = FORMAS.find((f) => f.valor === item.formaPagamento)!;
               return (
-                <div key={item.chave} className="p-3">
+                <div key={item.chave} id={`item-remessa-${item.chave}`} className="p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-800">
                       {item.numTit} · {item.fornecedorNome}
@@ -815,7 +978,7 @@ export default function PagamentosItauPage() {
                           const forma = FORMAS.find((f) => f.valor === e.target.value)!;
                           atualizarItem(item.chave, { formaPagamento: forma.valor, segmento: forma.segmento });
                         }}
-                        className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                        className={classeCampo(item.chave, "formaPagamento")}
                       >
                         {FORMAS.map((f) => (
                           <option key={f.valor} value={f.valor}>
@@ -829,7 +992,7 @@ export default function PagamentosItauPage() {
                       <input
                         value={item.favorecidoNome}
                         onChange={(e) => atualizarItem(item.chave, { favorecidoNome: e.target.value })}
-                        className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                        className={classeCampo(item.chave, "favorecidoNome")}
                       />
                     </label>
                     <label>
@@ -837,7 +1000,7 @@ export default function PagamentosItauPage() {
                       <input
                         value={item.favorecidoDocumento}
                         onChange={(e) => atualizarItem(item.chave, { favorecidoDocumento: e.target.value })}
-                        className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                        className={classeCampo(item.chave, "favorecidoDocumento")}
                       />
                     </label>
                     <label>
@@ -858,7 +1021,7 @@ export default function PagamentosItauPage() {
                         step="0.01"
                         value={item.valor}
                         onChange={(e) => atualizarItem(item.chave, { valor: Number(e.target.value) })}
-                        className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                        className={classeCampo(item.chave, "valor")}
                       />
                     </label>
                     <label>
@@ -867,7 +1030,7 @@ export default function PagamentosItauPage() {
                         type="date"
                         value={item.dataPagamento}
                         onChange={(e) => atualizarItem(item.chave, { dataPagamento: e.target.value })}
-                        className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                        className={classeCampo(item.chave, "dataPagamento")}
                       />
                     </label>
 
@@ -878,58 +1041,50 @@ export default function PagamentosItauPage() {
                           value={item.codigoBarras}
                           onChange={(e) => atualizarItem(item.chave, { codigoBarras: e.target.value })}
                           placeholder="44 ou 47 dígitos"
-                          className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                          className={classeCampo(item.chave, "codigoBarras")}
                         />
                       </label>
-                    ) : item.formaPagamento === "45" && !item.bancoFavorecido ? (
-                      // PIX no modelo "Chave" (Nota 37 do manual): não tem conta bancária
-                      // real do favorecido, só a chave -- é o Segmento B que carrega isso,
-                      // não o banco/agência/conta do Segmento A.
-                      <>
-                        <label>
-                          Tipo de chave
-                          <select
-                            value={item.chavePixTipo ?? ""}
-                            onChange={(e) => atualizarItem(item.chave, { chavePixTipo: e.target.value as ItemCarrinho["chavePixTipo"] })}
-                            className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
-                          >
-                            <option value="">selecione...</option>
-                            <option value="01">Telefone</option>
-                            <option value="02">E-mail</option>
-                            <option value="03">CPF/CNPJ</option>
-                            <option value="04">Chave aleatória</option>
-                          </select>
-                        </label>
-                        <label>
-                          Chave PIX
-                          <input
-                            value={item.chavePixValor ?? ""}
-                            onChange={(e) => atualizarItem(item.chave, { chavePixValor: e.target.value })}
-                            className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            atualizarItem(item.chave, {
-                              formaPagamento: "01",
-                              chavePixTipo: undefined,
-                              chavePixValor: undefined,
-                            })
-                          }
-                          className="col-span-2 text-left text-[11px] text-brand underline"
-                        >
-                          Tenho a conta bancária real desse favorecido — usar TED/crédito em vez de PIX
-                        </button>
-                      </>
                     ) : (
                       <>
+                        {item.formaPagamento === "45" && (
+                          // PIX (Nota 37 do manual): vale a chave PIX OU a conta bancária
+                          // completa -- por isso os dois ficam visíveis. Com a chave, o
+                          // Segmento B carrega o destino e a conta é dispensada.
+                          <>
+                            <p className="col-span-2 text-[11px] text-gray-500">
+                              PIX: preencha a <span className="font-medium">chave PIX</span> (e o tipo) <span className="font-medium">ou</span> a conta
+                              bancária completa abaixo.
+                            </p>
+                            <label>
+                              Tipo de chave
+                              <select
+                                value={item.chavePixTipo ?? ""}
+                                onChange={(e) => atualizarItem(item.chave, { chavePixTipo: (e.target.value || undefined) as ItemCarrinho["chavePixTipo"] })}
+                                className={classeCampo(item.chave, "chavePix")}
+                              >
+                                <option value="">selecione...</option>
+                                <option value="01">Telefone</option>
+                                <option value="02">E-mail</option>
+                                <option value="03">CPF/CNPJ</option>
+                                <option value="04">Chave aleatória</option>
+                              </select>
+                            </label>
+                            <label>
+                              Chave PIX
+                              <input
+                                value={item.chavePixValor ?? ""}
+                                onChange={(e) => atualizarItem(item.chave, { chavePixValor: e.target.value })}
+                                className={classeCampo(item.chave, "chavePix")}
+                              />
+                            </label>
+                          </>
+                        )}
                         <label>
                           Banco favorecido
                           <input
                             value={item.bancoFavorecido}
                             onChange={(e) => atualizarItem(item.chave, { bancoFavorecido: e.target.value.replace(/\D/g, "") })}
-                            className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                            className={classeCampo(item.chave, "bancoFavorecido")}
                           />
                         </label>
                         <label>
@@ -937,7 +1092,7 @@ export default function PagamentosItauPage() {
                           <input
                             value={item.agenciaFavorecido}
                             onChange={(e) => atualizarItem(item.chave, { agenciaFavorecido: e.target.value.replace(/\D/g, "") })}
-                            className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                            className={classeCampo(item.chave, "agenciaFavorecido")}
                           />
                         </label>
                         <label>
@@ -945,7 +1100,7 @@ export default function PagamentosItauPage() {
                           <input
                             value={item.contaFavorecido}
                             onChange={(e) => atualizarItem(item.chave, { contaFavorecido: e.target.value.replace(/\D/g, "") })}
-                            className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                            className={classeCampo(item.chave, "contaFavorecido")}
                           />
                         </label>
                         <label>
@@ -953,7 +1108,7 @@ export default function PagamentosItauPage() {
                           <input
                             value={item.dacFavorecido}
                             onChange={(e) => atualizarItem(item.chave, { dacFavorecido: e.target.value.replace(/\D/g, "").slice(0, 1) })}
-                            className="mt-0.5 w-full rounded border border-gray-200 px-2 py-1"
+                            className={classeCampo(item.chave, "dacFavorecido")}
                           />
                         </label>
                       </>
@@ -965,6 +1120,15 @@ export default function PagamentosItauPage() {
                       </p>
                     )}
                   </div>
+                  {(problemasPorChave.get(item.chave) ?? []).length > 0 && (
+                    <ul className="mt-2 space-y-0.5 rounded-lg bg-gray-50 p-2 text-[11px]">
+                      {(problemasPorChave.get(item.chave) ?? []).map((p, i) => (
+                        <li key={i} className={p.gravidade === "erro" ? "text-red-700" : "text-amber-700"}>
+                          • <span className="font-semibold">{p.rotulo}:</span> {p.mensagem}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               );
             })}

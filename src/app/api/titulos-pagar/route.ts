@@ -22,7 +22,7 @@ export async function GET() {
   // Mantem o codigo/descricao da forma de pagamento atualizados em segundo plano (aparecem dentro da OC).
   garantirFormasPagamentoAtualizadas();
 
-  const [titulos, ocs, usuariosSenior, dossies] = await Promise.all([
+  const [titulos, ocs, usuariosSenior, dossies, adiamentos] = await Promise.all([
     prisma.tituloContasAPagar.findMany({
       orderBy: [{ pago: "asc" }, { vencimentoProgramado: "asc" }],
     }),
@@ -57,7 +57,20 @@ export async function GET() {
       },
       orderBy: { geradoEm: "desc" },
     }),
+    // "Proxima programacao": poucos registros, entram em todo titulo que ja foi
+    // adiado (aberto ou nao) pra mostrar o aviso na programacao de origem.
+    prisma.tituloAdiamento.findMany({
+      where: { tituloId: { not: null } },
+      orderBy: { marcadoEm: "desc" },
+      select: { id: true, tituloId: true, programacaoOrigem: true, marcadoPorNome: true, marcadoEm: true, motivo: true, resolvidoEm: true, resolvidoComo: true },
+    }),
   ]);
+
+  // Mais recente por titulo (a query ja vem ordenada por marcadoEm desc).
+  const adiamentoPorTitulo = new Map<string, (typeof adiamentos)[number]>();
+  for (const a of adiamentos) {
+    if (a.tituloId && !adiamentoPorTitulo.has(a.tituloId)) adiamentoPorTitulo.set(a.tituloId, a);
+  }
 
   const codToNome: Record<string, string> = {};
   for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
@@ -136,6 +149,19 @@ export async function GET() {
         revisadoEm: t.revisadoEm,
         revisadoObs: t.revisadoObs,
         numOcpCorrigido: t.numOcpCorrigido,
+        // So' vai no payload de quem ja foi adiado alguma vez (poucos).
+        ...(adiamentoPorTitulo.has(t.id)
+          ? {
+              adiamento: {
+                programacaoOrigem: adiamentoPorTitulo.get(t.id)!.programacaoOrigem,
+                marcadoPorNome: adiamentoPorTitulo.get(t.id)!.marcadoPorNome,
+                marcadoEm: adiamentoPorTitulo.get(t.id)!.marcadoEm,
+                motivo: adiamentoPorTitulo.get(t.id)!.motivo,
+                resolvidoEm: adiamentoPorTitulo.get(t.id)!.resolvidoEm,
+                resolvidoComo: adiamentoPorTitulo.get(t.id)!.resolvidoComo,
+              },
+            }
+          : {}),
       };
     }),
     totalAberto,

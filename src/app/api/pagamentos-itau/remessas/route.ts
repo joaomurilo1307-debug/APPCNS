@@ -5,54 +5,25 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { linhaDigitavelParaCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
-import type { ItemRemessa } from "@/lib/cnab240/itau/tipos";
+import { FORMA_PAGAMENTO, segmentoDaForma } from "@/lib/cnab240/itau/constantes";
+import { ROTULO_CAMPO } from "@/lib/cnab240/itau/validacaoItem";
+import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
+import {
+  conferirItensRemessa,
+  itemRemessaSchema,
+  resumirConferencia,
+  type LinhaConferencia,
+} from "@/lib/pagamentos/conferenciaRemessa";
 
 const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const ROLES_ESCRITA = ["ADMIN", "DIRETOR"];
 
-const itemSchema = z
-  .object({
-    tituloId: z.string().nullable().optional(),
-    segmento: z.enum(["A", "J"]),
-    formaPagamento: z.string().min(2).max(2),
-    favorecidoNome: z.string().min(1),
-    favorecidoTipoDoc: z.enum(["1", "2"]),
-    // Credito/TED: exigencia do BACEN (Nota 15 do manual). Boleto: e' o
-    // CPF/CNPJ do beneficiario, obrigatorio no Segmento J-52 (sem ele o banco
-    // rejeita o pagamento com a ocorrencia "BI").
-    favorecidoDocumento: z.string().regex(/^\d{11}$|^\d{14}$/, "CPF (11) ou CNPJ (14) dígitos"),
-    bancoFavorecido: z.string().optional(),
-    agenciaFavorecido: z.string().optional(),
-    contaFavorecido: z.string().optional(),
-    dacFavorecido: z.string().optional(),
-    codigoBarras: z.string().optional(),
-    // Segmento B obrigatorio pra PIX no modelo "Chave" (Nota 37 do manual) --
-    // so' preenchido quando formaPagamento = "45" (PIX Transferencia) e o
-    // favorecido nao tem conta bancaria completa.
-    chavePixTipo: z.enum(["01", "02", "03", "04"]).optional(),
-    chavePixValor: z.string().optional(),
-    valor: z.number().positive(),
-    dataPagamento: z.string(), // yyyy-mm-dd
-  })
-  .refine((i) => i.segmento === "A" || !!i.codigoBarras, {
-    message: "Boleto (Segmento J) exige código de barras",
-    path: ["codigoBarras"],
-  })
-  .refine(
-    (i) =>
-      i.segmento === "J" ||
-      (!!i.bancoFavorecido && !!i.agenciaFavorecido && !!i.contaFavorecido && !!i.dacFavorecido) ||
-      // PIX no modelo Chave dispensa conta bancaria real -- a chave resolve o destino (manual pag. 22).
-      (i.formaPagamento === "45" && !!i.chavePixTipo && !!i.chavePixValor),
-    {
-      message: "Crédito/TED (Segmento A) exige banco/agência/conta/DAC do favorecido, ou (PIX) tipo e valor da chave",
-      path: ["bancoFavorecido"],
-    }
-  );
-
 const bodySchema = z.object({
   contaBancariaId: z.string(),
-  itens: z.array(itemSchema).min(1),
+  itens: z.array(itemRemessaSchema).min(1).max(500),
+  // "Gerar so' com os itens sem erro": a conferencia continua a mesma, so'
+  // deixa de fora (e lista) quem barrou em vez de recusar tudo.
+  somenteValidos: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -103,6 +74,96 @@ export async function GET() {
   });
 }
 
+// Item ja conferido (sem erro bloqueante): campos obrigatorios garantidos por
+// validarItemRemessa, so' normaliza pro formato do CNAB. Tipo de documento e
+// segmento saem do proprio dado (tamanho do CPF/CNPJ, forma de pagamento) --
+// assim um "tipo" desencontrado na tela nunca derruba a geracao.
+type ItemPronto = {
+  tituloId: string | null;
+  segmento: "A" | "J";
+  formaPagamento: string;
+  favorecidoNome: string;
+  favorecidoTipoDoc: "1" | "2";
+  favorecidoDocumento: string;
+  bancoFavorecido?: string;
+  agenciaFavorecido?: string;
+  contaFavorecido?: string;
+  dacFavorecido?: string;
+  codigoBarras?: string; // 44 digitos
+  chavePixTipo?: string;
+  chavePixValor?: string;
+  valor: number;
+  dataPagamento: string;
+};
+
+function prepararItem(item: z.infer<typeof itemRemessaSchema>): ItemPronto {
+  const forma = item.formaPagamento ?? "";
+  const segmento = segmentoDaForma(forma);
+  const documento = (item.favorecidoDocumento ?? "").replace(/\D/g, "");
+  const ehPix = forma === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
+  const vazioParaUndefined = (v: string | undefined) => (v && v.trim() ? v.trim() : undefined);
+  const banco = vazioParaUndefined(item.bancoFavorecido);
+  const agencia = vazioParaUndefined(item.agenciaFavorecido);
+  const conta = vazioParaUndefined(item.contaFavorecido);
+  const dac = vazioParaUndefined(item.dacFavorecido);
+  // PIX por chave sem conta completa: nao existe banco/agencia/conta de verdade
+  // a declarar (o gerador usa "000"/modelo Chave) -- nao deixa passar um banco
+  // "341" residual do preenchimento padrao da tela.
+  const usaConta = segmento === "A" && !(ehPix && !(banco && agencia && conta && dac));
+  return {
+    tituloId: item.tituloId ?? null,
+    segmento,
+    formaPagamento: forma,
+    favorecidoNome: (item.favorecidoNome ?? "").trim(),
+    favorecidoTipoDoc: documento.length === 11 ? "1" : "2",
+    favorecidoDocumento: documento,
+    bancoFavorecido: usaConta ? banco : undefined,
+    agenciaFavorecido: usaConta ? agencia : undefined,
+    contaFavorecido: usaConta ? conta : undefined,
+    dacFavorecido: usaConta ? dac : undefined,
+    codigoBarras: segmento === "J" ? linhaDigitavelParaCodigoBarras(item.codigoBarras ?? "") : undefined,
+    chavePixTipo: ehPix ? vazioParaUndefined(item.chavePixTipo) : undefined,
+    chavePixValor: ehPix ? vazioParaUndefined(item.chavePixValor) : undefined,
+    valor: item.valor ?? 0,
+    dataPagamento: item.dataPagamento ?? "",
+  };
+}
+
+function itemParaCnab(item: ItemPronto, referenciaEmpresa: string, numeroSequencial: number): ItemRemessa {
+  return {
+    referenciaEmpresa,
+    numeroSequencial,
+    formaPagamento: item.formaPagamento as ItemRemessa["formaPagamento"],
+    favorecidoNome: item.favorecidoNome,
+    favorecidoTipoDocumento: item.favorecidoTipoDoc,
+    favorecidoDocumento: item.favorecidoDocumento,
+    valor: item.valor,
+    dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
+    bancoFavorecido: item.bancoFavorecido,
+    agenciaFavorecido: item.agenciaFavorecido,
+    contaFavorecido: item.contaFavorecido,
+    dacFavorecido: item.dacFavorecido,
+    codigoBarras: item.codigoBarras,
+    chavePixTipo: item.chavePixTipo as ItemRemessa["chavePixTipo"],
+    chavePixValor: item.chavePixValor,
+  };
+}
+
+// Rede de seguranca: a conferencia ja cobre os campos, mas se o gerador do
+// CNAB ainda recusar algo que ela nao previu, isola QUAL item e' o culpado
+// (gera um a um) em vez de devolver uma excecao solta sem dizer o titulo.
+function isolarItensQueQuebramOCnab(conta: ContaDebito, itens: ItemPronto[], dataGeracao: Date) {
+  const culpados: { indice: number; mensagem: string }[] = [];
+  itens.forEach((item, indice) => {
+    try {
+      gerarArquivoRemessa(conta, [itemParaCnab(item, `PREVIA-${String(indice + 1).padStart(4, "0")}`, 1)], dataGeracao);
+    } catch (e: any) {
+      culpados.push({ indice, mensagem: String(e?.message ?? e) });
+    }
+  });
+  return culpados;
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
@@ -111,131 +172,177 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 422 });
+  if (!parsed.success) return NextResponse.json({ error: "Pedido inválido: faltou a conta bancária ou a lista de itens." }, { status: 422 });
 
   const conta = await prisma.contaBancaria.findUnique({ where: { id: parsed.data.contaBancariaId } });
-  if (!conta || !conta.ativo) return NextResponse.json({ error: "Conta bancária inválida" }, { status: 422 });
+  if (!conta || !conta.ativo) return NextResponse.json({ error: "Conta bancária inválida ou inativa" }, { status: 422 });
 
   // Pedido do Gabriel (30/09/2026): removido o portão que exigia OC
   // confirmada pra entrar na remessa -- só o vínculo automático travava
-  // demais enquanto o sync de OC/título ainda não pegou tudo. O vínculo
-  // continua calculado e visível na Programação de Pagamento e na
-  // Conferência de OC; só não bloqueia mais a geração do arquivo aqui.
-  //
-  // Mantido: título com SITTIT fora de AB/LQ (ex: "PE" -- achado ao vivo,
-  // Fort Minas 1765$01/2071$01/2072$01/2072$02) pode já estar comprometido
-  // em outro fluxo de pagamento do próprio Senior -- incluir de novo numa
-  // remessa nossa arriscaria pagar em dobro. A tela já trava a seleção,
-  // isso aqui é o mesmo motor de decisão do lado do servidor, pra quem
-  // tentar contornar a tela.
-  const idsComTitulo = parsed.data.itens.map((i) => i.tituloId).filter((id): id is string => !!id);
-  if (idsComTitulo.length > 0) {
-    const titulosDaRemessa = await prisma.tituloContasAPagar.findMany({ where: { id: { in: idsComTitulo } } });
-    const bloqueados = titulosDaRemessa.filter((t) => !t.pago && t.situacao !== "AB");
-    if (bloqueados.length > 0) {
-      return NextResponse.json(
-        {
-          error: `${bloqueados.length} título(s) em situação especial no Senior (fora de Aberto/Pago) não podem entrar na remessa`,
-          titulosBloqueados: bloqueados.map((t) => ({
-            numTit: t.numTit,
-            fornecedor: t.fornecedorNome ?? `código ${t.codFor}`,
-            valor: t.valorAberto,
-            situacao: t.situacao,
-          })),
-        },
-        { status: 422 }
-      );
+  // demais. Mantido: título fora de Aberto (pago ou em situação especial como
+  // "PE") não entra, porque pode já estar comprometido em outro fluxo do
+  // Senior e pagaria em dobro -- agora esse bloqueio faz parte da conferência.
+  const conferencia = await conferirItensRemessa(parsed.data.itens);
+  const linhasComErro = conferencia.linhas.filter((l) => l.situacao === "erro");
+
+  if (linhasComErro.length > 0 && !parsed.data.somenteValidos) {
+    return NextResponse.json(
+      {
+        error: `${linhasComErro.length} de ${conferencia.linhas.length} item(ns) com problema -- nenhum arquivo foi gerado. Corrija os dados indicados e gere de novo.`,
+        conferencia,
+      },
+      { status: 422 }
+    );
+  }
+
+  const indicesExcluidos = new Set(linhasComErro.map((l) => l.indice));
+  const itensProntos = parsed.data.itens.filter((_, i) => !indicesExcluidos.has(i)).map(prepararItem);
+  if (itensProntos.length === 0) {
+    return NextResponse.json({ error: "Nenhum item válido pra gerar a remessa.", conferencia }, { status: 422 });
+  }
+
+  const contaDebito: ContaDebito = { cnpj: conta.cnpj, agencia: conta.agencia, conta: conta.conta, dac: conta.dac, nomeEmpresa: conta.apelido };
+
+  // O Itau exige PIX em arquivo SEPARADO das demais formas (manual SISPAG,
+  // "Instrucoes de Procedimentos"). Uma geracao so' -- que sai em 1 arquivo, ou
+  // em 2 quando o carrinho mistura PIX com boleto/TED/credito.
+  const grupos = [
+    itensProntos.filter((i) => i.formaPagamento !== FORMA_PAGAMENTO.PIX_TRANSFERENCIA),
+    itensProntos.filter((i) => i.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA),
+  ].filter((g) => g.length > 0);
+
+  const dataGeracao = new Date();
+
+  // Ensaio antes de gravar qualquer coisa: se o gerador recusar, nada foi salvo
+  // e o relatorio diz qual item quebrou.
+  const problemasDeArquivo: LinhaConferencia[] = [];
+  for (const grupo of grupos) {
+    try {
+      gerarArquivoRemessa(contaDebito, grupo.map((item, i) => itemParaCnab(item, `PREVIA-${String(i + 1).padStart(4, "0")}`, i + 1)), dataGeracao);
+    } catch (e: any) {
+      const culpados = isolarItensQueQuebramOCnab(contaDebito, grupo, dataGeracao);
+      const mensagens = culpados.length > 0 ? culpados : [{ indice: -1, mensagem: String(e?.message ?? e) }];
+      for (const c of mensagens) {
+        const item = c.indice >= 0 ? grupo[c.indice] : undefined;
+        problemasDeArquivo.push({
+          indice: -1,
+          tituloId: item?.tituloId ?? null,
+          numTit: null,
+          fornecedor: item?.favorecidoNome ?? "—",
+          valor: item?.valor ?? null,
+          problemas: [{ campo: "arquivo", rotulo: ROTULO_CAMPO.arquivo, mensagem: c.mensagem, gravidade: "erro" }],
+          situacao: "erro",
+        });
+      }
     }
+  }
+  if (problemasDeArquivo.length > 0) {
+    const linhas = [...conferencia.linhas, ...problemasDeArquivo];
+    return NextResponse.json(
+      {
+        error: `O arquivo da remessa não pôde ser montado (${problemasDeArquivo.length} problema(s)) -- nenhum arquivo foi gerado.`,
+        conferencia: { linhas, resumo: resumirConferencia(linhas) },
+      },
+      { status: 422 }
+    );
   }
 
   try {
-    const resultado = await prisma.$transaction(async (tx) => {
-      const remessa = await tx.remessaPagamento.create({
-        data: { contaBancariaId: conta.id, criadoPorId: user.id, status: "RASCUNHO" },
-      });
+    const resultado = await prisma.$transaction(
+      async (tx) => {
+        const geradas: {
+          id: string;
+          nomeArquivo: string | null;
+          tipo: "PIX" | "BOLETO_TED_CREDITO";
+          qtdItens: number;
+          totalValor: number;
+          lotes: ReturnType<typeof gerarArquivoRemessa>["lotes"];
+        }[] = [];
+        for (const grupo of grupos) {
+          const remessa = await tx.remessaPagamento.create({
+            data: { contaBancariaId: conta.id, criadoPorId: user.id, status: "RASCUNHO" },
+          });
 
-      const itensParaGerar: ItemRemessa[] = [];
-      let seq = 0;
-      for (const item of parsed.data.itens) {
-        seq += 1;
-        // Maiusculo desde a criacao: o campo "Seu Numero" do CNAB (X(20)) e'
-        // sempre gravado em maiusculo (ver alfa() em campos.ts, regra do
-        // manual "preferencialmente todos os caracteres maiusculos") e volta
-        // assim no arquivo de retorno -- se a referencia ficasse minuscula
-        // aqui, nenhum retorno bateria com o item pelo "findUnique" (bug
-        // encontrado testando o fluxo ponta a ponta: cuid() gera ids em
-        // minusculo).
-        const referenciaEmpresa = `${remessa.id.slice(-8)}-${String(seq).padStart(4, "0")}`.toUpperCase();
-        const codigoBarras = item.codigoBarras ? linhaDigitavelParaCodigoBarras(item.codigoBarras) : undefined;
+          const itensCnab: ItemRemessa[] = [];
+          let seq = 0;
+          for (const item of grupo) {
+            seq += 1;
+            // Maiusculo desde a criacao: o campo "Seu Numero" do CNAB (X(20)) e'
+            // sempre gravado em maiusculo (ver alfa() em campos.ts) e volta
+            // assim no arquivo de retorno -- se a referencia ficasse minuscula
+            // aqui, nenhum retorno bateria com o item pelo "findUnique" (bug
+            // encontrado testando o fluxo ponta a ponta: cuid() gera ids em
+            // minusculo).
+            const referenciaEmpresa = `${remessa.id.slice(-8)}-${String(seq).padStart(4, "0")}`.toUpperCase();
 
-        await tx.remessaItemPagamento.create({
-          data: {
-            remessaId: remessa.id,
-            tituloId: item.tituloId ?? null,
-            numeroSequencial: seq,
-            segmento: item.segmento,
-            formaPagamento: item.formaPagamento,
-            referenciaEmpresa,
-            favorecidoNome: item.favorecidoNome,
-            favorecidoTipoDoc: item.favorecidoTipoDoc,
-            favorecidoDocumento: item.favorecidoDocumento,
-            bancoFavorecido: item.bancoFavorecido ?? null,
-            agenciaFavorecido: item.agenciaFavorecido ?? null,
-            contaFavorecido: item.contaFavorecido ?? null,
-            dacFavorecido: item.dacFavorecido ?? null,
-            codigoBarras: codigoBarras ?? null,
-            chavePixTipo: item.chavePixTipo ?? null,
-            chavePixValor: item.chavePixValor ?? null,
-            valor: item.valor,
-            dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
-          },
-        });
+            await tx.remessaItemPagamento.create({
+              data: {
+                remessaId: remessa.id,
+                tituloId: item.tituloId,
+                numeroSequencial: seq,
+                segmento: item.segmento,
+                formaPagamento: item.formaPagamento,
+                referenciaEmpresa,
+                favorecidoNome: item.favorecidoNome,
+                favorecidoTipoDoc: item.favorecidoTipoDoc,
+                favorecidoDocumento: item.favorecidoDocumento,
+                bancoFavorecido: item.bancoFavorecido ?? null,
+                agenciaFavorecido: item.agenciaFavorecido ?? null,
+                contaFavorecido: item.contaFavorecido ?? null,
+                dacFavorecido: item.dacFavorecido ?? null,
+                codigoBarras: item.codigoBarras ?? null,
+                chavePixTipo: item.chavePixTipo ?? null,
+                chavePixValor: item.chavePixValor ?? null,
+                valor: item.valor,
+                dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
+              },
+            });
+            itensCnab.push(itemParaCnab(item, referenciaEmpresa, seq));
+          }
 
-        itensParaGerar.push({
-          referenciaEmpresa,
-          numeroSequencial: seq,
-          formaPagamento: item.formaPagamento as ItemRemessa["formaPagamento"],
-          favorecidoNome: item.favorecidoNome,
-          favorecidoTipoDocumento: item.favorecidoTipoDoc,
-          favorecidoDocumento: item.favorecidoDocumento,
-          valor: item.valor,
-          dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
-          bancoFavorecido: item.bancoFavorecido,
-          agenciaFavorecido: item.agenciaFavorecido,
-          contaFavorecido: item.contaFavorecido,
-          dacFavorecido: item.dacFavorecido,
-          codigoBarras,
-          chavePixTipo: item.chavePixTipo,
-          chavePixValor: item.chavePixValor,
-        });
-      }
+          const gerado = gerarArquivoRemessa(contaDebito, itensCnab, dataGeracao);
+          const ehPix = grupo[0].formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
+          const nomeArquivo = `SISPAG_${dataGeracao.toISOString().slice(0, 10).replace(/-/g, "")}_${ehPix ? "PIX_" : ""}${remessa.id.slice(-6)}.rem`;
 
-      const dataGeracao = new Date();
-      const gerado = gerarArquivoRemessa(
-        { cnpj: conta.cnpj, agencia: conta.agencia, conta: conta.conta, dac: conta.dac, nomeEmpresa: conta.apelido },
-        itensParaGerar,
-        dataGeracao
-      );
+          const atualizada = await tx.remessaPagamento.update({
+            where: { id: remessa.id },
+            data: {
+              status: "GERADO",
+              nomeArquivo,
+              conteudoArquivo: gerado.conteudo,
+              totalRegistros: gerado.totalRegistros,
+              totalValor: gerado.totalValor,
+              geradoEm: dataGeracao,
+            },
+          });
 
-      const nomeArquivo = `SISPAG_${dataGeracao.toISOString().slice(0, 10).replace(/-/g, "")}_${remessa.id.slice(-6)}.rem`;
+          geradas.push({
+            id: atualizada.id,
+            nomeArquivo: atualizada.nomeArquivo,
+            tipo: ehPix ? ("PIX" as const) : ("BOLETO_TED_CREDITO" as const),
+            qtdItens: grupo.length,
+            totalValor: gerado.totalValor,
+            lotes: gerado.lotes,
+          });
+        }
+        return geradas;
+      },
+      { timeout: 60_000, maxWait: 10_000 }
+    );
 
-      const atualizada = await tx.remessaPagamento.update({
-        where: { id: remessa.id },
-        data: {
-          status: "GERADO",
-          nomeArquivo,
-          conteudoArquivo: gerado.conteudo,
-          totalRegistros: gerado.totalRegistros,
-          totalValor: gerado.totalValor,
-          geradoEm: dataGeracao,
-        },
-      });
-
-      return { remessa: atualizada, lotes: gerado.lotes };
-    });
-
-    return NextResponse.json(resultado, { status: 201 });
+    return NextResponse.json(
+      {
+        remessas: resultado,
+        // Itens que ficaram de fora (so' quando pediu "somenteValidos") -- pra
+        // pessoa saber exatamente o que ainda falta corrigir e gerar depois.
+        ignorados: linhasComErro,
+      },
+      { status: 201 }
+    );
   } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Erro ao gerar remessa" }, { status: 400 });
+    return NextResponse.json(
+      { error: `Falha ao gravar a remessa (nada foi salvo): ${String(e?.message ?? e).slice(0, 300)}`, conferencia },
+      { status: 500 }
+    );
   }
 }

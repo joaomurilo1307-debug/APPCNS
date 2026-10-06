@@ -497,6 +497,7 @@ model TituloContasAPagar {
   numOcpCorrigido String?
 
   remessaItens RemessaItemPagamento[]
+  adiamentos   TituloAdiamento[]
 
   @@unique([numTit, codFil, codFor, tipo, dataEmissao])
   @@index([numOcp])
@@ -1176,6 +1177,34 @@ model ContaBancaria {
   criadoEm  DateTime @default(now())
 
   remessas RemessaPagamento[]
+}
+
+// Titulo "jogado pra proxima programacao" (06/10/2026, pedido do Joao):
+// quando alguem adia um titulo, a data de vencimento muda no Senior e ele some
+// da semana de origem -- sem rastro de que foi adiado. Esta tabela guarda o
+// adiamento (programacao de origem, quem, quando, motivo) pra ele continuar
+// aparecendo como aviso no historico da programacao do dia, mesmo depois que a
+// data mudar. Guarda copia dos dados do titulo (numTit/fornecedor/valor) pra o
+// historico sobreviver se o sincronismo apagar/recriar o titulo (tituloId vira null).
+model TituloAdiamento {
+  id                String    @id @default(cuid())
+  tituloId          String?
+  numTit            String
+  codFor            String
+  fornecedorNome    String?
+  valor             Float
+  programacaoOrigem DateTime? // vencimentoProgramado do titulo NO MOMENTO em que foi adiado = "dia da programacao" de onde saiu
+  marcadoPorNome    String
+  marcadoEm         DateTime  @default(now())
+  motivo            String?
+  resolvidoEm       DateTime? // quando saiu de "proxima programacao" (reprogramado) ou foi pago
+  resolvidoComo     String? // REPROGRAMADO | PAGO
+
+  titulo TituloContasAPagar? @relation(fields: [tituloId], references: [id], onDelete: SetNull)
+
+  @@index([tituloId])
+  @@index([programacaoOrigem])
+  @@index([resolvidoEm])
 }
 
 // Um arquivo de remessa CNAB240 SISPAG (um lote de pagamentos "Fornecedores",

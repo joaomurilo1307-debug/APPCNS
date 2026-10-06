@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // Modal com o descritivo completo de uma Ordem de Compra do Senior
 // (fornecedor, valor, rateio por centro de custo, alçada/níveis de
@@ -271,6 +271,37 @@ export default function MapaOC({
   const [sincronizando, setSincronizando] = useState(false);
   const [msgSincronizacao, setMsgSincronizacao] = useState<string | null>(null);
 
+  // Tipo de pagamento definido na própria OC (cartão, PIX, boleto...), lido ao
+  // vivo da Senior -- vale mesmo quando a OC ainda não gerou título. Carrega
+  // depois que o resumo abre pra não atrasar a tela.
+  const [pagamentoOc, setPagamentoOc] = useState<
+    | "carregando"
+    | "erro"
+    | {
+        codFpg: string | null;
+        formaPagamento: string | null;
+        chavePix: string | null;
+        agencia: string | null;
+        conta: string | null;
+        contaDescricao: string | null;
+      }
+  >("carregando");
+  useEffect(() => {
+    let vivo = true;
+    setPagamentoOc("carregando");
+    fetch(`/api/senior/aprovacoes/${encodeURIComponent(a.numOcp)}/pagamento`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("falhou"))))
+      .then((dados) => {
+        if (vivo) setPagamentoOc(dados);
+      })
+      .catch(() => {
+        if (vivo) setPagamentoOc("erro");
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [a.numOcp]);
+
   function sincronizarAgora() {
     setSincronizando(true);
     setMsgSincronizacao(null);
@@ -428,6 +459,33 @@ export default function MapaOC({
                 </dd>
               </div>
             )}
+            <div className={titulosVinculados && titulosVinculados.length > 0 ? "" : "col-span-2"}>
+              <dt className="text-xs text-gray-500">Tipo de pagamento (definido na OC)</dt>
+              <dd className="font-medium">
+                {pagamentoOc === "carregando" ? (
+                  <span className="font-normal text-gray-400">consultando a Senior…</span>
+                ) : pagamentoOc === "erro" ? (
+                  <span className="font-normal text-gray-400">não foi possível consultar a Senior agora</span>
+                ) : pagamentoOc.codFpg ? (
+                  <>
+                    <span className="tabular-nums text-gray-500">{pagamentoOc.codFpg}</span> —{" "}
+                    {pagamentoOc.formaPagamento ?? <span className="font-normal text-gray-400">sem descrição no catálogo da Senior</span>}
+                  </>
+                ) : (
+                  <span className="font-normal text-gray-400">não informado na OC</span>
+                )}
+              </dd>
+              {pagamentoOc !== "carregando" && pagamentoOc !== "erro" && pagamentoOc.chavePix && (
+                <dd className="text-xs text-gray-500">Chave PIX informada na OC: {pagamentoOc.chavePix}</dd>
+              )}
+              {pagamentoOc !== "carregando" && pagamentoOc !== "erro" && (pagamentoOc.agencia || pagamentoOc.conta) && (
+                <dd className="text-xs text-gray-500">
+                  Conta informada na OC: {pagamentoOc.agencia ? `ag ${pagamentoOc.agencia}` : ""}
+                  {pagamentoOc.conta ? ` · cc ${pagamentoOc.conta}` : ""}
+                  {pagamentoOc.contaDescricao ? ` · ${pagamentoOc.contaDescricao}` : ""}
+                </dd>
+              )}
+            </div>
             <div>
               <dt className="text-xs text-gray-500">Emissão</dt>
               <dd>{new Date(a.dataEmissao).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</dd>

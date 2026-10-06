@@ -25,6 +25,8 @@ const REVISAO_LABEL: Record<string, string> = {
   CORRIGIDO: "Corrigido",
   SEM_OC_CONFIRMADO: "Sem OC (confirmado)",
   AGUARDANDO_COMPRAS: "Aguardando compras",
+  ENVIADO_AGUARDANDO_BAIXA: "Enviado (aguarda baixa Senior)",
+  PROXIMA_PROGRAMACAO: "Próxima programação",
 };
 
 function formatData(d: Date | null) {
