@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { montarConteudoPagamento } from "@/lib/pagamentos/conteudoPagamento";
 
 // Modal com o descritivo completo de uma Ordem de Compra do Senior
 // (fornecedor, valor, rateio por centro de custo, alçada/níveis de
@@ -63,6 +64,13 @@ export type TituloVinculado = {
   entradaManual?: boolean | null;
   codFpg?: string | null;
   formaPagamento?: string | null;
+  codigoBarras?: string | null;
+  chavePix?: string | null;
+  tipoChavePix?: string | null;
+  banco?: string | null;
+  agencia?: string | null;
+  conta?: string | null;
+  dac?: string | null;
 };
 
 export type Aprovacao = {
@@ -302,6 +310,33 @@ export default function MapaOC({
     };
   }, [a.numOcp]);
 
+  // Conteudo do pagamento (codigo de barras / chave PIX / conta), conforme o tipo da forma de pagamento.
+  // Sem o dado na Senior -> mensagem de "nao encontrado". Se a consulta ao vivo da OC falhou, nao
+  // afirma "nao encontrado": diz que nao deu pra consultar.
+  const pagamentoOcPronto = pagamentoOc !== "carregando" && pagamentoOc !== "erro" ? pagamentoOc : null;
+  const formasDosTitulos = formasDePagamento(titulosVinculados);
+  const codFpgConteudo = pagamentoOcPronto?.codFpg ?? formasDosTitulos[0]?.codigo ?? null;
+  const formaConteudo =
+    pagamentoOcPronto?.formaPagamento ?? formasDosTitulos.find((f) => f.codigo === codFpgConteudo)?.descricao ?? null;
+  const conteudoPagamento =
+    pagamentoOc === "carregando"
+      ? null
+      : montarConteudoPagamento({
+          codFpg: codFpgConteudo,
+          formaPagamento: formaConteudo,
+          oc: pagamentoOcPronto,
+          titulos: (titulosVinculados ?? []).map((t) => ({
+            numTit: t.numTit,
+            codigoBarras: t.codigoBarras,
+            chavePix: t.chavePix,
+            tipoChavePix: t.tipoChavePix,
+            banco: t.banco,
+            agencia: t.agencia,
+            conta: t.conta,
+            dac: t.dac,
+          })),
+        });
+
   function sincronizarAgora() {
     setSincronizando(true);
     setMsgSincronizacao(null);
@@ -475,16 +510,39 @@ export default function MapaOC({
                   <span className="font-normal text-gray-400">não informado na OC</span>
                 )}
               </dd>
-              {pagamentoOc !== "carregando" && pagamentoOc !== "erro" && pagamentoOc.chavePix && (
-                <dd className="text-xs text-gray-500">Chave PIX informada na OC: {pagamentoOc.chavePix}</dd>
-              )}
-              {pagamentoOc !== "carregando" && pagamentoOc !== "erro" && (pagamentoOc.agencia || pagamentoOc.conta) && (
-                <dd className="text-xs text-gray-500">
-                  Conta informada na OC: {pagamentoOc.agencia ? `ag ${pagamentoOc.agencia}` : ""}
-                  {pagamentoOc.conta ? ` · cc ${pagamentoOc.conta}` : ""}
-                  {pagamentoOc.contaDescricao ? ` · ${pagamentoOc.contaDescricao}` : ""}
+              {conteudoPagamento && (
+                <dd className="mt-1.5 space-y-1 text-xs">
+                  <p className="font-medium text-gray-500">Conteúdo do pagamento</p>
+                  {conteudoPagamento.itens.slice(0, 8).map((i, idx) => (
+                    <p key={`${i.rotulo}-${idx}`} className="text-gray-700">
+                      <span className="text-gray-500">{i.rotulo}:</span>{" "}
+                      <span className="break-all font-mono text-[11px]">{i.valor}</span>
+                      {i.origem === "OC" && <span className="ml-1 text-gray-400">(digitado na OC — confira)</span>}
+                    </p>
+                  ))}
+                  {conteudoPagamento.itens.length > 8 && (
+                    <p className="text-gray-400">e mais {conteudoPagamento.itens.length - 8} item(ns) nos títulos abaixo</p>
+                  )}
+                  {conteudoPagamento.erro &&
+                    (pagamentoOc === "erro" ? (
+                      <p className="text-gray-400">Não foi possível consultar a Senior agora para ler o conteúdo do pagamento.</p>
+                    ) : (
+                      <p className="rounded-md bg-red-50 px-2 py-1 font-medium text-red-700">⚠ {conteudoPagamento.erro}</p>
+                    ))}
                 </dd>
               )}
+              {pagamentoOcPronto?.chavePix && !conteudoPagamento?.itens.some((i) => i.origem === "OC" && i.rotulo === "Chave PIX") && (
+                <dd className="text-xs text-gray-500">Chave PIX informada na OC: {pagamentoOcPronto.chavePix}</dd>
+              )}
+              {pagamentoOcPronto &&
+                (pagamentoOcPronto.agencia || pagamentoOcPronto.conta) &&
+                !conteudoPagamento?.itens.some((i) => i.origem === "OC" && i.rotulo === "Conta bancária") && (
+                  <dd className="text-xs text-gray-500">
+                    Conta informada na OC: {pagamentoOcPronto.agencia ? `ag ${pagamentoOcPronto.agencia}` : ""}
+                    {pagamentoOcPronto.conta ? ` · cc ${pagamentoOcPronto.conta}` : ""}
+                    {pagamentoOcPronto.contaDescricao ? ` · ${pagamentoOcPronto.contaDescricao}` : ""}
+                  </dd>
+                )}
             </div>
             <div>
               <dt className="text-xs text-gray-500">Emissão</dt>

@@ -90,6 +90,14 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
       entradaManual: !t.numNfc || t.numNfc === "0",
       codFpg: t.codFpg,
       formaPagamento: t.codFpg ? catalogoFpg.get(t.codFpg) ?? null : null,
+      // Conteudo do pagamento (boleto/PIX/conta), do que a Senior tem no titulo -- o modal monta a mensagem.
+      codigoBarras: t.codigoBarrasBoleto,
+      chavePix: t.chavePix,
+      tipoChavePix: t.tipoChavePix,
+      banco: t.bancoFavorecido,
+      agencia: t.agenciaFavorecido,
+      conta: t.contaFavorecido,
+      dac: t.dacFavorecido,
     }));
 
   return NextResponse.json({ aprovacao, codToNome, titulosVinculados });

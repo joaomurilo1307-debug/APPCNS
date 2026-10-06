@@ -289,3 +289,26 @@ e a OC do título.
   consultas **uma por vez** e, se a varredura de fundo estiver rodando, **espera ela terminar** (até 75 s). A resposta traz `completo`: só quando todas as
   consultas responderam a tela afirma "a Senior não tem nada"; senão diz que a leitura ficou incompleta.
 - Limite: o sincronismo agendado continua sendo o que grava `E501TCP` no banco do app; a leitura ao vivo cobre o hiato e o que o sync não traz, mas não o substitui.
+
+## Conteúdo do pagamento dentro da OC (06/10/2026)
+
+No modal da OC, em "Tipo de pagamento (definido na OC)", além do código e do nome (ex.: `19 — PIX`) aparece o **conteúdo do pagamento**, conforme o tipo
+da forma (`src/lib/pagamentos/conteudoPagamento.ts`, regra pura e testada):
+
+| Forma (empresa 1) | Mostra | Se não houver |
+|---|---|---|
+| 1 Cobrança Bancária, 18 Boleto | código de barras (do título) | "Código de barras do boleto não foi encontrado na Sênior." |
+| 19 PIX | chave PIX (da OC ou do título) | "Chave PIX não foi encontrada na Sênior." |
+| 3 Depósito em Conta, 4 Ordem de Pagto | banco/agência/conta (da OC ou do título) | "Dados bancários (agência e conta) não foram encontrados na Sênior." |
+| demais (cartão, fatura, remessa, dinheiro, cheque…) ou OC sem forma | o que houver de código de barras, chave PIX ou conta | "Nenhum dado de pagamento … foi encontrado na Sênior para …" |
+
+- **Fontes:** o que o comprador digitou na própria OC (`E420OCP.USU_CHVPIX`, `USU_CODAGE`, `USU_NUMCCO`, `USU_DESCCO`, lido ao vivo — marcado "digitado na OC —
+  confira") e o que a Sênior tem nos títulos que a OC gerou (`E501TCP`: `CODBAR`, `CHVPIX`/`TPCPIX`, `CODBAN`/`CODAGE`/`CCBFOR`, ou o cadastro bancário do fornecedor).
+  Chave PIX: mostra o **valor da chave** (e o tipo, quando o título o traz).
+- **Boleto quase sempre cai na mensagem de erro, e isso é o dado real:** a Sênior não guarda o código de barras/linha digitável em lugar nenhum — `E501TCP.CODBAR`
+  vem vazio em todos os títulos e `E420OCP` (196 colunas; conferidas as OCs 14576, 15838 e 15805) não tem nenhum campo de boleto, só os `USU_` de PIX e conta.
+  Só passa a aparecer quando houver fonte (DDA do Itaú, ver "Fase 2"). Cartão de crédito não tem conteúdo a exibir (e não se guarda número de cartão): cai na mensagem.
+- **Consulta ao vivo que falhou** não vira "não encontrado na Sênior": o modal diz que não foi possível consultar a Sênior agora.
+- **Visibilidade:** `/api/senior/aprovacoes/[numOcp]` passou a devolver o dado de pagamento de cada título (código de barras, chave PIX, conta) a quem pode abrir
+  o modal — o mesmo público que já via a chave PIX/conta digitadas na OC (inclui gerência/coordenação). Se for para restringir ao financeiro, é uma checagem de papel
+  nessa rota.
