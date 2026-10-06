@@ -88,7 +88,7 @@ type ItemCarrinho = {
   // SÓ se ninguém tiver mexido nele à mão (bloco ainda igual à foto).
   snapshotAuto?: string;
   // Última leitura ao vivo na Senior deste título: o que ela tinha na hora.
-  senior?: { consultadoEm: string; temPagamento: boolean; completo: boolean; forma: string | null; numOcp: string | null };
+  senior?: { consultadoEm: string; temPagamento: boolean; completo: boolean; forma: string | null; numOcp: string | null; codBarSenior: boolean };
   // Conta/PIX que vieram da OC (texto digitado pelo comprador), não do cadastro
   // da Senior -- a tela pede conferência. Só vale enquanto o bloco está intacto.
   dadosDaOc?: string;
@@ -149,7 +149,7 @@ function aplicarDadosSenior(item: ItemCarrinho, d: DadosSenior, consultadoEm: st
   const preencheu: string[] = [];
   const proximo: ItemCarrinho = { ...item };
   const temPagamento = !!(d.codigoBarras || d.conta || d.chavePix);
-  proximo.senior = { consultadoEm, temPagamento, completo, forma: d.formaPagamento, numOcp: d.numOcp };
+  proximo.senior = { consultadoEm, temPagamento, completo, forma: d.formaPagamento, numOcp: d.numOcp, codBarSenior: !!d.codigoBarras };
 
   if (!soDigitosTexto(item.favorecidoDocumento) && d.documento) {
     proximo.favorecidoDocumento = d.documento;
@@ -1664,6 +1664,12 @@ export default function PagamentosItauPage() {
                       {/boleto/i.test(item.senior.forma ?? "")
                         ? `este título é "${item.senior.forma}" na Senior, mas ela não guarda a linha digitável — copie do boleto/PDF que o fornecedor mandou e cole no campo do código de barras.`
                         : `sem boleto, sem conta bancária e sem chave PIX pra este fornecedor${item.senior.numOcp ? ` (nem na OC ${item.senior.numOcp})` : ""}. Preencha aqui com o que o fornecedor mandar — ou cadastre na Senior e clique em “↻ Atualizar dados dos itens”.`}
+                    </p>
+                  )}
+                  {item.segmento === "J" && item.codigoBarras.trim() && item.senior?.completo && item.senior.codBarSenior === false && (
+                    <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
+                      Este código de barras está só aqui. A Senior acha o boleto no retorno pelo campo <span className="font-medium">código de barras do título</span>{" "}
+                      (CODBAR) — grave o mesmo código no título lá, senão o retorno desse boleto não casa na Senior e a baixa fica manual.
                     </p>
                   )}
                   {(problemasPorChave.get(item.chave) ?? []).length > 0 && (

@@ -266,6 +266,35 @@ digitar uma vez e o sistema guardar. Conta de consumo/concessionária (48 dígit
   agora" ou ao reabrir a tela): CPF/CNPJ em branco é preenchido, e conta/PIX/boleto vindos da Senior substituem o do item **só se ninguém tiver digitado por
   cima** (o item guarda uma "foto" do que veio da Senior pra saber isso). O que foi digitado à mão nunca é sobrescrito.
 
+## Retorno × rotina nativa de Pagamento Eletrônico da Senior (06/10/2026)
+
+**Por que o retorno não "confere" na Senior quando a remessa nasce aqui.** Na Senior a remessa de pagamento é gravada pela rotina nativa
+(**F510PPR** preparação → **F510PRM** remessa; no Senior X, "Pagamento eletrônico → Agendar pagamento"): ela gera um **Nº Remessa**, grava o
+**`NUMPGE`** em `E501TCP` e muda o título para a situação **`PE` – Pagamento Eletrônico**. O retorno (**F510PRT**, ou o processo automático **155 – Retorno
+Pagamento Eletrônico**) casa cada linha do banco com esse `NUMPGE` e só então liquida o título. Artigo oficial 9848 ("Título não localizado no retorno do
+pagamento eletrônico"): se a remessa foi gerada **fora** da rotina da Senior, "não será mais possível processar o retorno pelo pagamento eletrônico, sendo
+necessário o lançamento manual". Coluna `NUMPGE` (e `DATPRE`, `CARPRE`, `TNSPRE`, `VLRPRE`, `TITBAN`) confirmada em `E501TCP` do tenant.
+
+**Web service pra isso?** Não há na documentação oficial: o pacote `com.senior.g5.co.mfi.cpa.titulos` tem 18 operações (consulta, gravação, baixa, estorno,
+aprovação…) e **nenhuma** gera remessa ou importa retorno; a API REST `erpx_fin/fnd_contas_pagar` é **privada** e só faz CRUD/exportação de títulos
+(`e501tcp`, `atualizarTituloPagar`). Gravar `NUMPGE` por fora não é documentado e não há garantia de que baste pro retorno casar — não testar em produção.
+
+**Solução adotada: "Seu Número" no formato da Senior.** A documentação oficial do leiaute (`leiaute-de-exportacao-importacao-para-remessa-retorno-pagamento-eletronico`)
+descreve que a Senior localiza o título no retorno de **duas formas** que não passam pelo `NumPge`: (a) **segmentos A e K** (crédito, TED, PIX) pelo campo **"Seu
+Número"** = `0` + `CODFOR` (6) + `NUMTIT` (10) + `CODTPT` (3), 20 posições (variáveis de retorno `CodFor`, `NumTit`, `CodTpt`); (b) **segmento J** (boleto) pelo
+**código de barras gravado em `E501TCP.CODBAR`**. A remessa gerada aqui passou a gravar esse "Seu Número" (`src/lib/cnab240/itau/seuNumero.ts`; coluna
+`RemessaItemPagamento.seuNumero`, não única) — o retorno do Itaú devolve o mesmo valor e a tela de retorno da Senior (F510PRT / processo 155) acha o título. Limites:
+`NUMTIT` > 10 caracteres, `CODFOR` > 6 dígitos ou tipo > 3 caracteres não cabem (aviso na conferência; esses seguem com a referência interna e o retorno casa só
+aqui); o **alinhamento** (zeros/brancos) não é documentado — seguimos a convenção da Senior (numérico com zeros à esquerda, alfa à esquerda com brancos) e isso
+**precisa de um teste real com 1 título**. O retorno aqui casa por referência interna (remessas antigas) ou por `seuNumero` (novas; entre candidatos, o que ainda
+espera o banco). Boleto: o código de barras precisa estar também no título da Senior (a tela avisa quando só existe aqui). Não resolve: o que a Senior exigir além do
+casamento (portador/leiaute de retorno configurado, situação do título) — confirmar no teste.
+
+**Outros caminhos:** (1) gerar a remessa **dentro da Senior** (F510PRM / Agendar pagamento) — retorno baixa sozinho (F510PRT ou processo 155); (2) manter a
+geração aqui e baixar via `GerarBaixaPorLoteCP` (implementado, ainda não validado em produção) — a Senior não marca `PE`/`NUMPGE`; (3) VAN Bancária
+(Nexxera, Itaú homologado): a Senior continua gerando a remessa, mas envio e retorno ficam automáticos (exige contrato Nexxera + Skyline). O **Senior X
+Banking** (eSales/BTG) é piloto e não lista Itaú. Em qualquer caminho, boleto exige o **código de barras gravado no título** da Senior (parâmetro do F030PPE).
+
 ## Leitura ao vivo da Senior pro carrinho (06/10/2026)
 
 Achado na programação dos dias 7 e 8/10 (25 títulos, 15 "sem dados"): o sistema só enxergava o que o sincronismo agendado (script Python no VPS, **fora deste

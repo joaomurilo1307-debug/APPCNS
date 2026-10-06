@@ -27,6 +27,16 @@ function statusDoItem(item: ItemRetorno): "PAGO" | "AGENDADO" | "CANCELADO" | "R
   return "REJEITADO";
 }
 
+// Remessas novas levam no "Seu Numero" o formato da Senior (0 + CODFOR + NUMTIT +
+// CODTPT), que NAO e' unico: o mesmo titulo pode estar em mais de uma remessa
+// (uma rejeitada, outra refeita). Entre os candidatos vale o que ainda espera o
+// banco (pendente/agendado); sem nenhum, o mais recente.
+async function acharItemPorSeuNumero(seuNumero: string) {
+  if (!seuNumero) return null;
+  const candidatos = await prisma.remessaItemPagamento.findMany({ where: { seuNumero }, orderBy: { criadoEm: "desc" } });
+  return candidatos.find((c) => c.status === "PENDENTE" || c.status === "AGENDADO") ?? candidatos[0] ?? null;
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
@@ -52,7 +62,11 @@ export async function POST(req: Request) {
   const titulosEnviados = new Set<string>();
 
   for (const item of lido.itens) {
-    const registro = await prisma.remessaItemPagamento.findUnique({ where: { referenciaEmpresa: item.referenciaEmpresa } });
+    // 1) referencia interna (remessas antigas e titulos que nao cabem no formato da
+    // Senior); 2) "Seu Numero" no formato da Senior (remessas novas).
+    const registro =
+      (await prisma.remessaItemPagamento.findUnique({ where: { referenciaEmpresa: item.referenciaEmpresa } })) ??
+      (await acharItemPorSeuNumero(item.referenciaEmpresa));
     if (!registro) {
       naoReconhecidos.push(item.referenciaEmpresa);
       continue;

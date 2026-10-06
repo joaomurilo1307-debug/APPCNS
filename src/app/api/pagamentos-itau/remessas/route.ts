@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
+import { seuNumeroSenior } from "@/lib/cnab240/itau/seuNumero";
 import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
 import {
   agruparPorArquivo,
@@ -132,6 +133,14 @@ export async function POST(req: Request) {
   const grupos = agruparPorArquivo(itensProntos);
   const dataGeracao = new Date();
 
+  // "Seu Numero" no formato da Senior (0 + CODFOR + NUMTIT + CODTPT): e' por ele que
+  // a tela de retorno da Senior acha o titulo (ver lib/cnab240/itau/seuNumero.ts).
+  const titulosDosItens = await prisma.tituloContasAPagar.findMany({
+    where: { id: { in: itensProntos.map((i) => i.tituloId).filter((id): id is string => !!id) } },
+    select: { id: true, numTit: true, codFor: true, tipo: true },
+  });
+  const tituloPorId = new Map(titulosDosItens.map((t) => [t.id, t]));
+
   try {
     const resultado = await prisma.$transaction(
       async (tx) => {
@@ -143,6 +152,7 @@ export async function POST(req: Request) {
           totalValor: number;
           lotes: ReturnType<typeof gerarArquivoRemessa>["lotes"];
           linhasDoArquivo: number;
+          seusNumeros: { numTit: string | null; seuNumero: string; formatoSenior: boolean }[];
         }[] = [];
         for (const grupo of grupos) {
           const remessa = await tx.remessaPagamento.create({
@@ -150,6 +160,7 @@ export async function POST(req: Request) {
           });
 
           const itensCnab: ItemRemessa[] = [];
+          const seusNumeros: { numTit: string | null; seuNumero: string; formatoSenior: boolean }[] = [];
           let seq = 0;
           for (const item of grupo) {
             seq += 1;
@@ -160,6 +171,11 @@ export async function POST(req: Request) {
             // encontrado testando o fluxo ponta a ponta: cuid() gera ids em
             // minusculo).
             const referenciaEmpresa = `${remessa.id.slice(-8)}-${String(seq).padStart(4, "0")}`.toUpperCase();
+            // Titulo que cabe no formato da Senior leva esse "Seu Numero"; o que nao
+            // cabe (numero com mais de 10 caracteres...) segue com a referencia interna.
+            const titulo = item.tituloId ? tituloPorId.get(item.tituloId) : undefined;
+            const seuNumero = titulo ? seuNumeroSenior(titulo) : null;
+            seusNumeros.push({ numTit: titulo?.numTit ?? null, seuNumero: seuNumero ?? referenciaEmpresa, formatoSenior: !!seuNumero });
 
             await tx.remessaItemPagamento.create({
               data: {
@@ -169,6 +185,7 @@ export async function POST(req: Request) {
                 segmento: item.segmento,
                 formaPagamento: item.formaPagamento,
                 referenciaEmpresa,
+                seuNumero,
                 favorecidoNome: item.favorecidoNome,
                 favorecidoTipoDoc: item.favorecidoTipoDoc,
                 favorecidoDocumento: item.favorecidoDocumento,
@@ -183,7 +200,7 @@ export async function POST(req: Request) {
                 dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
               },
             });
-            itensCnab.push(itemParaCnab(item, referenciaEmpresa, seq));
+            itensCnab.push(itemParaCnab(item, seuNumero ?? referenciaEmpresa, seq));
           }
 
           const gerado = gerarArquivoRemessa(contaDebito, itensCnab, dataGeracao);
@@ -210,6 +227,7 @@ export async function POST(req: Request) {
             totalValor: gerado.totalValor,
             lotes: gerado.lotes,
             linhasDoArquivo: gerado.conteudo.split("\r\n").filter((l) => l.length > 0).length,
+            seusNumeros,
           });
         }
         if (parsed.data.simular) throw new SimulacaoConcluida(geradas);

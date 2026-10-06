@@ -1243,7 +1243,10 @@ model RemessaItemPagamento {
   numeroSequencial   Int // posicao no lote (Nota 9), 1-based
   segmento           String // "A" (credito/TED) ou "J" (boleto)
   formaPagamento     String // codigo da Nota 5 do manual: 01, 41, 43, 30, 31...
-  referenciaEmpresa  String   @unique // "Seu Numero" enviado no CNAB
+  referenciaEmpresa  String   @unique // chave interna do item (continua unica); e' o "Seu Numero" do CNAB quando seuNumero esta vazio
+  // "Seu Numero" no formato da Senior (0 + CODFOR 6 + NUMTIT 10 + CODTPT 3), gravado no CNAB pra
+  // tela de retorno da Senior achar o titulo. Nao e' unico: o mesmo titulo pode estar em mais de uma remessa.
+  seuNumero          String?
 
   favorecidoNome        String
   favorecidoTipoDoc     String // "1"=CPF, "2"=CNPJ
@@ -1291,6 +1294,7 @@ model RemessaItemPagamento {
   @@index([remessaId])
   @@index([tituloId])
   @@index([status])
+  @@index([seuNumero])
 }
 
 // Um arquivo de retorno importado (pode responder por mais de uma remessa se

@@ -13,6 +13,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
+import { motivoSemSeuNumeroSenior } from "@/lib/cnab240/itau/seuNumero";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { linhaDigitavelParaCodigoBarras, parseCodigoBarras, valorDoCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
 import { FORMA_PAGAMENTO, segmentoDaForma } from "@/lib/cnab240/itau/constantes";
@@ -253,6 +254,18 @@ export async function conferirItensRemessa(itens: ItemConferencia[], contaDebito
             "titulo",
             "Este título é uma PROVISÃO contábil (tipo PRV) — lançamento de despesa futura, não um pagamento a fornecedor. Não entra em remessa: tire do carrinho.",
             "erro"
+          )
+        );
+      }
+      // O retorno da Senior acha o titulo pelo "Seu Numero" (0 + fornecedor 6 + numero 10 + tipo 3):
+      // titulo que nao cabe nesse formato segue com a referencia interna, e o retorno dele so' casa aqui.
+      const motivoFormato = motivoSemSeuNumeroSenior(titulo);
+      if (motivoFormato && titulo.tipo !== "PRV" && segmentoDaForma(item.formaPagamento ?? "") !== "J") {
+        problemas.push(
+          problema(
+            "titulo",
+            `O retorno deste título não vai casar na tela de retorno da Senior: ${motivoFormato}. O retorno do banco ainda casa aqui no sistema (e a baixa pode ser feita pelo botão "Baixar na Sênior"), mas na Senior o lançamento fica manual.`,
+            "aviso"
           )
         );
       }
