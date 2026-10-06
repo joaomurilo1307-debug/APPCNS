@@ -295,6 +295,17 @@ function salvarRascunho(r: Rascunho) {
   }
 }
 
+// Lê a resposta e FALHA com mensagem clara quando o servidor não respondeu direito (reinício,
+// erro 5xx, resposta que não é JSON). Sem isso a tela lia a página de erro como se fosse dado
+// e mostrava listas vazias ("Nenhuma remessa gerada ainda") com os dados intactos no banco.
+async function lerOuFalhar(r: Response) {
+  const data = await r.json().catch(() => null);
+  if (!r.ok || data === null) {
+    throw new Error((data && typeof data === "object" && (data as { error?: string }).error) || `Não foi possível carregar os dados (erro ${r.status}). Tente de novo em instantes.`);
+  }
+  return data;
+}
+
 function formatMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -443,6 +454,8 @@ export default function PagamentosItauPage() {
   const [consultandoSenior, setConsultandoSenior] = useState(false);
   const [pedidoConsulta, setPedidoConsulta] = useState<{ n: number; todos: boolean }>({ n: 0, todos: false });
   const [adicionandoId, setAdicionandoId] = useState<string | null>(null);
+  // true quando o carregamento falhou: as listas vazias NÃO significam "não há nada".
+  const [falhaCarga, setFalhaCarga] = useState(false);
   // Carrinho atual acessível de dentro do carregamento assíncrono dos títulos.
   const carrinhoRef = useRef<ItemCarrinho[]>([]);
   carrinhoRef.current = carrinho;
@@ -450,15 +463,17 @@ export default function PagamentosItauPage() {
   function carregarTudo(consultarTodos = false) {
     setLoading(true);
     Promise.all([
-      fetch("/api/titulos-pagar").then((r) => r.json()),
-      fetch("/api/pagamentos-itau/contas").then((r) => r.json()),
-      fetch("/api/pagamentos-itau/remessas").then((r) => r.json()),
+      fetch("/api/titulos-pagar").then(lerOuFalhar),
+      fetch("/api/pagamentos-itau/contas").then(lerOuFalhar),
+      fetch("/api/pagamentos-itau/remessas").then(lerOuFalhar),
       // Sem o histórico a tela segue funcionando (só não consegue tirar do carrinho o que já virou remessa).
       fetch("/api/pagamentos-itau/historico")
         .then((r) => (r.ok ? r.json() : { itens: [], total: 0, tituloIdsGerados: [] }))
         .catch(() => ({ itens: [], total: 0, tituloIdsGerados: [] })),
     ])
       .then(([tit, cont, rem, hist]) => {
+        setFalhaCarga(false);
+        setErro(null);
         const todosAbertos: Titulo[] = (tit.titulos ?? []).filter((t: Titulo) => !t.pago);
         // Provisão (PRV) é lançamento contábil de despesa futura (folha, ISS,
         // retirada...), não pagamento a fornecedor: não aparece pra remessa.
@@ -555,7 +570,10 @@ export default function PagamentosItauPage() {
         // ela tem de dado de pagamento (o sistema pode estar atrás do sincronismo).
         setPedidoConsulta((p) => ({ n: p.n + 1, todos: consultarTodos }));
       })
-      .catch((e) => setErro(e.message))
+      .catch((e) => {
+        setErro(e.message);
+        setFalhaCarga(true);
+      })
       .finally(() => setLoading(false));
   }
 
@@ -1159,7 +1177,21 @@ export default function PagamentosItauPage() {
         </p>
       </div>
 
-      {erro && <div className="mb-4 whitespace-pre-wrap rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{erro}</div>}
+      {erro && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 whitespace-pre-wrap rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
+          <span>{erro}</span>
+          {falhaCarga && (
+            <button onClick={() => carregarTudo()} className="rounded-lg border border-red-300 bg-white px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100">
+              Tentar de novo
+            </button>
+          )}
+        </div>
+      )}
+      {falhaCarga && (
+        <p className="mb-4 text-xs text-gray-500">
+          Os dados não carregaram — as listas abaixo estão vazias por causa disso, <span className="font-medium">não porque sumiram</span>. Nada foi apagado.
+        </p>
+      )}
       {avisoJaGerados && (
         <div className="mb-4 flex items-start justify-between gap-3 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-800">
           <span>{avisoJaGerados}</span>

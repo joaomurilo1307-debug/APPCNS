@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "./providers";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import ResilienciaDeRede from "@/components/ResilienciaDeRede";
 
 export const metadata: Metadata = {
   title: "Consominas | Gestão de Projetos e Rotinas",
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR">
       <body>
         <ServiceWorkerRegister />
+        <ResilienciaDeRede />
         <Providers>{children}</Providers>
       </body>
     </html>
