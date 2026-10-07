@@ -276,17 +276,19 @@ digitar uma vez e o sistema guardar. Conta de consumo/concessionária (48 dígit
   agora" ou ao reabrir a tela): CPF/CNPJ em branco é preenchido, e conta/PIX/boleto vindos da Senior substituem o do item **só se ninguém tiver digitado por
   cima** (o item guarda uma "foto" do que veio da Senior pra saber isso). O que foi digitado à mão nunca é sobrescrito.
 
-## Primeiras rejeições REAIS do Itaú (07/10/2026, 4 arquivos enviados) — o que aprendemos
+## Rejeições do Itaú em 07/10/2026 — arquivos gerados PELA SENIOR (F510PRM), não por este sistema
 
-Tela "Detalhamento do Resultado do Processamento da Remessa" do Itaú. Resultado: **todos rejeitados**.
+Tela "Detalhamento do Resultado do Processamento da Remessa" do Itaú: **4 arquivos, todos rejeitados**. Os títulos estão em situação `PE` com `NUMPGE` da Senior (ex.: `26J6000009`), portanto o **fluxo nativo da Senior já está em uso** e gerou os arquivos. (Eu havia atribuído, por engano, esses arquivos ao nosso gerador; corrigido.)
 
-| Arquivo | Mensagem do Itaú | Causa / correção |
+| Arquivo (Senior) | Mensagem do Itaú | Causa — evidência |
 |---|---|---|
-| PIX 1 item (R$ 85,38) | "QTDE DE REGS. CALCULADA DIFER. DA QTDE INFORMADA" + "TIPO DE PAGAMENTO (SEGMENTO) NÃO INFORMADO OU INVÁLIDO" | O gerador mandava o **Segmento B (chave PIX) sempre**, mesmo com conta bancária completa (tipo de transferência 01). O Itaú descartou o B (contou 1 registro a menos que o trailer) e rejeitou. **Corrigido:** B só no modelo "Chave" (sem conta completa), como diz o manual p. 9. |
-| 4 TEDs (R$ 13.027,65) | "FORMA INCOMPATÍVEL COM A TITULARIDADE DO PAGAMENTO (CPF/CNPJ)" | Em investigação (falta o arquivo enviado). Adicionadas validações: 43 só para CPF/CNPJ da própria empresa; 41 não pode ter o CNPJ da empresa; 01 só com banco Itaú/Unibanco (se não, vira 41, com aviso). |
-| 7 registros de boleto (R$ 5.205,54) | "SEQUENCIA DOS SEGMENTOS INVALIDA", "Nº DO BANCO PARA TRANSFERENCIA INVALIDO (237)", "DADOS BOLETOS DIVERGENTES CIP" | Em investigação. Já corrigido: **forma 30 (cobrança no Itaú) × 31 (outros bancos) agora é derivada do banco do código de barras** (237 → 31). Possível causa dos "dados divergentes CIP": CNPJ do beneficiário (J-52) diferente do beneficiário real do boleto. |
+| 7 registros de boleto (R$ 5.205,54; inclui R$ 112,00 e R$ 135,40) | "SEQUENCIA DOS SEGMENTOS INVALIDA" (+ "DADOS BOLETOS DIVERGENTES CIP", "Nº DO BANCO … INVALIDO (237)") | **CONFIRMADO**: `E030BAN.MINJ52` do Itaú (341) = **250.000** → a Senior só gera o segmento J-52 para boleto ≥ R$ 250.000 (artigo Senior 24349 / 23699). Boleto sem J-52 é rejeitado ("sequência dos segmentos"). Correção na Senior: zerar "Valor mínimo para J52" (F030BAN) e conferir que o leiaute tem o registro 11. O artigo 24349 cita também o campo do beneficiário do J-52 apontando para o CNPJ do banco (`CGCCED`) em vez do fornecedor (`NUMINS`) → "dados divergentes CIP" (a conferir no leiaute). |
+| 4 TEDs (R$ 13.027,65) | "FORMA INCOMPATÍVEL COM A TITULARIDADE DO PAGAMENTO (CPF/CNPJ)" | NÃO confirmado. `MINTED` (valor mínimo para TED) está zerado, então não é essa causa. Suspeita: De/Para do tipo de pagamento (F030PPE: TED mesmo titular = 43 × outro titular = 41) ou tipo sugerido no F510PRM. Precisa do arquivo `.rem` da Senior. |
+| PIX 1 item (R$ 85,38, título 007940) | "QTDE DE REGS. CALCULADA DIFER. DA QTDE INFORMADA" + "TIPO DE PAGAMENTO (SEGMENTO) NÃO INFORMADO OU INVÁLIDO" | Hipótese forte, NÃO confirmada: o título tem chave PIX `+5515131589614` marcada como telefone (é o CPF do favorecido com +55) e, segundo a Senior, "se há Tipo de Chave PIX preenchido no F510PRM, ela é priorizada sobre os dados bancários" → saiu PIX por chave inválida (registro B). Correção: no título, chave tipo CPF/CNPJ (03) com o CPF, ou apagar a chave. |
 
-Lição: **nenhum dado "validado pelo manual" vale até o Itaú aceitar** — a primeira remessa real é o teste. Comparar sempre com o retorno de processamento do banco.
+Outros achados nos mesmos títulos (leitura da Senior, 07/10): (a) vários títulos do mesmo fornecedor existem **duplicados com o mesmo valor** — `$01` em aberto e `$1` em `PE` (ex.: 62698$01 e 62698$1, R$ 42,90) → risco de pagar duas vezes; (b) formato de agência/conta inconsistente entre títulos (`11045`/`134066` sem hífen × `1961-5`/`11674-2` com DV); (c) título 007940 com `TIPTCC = 9`; (d) os títulos rejeitados continuam `PE` (presos): para refazer é preciso tirá-los da remessa no F510PRM (voltam a `AB`).
+
+Nosso gerador já evita: J-52 sempre emitido (qualquer valor), chave PIX = CPF/CNPJ no tipo errado corrigida e avisada, forma 30/31 derivada do banco do código de barras, DV da agência/conta sem hífen sinalizado. Lição: **o manual não basta — o retorno de processamento do Itaú é o teste definitivo**; um arquivo nosso ainda não foi enviado.
 
 ## Retorno × rotina nativa de Pagamento Eletrônico da Senior (06/10/2026)
 

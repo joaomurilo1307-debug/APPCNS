@@ -331,11 +331,11 @@ export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], da
         // para a forma PIX Transferencia no modelo Chave"). Com conta completa o
         // pagamento vai pelos dados bancarios (tipo 01) e o B NAO deve ir.
         //
-        // CORRIGIDO 07/10/2026 apos rejeicao real do Itau (remessa 85,38, Anna
-        // Clara): o B ia "sempre junto, mesmo com conta real" por precaucao; o banco
-        // devolveu "QTDE DE REGS. CALCULADA DIFER. DA QTDE INFORMADA" + "TIPO DE
-        // PAGAMENTO (SEGMENTO) NAO INFORMADO OU INVALIDO" -- ou seja, descartou o B
-        // (contou 1 registro a menos que o trailer informava) e rejeitou o pagamento.
+        // NOTA 07/10/2026: antes o B ia "sempre junto, mesmo com conta real" por
+        // precaucao. Mudado pra seguir o manual literalmente (B so' no modelo Chave).
+        // ATENCAO: NAO foi validado pelo Itau com arquivo NOSSO -- as rejeicoes reais
+        // de 07/10 foram de arquivos gerados pela SENIOR (F510PRM), nao por este
+        // gerador. So' o primeiro retorno do Itau a um arquivo nosso confirma isto.
         const temContaReal = !!(item.bancoFavorecido && item.agenciaFavorecido && item.contaFavorecido && item.dacFavorecido);
         linhas.push(detalheSegmentoA(numeroLoteStr, numeroRegistro, item));
         if (temContaReal) {
