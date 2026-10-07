@@ -101,12 +101,53 @@ export type ItemPronto = {
   dataPagamento: string;
 };
 
+const BANCOS_ITAU = ["341", "409"]; // mesmo conjunto da Nota 11 do manual (Itau / Unibanco)
+
+/**
+ * A forma de pagamento precisa ser COERENTE com o banco, senao o Itau rejeita o registro
+ * (07/10/2026: 4 remessas rejeitadas -- "forma incompativel com a titularidade", "no do banco
+ * para transferencia invalido (237)", "dados boletos divergentes CIP"). Definicoes do manual (Nota 5):
+ *  - 30 = titulo em cobranca NO ITAU (codigo de barras do banco 341); 31 = titulo em cobranca em OUTROS bancos.
+ *  - 01 = credito em conta corrente NO ITAU -- so vale pra conta Itau/Unibanco.
+ * Quando a incoerencia e' inequivoca, corrige sozinho (e quem chama avisa); o resto vira erro na conferencia.
+ */
+export function formaCoerente(item: { formaPagamento?: string; codigoBarras?: string; bancoFavorecido?: string }): { forma: string; motivo: string | null } {
+  const forma = item.formaPagamento ?? "";
+  const segmento = segmentoDaForma(forma);
+  if (segmento === "J") {
+    let banco: string | null = null;
+    try {
+      banco = linhaDigitavelParaCodigoBarras(item.codigoBarras ?? "").slice(0, 3);
+    } catch {
+      banco = null; // codigo invalido: quem barra e' validarItemRemessa
+    }
+    if (banco) {
+      const esperada = banco === "341" ? FORMA_PAGAMENTO.BOLETO_ITAU : FORMA_PAGAMENTO.BOLETO_OUTROS_BANCOS;
+      if (forma !== esperada) {
+        return {
+          forma: esperada,
+          motivo: `Boleto do banco ${banco}: a forma certa é ${esperada} (${esperada === FORMA_PAGAMENTO.BOLETO_ITAU ? "cobrança no Itaú" : "cobrança em outros bancos"}), e não ${forma}. O arquivo usou ${esperada}.`,
+        };
+      }
+    }
+  } else if (forma === FORMA_PAGAMENTO.CREDITO_CONTA_ITAU) {
+    const banco = (item.bancoFavorecido ?? "").replace(/\D/g, "").padStart(3, "0");
+    if (banco !== "000" && !BANCOS_ITAU.includes(banco)) {
+      return {
+        forma: FORMA_PAGAMENTO.TED_OUTRO_TITULAR,
+        motivo: `Crédito em conta corrente (01) só vale para conta Itaú; o banco do favorecido é ${banco}. O arquivo usou TED outro titular (41).`,
+      };
+    }
+  }
+  return { forma, motivo: null };
+}
+
 export function ehPix(item: { formaPagamento: string }) {
   return item.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
 }
 
 export function prepararItem(item: ItemConferencia): ItemPronto {
-  const forma = item.formaPagamento ?? "";
+  const forma = formaCoerente(item).forma;
   const segmento = segmentoDaForma(forma);
   const documento = (item.favorecidoDocumento ?? "").replace(/\D/g, "");
   const pix = forma === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
@@ -200,9 +241,15 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
   const correcoesChave = itensOriginais.map((i) =>
     i.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA ? corrigirChavePix(i.chavePixTipo, i.chavePixValor, i.favorecidoDocumento) : null
   );
-  const itens = itensOriginais.map((i, k) =>
-    correcoesChave[k]?.correcao ? { ...i, chavePixTipo: correcoesChave[k]!.tipo, chavePixValor: correcoesChave[k]!.valor } : i
-  );
+  // Forma de pagamento incoerente com o banco (boleto 30/31 x banco do codigo de barras; 01 x banco nao-Itau):
+  // corrigida sozinha e avisada -- e' o que o Itau rejeitaria (ver formaCoerente).
+  const correcoesForma = itensOriginais.map((i) => formaCoerente(i));
+  const itens = itensOriginais.map((i, k) => {
+    let novo: ItemConferencia = i;
+    if (correcoesChave[k]?.correcao) novo = { ...novo, chavePixTipo: correcoesChave[k]!.tipo, chavePixValor: correcoesChave[k]!.valor };
+    if (correcoesForma[k].motivo) novo = { ...novo, formaPagamento: correcoesForma[k].forma };
+    return novo;
+  });
   const ids =[...new Set(itens.map((i) => i.tituloId).filter((id): id is string => !!id))];
 
   const titulos = await prisma.tituloContasAPagar.findMany({
@@ -248,6 +295,29 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
     const problemas = validarItemRemessa(item);
     const correcaoDaChave = correcoesChave[indice]?.correcao;
     if (correcaoDaChave) problemas.push(problema("chavePix", correcaoDaChave, "aviso"));
+    const motivoDaForma = correcoesForma[indice].motivo;
+    if (motivoDaForma) problemas.push(problema("formaPagamento", motivoDaForma, "aviso"));
+    // "Titularidade": TED mesmo titular (43) so' vale pra CPF/CNPJ da PROPRIA empresa debitada; TED outro
+    // titular (41) com o CPF/CNPJ da propria empresa deve ser 43. (Itau: "forma incompativel com a titularidade".)
+    if (contaDebito) {
+      const docItem = (item.favorecidoDocumento ?? "").replace(/\D/g, "");
+      const docEmpresa = (contaDebito.cnpj ?? "").replace(/\D/g, "");
+      if (docItem && docEmpresa) {
+        if (item.formaPagamento === FORMA_PAGAMENTO.TED_MESMO_TITULAR && docItem !== docEmpresa) {
+          problemas.push(
+            problema(
+              "formaPagamento",
+              `TED mesmo titular (43) só vale quando o CPF/CNPJ do favorecido é o da própria empresa debitada (${docEmpresa}); este é ${docItem}. Use TED outro titular (41).`,
+              "erro"
+            )
+          );
+        } else if (item.formaPagamento === FORMA_PAGAMENTO.TED_OUTRO_TITULAR && docItem === docEmpresa) {
+          problemas.push(
+            problema("formaPagamento", "O favorecido tem o CPF/CNPJ da própria empresa debitada: use TED mesmo titular (43), não 41.", "erro")
+          );
+        }
+      }
+    }
     const titulo = item.tituloId ? porId.get(item.tituloId) : undefined;
 
     if (item.tituloId && !titulo) {

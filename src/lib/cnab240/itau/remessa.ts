@@ -326,13 +326,24 @@ export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], da
         linhas.push(detalheSegmentoJ52(numeroLoteStr, numeroRegistro, item, conta));
         registrosDetalhe += 2;
       } else if (item.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA) {
-        // Segmento B obrigatorio pra PIX no modelo Chave (Nota 37) -- vai
-        // sempre junto, mesmo quando o pagamento usa conta real (nao custa
-        // nada emitir e evita ficar dependente de saber se o banco vai
-        // exigir ou nao caso a conta informada nao exista de verdade).
+        // Segmento B so' no modelo "Chave" (tipo de transferencia 04), que e' quando
+        // NAO ha conta bancaria completa do favorecido (manual pag. 9: "Obrigatorio
+        // para a forma PIX Transferencia no modelo Chave"). Com conta completa o
+        // pagamento vai pelos dados bancarios (tipo 01) e o B NAO deve ir.
+        //
+        // CORRIGIDO 07/10/2026 apos rejeicao real do Itau (remessa 85,38, Anna
+        // Clara): o B ia "sempre junto, mesmo com conta real" por precaucao; o banco
+        // devolveu "QTDE DE REGS. CALCULADA DIFER. DA QTDE INFORMADA" + "TIPO DE
+        // PAGAMENTO (SEGMENTO) NAO INFORMADO OU INVALIDO" -- ou seja, descartou o B
+        // (contou 1 registro a menos que o trailer informava) e rejeitou o pagamento.
+        const temContaReal = !!(item.bancoFavorecido && item.agenciaFavorecido && item.contaFavorecido && item.dacFavorecido);
         linhas.push(detalheSegmentoA(numeroLoteStr, numeroRegistro, item));
-        linhas.push(detalheSegmentoBPix(numeroLoteStr, numeroRegistro, item));
-        registrosDetalhe += 2;
+        if (temContaReal) {
+          registrosDetalhe += 1;
+        } else {
+          linhas.push(detalheSegmentoBPix(numeroLoteStr, numeroRegistro, item));
+          registrosDetalhe += 2;
+        }
       } else {
         linhas.push(detalheSegmentoA(numeroLoteStr, numeroRegistro, item));
         registrosDetalhe += 1;

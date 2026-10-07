@@ -276,6 +276,18 @@ digitar uma vez e o sistema guardar. Conta de consumo/concessionária (48 dígit
   agora" ou ao reabrir a tela): CPF/CNPJ em branco é preenchido, e conta/PIX/boleto vindos da Senior substituem o do item **só se ninguém tiver digitado por
   cima** (o item guarda uma "foto" do que veio da Senior pra saber isso). O que foi digitado à mão nunca é sobrescrito.
 
+## Primeiras rejeições REAIS do Itaú (07/10/2026, 4 arquivos enviados) — o que aprendemos
+
+Tela "Detalhamento do Resultado do Processamento da Remessa" do Itaú. Resultado: **todos rejeitados**.
+
+| Arquivo | Mensagem do Itaú | Causa / correção |
+|---|---|---|
+| PIX 1 item (R$ 85,38) | "QTDE DE REGS. CALCULADA DIFER. DA QTDE INFORMADA" + "TIPO DE PAGAMENTO (SEGMENTO) NÃO INFORMADO OU INVÁLIDO" | O gerador mandava o **Segmento B (chave PIX) sempre**, mesmo com conta bancária completa (tipo de transferência 01). O Itaú descartou o B (contou 1 registro a menos que o trailer) e rejeitou. **Corrigido:** B só no modelo "Chave" (sem conta completa), como diz o manual p. 9. |
+| 4 TEDs (R$ 13.027,65) | "FORMA INCOMPATÍVEL COM A TITULARIDADE DO PAGAMENTO (CPF/CNPJ)" | Em investigação (falta o arquivo enviado). Adicionadas validações: 43 só para CPF/CNPJ da própria empresa; 41 não pode ter o CNPJ da empresa; 01 só com banco Itaú/Unibanco (se não, vira 41, com aviso). |
+| 7 registros de boleto (R$ 5.205,54) | "SEQUENCIA DOS SEGMENTOS INVALIDA", "Nº DO BANCO PARA TRANSFERENCIA INVALIDO (237)", "DADOS BOLETOS DIVERGENTES CIP" | Em investigação. Já corrigido: **forma 30 (cobrança no Itaú) × 31 (outros bancos) agora é derivada do banco do código de barras** (237 → 31). Possível causa dos "dados divergentes CIP": CNPJ do beneficiário (J-52) diferente do beneficiário real do boleto. |
+
+Lição: **nenhum dado "validado pelo manual" vale até o Itaú aceitar** — a primeira remessa real é o teste. Comparar sempre com o retorno de processamento do banco.
+
 ## Retorno × rotina nativa de Pagamento Eletrônico da Senior (06/10/2026)
 
 **Por que o retorno não "confere" na Senior quando a remessa nasce aqui.** Na Senior a remessa de pagamento é gravada pela rotina nativa
