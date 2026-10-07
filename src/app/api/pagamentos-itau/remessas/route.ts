@@ -101,9 +101,9 @@ export async function POST(req: Request) {
 
   // Pedido do Gabriel (30/09/2026): removido o portão que exigia OC
   // confirmada pra entrar na remessa -- só o vínculo automático travava
-  // demais. Mantido: título fora de Aberto (pago ou em situação especial como
-  // "PE") não entra, porque pode já estar comprometido em outro fluxo do
-  // Senior e pagaria em dobro -- agora esse bloqueio faz parte da conferência.
+  // demais. Mantido na conferência: título já pago/baixado não entra (erro).
+  // Título em situação especial ("PE" etc.) entra com AVISO desde 07/10/2026 --
+  // remessa da Senior rejeitada pelo Itaú deixa o título preso em PE.
   const contaDebito: ContaDebito = { cnpj: conta.cnpj, agencia: conta.agencia, conta: conta.conta, dac: conta.dac, nomeEmpresa: conta.apelido };
 
   // A conferencia inclui o ensaio do arquivo CNAB (sem gravar nada): se algo so'

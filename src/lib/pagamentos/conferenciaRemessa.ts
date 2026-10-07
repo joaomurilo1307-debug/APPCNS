@@ -372,13 +372,16 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
       if (titulo.pago) {
         problemas.push(problema("titulo", "Este título já está pago/baixado no Senior -- tire do carrinho.", "erro"));
       } else if (titulo.situacao !== "AB") {
-        problemas.push(
-          problema(
-            "titulo",
-            `Título em situação especial no Senior (${titulo.situacao}) -- pode já estar comprometido em outro pagamento. Não entra na remessa.`,
-            "erro"
-          )
-        );
+        // 07/10/2026 (pedido do João): era erro bloqueante. Remessa feita pela
+        // Senior e rejeitada pelo Itaú deixa o título preso em PE, e ele precisa
+        // pagar por aqui -- então vira aviso forte; quem decide é o usuário.
+        const mensagem =
+          titulo.situacao === "CA"
+            ? "Título CANCELADO no Senior (CA) -- só mande pra remessa se o cancelamento foi engano; senão você paga algo que a Senior considera inexistente."
+            : `Título em situação especial no Senior (${titulo.situacao}) -- normalmente é porque entrou numa remessa da própria Senior. ` +
+              `Se essa remessa foi rejeitada/cancelada e o pagamento sai por aqui, tudo certo; se ela ainda puder ser paga, será pagamento em dobro. ` +
+              `Depois de pago, a baixa na Senior fica manual (o botão "Baixar na Sênior" não mexe em título fora de Aberto).`;
+        problemas.push(problema("titulo", mensagem, "aviso"));
       }
       if ((repeticoes.get(titulo.id) ?? 0) > 1) {
         problemas.push(problema("titulo", "Este título aparece mais de uma vez no carrinho -- deixe só uma.", "erro"));

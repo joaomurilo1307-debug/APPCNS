@@ -30,9 +30,14 @@ const REVISAO_COR: Record<string, string> = {
 // LS, LV), mas o sync só trazia AB/LQ -- título que o Senior movia pra
 // qualquer outro status sumia da fonte e era apagado do nosso banco (ex:
 // Fort Minas 1765$01/2071$01/2072$01/2072$02, achados via CODTNS=90501 no
-// E501MCP). Agora o sync traz todos, e aqui eles ficam visíveis mas
-// travados pra remessa -- podem já estar comprometidos em outro fluxo de
-// pagamento do próprio Senior, incluir de novo arriscaria pagar em dobro.
+// E501MCP). Agora o sync traz todos e aqui eles ficam visíveis, com a
+// etiqueta vermelha -- podem já estar comprometidos em outro fluxo de
+// pagamento do próprio Senior. 07/10/2026 (pedido do João): a caixinha NÃO
+// trava mais -- remessa gerada pela Senior que o Itaú rejeitou deixa o título
+// preso em PE e ele precisa pagar por aqui. Só o clique individual seleciona
+// título especial; os botões "selecionar todos/aprovados" continuam pulando
+// (pra ninguém mandar PE em massa sem querer). A conferência da remessa
+// mostra um aviso forte, mas deixa gerar.
 const SITUACAO_ESPECIAL_LABEL: Record<string, string> = {
   CA: "Cancelado no Senior",
   PE: "Situação especial no Senior (PE)",
@@ -392,7 +397,7 @@ export default function ProgramacaoPagamentoPage() {
     const porId = new Map(titulos.map((t) => [t.id, t]));
     const valido = (id: string) => {
       const t = porId.get(id);
-      return !!t && !t.pago && !situacaoEspecial(t);
+      return !!t && !t.pago;
     };
     if (!selecaoRestaurada) {
       setSelecionados(new Set(lerSelecaoSalva().filter(valido)));
@@ -597,8 +602,6 @@ export default function ProgramacaoPagamentoPage() {
   }
 
   function alternarSelecao(id: string) {
-    const titulo = titulos.find((t) => t.id === id);
-    if (titulo && situacaoEspecial(titulo)) return; // travado -- ver SITUACAO_ESPECIAL_LABEL
     setSelecionados((anterior) => {
       const novo = new Set(anterior);
       if (novo.has(id)) novo.delete(id);
@@ -1224,10 +1227,9 @@ export default function ProgramacaoPagamentoPage() {
                     type="checkbox"
                     aria-label={`Selecionar título ${t.numTit}`}
                     checked={selecionados.has(t.id)}
-                    disabled={situacaoEspecial(t)}
-                    title={situacaoEspecial(t) ? labelSituacaoEspecial(t.situacao) + " — travado pra não arriscar pagamento em dobro" : undefined}
+                    title={situacaoEspecial(t) ? labelSituacaoEspecial(t.situacao) + " — pode ser selecionado, mas confira antes: se a remessa da Senior ainda puder ser paga, será pagamento em dobro" : undefined}
                     onChange={() => alternarSelecao(t.id)}
-                    className="h-3.5 w-3.5 rounded border-gray-300 text-brand focus:ring-brand disabled:cursor-not-allowed disabled:opacity-40"
+                    className="h-3.5 w-3.5 rounded border-gray-300 text-brand focus:ring-brand"
                   />
                 </td>
                 <td className="px-3 py-1.5 font-medium text-gray-800">
@@ -1351,7 +1353,7 @@ export default function ProgramacaoPagamentoPage() {
                   {situacaoEspecial(t) && (
                     <span
                       className="ml-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700"
-                      title="Status fora de Aberto/Pago no Senior -- pode já estar comprometido em outro fluxo de pagamento. Não incluir em remessa nova."
+                      title="Status fora de Aberto/Pago no Senior -- pode já estar comprometido em outro fluxo de pagamento (ex.: remessa da própria Senior). Só mande pra remessa daqui se essa outra remessa foi rejeitada ou cancelada."
                     >
                       {labelSituacaoEspecial(t.situacao)}
                     </span>
