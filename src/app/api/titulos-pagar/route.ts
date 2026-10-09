@@ -4,7 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
-import { garantirFormasPagamentoAtualizadas } from "@/lib/senior/formasPagamento";
+import { garantirFormasPagamentoAtualizadas, carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
+import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
 
 // Programação de Contas a Pagar por título, escopo histórico completo.
 // Mesmo nível de acesso das Aprovações OC do Senior. Motor de conciliação
@@ -20,7 +21,8 @@ export async function GET() {
   }
 
   // Mantem o codigo/descricao da forma de pagamento atualizados em segundo plano (aparecem dentro da OC).
-  garantirFormasPagamentoAtualizadas();
+  garantirFormasPagamentoAtualizadas(true);
+  const catalogoFormas = await carregarCatalogoFormasPagamento();
 
   const [titulos, ocs, usuariosSenior, dossies, adiamentos] = await Promise.all([
     prisma.tituloContasAPagar.findMany({
@@ -145,6 +147,8 @@ export async function GET() {
         tipoChavePix: t.tipoChavePix,
         documentoFavorecido: t.documentoFavorecido,
         codFpg: t.codFpg,
+        formaPagamento: t.codFpg ? catalogoFormas.get(t.codFpg) ?? null : null,
+        cartaoCredito: ehCartaoCredito(t.codFpg, t.codFpg ? catalogoFormas.get(t.codFpg) : null),
         revisadoStatus: t.revisadoStatus,
         revisadoPorNome: t.revisadoPorNome,
         revisadoEm: t.revisadoEm,

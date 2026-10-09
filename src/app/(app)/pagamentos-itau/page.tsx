@@ -25,6 +25,7 @@ type Titulo = {
   documentoFavorecido: string | null;
   tipo: string; // PRV = provisão contábil (não é pagamento)
   codFpg: string | null; // forma de pagamento na Senior (18 boleto, 19 PIX...)
+  cartaoCredito?: boolean;
 };
 
 // Resposta de POST /api/pagamentos-itau/dados-senior (leitura ao vivo da Senior).
@@ -487,7 +488,7 @@ export default function PagamentosItauPage() {
         const todosAbertos: Titulo[] = (tit.titulos ?? []).filter((t: Titulo) => !t.pago);
         // Provisão (PRV) é lançamento contábil de despesa futura (folha, ISS,
         // retirada...), não pagamento a fornecedor: não aparece pra remessa.
-        const titulosAbertos = todosAbertos.filter((t) => t.tipo !== "PRV");
+        const titulosAbertos = todosAbertos.filter((t) => t.tipo !== "PRV" && !t.cartaoCredito);
         setTitulos(titulosAbertos);
 
         // Histórico + títulos que já viraram remessa (pendente/agendado/pago).
@@ -501,14 +502,16 @@ export default function PagamentosItauPage() {
         // Histórico de pagamentos.
         const atualNoCarrinho = carrinhoRef.current;
         const jaGeradosNoCarrinho = atualNoCarrinho.filter((i) => i.tituloId && gerados.has(i.tituloId));
-        const carrinhoSemGerados =
+        const carrinhoSemGeradosAtuais =
           jaGeradosNoCarrinho.length > 0 ? atualNoCarrinho.filter((i) => !(i.tituloId && gerados.has(i.tituloId))) : atualNoCarrinho;
+        const idsCartao = new Set(todosAbertos.filter(t => t.cartaoCredito).map(t => t.id));
+        const carrinhoSemGerados = carrinhoSemGeradosAtuais.filter(i => !i.tituloId || !idsCartao.has(i.tituloId));
         if (jaGeradosNoCarrinho.length > 0) removerDaSelecaoSalva(jaGeradosNoCarrinho.map((i) => i.tituloId));
 
         // Itens que já estavam no carrinho recebem os dados novos da Senior
         // (CPF/CNPJ, conta, PIX) -- sem sobrescrever o que foi digitado.
         const { itens: carrinhoAtualizado, atualizados } = mesclarComDadosNovos(carrinhoSemGerados, titulosAbertos);
-        if (atualizados.length > 0 || jaGeradosNoCarrinho.length > 0) {
+        if (atualizados.length > 0 || jaGeradosNoCarrinho.length > 0 || carrinhoSemGerados.length !== carrinhoSemGeradosAtuais.length) {
           setCarrinho(carrinhoAtualizado);
           if (jaGeradosNoCarrinho.length > 0) {
             setAvisoJaGerados(

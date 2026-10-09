@@ -16,6 +16,7 @@ const cookies = new Map<string, string>();
 const resultados: string[] = [];
 const tituloIds: string[] = [];
 const remessaIds: string[] = [];
+const ocIds: string[] = [];
 const stamp = Date.now().toString(36);
 let contador = 0;
 const senior = criarSeniorSimulado();
@@ -70,6 +71,45 @@ async function main() {
     for (const cookie of login.headers.getSetCookie()) { const c = cookie.split(";")[0]; const idx = c.indexOf("="); cookies.set(c.slice(0, idx), c.slice(idx + 1)); }
     assert.equal((await http("/api/pagamentos-itau/contas")).status, 200);
     passou("Login NextAuth real com usuario exclusivo da homologacao");
+
+    const cartao = await criarItem();
+    await db.tituloContasAPagar.update({where:{id:cartao.tituloId},data:{codFpg:"20"}});
+    const listaCartao = await http("/api/titulos-pagar");
+    const visualCartao = listaCartao.data.titulos.find((t:{id:string})=>t.id===cartao.tituloId);
+    assert.equal(visualCartao.cartaoCredito,true); assert.equal(visualCartao.revisadoStatus,"APROVADO");
+    passou("Cartao de credito identificado pelo titulo sem sobrescrever revisao manual");
+    const antesCartao = await db.remessaPagamento.count();
+    const bloqueadoCartao = await http("/api/pagamentos-itau/remessas",{contaBancariaId:"homologacao-conta",itens:[cartao]});
+    assert.equal(bloqueadoCartao.status,422,JSON.stringify(bloqueadoCartao.data));
+    assert.equal(await db.remessaPagamento.count(),antesCartao);
+    passou("Geracao via HTTP bloqueia cartao de credito mesmo com conta e dados validos");
+
+    const numOcp = `8${String(Date.now()).slice(-9)}`;
+    const tituloConferencia = await criarItem();
+    const oc = await db.aprovacaoSenior.create({data:{numOcp,codFil:"1",fornecedorCodigo:"999999",fornecedorNome:"TESTE DE CONFERENCIA",dataEmissao:dataTeste,valor:100,numApr:"0",situacaoAtual:"APR"}});
+    ocIds.push(oc.id);
+    await db.tituloContasAPagar.update({where:{id:tituloConferencia.tituloId},data:{numOcp,filOcp:"1",codFpg:"18"}});
+    const mapa = await http(`/api/senior/aprovacoes/${numOcp}`);
+    assert.equal(mapa.status,200); assert.equal(mapa.data.titulosVinculados[0].id,tituloConferencia.tituloId);
+    passou("Modal recebe identificacao exata do titulo vinculado para consulta ao vivo");
+    const dadosConsulta = await http("/api/pagamentos-itau/dados-senior",{tituloIds:[tituloConferencia.tituloId],conferencia:true});
+    assert.equal(dadosConsulta.status,200); assert.equal(dadosConsulta.data.completo,true,JSON.stringify(dadosConsulta.data));
+    assert.equal(dadosConsulta.data.dados[0].codFpgTitulo,"3");
+    assert.equal(dadosConsulta.data.dados[0].conta.fonte,"cadastro");
+    assert.equal(dadosConsulta.data.dados[0].conta.conta,"99999");
+    const consultasConferencia = await (await fetch("http://127.0.0.1:3099/_controle")).json();
+    assert.ok(consultasConferencia.consultas.filter((s:string)=>s.includes("E501TCP")).every((s:string)=>s.includes("NUMTIT IN")),"Conferencia nao deve buscar todos os titulos de fornecedores.");
+    passou("Conferencia usa titulo atual e cadastro corretos com consulta restrita aos titulos pedidos");
+    await modo("CONFERENCIA_SEM_FORMA");
+    const semFormaTitulo = await http("/api/pagamentos-itau/dados-senior",{tituloIds:[tituloConferencia.tituloId],conferencia:true});
+    assert.equal(semFormaTitulo.data.dados[0].codFpg,"19");
+    assert.equal(semFormaTitulo.data.dados[0].codFpgTitulo,null);
+    passou("Forma da OC permanece separada e nao substitui forma ausente do titulo na conferencia");
+    await modo("CONFERENCIA_OUTRO_TIPO");
+    const outroTipo = await http("/api/pagamentos-itau/dados-senior",{tituloIds:[tituloConferencia.tituloId],conferencia:true});
+    assert.equal(outroTipo.data.completo,true); assert.equal(outroTipo.data.dados[0].codFpgTitulo,"3");
+    passou("Titulos com mesmo numero e tipo diferente nao trocam dados na conferencia");
+    await modo("OK");
 
     const credito = await criarItem("01"); const pix = await criarItem("45");
     const antes = await db.remessaPagamento.count();
@@ -204,6 +244,7 @@ async function main() {
     await db.retornoPagamentoArquivo.deleteMany({ where: { remessaId: { in: remessaIds } } });
     await db.remessaPagamento.deleteMany({ where: { id: { in: remessaIds } } });
     await db.tituloContasAPagar.deleteMany({ where: { id: { in: tituloIds } } });
+    await db.aprovacaoSenior.deleteMany({where:{id:{in:ocIds}}});
     await db.$disconnect(); await senior.fechar();
   }
 }

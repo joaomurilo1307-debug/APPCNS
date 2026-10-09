@@ -10,6 +10,8 @@ import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/uploadValidation";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
+import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
+import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
 
 // Pacote pra mandar pra fora do sistema (30/09/2026, pedido do João: "quando
 // eu exportar os que selecionei já vem uma pasta com o dossiê deles"): um
@@ -75,10 +77,11 @@ export async function POST(req: Request) {
   }
 
   // ---------- Excel ----------
+  const catalogoFormas = await carregarCatalogoFormasPagamento();
   const linhas = titulos.map((t) => ({
     "Título": t.numTit,
     "Fornecedor": t.fornecedorNome ?? `código ${t.codFor}`,
-    "Status revisão": t.revisadoStatus ? REVISAO_LABEL[t.revisadoStatus] || t.revisadoStatus : "Não revisado",
+    "Status revisão": ehCartaoCredito(t.codFpg, t.codFpg ? catalogoFormas.get(t.codFpg) : null) ? "Cartão de Crédito" : t.revisadoStatus ? REVISAO_LABEL[t.revisadoStatus] || t.revisadoStatus : "Não revisado",
     "Revisado por": t.revisadoPorNome || "",
     "Centro de custo": t.ccuNome || "",
     "Vencto programado": formatData(t.vencimentoProgramado),

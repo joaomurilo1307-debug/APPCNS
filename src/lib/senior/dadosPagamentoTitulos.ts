@@ -23,6 +23,7 @@ import {
   preenchido,
   separarDv,
   soDigitos,
+  dataIso,
 } from "./mapeamentoTitulos";
 import { cnpjValido, cpfValido } from "../cnab240/itau/validacaoItem";
 
@@ -37,10 +38,12 @@ export type DadosSeniorDoTitulo = {
   codigoBarras: string | null;
   codFpg: string | null;
   formaPagamento: string | null; // descricao por extenso (catalogo F066FPG)
+  codFpgTitulo?: string | null; // Apenas E501TCP; nao usa fallback da OC na conferencia.
+  formaPagamentoTitulo?: string | null;
   achouNoSenior: boolean; // o titulo ainda esta aberto na Senior
 };
 
-export type PedidoTitulo = { tituloId: string; numTit: string; codFil: string; codFor: string; numOcp: string | null };
+export type PedidoTitulo = { tituloId: string; numTit: string; codFil: string; codFor: string; numOcp: string | null; tipo?: string; dataEmissao?: string };
 
 const LIMITE_MS = 60_000;
 
@@ -142,7 +145,7 @@ function documentoPorDigitos(valor: string | undefined): string | null {
 
 const lista = (valores: string[]) => valores.join(",");
 
-export async function buscarDadosPagamento(pedidos: PedidoTitulo[]): Promise<{ dados: DadosSeniorDoTitulo[]; avisos: string[] }> {
+export async function buscarDadosPagamento(pedidos: PedidoTitulo[], conferencia = false): Promise<{ dados: DadosSeniorDoTitulo[]; avisos: string[] }> {
   const avisos: string[] = [];
   const fornecedores = [...new Set(pedidos.map((p) => p.codFor).filter((c) => /^\d+$/.test(c)))];
   const ocs = [...new Set(pedidos.map((p) => p.numOcp).filter((n): n is string => !!n && /^\d+$/.test(n)))];
@@ -166,7 +169,7 @@ export async function buscarDadosPagamento(pedidos: PedidoTitulo[]): Promise<{ d
   );
   const titulosSenior = await tentar(
     "títulos",
-    () => consultarSenior(`SELECT ${CAMPOS_TITULO.join(", ")} FROM E501TCP WHERE CODFOR IN (${lista(fornecedores)}) AND SITTIT = 'AB'`),
+    () => consultarSenior(`SELECT ${CAMPOS_TITULO.join(", ")} FROM E501TCP WHERE ${conferencia ? `CODEMP = 1 AND NUMTIT IN (${[...new Set(pedidos.map(p => "'" + p.numTit.replace(/'/g, "''") + "'"))].join(",")}) AND ` : ""}CODFOR IN (${lista(fornecedores)}) AND SITTIT = 'AB'`),
     [] as LinhaSenior[]
   );
   const cadastros = await tentar(
@@ -195,8 +198,10 @@ export async function buscarDadosPagamento(pedidos: PedidoTitulo[]): Promise<{ d
   const ocPorNumero = new Map(ocsSenior.map((o) => [o.NUMOCP.trim(), o]));
 
   const dados = pedidos.map((p): DadosSeniorDoTitulo => {
-    const linhasDoTitulo = titulosSenior.filter((t) => t.CODFOR.trim() === p.codFor && t.NUMTIT.trim() === p.numTit && t.CODFIL.trim() === p.codFil);
-    const linha = linhasDoTitulo.find((t) => t.CODEMP === "1") ?? linhasDoTitulo[0];
+    const linhasDoTitulo = titulosSenior.filter((t) => t.CODFOR.trim() === p.codFor && t.NUMTIT.trim() === p.numTit && t.CODFIL.trim() === p.codFil &&
+      (!conferencia || (t.CODEMP === "1" && t.CODTPT === p.tipo && dataIso(t.DATEMI) === p.dataEmissao)));
+    const linha = conferencia ? (linhasDoTitulo.length === 1 ? linhasDoTitulo[0] : undefined) : linhasDoTitulo.find((t) => t.CODEMP === "1") ?? linhasDoTitulo[0];
+    if (conferencia && linhasDoTitulo.length > 1) avisos.push(`Titulo ${p.numTit}: mais de um registro corresponde a identificacao. Dados nao conferidos.`);
     const forn = fornecedorPorCodigo.get(p.codFor);
     const cadastro = escolherCadastroBancario(cadastrosPorFornecedor.get(p.codFor), linha?.CODEMP ?? "1", p.codFil);
     const oc = p.numOcp ? ocPorNumero.get(p.numOcp) : undefined;
@@ -227,6 +232,8 @@ export async function buscarDadosPagamento(pedidos: PedidoTitulo[]): Promise<{ d
       codigoBarras: base?.codigoBarrasBoleto ?? null,
       codFpg,
       formaPagamento: codFpg ? catalogo.get(codFpg) ?? null : null,
+      codFpgTitulo: base?.codFpg ?? null,
+      formaPagamentoTitulo: base?.codFpg ? catalogo.get(base.codFpg) ?? null : null,
       achouNoSenior: !!linha,
     };
   });

@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
+import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { lerArquivoRetorno } from "@/lib/cnab240/itau/retorno";
 import { casarItemDoRetorno, montarRetornoSimulado } from "@/lib/pagamentos/casarRetorno";
@@ -141,6 +143,8 @@ export async function POST(req: Request) {
     select: { id: true, numTit: true, codFor: true, tipo: true },
   });
   const tituloPorId = new Map(titulosDosItens.map((t) => [t.id, t]));
+  const catalogoCartao = await carregarCatalogoFormasPagamento();
+  const codigosCartao = [...new Set(["20", ...[...catalogoCartao].filter(([codigo, descricao]) => ehCartaoCredito(codigo, descricao)).map(([codigo]) => codigo)])];
 
   try {
     const resultado = await prisma.$transaction(
@@ -150,9 +154,9 @@ export async function POST(req: Request) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(341241)`;
         const tituloInvalido = await tx.tituloContasAPagar.findFirst({ where: {
           id: { in: itensProntos.map(i => i.tituloId).filter((id): id is string => !!id) },
-          OR: [{ pago: true }, { situacao: "CA" }],
+          OR: [{ pago: true }, { situacao: "CA" }, { codFpg: { in: codigosCartao } }],
         } });
-        if (tituloInvalido) throw new Error("Título foi pago ou cancelado durante a conferencia. Atualize a programacao antes de gerar.");
+        if (tituloInvalido) throw new Error("Título foi pago, cancelado ou identificado como Cartão de Crédito durante a conferência. Atualize a programação antes de gerar.");
         const ativos = await tx.remessaItemPagamento.findFirst({
           where: {
             status: { in: ["PENDENTE", "AGENDADO", "PAGO"] }, remessa: { status: { not: "RASCUNHO" } },

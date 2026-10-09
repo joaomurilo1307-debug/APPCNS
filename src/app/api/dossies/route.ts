@@ -18,7 +18,7 @@ export async function GET() {
   }
 
   // Mantem o codigo/descricao da forma de pagamento atualizados em segundo plano (aparecem dentro da OC).
-  garantirFormasPagamentoAtualizadas();
+  garantirFormasPagamentoAtualizadas(true);
 
   const [dossies, ocsPagas] = await Promise.all([
     prisma.dossieOC.findMany({ orderBy: [{ geradoEm: "desc" }] }),

@@ -13,6 +13,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
+import { ehCartaoCredito } from "./cartaoCredito";
 import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { linhaDigitavelParaCodigoBarras, parseCodigoBarras, valorDoCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
@@ -292,6 +293,10 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
 
   const linhas: LinhaConferencia[] = itens.map((item, indice) => {
     const problemas = validarItemRemessa(item);
+    const tituloCartao = titulos.find(t => t.id === item.tituloId);
+    if (tituloCartao && ehCartaoCredito(tituloCartao.codFpg, tituloCartao.codFpg ? catalogoForma.get(tituloCartao.codFpg) : null)) {
+      problemas.push(problema("formaPagamento", "Cartão de Crédito: título apenas para conferência, não pode gerar remessa.", "erro"));
+    }
     const correcaoDaChave = correcoesChave[indice]?.correcao;
     if (correcaoDaChave) problemas.push(problema("chavePix", correcaoDaChave, "aviso"));
     const motivoDaForma = correcoesForma[indice].motivo;

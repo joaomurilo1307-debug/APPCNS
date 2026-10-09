@@ -9,7 +9,7 @@ import { sincronizacaoEmCurso } from "@/lib/senior/formasPagamento";
 
 const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
-const bodySchema = z.object({ tituloIds: z.array(z.string().min(1)).min(1).max(120) });
+const bodySchema = z.object({ tituloIds: z.array(z.string().min(1)).min(1).max(120), conferencia: z.boolean().optional() });
 
 // Le AO VIVO na Senior (so' leitura) o que ela tem de dado de pagamento dos
 // titulos pedidos: CPF/CNPJ, conta, chave PIX, forma de pagamento. Existe pra
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     const vinculo = aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t));
     const numOcp = vinculo.ocRelacionada?.numOcp ?? null;
     ocDoTitulo.set(t.id, numOcp);
-    pedidos.push({ tituloId: t.id, numTit: t.numTit, codFil: t.codFil, codFor: t.codFor, numOcp });
+    pedidos.push({ tituloId: t.id, numTit: t.numTit, codFil: t.codFil, codFor: t.codFor, numOcp, tipo: t.tipo, dataEmissao: t.dataEmissao.toISOString().slice(0, 10) });
   }
 
   // A varredura em segundo plano dos titulos abertos (formas de pagamento) ocupa
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     await Promise.race([emCurso.catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 75_000))]);
   }
 
-  const { dados, avisos } = await buscarDadosPagamento(pedidos);
+  const { dados, avisos } = await buscarDadosPagamento(pedidos, parsed.data.conferencia === true);
   return NextResponse.json({
     consultadoEm: new Date().toISOString(),
     // Todas as consultas à Senior responderam? Sem isso a tela não pode afirmar "a Senior não tem nada".

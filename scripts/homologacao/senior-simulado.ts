@@ -4,6 +4,7 @@ import { contaTeste } from "./fixtures";
 export function criarSeniorSimulado(porta = 3099) {
   let modo = "OK";
   let envios = 0;
+  const consultas: string[] = [];
   const pagos = new Map<string, string>();
   const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const server = createServer(async (req, res) => {
@@ -12,19 +13,29 @@ export function criarSeniorSimulado(porta = 3099) {
     if (req.url === "/_controle") {
       if (req.method === "POST") modo = JSON.parse(corpo).modo;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ modo, envios, pagos: [...pagos.keys()] })); return;
+      res.end(JSON.stringify({ modo, envios, pagos: [...pagos.keys()], consultas })); return;
     }
     res.setHeader("Content-Type", "text/xml; charset=UTF-8");
     if (req.url === "/leitura") {
       const sql = (/<pmSQL>([\s\S]*?)<\/pmSQL>/.exec(corpo)?.[1] ?? "").replace(/&apos;/g, "'").replace(/&gt;/g, ">").replace(/&lt;/g, "<");
+      consultas.push(sql); if (consultas.length > 100) consultas.shift();
       if (!/^SELECT\s/i.test(sql)) { res.statusCode = 400; res.end("Somente SELECT permitido no simulador."); return; }
       let linhas: Record<string, string>[] = [];
       if (/E600CCO/i.test(sql)) linhas = [{ NUMCCO: "TESTE", DESCCO: "CONTA FICTICIA", CODBAN: "341", CODAGE: contaTeste.agencia, NUMCTA: contaTeste.conta + contaTeste.dac, SITCCO: "A" }];
       if (/E501TCP/i.test(sql)) {
         const titulo = /NUMTIT\s*=\s*'([^']+)'/i.exec(sql)?.[1];
-        if (titulo) linhas = [{ NUMTIT: titulo, CODTPT: "DUP", CODFOR: "999999", CODFIL: "1", CODEMP: "1", SITTIT: pagos.has(titulo) ? "LQ" : "AB", VLRABE: pagos.has(titulo) ? "0,00" : "100,00", ULTPGT: pagos.get(titulo) ?? "" }];
+        const lista = /NUMTIT\s+IN\s*\(([^)]+)\)/i.exec(sql)?.[1];
+        const titulos = titulo ? [titulo] : lista ? [...lista.matchAll(/'([^']+)'/g)].map(m=>m[1]) : [];
+        linhas = titulos.filter(t => !/SITTIT = 'AB'/.test(sql) || !pagos.has(t)).map(t => ({ NUMTIT: t, CODTPT: "DUP", CODFOR: "999999", CODFIL: "1", CODEMP: "1", DATEMI: "08/10/2026", SITTIT: pagos.has(t) ? "LQ" : "AB", VLRORI: "100,00", VLRABE: pagos.has(t) ? "0,00" : "100,00", ULTPGT: pagos.get(t) ?? "", CODFPG: modo === "CONFERENCIA_SEM_FORMA" ? "0" : "3", CODBAN:"0", CODAGE:"0", CCBFOR:"0" }));
+        if (modo === "CONFERENCIA_OUTRO_TIPO" && linhas.length) linhas.push({ ...linhas[0], CODTPT: "OUT", CODFPG: "19" });
       }
-      if (/E066FPG/i.test(sql)) linhas = [{ CODEMP: "1", CODFPG: "3", DESFPG: "Deposito em Conta" }, { CODEMP: "1", CODFPG: "18", DESFPG: "Boleto" }, { CODEMP: "1", CODFPG: "19", DESFPG: "PIX" }];
+      if (/E095FOR/i.test(sql)) linhas = [{CODFOR:"999999", NOMFOR:"FORNECEDOR FICTICIO", CGCCPF:"52998224725", TIPFOR:"F"}];
+      if (/E095HFO/i.test(sql)) linhas = [{CODFOR:"999999", CODEMP:"1", CODFIL:"1", CODBAN:"341", CODAGE:"9999", CCBFOR:"99999-1", TIPTCC:"1", DOCIDEFAV:"52998224725"}];
+      if (/E420OCP/i.test(sql)) {
+        const lista = /NUMOCP\s+IN\s*\(([^)]+)\)/i.exec(sql)?.[1];
+        linhas = (lista?.split(",") ?? []).map(n => ({CODEMP:"1", CODFIL:"1", NUMOCP:n.trim(),CODFPG:"19",USU_CHVPIX:"",USU_CODAGE:"",USU_NUMCCO:"",USU_DESCCO:"",USU_CGCCPF:""}));
+      }
+      if (/E066FPG/i.test(sql)) linhas = [{ CODEMP: "1", CODFPG: "3", DESFPG: "Deposito em Conta" }, { CODEMP: "1", CODFPG: "18", DESFPG: "Boleto" }, { CODEMP: "1", CODFPG: "19", DESFPG: "PIX" }, { CODEMP:"1",CODFPG:"20",DESFPG:"Cartao de Credito" }];
       const retorno = `<lines>${linhas.map(l => `<line>${Object.entries(l).map(([k, v]) => `<${k}>${xml(v)}</${k}>`).join("")}</line>`).join("")}</lines>`;
       res.end(`<GetDBInfoResponse><pmReturnGetDBInfo>${Buffer.from(retorno).toString("base64")}</pmReturnGetDBInfo></GetDBInfoResponse>`); return;
     }

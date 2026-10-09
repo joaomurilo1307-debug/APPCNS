@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { montarConteudoPagamento } from "@/lib/pagamentos/conteudoPagamento";
+import { montarConferenciaPagamento } from "@/lib/pagamentos/conferenciaPagamento";
+import type { DadosSeniorDoTitulo } from "@/lib/senior/dadosPagamentoTitulos";
 
 // Modal com o descritivo completo de uma Ordem de Compra do Senior
 // (fornecedor, valor, rateio por centro de custo, alçada/níveis de
@@ -50,6 +51,7 @@ export type RateioItem = {
 };
 
 export type TituloVinculado = {
+  id?: string;
   numTit: string;
   tipo: string;
   pago: boolean;
@@ -157,16 +159,6 @@ function formatDataHora(iso: string | null | undefined) {
 // (bug real reportado pelo João 15/09/2026, print da OC 12394: cabeçalho
 // dizia "Não pago" e o título gerado por ela já mostrava "Pago em X").
 // Deriva sempre dos títulos REAIS gerados por esta OC.
-// Forma de pagamento da OC = a dos titulos que ela gerou (dado real da Senior, E501TCP.CODFPG +
-// catalogo F066FPG). Titulos de formas diferentes listam todas. CODFPG 0 na Senior = nao informado.
-function formasDePagamento(titulos: TituloVinculado[] | undefined) {
-  const porCodigo = new Map<string, string>();
-  for (const t of titulos ?? []) {
-    if (t.codFpg) porCodigo.set(t.codFpg, t.formaPagamento ?? `Forma ${t.codFpg}`);
-  }
-  return [...porCodigo].sort((a, b) => Number(a[0]) - Number(b[0])).map(([codigo, descricao]) => ({ codigo, descricao }));
-}
-
 function statusPagamento(titulos: TituloVinculado[] | undefined) {
   if (!titulos || titulos.length === 0) {
     return { label: "Sem título gerado ainda", style: "bg-gray-100 text-gray-500" as const, data: null as string | null };
@@ -279,63 +271,48 @@ export default function MapaOC({
   const [sincronizando, setSincronizando] = useState(false);
   const [msgSincronizacao, setMsgSincronizacao] = useState<string | null>(null);
 
-  // Tipo de pagamento definido na própria OC (cartão, PIX, boleto...), lido ao
-  // vivo da Senior -- vale mesmo quando a OC ainda não gerou título. Carrega
-  // depois que o resumo abre pra não atrasar a tela.
-  const [pagamentoOc, setPagamentoOc] = useState<
-    | "carregando"
-    | "erro"
-    | {
-        codFpg: string | null;
-        formaPagamento: string | null;
-        chavePix: string | null;
-        agencia: string | null;
-        conta: string | null;
-        contaDescricao: string | null;
-      }
-  >("carregando");
+  // Forma de pagamento exclusivamente do titulo, consultada pela mesma rota do Itau.
+  const [consultaPagamento, setConsultaPagamento] = useState(0);
+  const [dadosConferencia, setDadosConferencia] = useState<"carregando" | "erro" | {
+    dados: DadosSeniorDoTitulo[]; avisos: string[]; completo: boolean; consultadoEm: string;
+  }>("carregando");
+  const idsConferencia = (titulosVinculados ?? []).map(t => t.id).filter((id): id is string => !!id).sort().join("|");
   useEffect(() => {
     let vivo = true;
-    setPagamentoOc("carregando");
-    fetch(`/api/senior/aprovacoes/${encodeURIComponent(a.numOcp)}/pagamento`)
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("falhou"))))
-      .then((dados) => {
-        if (vivo) setPagamentoOc(dados);
-      })
-      .catch(() => {
-        if (vivo) setPagamentoOc("erro");
-      });
+    const controle = new AbortController();
+    setDadosConferencia("carregando");
+    (async () => {
+        if (!vivo) return;
+        const ids = idsConferencia ? idsConferencia.split("|") : [];
+        if (!ids.length) { setDadosConferencia({ dados: [], avisos: [], completo: true, consultadoEm: new Date().toISOString() }); return; }
+        try {
+          const dados: DadosSeniorDoTitulo[] = [], avisos: string[] = [];
+          let completo = true, consultadoEm = "";
+          // Mesma rota e mesma regra da tela Pagamentos Itau. Lotes sequenciais.
+          for (let i = 0; i < ids.length; i += 100) {
+            const res = await fetch("/api/pagamentos-itau/dados-senior", {
+              method: "POST", headers: { "Content-Type": "application/json" }, signal: controle.signal,
+              body: JSON.stringify({ tituloIds: ids.slice(i, i + 100), conferencia: true }),
+            });
+            if (!res.ok) throw new Error("Consulta indisponivel");
+            const resultado = await res.json();
+            dados.push(...resultado.dados); avisos.push(...resultado.avisos);
+            completo &&= resultado.completo; consultadoEm = resultado.consultadoEm;
+          }
+          if (vivo) setDadosConferencia({ dados, avisos, completo, consultadoEm });
+        } catch { if (vivo) setDadosConferencia("erro"); }
+      })();
     return () => {
-      vivo = false;
+      vivo = false; controle.abort();
     };
-  }, [a.numOcp]);
+  }, [a.numOcp, idsConferencia, consultaPagamento]);
 
-  // Conteudo do pagamento (codigo de barras / chave PIX / conta), conforme o tipo da forma de pagamento.
-  // Sem o dado na Senior -> mensagem de "nao encontrado". Se a consulta ao vivo da OC falhou, nao
-  // afirma "nao encontrado": diz que nao deu pra consultar.
-  const pagamentoOcPronto = pagamentoOc !== "carregando" && pagamentoOc !== "erro" ? pagamentoOc : null;
-  const formasDosTitulos = formasDePagamento(titulosVinculados);
-  const codFpgConteudo = pagamentoOcPronto?.codFpg ?? formasDosTitulos[0]?.codigo ?? null;
-  const formaConteudo =
-    pagamentoOcPronto?.formaPagamento ?? formasDosTitulos.find((f) => f.codigo === codFpgConteudo)?.descricao ?? null;
-  const conteudoPagamento =
-    pagamentoOc === "carregando"
-      ? null
-      : montarConteudoPagamento({
-          codFpg: codFpgConteudo,
-          formaPagamento: formaConteudo,
-          oc: pagamentoOcPronto,
-          titulos: (titulosVinculados ?? []).map((t) => ({
-            numTit: t.numTit,
-            codigoBarras: t.codigoBarras,
-            chavePix: t.chavePix,
-            tipoChavePix: t.tipoChavePix,
-            banco: t.banco,
-            agencia: t.agencia,
-            conta: t.conta,
-            dac: t.dac,
-          })),
-        });
+  const conferenciaPronta = typeof dadosConferencia === "object" ? dadosConferencia : null;
+  const conferencia = montarConferenciaPagamento(titulosVinculados ?? [], conferenciaPronta?.dados ?? []);
+  const titulosParaExibir = (titulosVinculados ?? []).map(t => {
+    const atual = conferencia.itens.find(c => c.id === t.id);
+    return { ...t, codFpg: atual ? atual.codFpg : t.codFpg, formaPagamento: atual ? atual.formaPagamento : t.formaPagamento, formaConferida: !!atual };
+  });
 
   function sincronizarAgora() {
     setSincronizando(true);
@@ -478,71 +455,31 @@ export default function MapaOC({
                 )}
               </dd>
             </div>
-            {titulosVinculados && titulosVinculados.length > 0 && (
-              <div>
-                <dt className="text-xs text-gray-500">Forma de pagamento (do título real)</dt>
-                <dd className="font-medium">
-                  {formasDePagamento(titulosVinculados).length > 0 ? (
-                    formasDePagamento(titulosVinculados).map((f) => (
-                      <span key={f.codigo} className="mr-2 inline-block">
-                        <span className="tabular-nums text-gray-500">{f.codigo}</span> — {f.descricao}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="font-normal text-gray-400">não informada na Senior</span>
-                  )}
-                </dd>
+            <div className="col-span-2 rounded-lg border border-gray-200 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-sm font-semibold text-gray-700">Dados dos títulos para conferência</dt>
+                <button type="button" onClick={() => setConsultaPagamento(n => n + 1)}
+                  disabled={dadosConferencia === "carregando"}
+                  className="rounded-md border px-2 py-1 text-xs text-blue-700 disabled:opacity-50">Consultar novamente na Sênior</button>
               </div>
-            )}
-            <div className={titulosVinculados && titulosVinculados.length > 0 ? "" : "col-span-2"}>
-              <dt className="text-xs text-gray-500">Tipo de pagamento (definido na OC)</dt>
-              <dd className="font-medium">
-                {pagamentoOc === "carregando" ? (
-                  <span className="font-normal text-gray-400">consultando a Senior…</span>
-                ) : pagamentoOc === "erro" ? (
-                  <span className="font-normal text-gray-400">não foi possível consultar a Senior agora</span>
-                ) : pagamentoOc.codFpg ? (
-                  <>
-                    <span className="tabular-nums text-gray-500">{pagamentoOc.codFpg}</span> —{" "}
-                    {pagamentoOc.formaPagamento ?? <span className="font-normal text-gray-400">sem descrição no catálogo da Senior</span>}
-                  </>
-                ) : (
-                  <span className="font-normal text-gray-400">não informado na OC</span>
-                )}
+              <dd className="mt-2 space-y-3 text-xs">
+                <p className="text-gray-500">A forma de pagamento vem somente do título. Os dados são consultados pela mesma regra utilizada em Pagamentos Itaú.</p>
+                {dadosConferencia === "carregando" && <p role="status" className="text-blue-700">Consultando os dados dos títulos na Sênior…</p>}
+                {dadosConferencia === "erro" && <p role="alert" className="text-amber-700">Não foi possível conferir os dados dos títulos agora. Os dados da sincronização local ainda não foram validados nesta consulta.</p>}
+                {conferenciaPronta && !conferenciaPronta.completo && <p role="alert" className="text-amber-700">Consulta incompleta: {conferenciaPronta.avisos.join(" · ")}. A ausência de um dado não confirma que ele esteja ausente na Sênior.</p>}
+                {conferencia.itens.map(t => <div key={t.id} className="space-y-1 border-t pt-2">
+                  <p className="font-medium text-gray-800">Título {t.numTit}: {t.codFpg ? `${t.codFpg} — ${t.formaPagamento ?? "sem descrição no catálogo"}` : "forma não informada"}</p>
+                  {t.divergencia && <p role="alert" className="rounded bg-amber-50 p-2 font-medium text-amber-800">{t.divergencia}</p>}
+                  {t.documento && <p>CPF/CNPJ do favorecido: <span className="font-mono">{t.documento}</span></p>}
+                  {t.conteudo.itens.map((i, n) => <p key={n}>{i.rotulo}: <span className="break-all font-mono">{i.valor}</span></p>)}
+                  {t.origemConta && <p className="text-gray-500">Origem da conta: {t.origemConta === "titulo" ? "título na Sênior" : t.origemConta === "cadastro" ? "cadastro do fornecedor na Sênior" : "digitada na OC — confira"}.</p>}
+                  {t.origemPix && <p className="text-gray-500">Origem da chave PIX: {t.origemPix === "oc" ? "digitada na OC — confira" : "título na Sênior"}.</p>}
+                  {t.conteudo.erro && <p className="text-amber-700">{conferenciaPronta?.completo ? t.conteudo.erro : "O dado esperado ainda não pôde ser confirmado nesta consulta."}</p>}
+                </div>)}
+                {conferenciaPronta && conferencia.naoConferidos.length > 0 && <p className="text-gray-500">Sem confirmação como título aberto nesta consulta: {conferencia.naoConferidos.join(", ")}. Confira a situação e o vínculo na Sênior.</p>}
+                {conferenciaPronta && !(titulosVinculados?.length) && <p className="text-gray-500">Esta OC não tem títulos vinculados na base local. O tipo definido na OC é apresentado acima.</p>}
+                {conferenciaPronta?.consultadoEm && <p className="text-gray-400">Consulta dos títulos: {new Date(conferenciaPronta.consultadoEm).toLocaleString("pt-BR")}</p>}
               </dd>
-              {conteudoPagamento && (
-                <dd className="mt-1.5 space-y-1 text-xs">
-                  <p className="font-medium text-gray-500">Conteúdo do pagamento</p>
-                  {conteudoPagamento.itens.slice(0, 8).map((i, idx) => (
-                    <p key={`${i.rotulo}-${idx}`} className="text-gray-700">
-                      <span className="text-gray-500">{i.rotulo}:</span>{" "}
-                      <span className="break-all font-mono text-[11px]">{i.valor}</span>
-                      {i.origem === "OC" && <span className="ml-1 text-gray-400">(digitado na OC — confira)</span>}
-                    </p>
-                  ))}
-                  {conteudoPagamento.itens.length > 8 && (
-                    <p className="text-gray-400">e mais {conteudoPagamento.itens.length - 8} item(ns) nos títulos abaixo</p>
-                  )}
-                  {conteudoPagamento.erro &&
-                    (pagamentoOc === "erro" ? (
-                      <p className="text-gray-400">Não foi possível consultar a Senior agora para ler o conteúdo do pagamento.</p>
-                    ) : (
-                      <p className="rounded-md bg-red-50 px-2 py-1 font-medium text-red-700">⚠ {conteudoPagamento.erro}</p>
-                    ))}
-                </dd>
-              )}
-              {pagamentoOcPronto?.chavePix && !conteudoPagamento?.itens.some((i) => i.origem === "OC" && i.rotulo === "Chave PIX") && (
-                <dd className="text-xs text-gray-500">Chave PIX informada na OC: {pagamentoOcPronto.chavePix}</dd>
-              )}
-              {pagamentoOcPronto &&
-                (pagamentoOcPronto.agencia || pagamentoOcPronto.conta) &&
-                !conteudoPagamento?.itens.some((i) => i.origem === "OC" && i.rotulo === "Conta bancária") && (
-                  <dd className="text-xs text-gray-500">
-                    Conta informada na OC: {pagamentoOcPronto.agencia ? `ag ${pagamentoOcPronto.agencia}` : ""}
-                    {pagamentoOcPronto.conta ? ` · cc ${pagamentoOcPronto.conta}` : ""}
-                    {pagamentoOcPronto.contaDescricao ? ` · ${pagamentoOcPronto.contaDescricao}` : ""}
-                  </dd>
-                )}
             </div>
             <div>
               <dt className="text-xs text-gray-500">Emissão</dt>
@@ -580,7 +517,7 @@ export default function MapaOC({
                 Título(s) gerado(s) por esta OC ({titulosVinculados.length})
               </p>
               <ul className="space-y-2 rounded-xl bg-gray-50 p-3">
-                {titulosVinculados.map((t) => (
+                {titulosParaExibir.map((t) => (
                   <li key={`${t.numTit}-${t.dataEmissao}`} className="text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium text-gray-800">
@@ -598,7 +535,7 @@ export default function MapaOC({
                       </span>
                     </div>
                     <p className="mt-0.5 text-[11px] text-gray-500">
-                      Forma de pagamento:{" "}
+                      Forma de pagamento ({t.formaConferida ? "conferida na Sênior" : "última sincronização local"}):{" "}
                       {t.codFpg ? (
                         <span className="font-medium text-gray-700">
                           <span className="tabular-nums">{t.codFpg}</span> — {t.formaPagamento ?? `Forma ${t.codFpg}`}

@@ -21,6 +21,8 @@ const LOTE = 50;
 let emAndamento: Promise<void> | null = null;
 let ultimaExecucao = 0;
 let ultimaCompleta = 0;
+let catalogoEmAndamento: Promise<void> | null = null;
+let ultimoCatalogo = 0;
 
 function comLimite<T>(promessa: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -90,8 +92,17 @@ export async function atualizarCodFpgDosTitulos(apenasAbertos: boolean): Promise
  * so' registra no log e tenta de novo no proximo intervalo. Sem credencial da
  * Senior no ambiente, nao faz nada.
  */
-export function garantirFormasPagamentoAtualizadas(): Promise<void> | null {
+export function garantirFormasPagamentoAtualizadas(apenasCatalogo = false): Promise<void> | null {
   if (!process.env.SENIOR_WS_SAPIENS_USER || !process.env.SENIOR_WS_SAPIENS_PASSWORD) return null;
+  // Abrir uma tela de conferencia nao deve iniciar varreduras de todo o historico.
+  if (apenasCatalogo) {
+    if (catalogoEmAndamento) return catalogoEmAndamento;
+    if (Date.now() - ultimoCatalogo < INTERVALO_MS) return null;
+    catalogoEmAndamento = atualizarCatalogoFormasPagamento().then(() => { ultimoCatalogo = Date.now(); })
+      .catch(() => { console.error("[formasPagamento] Nao foi possivel atualizar o catalogo."); })
+      .finally(() => { catalogoEmAndamento = null; });
+    return catalogoEmAndamento;
+  }
   if (emAndamento) return emAndamento;
   if (Date.now() - ultimaExecucao < INTERVALO_MS) return null;
 

@@ -100,6 +100,7 @@ type Titulo = {
   revisadoEm: string | null;
   revisadoObs: string | null;
   numOcpCorrigido: string | null;
+  cartaoCredito?: boolean;
   // Só vem nos títulos que já foram "jogados pra próxima programação".
   adiamento?: AdiamentoDoTitulo;
 };
@@ -397,7 +398,7 @@ export default function ProgramacaoPagamentoPage() {
     const porId = new Map(titulos.map((t) => [t.id, t]));
     const valido = (id: string) => {
       const t = porId.get(id);
-      return !!t && !t.pago;
+      return !!t && !t.pago && !t.cartaoCredito;
     };
     if (!selecaoRestaurada) {
       setSelecionados(new Set(lerSelecaoSalva().filter(valido)));
@@ -491,6 +492,7 @@ export default function ProgramacaoPagamentoPage() {
 
   // Manda só este título pra tela de remessa (mesmo caminho da seleção em lote).
   function enviarUmParaRemessa(id: string) {
+    if (titulos.find(t => t.id === id)?.cartaoCredito) return;
     sessionStorage.setItem("handoffRemessaItau", JSON.stringify([id]));
     router.push("/pagamentos-itau");
   }
@@ -539,7 +541,7 @@ export default function ProgramacaoPagamentoPage() {
       "Título": t.numTit,
       "OC": t.ocRelacionada ? `OC ${t.ocRelacionada.numOcp} (${t.ocRelacionada.situacaoLabel})` : "Sem OC",
       "Motivo (sem OC)": t.ocRelacionada ? "" : t.motivoSemOC || "",
-      "Status revisão": t.revisadoStatus ? REVISAO_LABEL[t.revisadoStatus] || t.revisadoStatus : "Não revisado",
+      "Status revisão": t.cartaoCredito ? "Cartão de Crédito" : t.revisadoStatus ? REVISAO_LABEL[t.revisadoStatus] || t.revisadoStatus : "Não revisado",
       "Revisado por": t.revisadoPorNome || "",
       "Revisado em": t.revisadoEm ? formatDataHora(t.revisadoEm) : "",
       "Tipo": t.tipo,
@@ -602,6 +604,7 @@ export default function ProgramacaoPagamentoPage() {
   }
 
   function alternarSelecao(id: string) {
+    if (titulos.find(t => t.id === id)?.cartaoCredito) return;
     setSelecionados((anterior) => {
       const novo = new Set(anterior);
       if (novo.has(id)) novo.delete(id);
@@ -614,7 +617,7 @@ export default function ProgramacaoPagamentoPage() {
     setSelecionados((anterior) => {
       const novo = new Set(anterior);
       for (const t of filtrados) {
-        if (!t.pago && t.ocRelacionada && !situacaoEspecial(t)) novo.add(t.id);
+        if (!t.pago && !t.cartaoCredito && t.ocRelacionada && !situacaoEspecial(t)) novo.add(t.id);
       }
       return novo;
     });
@@ -625,13 +628,13 @@ export default function ProgramacaoPagamentoPage() {
   }
 
   const qtdAprovados = useMemo(
-    () => titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago && !situacaoEspecial(t)).length,
+    () => titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago && !t.cartaoCredito && !situacaoEspecial(t)).length,
     [titulos]
   );
 
   function selecionarAprovados() {
     setSelecionados(
-      new Set(titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago && !situacaoEspecial(t)).map((t) => t.id))
+      new Set(titulos.filter((t) => t.revisadoStatus === "APROVADO" && !t.pago && !t.cartaoCredito && !situacaoEspecial(t)).map((t) => t.id))
     );
   }
 
@@ -640,7 +643,7 @@ export default function ProgramacaoPagamentoPage() {
   // passa os ids pelo sessionStorage, a tela de destino ja' tem o titulo
   // completo (mesma fonte /api/titulos-pagar) e monta o carrinho sozinha.
   function enviarParaRemessaItau() {
-    sessionStorage.setItem("handoffRemessaItau", JSON.stringify([...selecionados]));
+    sessionStorage.setItem("handoffRemessaItau", JSON.stringify([...selecionados].filter(id => !titulos.find(t => t.id === id)?.cartaoCredito)));
     router.push("/pagamentos-itau");
   }
 
@@ -1227,7 +1230,8 @@ export default function ProgramacaoPagamentoPage() {
                     type="checkbox"
                     aria-label={`Selecionar título ${t.numTit}`}
                     checked={selecionados.has(t.id)}
-                    title={situacaoEspecial(t) ? labelSituacaoEspecial(t.situacao) + " — pode ser selecionado, mas confira antes: se a remessa da Senior ainda puder ser paga, será pagamento em dobro" : undefined}
+                    disabled={!!t.cartaoCredito}
+                    title={t.cartaoCredito ? "Cartão de Crédito: apenas conferência, não gera remessa." : situacaoEspecial(t) ? labelSituacaoEspecial(t.situacao) + " — pode ser selecionado, mas confira antes: se a remessa da Senior ainda puder ser paga, será pagamento em dobro" : undefined}
                     onChange={() => alternarSelecao(t.id)}
                     className="h-3.5 w-3.5 rounded border-gray-300 text-brand focus:ring-brand"
                   />
@@ -1360,7 +1364,7 @@ export default function ProgramacaoPagamentoPage() {
                   )}
                 </td>
                 <td className="px-3 py-1.5">
-                  <select
+                  {t.cartaoCredito ? <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-800" title="Identificado pela forma de pagamento da Sênior. Apenas conferência, sem envio para remessa.">Cartão de Crédito</span> : <select
                     aria-label="Status de revisão"
                     value={t.revisadoStatus ?? ""}
                     disabled={salvandoRevisao === t.id}
@@ -1380,7 +1384,7 @@ export default function ProgramacaoPagamentoPage() {
                     <option value="SEM_OC_CONFIRMADO">Sem OC (confirmado)</option>
                     <option value="AGUARDANDO_COMPRAS">Aguardando compras</option>
                     <option value="ENVIADO_AGUARDANDO_BAIXA">Enviado (aguarda baixa Senior)</option>
-                  </select>
+                  </select>}
                   {/* Lembrete "próxima programação": separado do status e sem tirar o título de lugar. */}
                   {!t.pago && !naProximaProgramacao(t) && (
                     <div className="mt-1">
@@ -1435,6 +1439,7 @@ export default function ProgramacaoPagamentoPage() {
                       <div className="mt-1 flex flex-wrap gap-1">
                         <button
                           onClick={() => enviarUmParaRemessa(t.id)}
+                          disabled={!!t.cartaoCredito}
                           title="Leva só este título pra tela de Pagamentos Itaú"
                           className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100"
                         >

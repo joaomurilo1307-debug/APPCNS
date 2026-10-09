@@ -48,7 +48,7 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
   // pra esta OC no final, não recalcula uma regra própria.
   // Forma de pagamento (codigo da Senior + descricao do catalogo F066FPG): o app mantem os dois
   // atualizados em segundo plano; aqui so' le o que ja esta salvo.
-  garantirFormasPagamentoAtualizadas();
+  garantirFormasPagamentoAtualizadas(true);
   const catalogoFpg = await carregarCatalogoFormasPagamento();
 
   const [titulos, todasOcs] = await Promise.all([
@@ -76,6 +76,7 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
   const titulosVinculados = titulos
     .filter((t) => aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada?.numOcp === params.numOcp)
     .map((t) => ({
+      id: t.id,
       numTit: t.numTit,
       tipo: t.tipo,
       pago: t.pago,

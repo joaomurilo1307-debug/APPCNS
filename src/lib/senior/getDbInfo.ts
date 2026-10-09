@@ -75,6 +75,9 @@ export async function consultarSenior(sql: string): Promise<LinhaSenior[]> {
       signal: AbortSignal.timeout(60_000),
     });
     const texto = await resposta.text();
+    if (!resposta.ok) throw new Error(`Senior respondeu HTTP ${resposta.status}. Os dados nao puderam ser conferidos.`);
+    const erroExecucao = /<(?:[\w-]+:)?erroExecucao\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?erroExecucao>/.exec(texto)?.[1];
+    if (erroExecucao?.trim()) throw new Error("Senior recusou a consulta. Os dados nao puderam ser conferidos.");
 
     const falha = /<faultstring>([\s\S]*?)<\/faultstring>/.exec(texto);
     if (falha) {
