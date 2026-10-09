@@ -13,7 +13,7 @@ on:
       - 'tsconfig.json'
       - '.github/workflows/financeiro-itau.yml'
   push:
-    branches: [master]
+    branches: [master, 'codex/auditoria-pagamentos-itau']
 
 permissions:
   contents: read
