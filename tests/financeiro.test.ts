@@ -211,6 +211,18 @@ test("HTTP 500 com XML OK nao e sucesso; transporte utiliza somente fetch simula
   assert.equal(r.httpOk, false);
 });
 
+test("Endpoint opcional vazio do Docker usa o padrao sem executar rede real", async () => {
+  const anterior = process.env.SENIOR_WS_BAIXA_URL;
+  let endereco = "";
+  try {
+    process.env.SENIOR_WS_BAIXA_URL = " ";
+    await gerarBaixaPorLoteCP({ codEmp: 1, codFil: 1, datBai: dataTeste, numCco: "TESTE", titulos: [{ numInt: "TESTE", codFor: 999999, codFil: 1, numTit: "TESTE1", codTpt: "DUP", valor: 100 }] }, {
+      fetchImpl: (async url => { endereco = String(url); return new Response("<resultado>ERRO</resultado>"); }) as typeof fetch,
+    });
+    assert.match(endereco, /^https:\/\/.*sapiens_Synccom_senior_g5_co_mfi_cpa_titulos$/);
+  } finally { if (anterior === undefined) delete process.env.SENIOR_WS_BAIXA_URL; else process.env.SENIOR_WS_BAIXA_URL = anterior; }
+});
+
 test("Suites HTTP nao podem escrever em servidor com banco ou Senior reais", () => {
   assert.equal(homologacaoLocalSegura(), true);
   assert.equal(homologacaoLocalSegura({ ...process.env, APP_ENV: "production" }), false);

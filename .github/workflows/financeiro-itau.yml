@@ -10,6 +10,7 @@ on:
       - 'tests/**'
       - 'package.json'
       - 'next.config.mjs'
+      - 'docker-compose.yaml'
       - 'tsconfig.json'
       - '.github/workflows/financeiro-itau.yml'
   push:

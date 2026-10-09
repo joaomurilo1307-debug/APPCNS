@@ -30,6 +30,11 @@ services:
       # de quem fez a integracao -- ver GabrielOS/senior_conhecimento_tecnico.md.
       SENIOR_WS_SAPIENS_USER: ${SENIOR_WS_SAPIENS_USER}
       SENIOR_WS_SAPIENS_PASSWORD: ${SENIOR_WS_SAPIENS_PASSWORD}
+      # Endpoints opcionais: vazio usa o padrao do cliente SOAP; definir ambos
+      # permite selecionar explicitamente leitura e baixa do mesmo ambiente.
+      SENIOR_WS_SAPIENS_URL: ${SENIOR_WS_SAPIENS_URL:-}
+      SENIOR_WS_BAIXA_URL: ${SENIOR_WS_BAIXA_URL:-}
+      APP_ENV: ${APP_ENV:-}
       OC_SYNC_WEBHOOK_URL: ${OC_SYNC_WEBHOOK_URL}
       OC_SYNC_WEBHOOK_SECRET: ${OC_SYNC_WEBHOOK_SECRET}
       TITULOS_SYNC_WEBHOOK_URL: ${TITULOS_SYNC_WEBHOOK_URL}

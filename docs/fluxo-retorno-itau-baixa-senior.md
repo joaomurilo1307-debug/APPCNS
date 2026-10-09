@@ -39,6 +39,7 @@ O espelho local é atualizado imediatamente para os itens conferidos nesta opera
 - `SENIOR_WS_SAPIENS_USER` e `SENIOR_WS_SAPIENS_PASSWORD`: usuário de integração com permissão de consulta e baixa. Guardar no ambiente do servidor, nunca no Git.
 - `SENIOR_WS_SAPIENS_URL`: endpoint de leitura `GetDBInfo`, se precisar substituir o padrão existente.
 - `SENIOR_WS_BAIXA_URL`: endpoint de títulos a pagar com a operação `GerarBaixaPorLoteCP`, se precisar substituir o padrão existente.
+- O Docker Compose repassa ambos os endpoints e `APP_ENV` ao contêiner; endpoint vazio usa o padrão existente. Configure leitura e baixa do ambiente desejado em conjunto.
 - Cada conta bancária deve ter `numCcoSenior` validado contra `E600CCO`. Empresa padrão 1 e transações `90550`/`90650` são os valores atuais; confirmar sua parametrização no ERP antes da homologação real.
 - Novos campos opcionais em `RetornoPagamentoArquivo`: `hashArquivo` com índice único e `resultadoImportacao` JSON. Registros anteriores permanecem válidos, com indicação de resumo histórico indisponível quando necessário.
 
@@ -65,7 +66,7 @@ A suíte HTTP inicia e encerra seu próprio servidor SOAP falso. Não deixe o si
 
 Os testes cobrem importação estrutural, ocorrências, referências ambíguas, rollback, reimportação, remessas múltiplas, agendamento sem prova, baixa concorrente, erros individuais, lote parcialmente aceito, resposta perdida após gravação, HTTP inconclusivo e atualização imediata do espelho após liquidação. A evidência local HTTP fica em `tmp/homologacao/resultado-http.json`.
 
-Validação local executada em 09/10/2026: **38 testes de processamento/integração e 17 cenários HTTP aprovados (55 verificações)**, além da compilação completa do Next.js com conferência de tipos. Os cenários HTTP foram executados contra a versão compilada do app.
+Validação local executada em 09/10/2026: **39 testes de processamento/integração e 17 cenários HTTP aprovados (56 verificações)**, além da compilação completa do Next.js com conferência de tipos. Os cenários HTTP foram executados contra a versão compilada do app.
 
 O workflow `.github/workflows/financeiro-itau.yml` reproduz preparo, testes, compilação e cenários HTTP em PostgreSQL isolado no GitHub Actions, usando somente dados e credenciais fictícios. O workflow existente de publicação da imagem continua vinculado à branch `master`; enviar a branch de trabalho não publica a imagem `latest`.
 

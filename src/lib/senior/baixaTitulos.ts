@@ -161,7 +161,7 @@ export async function gerarBaixaPorLoteCP(
   if (!usuario || !senha) {
     throw new Error("Defina SENIOR_WS_SAPIENS_USER e SENIOR_WS_SAPIENS_PASSWORD no .env (nao versionado).");
   }
-  const url = process.env.SENIOR_WS_BAIXA_URL ?? URL_PADRAO_BAIXA;
+  const url = process.env.SENIOR_WS_BAIXA_URL?.trim() || URL_PADRAO_BAIXA;
   const resposta = await (opcoes.fetchImpl ?? fetch)(url, {
     method: "POST",
     headers: { "Content-Type": "text/xml; charset=UTF-8", SOAPAction: '""' },

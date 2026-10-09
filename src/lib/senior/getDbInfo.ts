@@ -64,7 +64,7 @@ function lerLinhas(xml: string): LinhaSenior[] {
 const FORMAS_DE_PARAMS = ["&lt;params&gt;&lt;/params&gt;", ""];
 
 export async function consultarSenior(sql: string): Promise<LinhaSenior[]> {
-  const url = process.env.SENIOR_WS_SAPIENS_URL ?? URL_PADRAO;
+  const url = process.env.SENIOR_WS_SAPIENS_URL?.trim() || URL_PADRAO;
   let ultimoErro = "erro desconhecido";
 
   for (const params of FORMAS_DE_PARAMS) {
