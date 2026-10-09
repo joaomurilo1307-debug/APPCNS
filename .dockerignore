@@ -1,5 +1,10 @@
 node_modules
 .next
+.next-homologacao
+.env*
+!.env.example
+tmp
+uploads-homologacao
 .git
 uploads
 *.md

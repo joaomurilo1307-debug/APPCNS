@@ -10,6 +10,8 @@ import {
   situacaoDoTituloNaSenior,
   type TituloParaBaixa,
 } from "@/lib/senior/baixaTitulos";
+import { erroDoItemBaixa, reservarItemBaixa } from "@/lib/senior/controleBaixa";
+import { registrarBaixaConferida } from "@/lib/senior/registrarBaixaConferida";
 
 // Baixa na Senior (GerarBaixaPorLoteCP) dos pagamentos que o banco confirmou
 // no retorno (status PAGO). ESCREVE no contas a pagar da Senior, entao:
@@ -38,6 +40,7 @@ type Analise = {
   situacao: "ELEGIVEL" | "JA_BAIXADO" | "BLOQUEADO";
   motivo?: string;
   envio?: TituloParaBaixa;
+  situacaoSenior?: ReturnType<typeof situacaoDoTituloNaSenior>;
 };
 
 const chaveData = (d: Date) => d.toISOString().slice(0, 10);
@@ -80,7 +83,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       `SELECT NUMCCO, DESCCO, CODBAN, CODAGE, NUMCTA, SITCCO FROM E600CCO WHERE CODEMP = ${COD_EMP_PADRAO} AND NUMCCO = '${numCco.replace(/'/g, "''")}'`
     );
     const l = linhas[0];
-    if (!l) {
+    if (!l || linhas.length !== 1) {
       return NextResponse.json({ error: `A conta interna "${numCco}" não existe na Senior (F600CCO). Confira o código.` }, { status: 422 });
     }
     if (l.SITCCO !== "A") {
@@ -120,12 +123,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const t = item.titulo;
     if (!t) { bloquear("Pagamento sem título vinculado no app — baixar manualmente."); continue; }
     if (!item.dataEfetivacao || !item.valorEfetivado) { bloquear("Retorno sem data/valor efetivo do pagamento."); continue; }
-    if (!/^\d+$/.test(t.codFor) || !/^\d+$/.test(t.codFil)) { bloquear("Código de fornecedor/filial inválido."); continue; }
+    if (![t.codFor, t.codFil].every(c => /^\d+$/.test(c) && Number.isSafeInteger(Number(c)) && Number(c) > 0 && Number(c) <= 2147483647)) { bloquear("Código de fornecedor/filial inválido."); continue; }
+    if (!t.numTit.trim() || t.numTit.length > 15 || !t.tipo.trim() || t.tipo.length > 3 || item.referenciaEmpresa.length > 100) {
+      bloquear("Chave do título excede o contrato da Sênior. Confira o vínculo antes de enviar."); continue;
+    }
 
     let situacao;
     try {
       const linhas = await consultarSenior(
-        `SELECT NUMTIT, CODTPT, CODFOR, SITTIT, VLRABE FROM E501TCP WHERE CODEMP = ${COD_EMP_PADRAO} AND CODFIL = ${t.codFil} ` +
+        `SELECT NUMTIT, CODTPT, CODFOR, SITTIT, VLRABE, ULTPGT FROM E501TCP WHERE CODEMP = ${COD_EMP_PADRAO} AND CODFIL = ${t.codFil} ` +
           `AND CODFOR = ${t.codFor} AND NUMTIT = '${t.numTit.replace(/'/g, "''")}' AND CODTPT = '${t.tipo.replace(/'/g, "''")}'`
       );
       situacao = situacaoDoTituloNaSenior(linhas);
@@ -136,13 +142,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     if (!situacao.existe) { bloquear("Título não encontrado na Senior (empresa/filial/fornecedor/tipo)."); continue; }
     if (!situacao.aberto) {
-      if (situacao.sittit === "LQ" || situacao.sittit === "AB") {
-        analises.push({ ...base, situacao: "JA_BAIXADO", motivo: "A Senior já mostra este título liquidado (sem saldo em aberto)." });
+      if (["LQ", "AB"].includes(situacao.sittit) && situacao.valorAberto === 0) {
+        analises.push({ ...base, situacao: "JA_BAIXADO", situacaoSenior: situacao, motivo: "A Senior já mostra este título liquidado (sem saldo em aberto)." });
       } else {
         // CA (cancelado), PE/AV/LS/LV (situacoes especiais): nao foi pago por baixa normal, nao e' pra baixar.
         bloquear(`Título em situação "${situacao.sittit}" na Senior (cancelado ou especial) — não é baixável automaticamente, conferir na Senior.`);
       }
       continue;
+    }
+    if (["EM_PROCESSAMENTO", "INDETERMINADO"].includes(item.baixaSeniorStatus ?? "")) {
+      bloquear("Baixa em processamento ou sem confirmacao conclusiva. Confira o titulo e a Tesouraria na Senior antes de liberar uma nova tentativa."); continue;
     }
     if (Math.abs(situacao.valorAberto - item.valorEfetivado) >= 0.005) {
       bloquear(
@@ -192,10 +201,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   const agora = new Date();
+  let titulosAtualizados = 0;
   for (const a of analises.filter((x) => x.situacao === "JA_BAIXADO")) {
-    await prisma.remessaItemPagamento.update({
-      where: { id: a.itemId },
-      data: { baixaSeniorStatus: "JA_BAIXADO", baixaSeniorEm: agora, baixaSeniorMsg: a.motivo, baixaSeniorPorId: user.id },
+    titulosAtualizados += await registrarBaixaConferida(prisma, {
+      itemId: a.itemId, status: "JA_BAIXADO", mensagem: a.motivo!, userId: user.id, situacao: a.situacaoSenior!,
     });
   }
 
@@ -212,8 +221,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   for (const grupo of grupos.values()) {
     for (let i = 0; i < grupo.length; i += TAMANHO_LOTE) {
-      const parte = grupo.slice(i, i + TAMANHO_LOTE);
+      const parte: Analise[] = [];
+      for (const a of grupo.slice(i, i + TAMANHO_LOTE)) {
+        if (await reservarItemBaixa(prisma, a.itemId, user.id)) parte.push(a);
+        else {
+          comErro++;
+          erros.push({ numTit: a.numTit, erro: "Outro envio esta em processamento ou o item ja foi tratado. Atualize a previa." });
+        }
+      }
+      if (!parte.length) continue;
       let ok = false;
+      let respostaConclusiva = false;
       let mensagemLote = "";
       let porNumInt = new Map<string, string>();
       try {
@@ -225,8 +243,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           titulos: parte.map((p) => p.envio!),
         });
         ok = r.ok;
+        respostaConclusiva = r.httpOk !== false && (r.ok || r.resultado.toUpperCase() === "ERRO");
         mensagemLote = r.erroExecucao || (r.ok ? "" : `Senior respondeu "${r.resultado || "sem resultado"}"`);
-        porNumInt = new Map(r.itens.filter((x) => x.msgErr).map((x) => [x.numInt, x.msgErr]));
+        porNumInt = new Map(parte.map(a => [a.referencia, erroDoItemBaixa(r, a.referencia) ?? ""]));
       } catch (e: any) {
         // Sem resposta nao quer dizer que nao gravou -- a conferencia ao vivo da
         // proxima tentativa pega "ja baixado" se a Senior tiver gravado.
@@ -235,28 +254,52 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
       for (const a of parte) {
         const msgItem = porNumInt.get(a.referencia);
-        const falhou = !ok;
-        await prisma.remessaItemPagamento.update({
+        let falhou = !ok || !!msgItem;
+        let mensagemConferencia = "";
+        let indeterminado = !respostaConclusiva;
+        let liquidacaoConferida: ReturnType<typeof situacaoDoTituloNaSenior> | null = null;
+        if (!falhou) {
+          // OK no SOAP e aceite da operacao; conferir a liquidacao antes de
+          // registrar a baixa como concluida no app.
+          try {
+            const t = a.envio!;
+            const s = situacaoDoTituloNaSenior(await consultarSenior(
+              `SELECT NUMTIT, CODTPT, CODFOR, SITTIT, VLRABE, ULTPGT FROM E501TCP WHERE CODEMP = ${COD_EMP_PADRAO} AND CODFIL = ${t.codFil} ` +
+              `AND CODFOR = ${t.codFor} AND NUMTIT = '${t.numTit.replace(/'/g, "''")}' AND CODTPT = '${t.codTpt.replace(/'/g, "''")}'`
+            ));
+            if (!s.existe || s.valorAberto !== 0 || !["LQ", "AB"].includes(s.sittit)) {
+              falhou = true; indeterminado = true;
+              mensagemConferencia = "Senior respondeu OK, mas a liquidacao nao foi confirmada na leitura posterior. Conferir titulo e Tesouraria antes de repetir.";
+            } else liquidacaoConferida = s;
+          } catch {
+            falhou = true; indeterminado = true;
+            mensagemConferencia = "Senior respondeu OK, mas a conferencia posterior falhou. Conferir titulo e Tesouraria antes de repetir.";
+          }
+        }
+        if (falhou) await prisma.remessaItemPagamento.update({
           where: { id: a.itemId },
           data: {
-            baixaSeniorStatus: falhou ? "ERRO" : "ENVIADA",
+            baixaSeniorStatus: indeterminado ? "INDETERMINADO" : "ERRO",
             baixaSeniorEm: agora,
-            baixaSeniorMsg: falhou ? msgItem || mensagemLote || "Erro não detalhado pela Senior" : msgItem ?? null,
+            baixaSeniorMsg: mensagemConferencia || msgItem || mensagemLote || "Erro não detalhado pela Senior",
             baixaSeniorPorId: user.id,
           },
         });
         if (falhou) {
           comErro += 1;
-          erros.push({ numTit: a.numTit, erro: msgItem || mensagemLote || "Erro não detalhado pela Senior" });
+          erros.push({ numTit: a.numTit, erro: mensagemConferencia || msgItem || mensagemLote || "Erro não detalhado pela Senior" });
         } else {
+          titulosAtualizados += await registrarBaixaConferida(prisma, {
+            itemId: a.itemId, status: "ENVIADA", mensagem: "Senior respondeu OK e a liquidacao foi conferida (saldo zero).", userId: user.id, situacao: liquidacaoConferida!,
+          });
           enviados += 1;
         }
       }
     }
   }
 
-  // Baixa lancada (ou ja existente): sai a marca "Enviado (aguarda baixa Senior)".
-  // "Pago" na Programacao de Pagamento vem da proxima sincronizacao (VLRABE).
+  // Limpa marcas antigas dos itens ja concluidos. Novas liquidacoes atualizaram
+  // item e programacao atomicamente apos conferencia efetiva na Senior.
   const baixados = await prisma.remessaItemPagamento.findMany({
     where: { remessaId: remessa.id, baixaSeniorStatus: { in: ["ENVIADA", "JA_BAIXADO"] }, tituloId: { not: null } },
     select: { tituloId: true },
@@ -275,5 +318,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     comErro,
     erros,
     jaBaixadosAgora: previa.jaBaixados.length,
+    titulosAtualizados,
   });
 }

@@ -1244,8 +1244,8 @@ model RemessaItemPagamento {
   segmento           String // "A" (credito/TED) ou "J" (boleto)
   formaPagamento     String // codigo da Nota 5 do manual: 01, 41, 43, 30, 31...
   referenciaEmpresa  String   @unique // chave interna do item (continua unica); e' o "Seu Numero" do CNAB quando seuNumero esta vazio
-  // "Seu Numero" no formato da Senior (0 + CODFOR 6 + NUMTIT 10 + CODTPT 3), gravado no CNAB pra
-  // tela de retorno da Senior achar o titulo. Nao e' unico: o mesmo titulo pode estar em mais de uma remessa.
+  // Referencia legada no formato Senior (0 + CODFOR 6 + NUMTIT 10 + CODTPT 3).
+  // Novas remessas usam referenciaEmpresa unica por tentativa; legado pode ser ambiguo.
   seuNumero          String?
 
   favorecidoNome        String
@@ -1277,9 +1277,10 @@ model RemessaItemPagamento {
   ocorrencias        String?  @db.Text // JSON: [{codigo, descricao, recebidoEm}], historico de ocorrencias do retorno (Nota 8)
 
   // Baixa do titulo na Senior (GerarBaixaPorLoteCP) depois que o banco confirmou
-  // o pagamento. null = ainda nao tentada; ENVIADA = Senior respondeu OK;
+  // o pagamento. null = ainda nao tentada; ENVIADA = OK com saldo zero conferido;
   // ERRO = Senior recusou (motivo em baixaSeniorMsg); JA_BAIXADO = a Senior ja
   // tinha o titulo liquidado quando conferimos (nada foi enviado).
+  // EM_PROCESSAMENTO = envio reservado; INDETERMINADO = conferir antes de repetir.
   baixaSeniorStatus  String?
   baixaSeniorEm      DateTime?
   baixaSeniorMsg     String?  @db.Text
@@ -1302,16 +1303,16 @@ model RemessaItemPagamento {
 // vinculo fica no item, nao aqui; este registro e' so o log de importacao).
 model RetornoPagamentoArquivo {
   id               String   @id @default(cuid())
+  hashArquivo      String?  @unique // SHA-256 do CNAB normalizado; impede reimportacao concorrente
+  resultadoImportacao Json? // resumo e remessas vinculadas; preserva pendencias mesmo apos recarregar
   remessaId        String?
   nomeArquivo      String
   totalRegistros   Int      @default(0)
   totalReconhecidos Int     @default(0) // linhas cujo "Seu Numero" bateu com algum RemessaItemPagamento
   processadoPorId  String?
   processadoEm     DateTime @default(now())
-  // 01/10/2026: conteudo bruto do .ret recebido do Itau, guardado pra poder
-  // re-exportar pra Senior (F510PRT exige CNAB240 com extensao valida --
-  // .TXT/.REM/.DOC -- nao a .ret que o banco entrega). Mesmo padrao do
-  // RemessaPagamento.conteudoArquivo.
+  // Conteudo do retorno recebido, preservado para auditoria e download de copia.
+  // Trocar a extensao para .REM nao homologa a importacao nativa na Senior.
   conteudoArquivo  String?  @db.Text
 
   remessa     RemessaPagamento? @relation(fields: [remessaId], references: [id], onDelete: SetNull)

@@ -8,7 +8,8 @@ export function alfa(valor: string | null | undefined, tamanho: number): string 
   const semAcento = (valor ?? "")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
-    .toUpperCase();
+    .toUpperCase()
+    .replace(/[^\x20-\x7E]/g, " ");
   return semAcento.slice(0, tamanho).padEnd(tamanho, " ");
 }
 
@@ -24,7 +25,9 @@ export function numero(valor: number | string, tamanho: number): string {
  * "876,54" em 9(5)V9(2) vira "0087654" (Cap. 3, pag. 10 do manual).
  */
 export function valorMonetario(valor: number, intLen: number, decLen: number): string {
+  if (!Number.isFinite(valor)) throw new Error("Valor monetario nao finito.");
   const centavos = Math.round(valor * 10 ** decLen);
+  if (!Number.isSafeInteger(centavos)) throw new Error("Valor monetario excede a precisao segura do sistema.");
   if (centavos < 0) throw new Error(`Valor monetario negativo nao suportado: ${valor}`);
   return numero(centavos, intLen + decLen);
 }
@@ -56,7 +59,7 @@ export function horaHHMMSS(data: Date): string {
 /** Monta um registro de 240 posicoes a partir de segmentos {texto, tamanho}, validando o total. */
 export function montarRegistro(campos: string[]): string {
   const registro = campos.join("");
-  if (registro.length !== 240) {
+  if (registro.length !== 240 || Buffer.byteLength(registro, "utf8") !== 240 || /[^\x20-\x7E]/.test(registro)) {
     throw new Error(`Registro CNAB240 com tamanho invalido: ${registro.length} (esperado 240)`);
   }
   return registro;
@@ -73,7 +76,8 @@ export function fatiaCrua(linha: string, deInclusive1based: number, ateInclusive
 
 /** Le um campo numerico com virgula assumida de dentro de uma linha do retorno. */
 export function fatiaValor(linha: string, deInclusive1based: number, ateInclusive1based: number, decLen: number): number {
-  const bruto = fatiaCrua(linha, deInclusive1based, ateInclusive1based).replace(/\D/g, "");
+  const bruto = fatiaCrua(linha, deInclusive1based, ateInclusive1based).trim();
+  if (bruto && !/^\d+$/.test(bruto)) throw new Error(`Valor CNAB invalido nas posicoes ${deInclusive1based}-${ateInclusive1based}.`);
   const numeroInt = bruto === "" ? 0 : parseInt(bruto, 10);
   return numeroInt / 10 ** decLen;
 }
@@ -81,10 +85,14 @@ export function fatiaValor(linha: string, deInclusive1based: number, ateInclusiv
 /** Le uma data DDMMAAAA de dentro de uma linha do retorno; null se zerada/vazia. */
 export function fatiaData(linha: string, deInclusive1based: number, ateInclusive1based: number): Date | null {
   const bruto = fatiaCrua(linha, deInclusive1based, ateInclusive1based);
-  if (!/^\d{8}$/.test(bruto) || bruto === "00000000") return null;
+  if (!bruto.trim() || bruto === "00000000") return null;
+  if (!/^\d{8}$/.test(bruto)) throw new Error(`Data CNAB invalida nas posicoes ${deInclusive1based}-${ateInclusive1based}.`);
   const dd = Number(bruto.slice(0, 2));
   const mm = Number(bruto.slice(2, 4));
   const aaaa = Number(bruto.slice(4, 8));
-  if (dd === 0 || mm === 0) return null;
-  return new Date(Date.UTC(aaaa, mm - 1, dd));
+  const data = new Date(Date.UTC(aaaa, mm - 1, dd));
+  if (aaaa < 1900 || data.getUTCFullYear() !== aaaa || data.getUTCMonth() !== mm - 1 || data.getUTCDate() !== dd) {
+    throw new Error(`Data CNAB inexistente: ${bruto}.`);
+  }
+  return data;
 }

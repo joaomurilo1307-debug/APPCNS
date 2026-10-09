@@ -75,6 +75,8 @@ export async function GET(req: Request) {
       valorEfetivado: i.valorEfetivado,
       dataEfetivacao: i.dataEfetivacao,
       baixaSeniorStatus: i.baixaSeniorStatus,
+      baixaSeniorMsg: i.baixaSeniorMsg,
+      baixaSeniorEm: i.baixaSeniorEm,
     })),
     tituloIdsGerados: [...new Set(ativos.map((a) => a.tituloId!))],
   });

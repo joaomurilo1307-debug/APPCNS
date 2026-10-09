@@ -3,6 +3,7 @@ import "./globals.css";
 import Providers from "./providers";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import ResilienciaDeRede from "@/components/ResilienciaDeRede";
+import { seniorSimulada } from "@/lib/ambienteHomologacao";
 
 export const metadata: Metadata = {
   title: "Consominas | Gestão de Projetos e Rotinas",
@@ -29,6 +30,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR">
       <body>
+        {process.env.APP_ENV === "homologacao" && (
+          <div className="bg-amber-200 px-4 py-2 text-center text-sm font-bold text-amber-950">
+            HOMOLOGAÇÃO LOCAL — dados fictícios. Não enviar arquivos ao banco. {seniorSimulada() ? "Sênior simulada." : "Integração Sênior real: confira o ambiente antes de confirmar baixas."}
+          </div>
+        )}
         <ServiceWorkerRegister />
         <ResilienciaDeRede />
         <Providers>{children}</Providers>

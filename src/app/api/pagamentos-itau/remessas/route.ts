@@ -4,7 +4,6 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
-import { seuNumeroSenior } from "@/lib/cnab240/itau/seuNumero";
 import { lerArquivoRetorno } from "@/lib/cnab240/itau/retorno";
 import { casarItemDoRetorno, montarRetornoSimulado } from "@/lib/pagamentos/casarRetorno";
 import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
@@ -72,6 +71,7 @@ export async function GET() {
       qtdRejeitados: r.itens.filter((i) => i.status === "REJEITADO").length,
       qtdBaixados: r.itens.filter((i) => i.baixaSeniorStatus === "ENVIADA" || i.baixaSeniorStatus === "JA_BAIXADO").length,
       qtdErroBaixa: r.itens.filter((i) => i.baixaSeniorStatus === "ERRO").length,
+      qtdBaixaConferir: r.itens.filter((i) => ["INDETERMINADO", "EM_PROCESSAMENTO"].includes(i.baixaSeniorStatus ?? "")).length,
       qtdPagosSemBaixa: r.itens.filter(
         (i) => i.status === "PAGO" && !!i.tituloId && i.baixaSeniorStatus !== "ENVIADA" && i.baixaSeniorStatus !== "JA_BAIXADO"
       ).length,
@@ -135,8 +135,7 @@ export async function POST(req: Request) {
   const grupos = agruparPorArquivo(itensProntos);
   const dataGeracao = new Date();
 
-  // "Seu Numero" no formato da Senior (0 + CODFOR + NUMTIT + CODTPT): e' por ele que
-  // a tela de retorno da Senior acha o titulo (ver lib/cnab240/itau/seuNumero.ts).
+  // O titulo e mantido no app; novas remessas usam referencia unica por tentativa.
   const titulosDosItens = await prisma.tituloContasAPagar.findMany({
     where: { id: { in: itensProntos.map((i) => i.tituloId).filter((id): id is string => !!id) } },
     select: { id: true, numTit: true, codFor: true, tipo: true },
@@ -146,6 +145,24 @@ export async function POST(req: Request) {
   try {
     const resultado = await prisma.$transaction(
       async (tx) => {
+        // Conferencia fora da transacao nao evita duas geracoes simultaneas.
+        // O lock e a releitura abaixo protegem todos os titulos/boletos do lote.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(341241)`;
+        const tituloInvalido = await tx.tituloContasAPagar.findFirst({ where: {
+          id: { in: itensProntos.map(i => i.tituloId).filter((id): id is string => !!id) },
+          OR: [{ pago: true }, { situacao: "CA" }],
+        } });
+        if (tituloInvalido) throw new Error("Título foi pago ou cancelado durante a conferencia. Atualize a programacao antes de gerar.");
+        const ativos = await tx.remessaItemPagamento.findFirst({
+          where: {
+            status: { in: ["PENDENTE", "AGENDADO", "PAGO"] }, remessa: { status: { not: "RASCUNHO" } },
+            OR: [
+              { tituloId: { in: itensProntos.map(i => i.tituloId).filter((id): id is string => !!id) } },
+              { codigoBarras: { in: itensProntos.map(i => i.codigoBarras).filter((b): b is string => !!b) } },
+            ],
+          },
+        });
+        if (ativos) throw new Error("Título ou boleto já possui pagamento pendente/agendado/pago em outra remessa. Confira o retorno do banco antes de gerar novamente.");
         const geradas: {
           id: string;
           nomeArquivo: string | null;
@@ -175,10 +192,11 @@ export async function POST(req: Request) {
             // encontrado testando o fluxo ponta a ponta: cuid() gera ids em
             // minusculo).
             const referenciaEmpresa = `${remessa.id.slice(-8)}-${String(seq).padStart(4, "0")}`.toUpperCase();
-            // Titulo que cabe no formato da Senior leva esse "Seu Numero"; o que nao
-            // cabe (numero com mais de 10 caracteres...) segue com a referencia interna.
             const titulo = item.tituloId ? tituloPorId.get(item.tituloId) : undefined;
-            const seuNumero = titulo ? seuNumeroSenior(titulo) : null;
+            // A remessa nasce fora do Pagamento Eletronico da Senior. Seu Numero
+            // deve ser unico por tentativa; a baixa ocorre pelo web service.
+            // Preservamos leitura do formato Senior em remessas legadas.
+            const seuNumero = null;
             seusNumeros.push({ numTit: titulo?.numTit ?? null, seuNumero: seuNumero ?? referenciaEmpresa, formatoSenior: !!seuNumero });
 
             const itemCriado = await tx.remessaItemPagamento.create({
@@ -235,7 +253,7 @@ export async function POST(req: Request) {
               let noItemErrado = 0;
               const naoCasadas: string[] = [];
               for (const l of lido.itens) {
-                const achado = await casarItemDoRetorno(tx, l.referenciaEmpresa);
+                const achado = await casarItemDoRetorno(tx, l.referenciaEmpresa, l);
                 const esperado = criados.find((c) => c.escrito === l.referenciaEmpresa);
                 if (!achado) naoCasadas.push(l.referenciaEmpresa);
                 else if (esperado && achado.id === esperado.id) certos += 1;

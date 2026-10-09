@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  distDir: process.env.APP_ENV === "homologacao" ? ".next-homologacao" : ".next",
+};
 
 export default nextConfig;

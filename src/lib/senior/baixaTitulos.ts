@@ -52,6 +52,7 @@ export type ResultadoBaixa = {
   resultado: string;
   erroExecucao: string;
   itens: RetornoBaixaTitulo[];
+  httpOk?: boolean;
 };
 
 function escaparXml(texto: string): string {
@@ -75,6 +76,7 @@ export function valorSenior(valor: number): string {
 
 /** Datas dos web services Senior: dd/MM/aaaa (usa a data UTC, que e' como o app guarda datas sem hora). */
 export function dataSenior(data: Date): string {
+  if (!Number.isFinite(data.getTime())) throw new Error("Data de baixa invalida.");
   const dd = String(data.getUTCDate()).padStart(2, "0");
   const mm = String(data.getUTCMonth() + 1).padStart(2, "0");
   return `${dd}/${mm}/${data.getUTCFullYear()}`;
@@ -82,7 +84,15 @@ export function dataSenior(data: Date): string {
 
 export function montarEnvelopeBaixa(lote: LoteBaixa, usuario: string, senha: string): string {
   if (lote.titulos.length === 0) throw new Error("Lote de baixa vazio.");
+  const inteiroSenior = (n: number) => Number.isSafeInteger(n) && n > 0 && n <= 2147483647;
+  if (!inteiroSenior(lote.codEmp) || !inteiroSenior(lote.codFil)) throw new Error("Empresa/filial invalida para baixa.");
   if (!lote.numCco.trim() || lote.numCco.length > 14) throw new Error("numCco invalido (1 a 14 caracteres).");
+  for (const t of lote.titulos) {
+    if (!inteiroSenior(t.codFor) || !inteiroSenior(t.codFil)) throw new Error("Fornecedor/filial invalido para baixa.");
+    if (!t.numTit.trim() || t.numTit.length > 15 || !t.codTpt.trim() || t.codTpt.length > 3 || !t.numInt || t.numInt.length > 100) {
+      throw new Error("Chave do titulo excede o contrato Senior; nenhum identificador pode ser truncado na baixa.");
+    }
+  }
 
   // Os campos saem na ordem do XSD real do servidor (xs:sequence, alfabetica,
   // conferido em ...cpa_titulos?xsd em 02/10/2026), nao na ordem do exemplo do
@@ -120,18 +130,18 @@ export function montarEnvelopeBaixa(lote: LoteBaixa, usuario: string, senha: str
 }
 
 function campo(bloco: string, nome: string): string {
-  const m = new RegExp(`<${nome}>([\\s\\S]*?)</${nome}>`).exec(bloco);
+  const m = new RegExp(`<(?:[\\w-]+:)?${nome}\\b[^>]*>([\\s\\S]*?)</(?:[\\w-]+:)?${nome}>`).exec(bloco);
   return m ? desescaparXml(m[1]).trim() : "";
 }
 
 export function lerRespostaBaixa(texto: string): ResultadoBaixa {
-  const falha = /<faultstring>([\s\S]*?)<\/faultstring>/.exec(texto);
+  const falha = /<(?:[\w-]+:)?faultstring\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?faultstring>/.exec(texto);
   if (falha) return { ok: false, resultado: "", erroExecucao: desescaparXml(falha[1]).trim(), itens: [] };
 
   const resultado = campo(texto, "resultado");
   const erroExecucao = campo(texto, "erroExecucao");
   const itens: RetornoBaixaTitulo[] = [];
-  for (const bloco of texto.matchAll(/<gridRetorno>([\s\S]*?)<\/gridRetorno>/g)) {
+  for (const bloco of texto.matchAll(/<(?:[\w-]+:)?gridRetorno\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?gridRetorno>/g)) {
     itens.push({
       numInt: campo(bloco[1], "numInt"),
       numTit: campo(bloco[1], "numTit"),
@@ -156,14 +166,33 @@ export async function gerarBaixaPorLoteCP(
     method: "POST",
     headers: { "Content-Type": "text/xml; charset=UTF-8", SOAPAction: '""' },
     body: montarEnvelopeBaixa(lote, usuario, senha),
+    signal: AbortSignal.timeout(60_000),
   });
-  return lerRespostaBaixa(await resposta.text());
+  const lido = lerRespostaBaixa(await resposta.text());
+  if (!resposta.ok) return { ...lido, httpOk: false, ok: false, erroExecucao: lido.erroExecucao || `HTTP ${resposta.status} na baixa Senior. Conferir antes de repetir.` };
+  return { ...lido, httpOk: true };
 }
 
 /** "1658,55" (formato da Senior) -> 1658.55. */
 export function numeroDaSenior(valor: string | undefined): number {
-  if (!valor) return 0;
-  return Number(valor.replace(/\./g, "").replace(",", ".")) || 0;
+  if (!valor || !/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(valor.trim())) {
+    throw new Error("Saldo da Senior ausente ou invalido; a baixa precisa de conferencia manual.");
+  }
+  const numero = Number(valor.trim().replace(/\./g, "").replace(",", "."));
+  if (!Number.isFinite(numero)) throw new Error("Saldo da Senior fora do intervalo numerico.");
+  return numero;
+}
+
+/** Data real da ultima liquidacao (ULTPGT). Ausencia nao deve inventar a data. */
+export function dataPagamentoNaSenior(valor?: string): Date | null {
+  if (!valor) return null;
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})(?:\s.*)?$/.exec(valor.trim());
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/.exec(valor.trim());
+  if (!br && !iso) return null;
+  const [ano, mes, dia] = br ? [Number(br[3]), Number(br[2]), Number(br[1])] : [Number(iso![1]), Number(iso![2]), Number(iso![3])];
+  if (ano <= 1900) return null;
+  const data = new Date(Date.UTC(ano, mes - 1, dia));
+  return data.getUTCFullYear() === ano && data.getUTCMonth() === mes - 1 && data.getUTCDate() === dia ? data : null;
 }
 
 /** Conferencia ao vivo (somente leitura): situacao do titulo na Senior e quanto falta pagar. */
@@ -172,9 +201,11 @@ export function situacaoDoTituloNaSenior(linhas: LinhaSenior[]): {
   aberto: boolean;
   sittit: string;
   valorAberto: number;
+  dataPagamento: Date | null;
 } {
-  if (linhas.length === 0) return { existe: false, aberto: false, sittit: "", valorAberto: 0 };
+  if (linhas.length === 0) return { existe: false, aberto: false, sittit: "", valorAberto: 0, dataPagamento: null };
   const l = linhas[0];
+  if (linhas.length !== 1) throw new Error("Consulta do titulo retornou mais de uma linha; conferir chave na Senior.");
   const valorAberto = numeroDaSenior(l.VLRABE);
-  return { existe: true, aberto: l.SITTIT === "AB" && valorAberto > 0, sittit: l.SITTIT ?? "", valorAberto };
+  return { existe: true, aberto: l.SITTIT === "AB" && valorAberto > 0, sittit: l.SITTIT ?? "", valorAberto, dataPagamento: dataPagamentoNaSenior(l.ULTPGT) };
 }

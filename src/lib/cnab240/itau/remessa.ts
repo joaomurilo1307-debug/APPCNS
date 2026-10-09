@@ -348,11 +348,12 @@ export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], da
         linhas.push(detalheSegmentoA(numeroLoteStr, numeroRegistro, item));
         registrosDetalhe += 1;
       }
-      valorTotalLote += item.valor;
+      valorTotalLote += Math.round(item.valor * 100); // totaliza em centavos inteiros
     });
     totalRegistros += registrosDetalhe;
 
     // qtd registros do lote inclui header+detalhes (todos os segmentos)+trailer (Nota 17)
+    valorTotalLote /= 100;
     linhas.push(trailerLote(numeroLoteStr, registrosDetalhe + 2, valorTotalLote));
     totalRegistros += 1;
 
@@ -365,7 +366,7 @@ export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], da
   return {
     conteudo: linhas.join(QUEBRA_LINHA) + QUEBRA_LINHA,
     totalRegistros,
-    totalValor: itens.reduce((s, i) => s + i.valor, 0),
+    totalValor: itens.reduce((s, i) => s + Math.round(i.valor * 100), 0) / 100,
     lotes,
   };
 }

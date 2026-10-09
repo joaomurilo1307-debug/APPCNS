@@ -43,6 +43,13 @@ export type OcorrenciaRetorno = {
 
 export type ItemRetorno = {
   segmento: "A" | "J";
+  formaPagamento: string;
+  contaDebito: ContaDebito;
+  dataProgramada: Date | null;
+  valorProgramado: number;
+  codigoBarras?: string;
+  favorecidoDocumento?: string;
+  contaFavorecido?: { banco: string; agencia: string; conta: string; dac: string };
   referenciaEmpresa: string; // "Seu Numero" lido de volta -- usado pra casar com o item da remessa
   nossoNumero: string | null;
   dataEfetiva: Date | null;

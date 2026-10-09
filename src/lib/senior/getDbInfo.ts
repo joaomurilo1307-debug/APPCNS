@@ -72,6 +72,7 @@ export async function consultarSenior(sql: string): Promise<LinhaSenior[]> {
       method: "POST",
       headers: { "Content-Type": "text/xml; charset=UTF-8", SOAPAction: '""' },
       body: montarEnvelope(sql, params),
+      signal: AbortSignal.timeout(60_000),
     });
     const texto = await resposta.text();
 

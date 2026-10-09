@@ -5,16 +5,9 @@ import { prisma } from "@/lib/prisma";
 
 const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
-// Reexporta o retorno (CNAB240) já importado aqui pro formato que a Sênior
-// aceita em Finanças > Contas a Pagar > Pagamento Eletrônico > Retorno
-// (F510PRT, ver documentacao.senior.com.br/.../pagamento-eletronico.htm).
-// O Pagamento Eletrônico da Sênior é construído sobre o MESMO padrão CNAB
-// 240 que o Itaú já entrega -- não existe layout próprio pra converter.
-// O que a Sênior valida ali é a EXTENSÃO do arquivo ("por exemplo .TXT, .REM
-// e .DOC") -- o .ret que o banco entrega não está nessa lista. Normaliza a
-// quebra de linha pra CRLF (padrão CNAB240, mesmo usado por
-// lib/cnab240/itau/remessa.ts) por garantia, caso o arquivo tenha passado
-// por algo que uniformizou pra LF no caminho até aqui.
+// Disponibiliza uma copia do retorno importado, com CRLF e extensao .REM.
+// A extensao nao converte o layout nem comprova compatibilidade com F510PRT.
+// O fluxo de remessa externa usa a baixa SOAP, apos validacao do retorno.
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });

@@ -1,5 +1,9 @@
 # Integração bancária Itaú — SISPAG, DDA e Conciliação Bancária
 
+> **Fluxo atual, 09/10/2026:** [Importar retorno, conferir e concluir baixa na Sênior](fluxo-retorno-itau-baixa-senior.md). Inclui resumo persistente, tratamento individual do SOAP, reconciliação sem reenvio e atualização imediata da programação após conferir a liquidação no ERP.
+
+> **Atualização de 08/10/2026:** a referência atual para o fluxo e as correções é o [relatório de auditoria e homologação local](auditoria-financeiro-itau-2026-10-08.md). As seções abaixo registram fases anteriores. Novas remessas usam referência única por tentativa; agendamento não autoriza baixa; baixa SOAP exige conferência por item e saldo posterior. Baixar uma cópia `.REM` não comprova compatibilidade com a F510PRT. A validação com arquivos reais e o ERP de produção ainda está pendente.
+
 Contexto: a Consominas Engenharia está com três implantações técnicas em andamento junto ao Itaú (confirmadas pelos e-mails de "Tracking de solicitação" recebidos em 03/09/2026):
 
 | Produto | Protocolo | O que é |

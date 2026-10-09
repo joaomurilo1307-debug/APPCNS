@@ -1,0 +1,59 @@
+name: Validacao financeiro Itau
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'prisma/**'
+      - 'scripts/homologacao/**'
+      - 'scripts/preparar-homologacao.ts'
+      - 'tests/**'
+      - 'package.json'
+      - 'next.config.mjs'
+      - 'tsconfig.json'
+      - '.github/workflows/financeiro-itau.yml'
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  homologacao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres-homologacao-ficticia
+          POSTGRES_DB: consominas_gestao_dev
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - name: Preparar base ficticia isolada
+        run: |
+          printf '%s\n' 'DATABASE_URL=postgresql://postgres:postgres-homologacao-ficticia@localhost:5432/consominas_gestao_dev' > .env
+          npm run homologacao:preparar
+      - run: npm run test:financeiro
+      - run: npm run homologacao:build
+      - name: Validar rotas reais com Senior simulada
+        run: |
+          npm run homologacao:start > /tmp/itau-app.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+          for tentativa in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3001/api/homologacao/ambiente > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run test:financeiro:http || { tail -n 100 /tmp/itau-app.log; exit 1; }

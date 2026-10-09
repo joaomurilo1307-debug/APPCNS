@@ -13,7 +13,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
-import { motivoSemSeuNumeroSenior } from "@/lib/cnab240/itau/seuNumero";
 import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { linhaDigitavelParaCodigoBarras, parseCodigoBarras, valorDoCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
@@ -340,18 +339,6 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
           )
         );
       }
-      // O retorno da Senior acha o titulo pelo "Seu Numero" (0 + fornecedor 6 + numero 10 + tipo 3):
-      // titulo que nao cabe nesse formato segue com a referencia interna, e o retorno dele so' casa aqui.
-      const motivoFormato = motivoSemSeuNumeroSenior(titulo);
-      if (motivoFormato && titulo.tipo !== "PRV" && segmentoDaForma(item.formaPagamento ?? "") !== "J") {
-        problemas.push(
-          problema(
-            "titulo",
-            `O retorno deste título não vai casar na tela de retorno da Senior: ${motivoFormato}. O retorno do banco ainda casa aqui no sistema (e a baixa pode ser feita pelo botão "Baixar na Sênior"), mas na Senior o lançamento fica manual.`,
-            "aviso"
-          )
-        );
-      }
       const descricaoForma = titulo.codFpg ? catalogoForma.get(titulo.codFpg) ?? null : null;
       if (descricaoForma && /cart[aã]o/i.test(descricaoForma)) {
         problemas.push(
@@ -377,11 +364,11 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
         // pagar por aqui -- então vira aviso forte; quem decide é o usuário.
         const mensagem =
           titulo.situacao === "CA"
-            ? "Título CANCELADO no Senior (CA) -- só mande pra remessa se o cancelamento foi engano; senão você paga algo que a Senior considera inexistente."
+            ? "Título CANCELADO no Senior (CA) — corrija a situação na Senior antes de gerar pagamento."
             : `Título em situação especial no Senior (${titulo.situacao}) -- normalmente é porque entrou numa remessa da própria Senior. ` +
               `Se essa remessa foi rejeitada/cancelada e o pagamento sai por aqui, tudo certo; se ela ainda puder ser paga, será pagamento em dobro. ` +
               `Depois de pago, a baixa na Senior fica manual (o botão "Baixar na Sênior" não mexe em título fora de Aberto).`;
-        problemas.push(problema("titulo", mensagem, "aviso"));
+        problemas.push(problema("titulo", mensagem, titulo.situacao === "CA" ? "erro" : "aviso"));
       }
       if ((repeticoes.get(titulo.id) ?? 0) > 1) {
         problemas.push(problema("titulo", "Este título aparece mais de uma vez no carrinho -- deixe só uma.", "erro"));
@@ -393,7 +380,7 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
           problema(
             "titulo",
             `Já consta na remessa ${primeiro.arquivo ?? "(sem nome)"} (${STATUS_LEGIVEL[primeiro.status] ?? primeiro.status}) -- gerar de novo pode pagar em dobro.`,
-            "aviso"
+            "erro"
           )
         );
       }

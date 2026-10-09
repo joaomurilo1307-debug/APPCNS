@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.next-homologacao/
 out/
 .env
 .env.local
@@ -14,3 +15,6 @@ build_log*.txt
 tsconfig.tsbuildinfo
 senior-descobrir-saida*.txt
 .claude/
+.env.homologacao
+uploads-homologacao/
+tmp/

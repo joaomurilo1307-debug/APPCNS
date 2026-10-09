@@ -162,6 +162,7 @@ export async function POST(req: Request) {
         vencimentoProgramado: item.vencimentoProgramado ? new Date(item.vencimentoProgramado) : null,
         valorOriginal: item.valorOriginal,
         valorAberto: item.valorAberto,
+        dataPagamento: item.dataPagamento ? new Date(item.dataPagamento) : null,
         ...(item.fornecedorNome ? { fornecedorNome: item.fornecedorNome } : {}),
         ...camposDePagamento(item),
       } : {

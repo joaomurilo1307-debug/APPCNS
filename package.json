@@ -9,7 +9,14 @@
     "postinstall": "prisma generate",
     "seed": "tsx prisma/seed.ts",
     "senior:descobrir": "tsx --env-file=.env scripts/senior-descobrir.ts",
-    "senior:sync": "tsx --env-file=.env scripts/senior-sync-pagamentos.ts"
+    "senior:sync": "tsx --env-file=.env scripts/senior-sync-pagamentos.ts",
+    "homologacao:preparar": "tsx --env-file=.env scripts/preparar-homologacao.ts",
+    "homologacao:dev": "node --env-file=.env.homologacao node_modules/next/dist/bin/next dev -p 3001 -H 127.0.0.1",
+    "test:financeiro": "tsx --env-file=.env.homologacao --test tests/financeiro.test.ts",
+    "test:financeiro:http": "tsx --env-file=.env.homologacao tests/financeiro-http.ts",
+    "homologacao:senior": "tsx --env-file=.env.homologacao scripts/homologacao/senior-simulado.ts --servidor",
+    "homologacao:build": "node --env-file=.env.homologacao node_modules/next/dist/bin/next build",
+    "homologacao:start": "node --env-file=.env.homologacao node_modules/next/dist/bin/next start -p 3001 -H 127.0.0.1"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",

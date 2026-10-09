@@ -87,6 +87,18 @@ export const OCORRENCIAS: Record<string, string> = {
   RJ: "Registro rejeitado",
   NI: "Tributo/titulo ja foi pago ou esta vencido",
   BI: "CNPJ/CPF do favorecido no segmento J-52/B invalido",
+  IR: "Pagamento alterado",
+  LA: "Data de pagamento de um lote alterada",
+  LC: "Lote de pagamentos cancelado",
+  DV: "DOC/TED devolvido pelo banco favorecido",
+  EX: "Devolucao de OP nao sacada pelo favorecido",
+  CP: "Confirmacao de OP cumprida",
+  EM: "Confirmacao de OP emitida",
+  TI: "Titularidade invalida",
+  AP: "Data de pagamento invalida",
+  CF: "Valor do documento invalido",
+  IP: "DAC do codigo de barras invalido",
+  NR: "Operacao nao realizada",
 };
 
 export function descricaoOcorrencia(codigo: string): string {
@@ -94,4 +106,4 @@ export function descricaoOcorrencia(codigo: string): string {
 }
 
 /** Ocorrencias que representam sucesso (nao sao erro/rejeicao). */
-export const OCORRENCIAS_POSITIVAS = new Set(["00", "AE", "BD", "IR", "CP", "EM"]);
+export const OCORRENCIAS_POSITIVAS = new Set(["00", "AE", "BD", "BE", "IR", "CP", "EM", "LA"]);

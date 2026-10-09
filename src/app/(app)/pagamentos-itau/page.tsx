@@ -241,6 +241,14 @@ type PreviaBaixa = {
   comErro?: number;
   erros?: { numTit: string; erro: string }[];
   simulacao: boolean;
+  titulosAtualizados?: number;
+};
+
+type PainelBaixa = { remessaId: string; arquivo: string; numCco: string; previa: PreviaBaixa | null; carregando: boolean; erro: string | null };
+type RemessaDoRetorno = { id: string; nomeArquivo: string | null; contaNumCcoSenior: string | null; qtdProntos: number; qtdConferir: number; qtdConcluidos: number };
+type RetornoImportado = {
+  id: string; nomeArquivo: string; processadoEm: string; totalRegistros: number; totalReconhecidos: number;
+  naoReconhecidos: string[]; resumoStatus: Record<string, number>; remessasVinculadas: RemessaDoRetorno[]; legadoSemResumo: boolean;
 };
 
 type Remessa = {
@@ -259,6 +267,7 @@ type Remessa = {
   qtdPagosSemBaixa: number;
   qtdBaixados: number;
   qtdErroBaixa: number;
+  qtdBaixaConferir: number;
   contaNumCcoSenior: string | null;
   retornos: RetornoDaRemessa[];
 };
@@ -343,6 +352,8 @@ type ItemHistorico = {
   valorEfetivado: number | null;
   dataEfetivacao: string | null;
   baixaSeniorStatus: string | null;
+  baixaSeniorMsg: string | null;
+  baixaSeniorEm: string | null;
 };
 
 const TIPO_CHAVE_PIX_ITAU: Record<string, string> = { "01": "telefone", "02": "e-mail", "03": "CPF/CNPJ", "04": "aleatória" };
@@ -412,6 +423,10 @@ export default function PagamentosItauPage() {
   const [contas, setContas] = useState<ContaBancaria[]>([]);
   const [contaSelecionadaId, setContaSelecionadaId] = useState("");
   const [remessas, setRemessas] = useState<Remessa[]>([]);
+  const [retornos, setRetornos] = useState<RetornoImportado[]>([]);
+  const [ultimoRetornoId, setUltimoRetornoId] = useState<string | null>(null);
+  const [mostrarTodosRetornos, setMostrarTodosRetornos] = useState(false);
+  const [importandoRetorno, setImportandoRetorno] = useState(false);
   // Histórico de pagamentos já gerados em remessa + os títulos que já viraram remessa ativa
   // (pendente/agendado/pago): não ficam no carrinho nem na lista de títulos em aberto.
   const [historico, setHistorico] = useState<{ itens: ItemHistorico[]; total: number }>({ itens: [], total: 0 });
@@ -427,14 +442,8 @@ export default function PagamentosItauPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
-  const [painelBaixa, setPainelBaixa] = useState<{
-    remessaId: string;
-    arquivo: string;
-    numCco: string;
-    previa: PreviaBaixa | null;
-    carregando: boolean;
-    erro: string | null;
-  } | null>(null);
+  const [painelBaixa, setPainelBaixa] = useState<PainelBaixa | null>(null);
+  const sequenciaBaixa = useRef(0);
   const [gerando, setGerando] = useState(false);
   const [mostrarFormConta, setMostrarFormConta] = useState(false);
   const [novaConta, setNovaConta] = useState({ apelido: "", cnpj: "", agencia: "", conta: "", dac: "" });
@@ -462,16 +471,17 @@ export default function PagamentosItauPage() {
 
   function carregarTudo(consultarTodos = false) {
     setLoading(true);
-    Promise.all([
+    return Promise.all([
       fetch("/api/titulos-pagar").then(lerOuFalhar),
       fetch("/api/pagamentos-itau/contas").then(lerOuFalhar),
       fetch("/api/pagamentos-itau/remessas").then(lerOuFalhar),
+      fetch("/api/pagamentos-itau/retornos").then(lerOuFalhar),
       // Sem o histórico a tela segue funcionando (só não consegue tirar do carrinho o que já virou remessa).
       fetch("/api/pagamentos-itau/historico")
         .then((r) => (r.ok ? r.json() : { itens: [], total: 0, tituloIdsGerados: [] }))
         .catch(() => ({ itens: [], total: 0, tituloIdsGerados: [] })),
     ])
-      .then(([tit, cont, rem, hist]) => {
+      .then(([tit, cont, rem, ret, hist]) => {
         setFalhaCarga(false);
         setErro(null);
         const todosAbertos: Titulo[] = (tit.titulos ?? []).filter((t: Titulo) => !t.pago);
@@ -510,6 +520,7 @@ export default function PagamentosItauPage() {
         setContas(cont.contas ?? []);
         setContaSelecionadaId((atual) => atual || (cont.contas ?? [])[0]?.id || "");
         setRemessas(rem.remessas ?? []);
+        setRetornos(ret.retornos ?? []);
 
         // Handoff da Programação de Pagamento (30/09/2026): a pessoa seleciona
         // lá e manda pra cá sem redigitar -- os ids chegam pelo sessionStorage,
@@ -1105,37 +1116,50 @@ export default function PagamentosItauPage() {
       );
       carregarTudo();
     } catch (e: any) {
-      setErro(`Falha de comunicação ao gerar a remessa: ${e.message}. Nada foi gerado.`);
+      setErro(`Não foi possível confirmar a geração: ${e.message}. Confira as remessas e o histórico antes de tentar novamente.`);
     } finally {
       setGerando(false);
     }
   }
 
-  async function chamarBaixa(confirmar: boolean) {
-    if (!painelBaixa) return;
+  async function chamarBaixa(confirmar: boolean, painelInicial?: PainelBaixa) {
+    const painel = painelInicial ?? painelBaixa;
+    if (!painel) return;
+    const pedido = ++sequenciaBaixa.current;
     setPainelBaixa((p) => (p ? { ...p, carregando: true, erro: null } : p));
     try {
-      const res = await fetch(`/api/pagamentos-itau/remessas/${painelBaixa.remessaId}/baixa-senior`, {
+      const res = await fetch(`/api/pagamentos-itau/remessas/${painel.remessaId}/baixa-senior`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmar, ...(painelBaixa.numCco.trim() ? { numCcoSenior: painelBaixa.numCco.trim() } : {}) }),
+        body: JSON.stringify({ confirmar, ...(painel.numCco.trim() ? { numCcoSenior: painel.numCco.trim() } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao conferir a baixa");
-      setPainelBaixa((p) => (p ? { ...p, previa: data, numCco: data.numCco ?? p.numCco, carregando: false } : p));
+      if (pedido === sequenciaBaixa.current) setPainelBaixa((p) => (p?.remessaId === painel.remessaId ? { ...p, previa: data, numCco: data.numCco ?? p.numCco, carregando: false } : p));
       if (confirmar) carregarTudo();
     } catch (e: any) {
-      setPainelBaixa((p) => (p ? { ...p, carregando: false, erro: e.message } : p));
+      if (pedido === sequenciaBaixa.current) setPainelBaixa((p) => (p?.remessaId === painel.remessaId ? { ...p, carregando: false, previa: null, erro: `${e.message}. Confira novamente a prévia antes de enviar.` } : p));
+      if (confirmar) carregarTudo();
     }
   }
 
-  function abrirBaixa(r: Remessa) {
-    setPainelBaixa({ remessaId: r.id, arquivo: r.nomeArquivo ?? r.id, numCco: r.contaNumCcoSenior ?? "", previa: null, carregando: false, erro: null });
+  function abrirBaixa(r: Pick<Remessa, "id" | "nomeArquivo" | "contaNumCcoSenior">) {
+    const painel: PainelBaixa = { remessaId: r.id, arquivo: r.nomeArquivo ?? r.id, numCco: r.contaNumCcoSenior ?? "", previa: null, carregando: false, erro: null };
+    setPainelBaixa(painel);
+    if (painel.numCco) chamarBaixa(false, painel);
   }
 
+  useEffect(() => {
+    if (painelBaixa?.remessaId) document.getElementById("painel-baixa-senior")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [painelBaixa?.remessaId]);
+
   async function enviarRetorno(file: File) {
+    if (importandoRetorno) return;
     setErro(null);
     setMensagem(null);
+    setImportandoRetorno(true);
+    try {
+    if (file.size > 10_000_000) throw new Error("Arquivo excede o limite de 10 MB.");
     const conteudo = await file.text();
     const res = await fetch("/api/pagamentos-itau/retornos", {
       method: "POST",
@@ -1147,18 +1171,28 @@ export default function PagamentosItauPage() {
       setErro(data.error || "Erro ao processar retorno");
       return;
     }
+    setUltimoRetornoId(data.retorno.id);
     const r = data.resumoStatus ?? {};
+    if (data.duplicado) {
+      setMensagem("Este retorno já foi importado. As pendências atuais aparecem abaixo; você pode continuar a conferência e a baixa sem reprocessar o arquivo.");
+      carregarTudo();
+      return;
+    }
     setMensagem(
       `Retorno processado: ${data.totalReconhecidos} de ${data.totalLido} pagamento(s) reconhecidos` +
         ` — ${r.PAGO ?? 0} pago(s), ${r.AGENDADO ?? 0} agendado(s), ${r.REJEITADO ?? 0} rejeitado(s), ${r.CANCELADO ?? 0} cancelado(s).` +
         (data.naoReconhecidos.length > 0 ? ` ${data.naoReconhecidos.length} sem correspondência.` : "") +
         (data.prontosParaBaixa > 0
-          ? ` ${data.prontosParaBaixa} pronto(s) para baixa na Sênior (botão "Baixar pago(s) na Sênior" na remessa).`
+          ? ` ${data.prontosParaBaixa} pronto(s) para conferência e baixa na Sênior. Continue pelo resultado da importação abaixo.`
           : (r.AGENDADO ?? 0) > 0
             ? " Os agendados só ficam prontos para baixa no retorno do dia do pagamento."
             : "")
     );
     carregarTudo();
+    } catch (e: any) {
+      await carregarTudo();
+      setErro(`Não foi possível confirmar a importação: ${e.message}. Confira os retornos importados antes de repetir.`);
+    } finally { setImportandoRetorno(false); }
   }
 
   if (loading) return <div className="p-6 text-sm text-gray-500">Carregando...</div>;
@@ -1174,6 +1208,10 @@ export default function PagamentosItauPage() {
           em arquivo separado de boleto/TED — o sistema separa sozinho, numa geração só. Antes de gerar, a Conferência mostra o que
           falta em cada título; só gera quando não sobra nenhum problema. Quando tudo vier vazio, é porque a Senior não tem nenhum
           cadastro de pagamento pra esse fornecedor — peça direto a ele.
+        </p>
+        <p className="mt-2 max-w-3xl text-sm font-medium text-sky-800">
+          Para concluir os pagamentos: importe o retorno do Itaú, confira os títulos e confirme a baixa na Sênior pelo sistema.
+          A programação é atualizada após a liquidação ser conferida na Sênior.
         </p>
       </div>
 
@@ -1712,8 +1750,8 @@ export default function PagamentosItauPage() {
                   )}
                   {item.segmento === "J" && item.codigoBarras.trim() && item.senior?.completo && item.senior.codBarSenior === false && (
                     <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
-                      Este código de barras está só aqui. A Senior acha o boleto no retorno pelo campo <span className="font-medium">código de barras do título</span>{" "}
-                      (CODBAR) — grave o mesmo código no título lá, senão o retorno desse boleto não casa na Senior e a baixa fica manual.
+                      Este código de barras está preenchido no app. O retorno será vinculado à referência desta remessa;
+                      a baixa pelo sistema usa o título vinculado na Sênior, após confirmação do pagamento pelo Itaú.
                     </p>
                   )}
                   {(problemasPorChave.get(item.chave) ?? []).length > 0 && (
@@ -1737,21 +1775,48 @@ export default function PagamentosItauPage() {
         <div className="flex items-center justify-between border-b border-gray-100 p-3">
           <p className="text-sm font-semibold text-gray-700">Remessas geradas</p>
           <label className="cursor-pointer rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
-            Importar arquivo de retorno
+            {importandoRetorno ? "Validando retorno..." : "Importar arquivo de retorno"}
             <input
               type="file"
-              accept=".ret,.txt"
+              accept=".ret,.txt,.rem,.dat"
+              disabled={importandoRetorno}
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) enviarRetorno(file);
+                if (file) void enviarRetorno(file);
                 e.target.value = "";
               }}
             />
           </label>
         </div>
+        {retornos.length > 0 && (
+          <div className="space-y-2 border-b border-gray-100 bg-gray-50/50 p-4 text-xs">
+            <p className="font-semibold text-gray-800">Últimos retornos importados — continue a conferência e a baixa</p>
+            {([...retornos.filter(r => r.id === ultimoRetornoId), ...retornos.filter(r => r.id !== ultimoRetornoId)]).slice(0, mostrarTodosRetornos ? 50 : 5).map(ret => (
+              <details key={ret.id} open={ret.id === ultimoRetornoId} className="rounded-lg border border-gray-200 bg-white p-3">
+                <summary className="cursor-pointer font-medium text-gray-700">
+                  {ret.nomeArquivo} — {ret.totalReconhecidos}/{ret.totalRegistros} reconhecidos — {formatData(ret.processadoEm)}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {ret.legadoSemResumo ? <p className="text-gray-500">Arquivo histórico sem resumo detalhado. Confira a remessa vinculada.</p> : (
+                    <p>{ret.resumoStatus.PAGO ?? 0} pago(s), {ret.resumoStatus.AGENDADO ?? 0} agendado(s), {ret.resumoStatus.REJEITADO ?? 0} rejeitado(s), {ret.resumoStatus.CANCELADO ?? 0} cancelado(s).</p>
+                  )}
+                  {ret.naoReconhecidos.length > 0 && <p className="break-all rounded bg-amber-50 p-2 text-amber-800">Sem correspondência; não foram enviados à Sênior: {ret.naoReconhecidos.join(", ")}.</p>}
+                  {ret.remessasVinculadas.map(r => (
+                    <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2">
+                      <span>{r.nomeArquivo ?? r.id}: {r.qtdProntos} a conferir para baixa, {r.qtdConferir} inconclusivo(s), {r.qtdConcluidos} concluído(s) na Sênior.</span>
+                      {(r.qtdProntos > 0 || r.qtdConferir > 0) && <button disabled={painelBaixa?.carregando} onClick={() => abrirBaixa(r)} className="rounded-lg bg-brand px-3 py-1.5 font-medium text-white disabled:opacity-50">Conferir na Sênior</button>}
+                    </div>
+                  ))}
+                  {(ret.resumoStatus.AGENDADO ?? 0) > 0 && <p className="text-sky-800">Agendamentos aguardam o retorno de liquidação do banco e não autorizam baixa.</p>}
+                </div>
+              </details>
+            ))}
+            {retornos.length > 5 && <button onClick={() => setMostrarTodosRetornos(v => !v)} className="text-brand underline">{mostrarTodosRetornos ? "Mostrar apenas os últimos 5" : "Ver os últimos 50 retornos"}</button>}
+          </div>
+        )}
         {painelBaixa && (
-          <div className="space-y-3 border-b border-gray-100 bg-sky-50/50 p-4 text-sm">
+          <div id="painel-baixa-senior" className="space-y-3 border-b border-gray-100 bg-sky-50/50 p-4 text-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-semibold text-gray-800">Baixa na Sênior — {painelBaixa.arquivo}</p>
@@ -1760,7 +1825,7 @@ export default function PagamentosItauPage() {
                   e com valor pago igual ao em aberto.
                 </p>
               </div>
-              <button onClick={() => setPainelBaixa(null)} className="text-xs text-gray-500 underline">
+              <button disabled={painelBaixa.carregando} onClick={() => { sequenciaBaixa.current++; setPainelBaixa(null); }} className="text-xs text-gray-500 underline disabled:opacity-50">
                 fechar
               </button>
             </div>
@@ -1768,6 +1833,7 @@ export default function PagamentosItauPage() {
               Conta interna da Sênior (numCco, tela F600CCO):
               <input
                 value={painelBaixa.numCco}
+                disabled={painelBaixa.carregando}
                 onChange={(e) => setPainelBaixa((p) => (p ? { ...p, numCco: e.target.value, previa: null } : p))}
                 maxLength={14}
                 placeholder="ex.: 341"
@@ -1798,11 +1864,11 @@ export default function PagamentosItauPage() {
                 ) : (
                   <p className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-800">
                     Resultado: {painelBaixa.previa.enviados ?? 0} baixado(s) com sucesso, {painelBaixa.previa.comErro ?? 0} com erro,{" "}
-                    {painelBaixa.previa.jaBaixados.length} já estavam baixados na Sênior. A Programação de Pagamento mostra "Pago" na próxima
-                    sincronização com a Sênior (até ~10 min).
+                    {painelBaixa.previa.jaBaixados.length} já estavam baixados na Sênior. {painelBaixa.previa.titulosAtualizados ?? 0} título(s)
+                    atualizado(s) na Programação de Pagamento após conferência na Sênior.
                   </p>
                 )}
-                {painelBaixa.previa.elegiveis.length > 0 && (
+                {painelBaixa.previa.simulacao && painelBaixa.previa.elegiveis.length > 0 && (
                   <ul className="max-h-40 overflow-auto rounded-lg bg-white p-2 text-xs text-gray-700">
                     {painelBaixa.previa.elegiveis.map((i) => (
                       <li key={i.itemId}>
@@ -1829,13 +1895,16 @@ export default function PagamentosItauPage() {
                     ))}
                   </ul>
                 )}
-                {painelBaixa.previa.simulacao && painelBaixa.previa.elegiveis.length > 0 && (
+                {painelBaixa.previa.jaBaixados.length > 0 && <p className="text-xs text-emerald-700">Já liquidados na Sênior: {painelBaixa.previa.jaBaixados.map(i => i.numTit).join(", ")}. A confirmação conclui a conferência destes itens sem reenviar a baixa.</p>}
+                {painelBaixa.previa.simulacao && (painelBaixa.previa.elegiveis.length > 0 || painelBaixa.previa.jaBaixados.length > 0) && (
                   <button
                     onClick={() => {
                       if (
                         window.confirm(
                           `Gravar a baixa de ${painelBaixa.previa!.elegiveis.length} título(s), total ${formatMoeda(painelBaixa.previa!.totalElegivel)}, ` +
-                            `na conta interna "${painelBaixa.numCco}" da Sênior? Isso escreve no contas a pagar e na tesouraria da Sênior.`
+                            `na conta interna "${painelBaixa.numCco}" da Sênior? ` +
+                            (painelBaixa.previa!.elegiveis.length ? "Isso escreve no contas a pagar e na tesouraria da Sênior. " : "Nenhuma nova baixa será enviada. ") +
+                            `${painelBaixa.previa!.jaBaixados.length} título(s) já liquidado(s) serão atualizados no sistema.`
                         )
                       )
                         chamarBaixa(true);
@@ -1843,7 +1912,7 @@ export default function PagamentosItauPage() {
                     disabled={painelBaixa.carregando}
                     className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                   >
-                    Confirmar baixa na Sênior
+                    {painelBaixa.previa.elegiveis.length > 0 ? "Confirmar baixa na Sênior" : "Concluir conferência dos já liquidados"}
                   </button>
                 )}
               </div>
@@ -1891,6 +1960,11 @@ export default function PagamentosItauPage() {
                       {r.qtdErroBaixa} erro de baixa
                     </span>
                   )}
+                  {r.qtdBaixaConferir > 0 && (
+                    <span className="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800" title="Envio em processamento ou sem confirmação conclusiva. Abra a prévia e confira a Sênior antes de repetir.">
+                      {r.qtdBaixaConferir} baixa(s) a conferir
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{formatMoeda(r.totalValor)}</td>
                 <td className="px-3 py-1.5 text-right">
@@ -1921,10 +1995,10 @@ export default function PagamentosItauPage() {
                     {ret.temArquivo ? (
                       <a
                         href={`/api/pagamentos-itau/retornos/${ret.id}/arquivo-senior`}
-                        title="Mesmo retorno (CNAB240), com quebra de linha CRLF e extensão .REM, pra importar em Finanças > Contas a Pagar > Pagamento Eletrônico > Retorno (F510PRT) na Sênior"
+                        title="Cópia do retorno original em CRLF. A baixa dos arquivos gerados aqui é feita pelo web service; esta cópia não garante importação no Pagamento Eletrônico da Sênior."
                         className="text-[11px] text-brand underline decoration-dotted underline-offset-2"
                       >
-                        baixar p/ Sênior (.REM)
+                        baixar cópia do retorno (.REM)
                       </a>
                     ) : (
                       <span className="text-[11px] text-gray-300" title="Retorno importado antes desta função existir — sem conteúdo salvo pra reexportar">
@@ -2004,10 +2078,16 @@ export default function PagamentosItauPage() {
                       {STATUS_ITEM_ROTULO[i.status] ?? i.status}
                     </span>
                     {i.baixaSeniorStatus === "ENVIADA" || i.baixaSeniorStatus === "JA_BAIXADO" ? (
-                      <span className="ml-1 text-[10px] text-emerald-700" title="Baixa lançada na Senior">
+                      <span className="ml-1 text-[10px] text-emerald-700" title={i.baixaSeniorMsg ?? "Baixa conferida na Sênior"}>
                         baixado na Senior
                       </span>
                     ) : null}
+                    {["EM_PROCESSAMENTO", "INDETERMINADO"].includes(i.baixaSeniorStatus ?? "") && (
+                      <span className="ml-1 text-[10px] text-amber-800" title={i.baixaSeniorMsg ?? "Confira o título e a Tesouraria na Sênior antes de repetir a baixa."}>
+                        baixa a conferir
+                      </span>
+                    )}
+                    {i.baixaSeniorStatus === "ERRO" && <span className="ml-1 text-[10px] text-red-700" title={i.baixaSeniorMsg ?? undefined}>erro de baixa</span>}
                   </td>
                 </tr>
               ))}
