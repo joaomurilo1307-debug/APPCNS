@@ -14,6 +14,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
 import { ehCartaoCredito } from "./cartaoCredito";
+import { buscarDadosPagamento, type DadosSeniorDoTitulo } from "../senior/dadosPagamentoTitulos";
 import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { linhaDigitavelParaCodigoBarras, parseCodigoBarras, valorDoCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
@@ -45,6 +46,7 @@ export const itemRemessaSchema = z.object({
   contaFavorecido: texto,
   dacFavorecido: texto,
   codigoBarras: texto,
+  beneficiarioBoletoConferido: texto,
   chavePixTipo: texto,
   chavePixValor: texto,
   valor: numero,
@@ -235,7 +237,7 @@ export function resumirConferencia(linhas: LinhaConferencia[]): ResumoConferenci
   };
 }
 
-export async function conferirItensRemessa(itensOriginais: ItemConferencia[], contaDebito?: ContaDebito): Promise<RelatorioConferencia> {
+export async function conferirItensRemessa(itensOriginais: ItemConferencia[], contaDebito?: ContaDebito, verificarSenior = false): Promise<RelatorioConferencia> {
   // Chave PIX que e' o CPF/CNPJ do favorecido digitado como telefone e' corrigida sozinha (tipo 03) e
   // vira aviso -- o mesmo ajuste que prepararItem faz na hora de montar o arquivo.
   const correcoesChave = itensOriginais.map((i) =>
@@ -259,6 +261,8 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
       numTit: true,
       fornecedorNome: true,
       codFor: true,
+      codFil: true,
+      dataEmissao: true,
       tipo: true,
       codFpg: true,
       situacao: true,
@@ -269,6 +273,17 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
   });
   const porId = new Map(titulos.map((t) => [t.id, t]));
   const catalogoForma = await carregarCatalogoFormasPagamento().catch(() => new Map<string, string>());
+  const dadosAtuais = new Map<string, DadosSeniorDoTitulo>();
+  const falhasLeitura = new Map<string, string>();
+  if (verificarSenior) {
+    const pedidos = titulos.filter(t=>t.tipo !== "PRV").map(t=>({tituloId:t.id,numTit:t.numTit,codFil:t.codFil,codFor:t.codFor,tipo:t.tipo,dataEmissao:t.dataEmissao.toISOString().slice(0,10),numOcp:null}));
+    for (let k=0;k<pedidos.length;k+=100) {
+      const lote=pedidos.slice(k,k+100);
+      const leitura=await buscarDadosPagamento(lote);
+      for (const d of leitura.dados) dadosAtuais.set(d.tituloId,d);
+      if (leitura.avisos.length) for (const p of lote) falhasLeitura.set(p.tituloId,"Consulta atual da Senior incompleta. Atualize os dados e tente novamente; nenhum dado incompleto pode confirmar a geracao.");
+    }
+  }
 
   // Itens desse titulo que ja estao numa remessa gerada e ainda valem
   // (pendente/agendado/pago): gerar outra vez pode pagar em dobro.
@@ -323,6 +338,33 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
       }
     }
     const titulo = item.tituloId ? porId.get(item.tituloId) : undefined;
+    if (verificarSenior && titulo && titulo.tipo !== "PRV") {
+      const d = dadosAtuais.get(titulo.id);
+      if (falhasLeitura.has(titulo.id)) problemas.push(problema("titulo", falhasLeitura.get(titulo.id)!, "erro"));
+      else if (!d?.achouNoSenior) problemas.push(problema("titulo", d?.problemas?.join(" ") || "Titulo nao localizado com identificacao completa na Senior. Atualize a programacao.", "erro"));
+      else {
+        if (ehCartaoCredito(d.codFpgTitulo, d.formaPagamentoTitulo)) problemas.push(problema("formaPagamento","Cartao de Credito confirmado no titulo atual da Senior: nao pode gerar remessa.","erro"));
+        const descricaoForma = (d.formaPagamentoTitulo ?? "").toLowerCase();
+        const tituloBoleto = d.codFpgTitulo === "18" || descricaoForma.includes("boleto");
+        const tituloPix = d.codFpgTitulo === "19" || descricaoForma.includes("pix");
+        if ((tituloBoleto && segmentoDaForma(item.formaPagamento ?? "") !== "J") || (tituloPix && !ehPix({ formaPagamento: item.formaPagamento ?? "" }))) {
+          problemas.push(problema("formaPagamento", "Forma de pagamento do carrinho difere da forma atual do titulo na Senior. Atualize os dados antes de gerar.", "erro"));
+        }
+        if (segmentoDaForma(item.formaPagamento ?? "") === "J" && d.codigoBarras) {
+          let barras: string | null = null;
+          try { barras=linhaDigitavelParaCodigoBarras(item.codigoBarras ?? ""); } catch { /* erro ja indicado */ }
+          if (barras && barras !== d.codigoBarras) problemas.push(problema("codigoBarras","O boleto do carrinho difere do codigo atual deste titulo na Senior. Atualize os dados; nao e permitido cruzar boletos entre titulos.","erro"));
+        }
+        const documento=(item.favorecidoDocumento ?? "").replace(/\D/g, "");
+        if (d.origemDocumento === "titulo" && !d.documento) problemas.push(problema("favorecidoDocumento","Documento do favorecido informado no titulo atual da Senior e invalido ou ambiguo. Corrija o titulo antes de gerar.","erro"));
+        if (d.origemDocumento === "titulo" && d.documento && documento !== d.documento) problemas.push(problema("favorecidoDocumento","CPF/CNPJ do carrinho difere do favorecido informado no titulo atual da Senior. Atualize os dados ou corrija o cadastro do titulo.","erro"));
+        if (d.conta?.fonte === "titulo" && d.conta.dac && segmentoDaForma(item.formaPagamento ?? "") === "A" && item.formaPagamento !== "45") {
+          const valores=[item.bancoFavorecido,item.agenciaFavorecido,item.contaFavorecido,item.dacFavorecido].map(v=>(v??"").replace(/^0+/,""));
+          const atuais=[d.conta.banco,d.conta.agencia,d.conta.conta,d.conta.dac].map(v=>v.replace(/^0+/,""));
+          if (JSON.stringify(valores)!==JSON.stringify(atuais)) problemas.push(problema("contaFavorecido","Conta do carrinho difere da conta preenchida no titulo atual da Senior. Atualize os dados antes de gerar.","erro"));
+        }
+      }
+    }
 
     if (item.tituloId && !titulo) {
       problemas.push(
@@ -357,7 +399,7 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
       if (descricaoForma && /boleto/i.test(descricaoForma)) {
         for (const p of problemas) {
           if (p.campo === "codigoBarras" && p.gravidade === "erro" && p.mensagem.startsWith("Boleto sem código de barras")) {
-            p.mensagem += ` Na Senior este título está como "${descricaoForma}", mas a Senior não guarda a linha digitável (o campo vem vazio em todos os títulos) — copie do boleto/PDF do fornecedor.`;
+            p.mensagem += ` Na Senior este título está como "${descricaoForma}". Atualize os dados do titulo; se a consulta confirmar que o codigo nao esta cadastrado, copie do boleto/PDF do fornecedor.`;
           }
         }
       }

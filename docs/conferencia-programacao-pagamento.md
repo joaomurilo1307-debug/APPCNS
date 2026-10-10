@@ -6,7 +6,7 @@ Atualização de 09/10/2026. Escopo: corrigir a consulta e a apresentação dos 
 
 Ao abrir o descritivo da OC a partir da Programação, o modal recebe os IDs dos títulos vinculados. Consulta os dados pela mesma rota e pelas mesmas regras de preenchimento usadas em Pagamentos Itaú, com o modo `conferencia: true`. Esse modo restringe a consulta E501TCP aos números solicitados na empresa 1 e exige coincidência de filial, fornecedor, tipo e data de emissão. Correspondência ambígua não é apresentada como confirmada.
 
-O código e a descrição exibidos vêm exclusivamente de `E501TCP.CODFPG`. Os campos adicionais `codFpgTitulo` e `formaPagamentoTitulo` distinguem essa informação do fallback de forma da OC que o carrinho já utilizava. Se o título não informar forma, a conferência informa isso; não substitui pela forma da OC.
+O código e a descrição exibidos vêm exclusivamente de `E501TCP.CODFPG`. Os campos adicionais `codFpgTitulo` e `formaPagamentoTitulo` identificam essa origem. Se o título não informar forma, a conferência informa isso; não substitui pela forma da OC. A auditoria de remessa de 09/10 estendeu a identificação completa e a forma exclusiva do título também à consulta do carrinho, conforme [Busca dos dados da remessa](auditoria-busca-dados-remessa.md).
 
 CPF/CNPJ, conta, chave PIX e boleto seguem a consulta compartilhada com Pagamentos Itaú. A conta pode vir do título ou do cadastro do fornecedor; um complemento digitado na OC continua identificado como tal. O modal mostra os dados encontrados por título, a origem da conta/chave e o horário da consulta. Parcelas com formas distintas não compartilham conteúdo. Se a leitura estiver incompleta, a tela não afirma que um dado esteja ausente na Sênior.
 

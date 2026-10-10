@@ -5,6 +5,8 @@ import type { CampoItem, ProblemaItem } from "@/lib/cnab240/itau/validacaoItem";
 import type { RelatorioConferencia } from "@/lib/pagamentos/conferenciaRemessa";
 import { removerDaSelecaoSalva } from "@/lib/selecaoProgramacao";
 import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
+import { montarBlocoSenior, podeAtualizarPagamento } from "@/lib/pagamentos/preenchimentoRemessa";
+import { identificacaoBeneficiarioBoleto } from "@/lib/pagamentos/beneficiarioBoleto";
 
 type Titulo = {
   id: string;
@@ -33,6 +35,8 @@ type DadosSenior = {
   tituloId: string;
   numOcp: string | null;
   documento: string | null;
+  origemDocumento?: string | null;
+  problemas?: string[];
   conta: { banco: string; agencia: string; conta: string; dac: string; fonte: "titulo" | "cadastro" | "oc"; nota?: string } | null;
   chavePix: { tipo: "01" | "02" | "03" | "04"; valor: string; fonte: "titulo" | "cadastro" | "oc" } | null;
   codigoBarras: string | null;
@@ -63,7 +67,7 @@ type ContaBancaria = {
 type Segmento = "A" | "J";
 
 type ItemCarrinho = {
-  chave: string; // numTit|codFil|codFor pra achar de volta o titulo original
+  chave: string; // ID completo do titulo: numero/fornecedor nao distinguem tipos e emissoes.
   tituloId: string | null;
   numTit: string;
   fornecedorNome: string;
@@ -89,8 +93,10 @@ type ItemCarrinho = {
   // automaticamente). Serve pra, quando a Senior mudar esse dado, atualizar o item
   // SÓ se ninguém tiver mexido nele à mão (bloco ainda igual à foto).
   snapshotAuto?: string;
+  snapshotDocumentoAuto?: string;
+  beneficiarioBoletoConferido?: string | null;
   // Última leitura ao vivo na Senior deste título: o que ela tinha na hora.
-  senior?: { consultadoEm: string; temPagamento: boolean; completo: boolean; forma: string | null; numOcp: string | null; codBarSenior: boolean };
+  senior?: { consultadoEm: string; temPagamento: boolean; completo: boolean; forma: string | null; numOcp: string | null; codBarSenior: boolean; tituloLocalizado?: boolean; origemDocumento?: string | null; problemas?: string[] };
   // Conta/PIX que vieram da OC (texto digitado pelo comprador), não do cadastro
   // da Senior -- a tela pede conferência. Só vale enquanto o bloco está intacto.
   dadosDaOc?: string;
@@ -160,62 +166,26 @@ function aplicarDadosSenior(item: ItemCarrinho, d: DadosSenior, consultadoEm: st
   const preencheu: string[] = [];
   const proximo: ItemCarrinho = { ...item };
   const temPagamento = !!(d.codigoBarras || d.conta || d.chavePix);
-  proximo.senior = { consultadoEm, temPagamento, completo, forma: d.formaPagamento, numOcp: d.numOcp, codBarSenior: !!d.codigoBarras };
+  proximo.senior = { consultadoEm, temPagamento, completo, forma: d.formaPagamento, numOcp: d.numOcp, codBarSenior: !!d.codigoBarras, tituloLocalizado:d.achouNoSenior, origemDocumento:d.origemDocumento, problemas:d.problemas };
+  if (!d.achouNoSenior || !completo) return {item:proximo,preencheu};
 
-  if (!soDigitosTexto(item.favorecidoDocumento) && d.documento) {
+  if ((!soDigitosTexto(item.favorecidoDocumento) || item.snapshotDocumentoAuto === item.favorecidoDocumento) && d.documento) {
     proximo.favorecidoDocumento = d.documento;
     proximo.favorecidoTipoDoc = d.documento.length === 11 ? "1" : "2";
+    proximo.snapshotDocumentoAuto = d.documento;
     preencheu.push("CPF/CNPJ");
   }
 
-  if (itemSemDadoDePagamento(item)) {
+  if (podeAtualizarPagamento(item)) {
     const daOc = d.conta?.fonte === "oc" || (!d.conta && d.chavePix?.fonte === "oc");
-    let aplicou = false;
-    if (d.codigoBarras) {
-      Object.assign(proximo, { segmento: "J", formaPagamento: "31", codigoBarras: d.codigoBarras });
-      preencheu.push("código de barras");
-      aplicou = true;
-    } else if (d.conta) {
-      const itau = d.conta.banco === "341" || d.conta.banco === "409";
-      Object.assign(proximo, {
-        segmento: "A",
-        formaPagamento: d.chavePix ? "45" : itau ? "01" : "41",
-        bancoFavorecido: d.conta.banco,
-        agenciaFavorecido: d.conta.agencia,
-        contaFavorecido: d.conta.conta,
-        dacFavorecido: d.conta.dac,
-        chavePixTipo: d.chavePix?.tipo,
-        chavePixValor: d.chavePix?.valor,
-        chavePix: d.chavePix ? d.chavePix.valor : undefined,
-      });
-      preencheu.push(daOc ? "conta (da OC)" : "conta");
-      aplicou = true;
-    } else if (d.chavePix) {
-      Object.assign(proximo, {
-        segmento: "A",
-        formaPagamento: "45",
-        bancoFavorecido: "",
-        agenciaFavorecido: "",
-        contaFavorecido: "",
-        dacFavorecido: "",
-        chavePixTipo: d.chavePix.tipo,
-        chavePixValor: d.chavePix.valor,
-        chavePix: d.chavePix.valor,
-      });
-      preencheu.push(daOc ? "chave PIX (da OC)" : "chave PIX");
-      aplicou = true;
-    }
-    if (aplicou) {
+    const bloco = montarBlocoSenior(d);
+    if (bloco) {
+      Object.assign(proximo,bloco,{chavePix:bloco.chavePixValor});
+      preencheu.push(bloco.segmento === "J" ? "boleto do título" : d.conta ? "conta do título/cadastro" : "PIX do título");
       Object.assign(proximo, ajustarChavePix(proximo));
       proximo.preenchidoAutomaticamente = true;
       proximo.snapshotAuto = blocoPagamento(proximo);
       proximo.dadosDaOc = daOc ? (d.numOcp ? `OC ${d.numOcp}` : "OC") : undefined;
-    } else if (item.formaPagamento === "01" && !item.preenchidoAutomaticamente) {
-      // Nada a preencher, mas a Senior diz como esse título é pago: já deixa a
-      // forma certa pra a conferência cobrar o dado certo (linha digitável ou chave).
-      const forma = formaDaSenior(d.codFpg, d.formaPagamento);
-      if (forma === "boleto") Object.assign(proximo, { segmento: "J", formaPagamento: "31", bancoFavorecido: "", codigoBarras: "" });
-      if (forma === "pix") Object.assign(proximo, { segmento: "A", formaPagamento: "45", bancoFavorecido: "" });
     }
   }
 
@@ -254,6 +224,7 @@ type RetornoImportado = {
 
 type Remessa = {
   id: string;
+  arquivadaEm: string | null;
   status: string;
   nomeArquivo: string | null;
   contaApelido: string;
@@ -424,6 +395,9 @@ export default function PagamentosItauPage() {
   const [contas, setContas] = useState<ContaBancaria[]>([]);
   const [contaSelecionadaId, setContaSelecionadaId] = useState("");
   const [remessas, setRemessas] = useState<Remessa[]>([]);
+  const [mostrarArquivadas, setMostrarArquivadas] = useState(false);
+  const [limpandoRemessas, setLimpandoRemessas] = useState(false);
+  const remessasVisiveis = remessas.filter(r => mostrarArquivadas || !r.arquivadaEm);
   const [retornos, setRetornos] = useState<RetornoImportado[]>([]);
   const [ultimoRetornoId, setUltimoRetornoId] = useState<string | null>(null);
   const [mostrarTodosRetornos, setMostrarTodosRetornos] = useState(false);
@@ -477,10 +451,7 @@ export default function PagamentosItauPage() {
       fetch("/api/pagamentos-itau/contas").then(lerOuFalhar),
       fetch("/api/pagamentos-itau/remessas").then(lerOuFalhar),
       fetch("/api/pagamentos-itau/retornos").then(lerOuFalhar),
-      // Sem o histórico a tela segue funcionando (só não consegue tirar do carrinho o que já virou remessa).
-      fetch("/api/pagamentos-itau/historico")
-        .then((r) => (r.ok ? r.json() : { itens: [], total: 0, tituloIdsGerados: [] }))
-        .catch(() => ({ itens: [], total: 0, tituloIdsGerados: [] })),
+      fetch("/api/pagamentos-itau/historico").then(lerOuFalhar),
     ])
       .then(([tit, cont, rem, ret, hist]) => {
         setFalhaCarga(false);
@@ -598,7 +569,7 @@ export default function PagamentosItauPage() {
   useEffect(() => {
     const r = lerRascunho();
     if (r.carrinho?.length) {
-      setCarrinho(r.carrinho);
+      setCarrinho(r.carrinho.map(i=>({...i,chave:i.tituloId ?? i.chave})));
       setMensagem(`Rascunho anterior restaurado: ${r.carrinho.length} item(ns) no carrinho que ainda não tinham virado remessa.`);
     }
     if (r.contaSelecionadaId) setContaSelecionadaId(r.contaSelecionadaId);
@@ -659,10 +630,12 @@ export default function PagamentosItauPage() {
       const { item: novo, preencheu } = aplicarDadosSenior(item, d, resultado.consultadoEm, resultado.completo);
       if (preencheu.length > 0) preenchidos.push(`${item.numTit} (${preencheu.join(", ")})`);
       if (novo.dadosDaOc) daOc.push(item.numTit);
-      if (resultado.completo && !novo.senior?.temPagamento && !novo.preenchidoAutomaticamente && itemSemDadoDePagamento(novo)) semNada.push(item.numTit);
+      if (resultado.completo && d.achouNoSenior && !novo.senior?.temPagamento && !novo.preenchidoAutomaticamente && itemSemDadoDePagamento(novo)) semNada.push(item.numTit);
       return novo;
     });
-    setCarrinho(itens);
+    // Uma resposta de leitura atrasada nunca reinsere um pagamento removido.
+    const porChave = new Map(itens.map(i => [i.chave, i]));
+    setCarrinho(atuais => atuais.map(i => porChave.get(i.chave) ?? i));
     if (notificar) {
       const hora = new Date(resultado.consultadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
       const partes = [resultado.completo ? `Senior consultada agora (${hora}).` : `Senior consultada às ${hora}, mas parte das consultas não respondeu — o resultado abaixo pode estar incompleto.`];
@@ -785,9 +758,9 @@ export default function PagamentosItauPage() {
 
   const titulosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    const jaNoCarrinho = new Set(carrinho.map((i) => i.chave));
+    const jaNoCarrinho = new Set(carrinho.map((i) => i.tituloId));
     return titulos
-      .filter((t) => !jaNoCarrinho.has(`${t.numTit}|${t.codFil}|${t.codFor}`))
+      .filter((t) => !jaNoCarrinho.has(t.id))
       .filter((t) => mostrarJaGerados || !idsGerados.has(t.id))
       .filter(
         (t) =>
@@ -823,7 +796,7 @@ export default function PagamentosItauPage() {
     // base, igual pros três casos.
     const documento = t.documentoFavorecido ?? "";
     const base: ItemCarrinho = {
-      chave: `${t.numTit}|${t.codFil}|${t.codFor}`,
+      chave: t.id,
       tituloId: t.id,
       numTit: t.numTit,
       fornecedorNome: t.fornecedorNome,
@@ -833,6 +806,7 @@ export default function PagamentosItauPage() {
       formaPagamento: "01",
       favorecidoTipoDoc: documento.length === 11 ? "1" : "2",
       favorecidoDocumento: documento,
+      snapshotDocumentoAuto: documento,
       bancoFavorecido: "341",
       agenciaFavorecido: "",
       contaFavorecido: "",
@@ -1070,6 +1044,7 @@ export default function PagamentosItauPage() {
       contaFavorecido: i.segmento === "A" ? i.contaFavorecido : undefined,
       dacFavorecido: i.segmento === "A" ? i.dacFavorecido : undefined,
       codigoBarras: i.segmento === "J" ? i.codigoBarras.replace(/\D/g, "") : undefined,
+      beneficiarioBoletoConferido: i.beneficiarioBoletoConferido,
       chavePixTipo: i.formaPagamento === "45" ? i.chavePixTipo : undefined,
       chavePixValor: i.formaPagamento === "45" ? i.chavePixValor : undefined,
       valor: i.valor,
@@ -1086,7 +1061,7 @@ export default function PagamentosItauPage() {
   // `somenteValidos`: gera só com os itens sem erro e deixa os outros no
   // carrinho, já marcados, pra corrigir e gerar depois.
   async function gerarRemessa(somenteValidos = false) {
-    if (!contaSelecionadaId || carrinho.length === 0) return;
+    if (loading || falhaCarga || !contaSelecionadaId || carrinho.length === 0) return;
     setGerando(true);
     setErro(null);
     setMensagem(null);
@@ -1106,7 +1081,13 @@ export default function PagamentosItauPage() {
       const geradas: { nomeArquivo: string | null; tipo: string; qtdItens: number; totalValor: number }[] = data.remessas ?? [];
       const ignorados: { indice: number }[] = data.ignorados ?? [];
       const chavesFicaram = new Set(ignorados.map((l) => carrinho[l.indice]?.chave).filter((c): c is string => !!c));
-      setCarrinho((c) => c.filter((i) => chavesFicaram.has(i.chave)));
+      const chavesEnviadas = new Set(carrinho.map(i => i.chave));
+      const restantes = carrinhoRef.current.filter(i => !chavesEnviadas.has(i.chave) || chavesFicaram.has(i.chave));
+      carrinhoRef.current = restantes;
+      setCarrinho(restantes);
+      salvarRascunho({ carrinho: restantes, contaSelecionadaId, busca, vencDe, vencAte });
+      const geradosAgora = carrinho.filter(i => !chavesFicaram.has(i.chave)).map(i => i.tituloId).filter((id): id is string => !!id);
+      setIdsGerados(atuais => new Set([...atuais, ...geradosAgora]));
       removerDaSelecaoSalva(carrinho.filter((i) => !chavesFicaram.has(i.chave)).map((i) => i.tituloId));
       setMensagem(
         `Remessa gerada: ${geradas
@@ -1123,6 +1104,22 @@ export default function PagamentosItauPage() {
     } finally {
       setGerando(false);
     }
+  }
+
+  async function limparRemessas(acao: "limpar" | "restaurar") {
+    const selecionadas = remessas.filter(r => acao === "limpar" ? !r.arquivadaEm : !!r.arquivadaEm);
+    if (!selecionadas.length) return;
+    setLimpandoRemessas(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/pagamentos-itau/remessas/limpar", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao, remessaIds: selecionadas.map(r => r.id) }) });
+      const data = await lerOuFalhar(res);
+      await carregarTudo();
+      setMensagem(`${data.quantidade} remessa(s) ${acao === "limpar" ? "arquivada(s)" : "restaurada(s)"}. Os pagamentos e retornos continuam no histórico.`);
+    } catch (e: any) { setErro(e.message); }
+    finally { setLimpandoRemessas(false); }
   }
 
   async function chamarBaixa(confirmar: boolean, painelInicial?: PainelBaixa) {
@@ -1207,10 +1204,10 @@ export default function PagamentosItauPage() {
         <p className="mt-0.5 max-w-3xl text-sm text-gray-500">
           Gera o arquivo de remessa CNAB240 (padrão SISPAG do Itaú) a partir de títulos em aberto e processa o arquivo de retorno
           para atualizar o status de cada pagamento. Boleto, conta bancária ou chave PIX vêm direto da sincronização com a
-          Senior (atualize com o botão abaixo se o título for recente), na prioridade boleto → conta → chave PIX. O Itaú exige o PIX
+          Senior, respeitando a forma do título. O Itaú exige o PIX
           em arquivo separado de boleto/TED — o sistema separa sozinho, numa geração só. Antes de gerar, a Conferência mostra o que
-          falta em cada título; só gera quando não sobra nenhum problema. Quando tudo vier vazio, é porque a Senior não tem nenhum
-          cadastro de pagamento pra esse fornecedor — peça direto a ele.
+          falta em cada título. A geração consulta novamente a Sênior e bloqueia dados incompletos ou divergentes.
+          Confira o beneficiário de cada boleto: o CPF/CNPJ do fornecedor pode ser diferente do registrado no banco.
         </p>
         <p className="mt-2 max-w-3xl text-sm font-medium text-sky-800">
           Para concluir os pagamentos: importe o retorno do Itaú, confira os títulos e confirme a baixa na Sênior pelo sistema.
@@ -1413,7 +1410,7 @@ export default function PagamentosItauPage() {
               </span>
               <button
                 onClick={() => gerarRemessa(true)}
-                disabled={gerando || !contaSelecionadaId}
+                disabled={loading || falhaCarga || gerando || !contaSelecionadaId}
                 className="rounded-lg border border-brand px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand-light disabled:opacity-40"
               >
                 Gerar só com os {relatorio.resumo.total - relatorio.resumo.comErro} sem problema
@@ -1492,7 +1489,7 @@ export default function PagamentosItauPage() {
             <table className="w-full text-[13px]">
               <tbody>
                 {titulosFiltrados.map((t) => (
-                  <tr key={`${t.numTit}-${t.codFil}-${t.codFor}`} className="border-b border-gray-50">
+                  <tr key={t.id} className="border-b border-gray-50">
                     <td className="max-w-[110px] truncate px-3 py-1.5 font-medium text-gray-800">{t.numTit}</td>
                     <td className="max-w-[160px] truncate px-3 py-1.5" title={t.fornecedorNome}>
                       {t.fornecedorNome}
@@ -1544,7 +1541,7 @@ export default function PagamentosItauPage() {
             <p className="text-sm font-semibold text-gray-700">Itens da remessa ({carrinho.length})</p>
             <button
               onClick={() => gerarRemessa(false)}
-              disabled={gerando || carrinho.length === 0 || !contaSelecionadaId || (relatorio?.resumo.comErro ?? 0) > 0 || !!relatorio?.erroGeral}
+              disabled={loading || falhaCarga || gerando || carrinho.length === 0 || !contaSelecionadaId || (relatorio?.resumo.comErro ?? 0) > 0 || !!relatorio?.erroGeral}
               title={
                 (relatorio?.resumo.comErro ?? 0) > 0 || !!relatorio?.erroGeral
                   ? "Há itens com dado faltando ou errado -- veja a Conferência acima e corrija antes de gerar."
@@ -1729,7 +1726,7 @@ export default function PagamentosItauPage() {
                           DAC
                           <input
                             value={item.dacFavorecido}
-                            onChange={(e) => atualizarItem(item.chave, { dacFavorecido: e.target.value.replace(/\D/g, "").slice(0, 1) })}
+                            onChange={(e) => atualizarItem(item.chave, { dacFavorecido: e.target.value.replace(/[^0-9xXpP]/g, "").toUpperCase().slice(0, 1) })}
                             className={classeCampo(item.chave, "dacFavorecido")}
                           />
                         </label>
@@ -1742,12 +1739,24 @@ export default function PagamentosItauPage() {
                       </p>
                     )}
                   </div>
-                  {item.senior && item.senior.completo && !item.senior.temPagamento && itemSemDadoDePagamento(item) && (
+                  {item.senior?.problemas?.map((p,k)=><p key={k} className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{p}</p>)}
+                  {item.segmento === "J" && (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      <p>CPF/CNPJ consultado: {item.senior?.origemDocumento === "titulo" ? "favorecido do titulo" : item.senior?.origemDocumento === "cadastro" ? "favorecido do cadastro" : item.senior?.origemDocumento === "fornecedor" ? "cadastro do fornecedor (pode ser diferente do beneficiario do boleto)" : "preenchimento local/manual"}. A validacao dos digitos do boleto e do documento nao consulta o cadastro CIP.</p>
+                      <label className="mt-2 flex items-start gap-2 font-medium">
+                        <input type="checkbox" aria-label={`Conferir beneficiario do boleto ${item.numTit}`} disabled={!identificacaoBeneficiarioBoleto(item.favorecidoDocumento,item.codigoBarras)}
+                          checked={!!item.beneficiarioBoletoConferido && item.beneficiarioBoletoConferido === identificacaoBeneficiarioBoleto(item.favorecidoDocumento,item.codigoBarras)}
+                          onChange={e=>atualizarItem(item.chave,{beneficiarioBoletoConferido:e.target.checked?identificacaoBeneficiarioBoleto(item.favorecidoDocumento,item.codigoBarras):null})}/>
+                        Conferi este CPF/CNPJ com o beneficiario registrado no boleto ou na consulta do banco.
+                      </label>
+                    </div>
+                  )}
+                  {item.senior?.tituloLocalizado && item.senior.completo && !item.senior.temPagamento && itemSemDadoDePagamento(item) && (
                     <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
                       Conferi na Senior às{" "}
                       {new Date(item.senior.consultadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}:{" "}
                       {/boleto/i.test(item.senior.forma ?? "")
-                        ? `este título é "${item.senior.forma}" na Senior, mas ela não guarda a linha digitável — copie do boleto/PDF que o fornecedor mandou e cole no campo do código de barras.`
+                        ? `este título é "${item.senior.forma}" na Senior, mas a consulta deste titulo nao retornou uma linha digitavel valida. Confira os avisos e o cadastro, ou copie do boleto/PDF do fornecedor.`
                         : `sem boleto, sem conta bancária e sem chave PIX pra este fornecedor${item.senior.numOcp ? ` (nem na OC ${item.senior.numOcp})` : ""}. Preencha aqui com o que o fornecedor mandar — ou cadastre na Senior e clique em “↻ Atualizar dados dos itens”.`}
                     </p>
                   )}
@@ -1777,6 +1786,10 @@ export default function PagamentosItauPage() {
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-gray-100 p-3">
           <p className="text-sm font-semibold text-gray-700">Remessas geradas</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-xs text-gray-600"><input type="checkbox" checked={mostrarArquivadas} onChange={e => setMostrarArquivadas(e.target.checked)} /> Mostrar arquivadas</label>
+            <button onClick={() => limparRemessas("limpar")} disabled={limpandoRemessas || !remessas.some(r => !r.arquivadaEm)} className="text-xs text-brand underline disabled:opacity-40" title="Arquiva a lista e preserva o histórico, os retornos e os bloqueios contra pagamento duplicado">Limpar todas as remessas</button>
+            {mostrarArquivadas && <button onClick={() => limparRemessas("restaurar")} disabled={limpandoRemessas || !remessas.some(r => r.arquivadaEm)} className="text-xs text-brand underline disabled:opacity-40">Restaurar remessas</button>}
           <label className="cursor-pointer rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
             {importandoRetorno ? "Validando retorno..." : "Importar arquivo de retorno"}
             <input
@@ -1791,6 +1804,7 @@ export default function PagamentosItauPage() {
               }}
             />
           </label>
+          </div>
         </div>
         {retornos.length > 0 && (
           <div className="space-y-2 border-b border-gray-100 bg-gray-50/50 p-4 text-xs">
@@ -1935,9 +1949,9 @@ export default function PagamentosItauPage() {
             </tr>
           </thead>
           <tbody>
-            {remessas.map((r) => (
+            {remessasVisiveis.map((r) => (
               <tr key={r.id} className="border-t border-gray-50">
-                <td className="px-3 py-1.5 font-medium text-gray-800">{r.nomeArquivo ?? "—"}</td>
+                <td className="px-3 py-1.5 font-medium text-gray-800">{r.nomeArquivo ?? "—"}{r.arquivadaEm && <span className="ml-2 text-xs text-gray-400">arquivada</span>}</td>
                 <td className="px-3 py-1.5 text-gray-500">{r.contaApelido}</td>
                 <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(r.criadoEm)}</td>
                 <td className="px-3 py-1.5">
@@ -1986,7 +2000,7 @@ export default function PagamentosItauPage() {
                 </td>
               </tr>
             ))}
-            {remessas.flatMap((r) =>
+            {remessasVisiveis.flatMap((r) =>
               r.retornos.map((ret) => (
                 <tr key={ret.id} className="border-t border-gray-50 bg-gray-50/40 text-gray-500">
                   <td className="px-3 py-1 pl-6 text-[12px]" colSpan={3}>
@@ -2012,10 +2026,10 @@ export default function PagamentosItauPage() {
                 </tr>
               ))
             )}
-            {remessas.length === 0 && (
+            {remessasVisiveis.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-6 text-center text-gray-400">
-                  Nenhuma remessa gerada ainda.
+                  {remessas.length ? "Lista limpa. Marque Mostrar arquivadas para consultar ou restaurar as remessas." : "Nenhuma remessa gerada ainda."}
                 </td>
               </tr>
             )}

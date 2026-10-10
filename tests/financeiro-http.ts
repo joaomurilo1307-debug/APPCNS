@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { criarSeniorSimulado } from "../scripts/homologacao/senior-simulado";
-import { contaTeste, itemTeste, mudarCampo, dataTeste } from "../scripts/homologacao/fixtures";
+import { contaTeste, itemTeste, mudarCampo, dataTeste, boletoTeste } from "../scripts/homologacao/fixtures";
 import { montarRetornoSimulado } from "../src/lib/pagamentos/casarRetorno";
+import { identificacaoBeneficiarioBoleto } from "../src/lib/pagamentos/beneficiarioBoleto";
 
 const dbUrl = new URL(process.env.DATABASE_URL ?? "");
 assert.ok(["localhost", "127.0.0.1"].includes(dbUrl.hostname) && dbUrl.pathname === "/consominas_gestao_itau_homologacao");
@@ -40,7 +41,7 @@ async function criarItem(forma: Parameters<typeof itemTeste>[0] = "01") {
   } });
   tituloIds.push(titulo.id);
   const i = itemTeste(forma);
-  return { ...i, tituloId: titulo.id, favorecidoTipoDoc: i.favorecidoTipoDocumento, dataPagamento: "2026-10-08" };
+  return { ...i, tituloId: titulo.id, favorecidoTipoDoc: i.favorecidoTipoDocumento, dataPagamento: "2026-10-08", beneficiarioBoletoConferido:identificacaoBeneficiarioBoleto(i.favorecidoDocumento,i.codigoBarras) };
 }
 async function gerar(item: Awaited<ReturnType<typeof criarItem>>) {
   const r = await http("/api/pagamentos-itau/remessas", { contaBancariaId: "homologacao-conta", itens: [item] });
@@ -102,13 +103,51 @@ async function main() {
     passou("Conferencia usa titulo atual e cadastro corretos com consulta restrita aos titulos pedidos");
     await modo("CONFERENCIA_SEM_FORMA");
     const semFormaTitulo = await http("/api/pagamentos-itau/dados-senior",{tituloIds:[tituloConferencia.tituloId],conferencia:true});
-    assert.equal(semFormaTitulo.data.dados[0].codFpg,"19");
+    assert.equal(semFormaTitulo.data.dados[0].codFpg,null);
     assert.equal(semFormaTitulo.data.dados[0].codFpgTitulo,null);
     passou("Forma da OC permanece separada e nao substitui forma ausente do titulo na conferencia");
     await modo("CONFERENCIA_OUTRO_TIPO");
     const outroTipo = await http("/api/pagamentos-itau/dados-senior",{tituloIds:[tituloConferencia.tituloId],conferencia:true});
     assert.equal(outroTipo.data.completo,true); assert.equal(outroTipo.data.dados[0].codFpgTitulo,"3");
     passou("Titulos com mesmo numero e tipo diferente nao trocam dados na conferencia");
+    await modo("OK");
+
+    await modo("CONFERENCIA_BANCO_PARCIAL");
+    const contaParcial = await http("/api/pagamentos-itau/dados-senior",{tituloIds:[tituloConferencia.tituloId]});
+    assert.equal(contaParcial.data.dados[0].conta.banco,"237");assert.equal(contaParcial.data.dados[0].conta.conta,"12345678");assert.equal(contaParcial.data.dados[0].conta.dac,"");
+    assert.match(contaParcial.data.dados[0].problemas.join(" "),/sem digito verificador/);
+    passou("Conta sem DAC preserva banco agencia e conta preenchidos no titulo, sem inventar digito");
+
+    await modo("CONFERENCIA_AMBIGUA");
+    const antesAmbiguo=await db.remessaPagamento.count();
+    const ambiguo=await http("/api/pagamentos-itau/remessas",{contaBancariaId:"homologacao-conta",itens:[tituloConferencia]});
+    assert.equal(ambiguo.status,422);assert.equal(await db.remessaPagamento.count(),antesAmbiguo);
+    passou("Geracao faz releitura completa e bloqueia identificacao ambigua na Senior");
+
+    await modo("LEITURA_FALHA");
+    const falhaLeitura=await http("/api/pagamentos-itau/remessas",{contaBancariaId:"homologacao-conta",itens:[tituloConferencia]});
+    assert.equal(falhaLeitura.status,422);assert.equal(await db.remessaPagamento.count(),antesAmbiguo);
+    passou("Senior indisponivel bloqueia geracao sem aproveitar dados antigos como confirmados");
+
+    await modo("CONFERENCIA_BOLETO");
+    const formaErrada = await http("/api/pagamentos-itau/remessas", { contaBancariaId: "homologacao-conta", itens: [tituloConferencia] });
+    assert.equal(formaErrada.status, 422);
+    assert.match(JSON.stringify(formaErrada.data), /Forma de pagamento do carrinho difere/);
+    passou("Titulo definido como boleto nao pode gerar TED com forma antiga do carrinho");
+    const boletoConferido=await criarItem("30");
+    const semBeneficiario=await http("/api/pagamentos-itau/remessas",{contaBancariaId:"homologacao-conta",itens:[{...boletoConferido,beneficiarioBoletoConferido:null}]});
+    assert.equal(semBeneficiario.status,422);
+    const outroBoleto={...boletoConferido,codigoBarras:boletoTeste(101),beneficiarioBoletoConferido:identificacaoBeneficiarioBoleto(boletoConferido.favorecidoDocumento,boletoTeste(101))};
+    const cruzado=await http("/api/pagamentos-itau/remessas",{contaBancariaId:"homologacao-conta",itens:[outroBoleto]});
+    assert.equal(cruzado.status,422);assert.ok(cruzado.data.conferencia.linhas[0].problemas.some((p:{mensagem:string})=>p.mensagem.includes("difere do codigo atual")));
+    passou("Boleto exige conferencia do beneficiario e impede codigo pertencente a outro titulo");
+    const remessaConferida=await gerar(boletoConferido);
+    const audit=await db.auditLog.findFirst({where:{entityType:"RemessaItemPagamento",entityId:remessaConferida.itens[0].id,action:"REMESSA_DADOS_CONFERIDOS"}});
+    assert.ok(audit?.userId);assert.equal(JSON.parse(audit!.metadata!).beneficiarioBoletoConferido,true);
+    passou("Geracao conferida registra usuario e dados utilizados na auditoria");
+    // Libera o boleto artificial para a regressao de retorno abaixo; a protecao
+    // de duplicidade correta impediria reutilizar um pagamento ainda pendente.
+    await db.remessaItemPagamento.update({where:{id:remessaConferida.itens[0].id},data:{status:"REJEITADO"}});
     await modo("OK");
 
     const credito = await criarItem("01"); const pix = await criarItem("45");
@@ -227,6 +266,24 @@ async function main() {
     assert.equal(rb.data.enviados, 1, JSON.stringify(rb.data));
     passou("Boleto J/J-52 gera, retorna, reconcilia e baixa via SOAP simulado");
 
+    const reservado = await criarItem();
+    const paraArquivar = await gerar(reservado);
+    assert.equal((await http("/api/pagamentos-itau/remessas/limpar", { acao: "limpar", remessaIds: [paraArquivar.id] }, false)).status, 401);
+    const limpa = await http("/api/pagamentos-itau/remessas/limpar", { acao: "limpar", remessaIds: [paraArquivar.id] });
+    assert.equal(limpa.status, 200); assert.equal(limpa.data.quantidade, 1);
+    assert.ok((await db.remessaPagamento.findUniqueOrThrow({ where: { id: paraArquivar.id } })).arquivadaEm);
+    const historicoLimpo = await http("/api/pagamentos-itau/historico");
+    assert.ok(historicoLimpo.data.tituloIdsGerados.includes(reservado.tituloId));
+    assert.ok(historicoLimpo.data.itens.some((i: {remessaId:string}) => i.remessaId === paraArquivar.id));
+    assert.equal((await http("/api/pagamentos-itau/remessas", { contaBancariaId: "homologacao-conta", itens: [reservado] })).status, 422);
+    passou("Limpar remessas exige autenticacao e preserva historico e bloqueio de pagamentos ja gerados");
+    assert.equal((await http("/api/pagamentos-itau/retornos", { nomeArquivo: "TESTE-ARQUIVADO.ret", conteudo: montarRetornoSimulado(paraArquivar.conteudoArquivo!) })).status, 200);
+    const restaura = await http("/api/pagamentos-itau/remessas/limpar", { acao: "restaurar", remessaIds: [paraArquivar.id] });
+    assert.equal(restaura.data.quantidade, 1);
+    assert.equal((await db.remessaPagamento.findUniqueOrThrow({ where: { id: paraArquivar.id } })).arquivadaEm, null);
+    assert.equal(await db.auditLog.count({ where: { entityType: "RemessaPagamento", entityId: paraArquivar.id } }), 2);
+    passou("Remessa arquivada continua recebendo retorno e pode ser restaurada com auditoria");
+
     const sinc = await fetch(base + "/api/senior/titulos-pagar/sync?modo=incremental", { method: "POST", headers: { "Content-Type": "application/json", "x-sync-key": process.env.SENIOR_SYNC_KEY! }, body: JSON.stringify({ itens: [{
       numTit: credito.tituloId ? (await db.tituloContasAPagar.findUniqueOrThrow({ where: { id: credito.tituloId } })).numTit : "", codFil: "1", codFor: "999999", tipo: "DUP", situacao: "LQ", pago: true,
       dataEmissao: "2026-10-08", fornecedorNome: "TESTE", vencimentoOriginal: null, vencimentoProgramado: null,
@@ -241,6 +298,9 @@ async function main() {
     writeFileSync("tmp/homologacao/resultado-http.json", JSON.stringify({ geradoEm: new Date().toISOString(), total: resultados.length, aprovados: resultados }, null, 2));
     console.log(`VALIDADOS: ${resultados.length} cenarios HTTP com NextAuth, Postgres e Senior simulada.`);
   } finally {
+    const itensAuditados=await db.remessaItemPagamento.findMany({where:{remessaId:{in:remessaIds}},select:{id:true}});
+    await db.auditLog.deleteMany({where:{entityType:"RemessaItemPagamento",entityId:{in:itensAuditados.map(i=>i.id)}}});
+    await db.auditLog.deleteMany({where:{entityType:"RemessaPagamento",entityId:{in:remessaIds}}});
     await db.retornoPagamentoArquivo.deleteMany({ where: { remessaId: { in: remessaIds } } });
     await db.remessaPagamento.deleteMany({ where: { id: { in: remessaIds } } });
     await db.tituloContasAPagar.deleteMany({ where: { id: { in: tituloIds } } });

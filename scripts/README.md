@@ -6,6 +6,8 @@ Ferramentas de TI/rollout, fora do app em si (não fazem parte do build/deploy d
 
 As regras de forma exclusiva do título, conferência direcionada e indicação de cartão estão em [Conferência da Programação de Pagamento](../docs/conferencia-programacao-pagamento.md).
 
+A busca bancária, identificação completa do título e confirmação do beneficiário do boleto estão em [Auditoria da busca de dados da remessa](../docs/auditoria-busca-dados-remessa.md).
+
 O procedimento atual do setor está em [Retorno Itaú → baixa na Sênior](../docs/fluxo-retorno-itau-baixa-senior.md). A suíte HTTP exige que o servidor alvo também confirme a base de teste e a Sênior simulada antes de qualquer escrita.
 
 `npm run homologacao:preparar` cria a base PostgreSQL separada `consominas_gestao_itau_homologacao`, configura `.env.homologacao` e insere somente dados fictícios. Requer `.env` apontando para `localhost`/`127.0.0.1` e a base original `consominas_gestao_dev`. O esquema é aplicado exclusivamente à nova base, sem copiar credenciais reais da Sênior.

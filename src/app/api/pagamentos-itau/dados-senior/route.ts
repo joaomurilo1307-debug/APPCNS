@@ -58,7 +58,8 @@ export async function POST(req: Request) {
     const vinculo = aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t));
     const numOcp = vinculo.ocRelacionada?.numOcp ?? null;
     ocDoTitulo.set(t.id, numOcp);
-    pedidos.push({ tituloId: t.id, numTit: t.numTit, codFil: t.codFil, codFor: t.codFor, numOcp, tipo: t.tipo, dataEmissao: t.dataEmissao.toISOString().slice(0, 10) });
+    const candidatasOc = ocs.filter(o=>o.numOcp === numOcp && o.fornecedorCodigo === t.codFor);
+    pedidos.push({ tituloId: t.id, numTit: t.numTit, codFil: t.codFil, codFor: t.codFor, numOcp, codFilOc: t.filOcp ?? (candidatasOc.length === 1 ? candidatasOc[0].codFil : null), tipo: t.tipo, dataEmissao: t.dataEmissao.toISOString().slice(0, 10) });
   }
 
   // A varredura em segundo plano dos titulos abertos (formas de pagamento) ocupa

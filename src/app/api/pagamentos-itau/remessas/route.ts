@@ -65,6 +65,7 @@ export async function GET() {
       criadoPorNome: r.criadoPor?.name ?? null,
       criadoEm: r.criadoEm,
       geradoEm: r.geradoEm,
+      arquivadaEm: r.arquivadaEm,
       totalRegistros: r.totalRegistros,
       totalValor: r.totalValor,
       qtdItens: r.itens.length,
@@ -110,7 +111,7 @@ export async function POST(req: Request) {
 
   // A conferencia inclui o ensaio do arquivo CNAB (sem gravar nada): se algo so'
   // quebraria na hora de montar o arquivo, ela ja aponta qual titulo.
-  const conferencia = await conferirItensRemessa(parsed.data.itens, contaDebito);
+  const conferencia = await conferirItensRemessa(parsed.data.itens, contaDebito, true);
   const linhasComErro = conferencia.linhas.filter((l) => l.situacao === "erro");
 
   if ((linhasComErro.length > 0 && !parsed.data.somenteValidos) || conferencia.erroGeral) {
@@ -227,6 +228,7 @@ export async function POST(req: Request) {
               },
             });
             criados.push({ id: itemCriado.id, escrito: seuNumero ?? referenciaEmpresa });
+            await tx.auditLog.create({data:{userId:user.id,action:"REMESSA_DADOS_CONFERIDOS",entityType:"RemessaItemPagamento",entityId:itemCriado.id,metadata:JSON.stringify({tituloId:item.tituloId,consultaSenior:!!item.tituloId,beneficiarioBoletoConferido:item.segmento === "J",documento:item.favorecidoDocumento,codigoBarras:item.codigoBarras ?? null})}});
             itensCnab.push(itemParaCnab(item, seuNumero ?? referenciaEmpresa, seq));
           }
 

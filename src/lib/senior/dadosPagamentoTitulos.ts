@@ -18,6 +18,7 @@ import {
   CAMPOS_CADASTRO_BANCARIO,
   CAMPOS_TITULO,
   documentoValido,
+  documentoFavorecido,
   escolherCadastroBancario,
   mapearTitulo,
   preenchido,
@@ -26,6 +27,7 @@ import {
   dataIso,
 } from "./mapeamentoTitulos";
 import { cnpjValido, cpfValido } from "../cnab240/itau/validacaoItem";
+import { linhaDigitavelParaCodigoBarras } from "../cnab240/itau/codigoBarras";
 
 export type FonteDado = "titulo" | "cadastro" | "oc";
 export type TipoChavePix = "01" | "02" | "03" | "04";
@@ -33,6 +35,8 @@ export type TipoChavePix = "01" | "02" | "03" | "04";
 export type DadosSeniorDoTitulo = {
   tituloId: string;
   documento: string | null;
+  origemDocumento?: "titulo" | "cadastro" | "fornecedor" | "oc" | null;
+  problemas?: string[];
   conta: { banco: string; agencia: string; conta: string; dac: string; fonte: FonteDado; nota?: string } | null;
   chavePix: { tipo: TipoChavePix; valor: string; fonte: FonteDado } | null;
   codigoBarras: string | null;
@@ -43,25 +47,7 @@ export type DadosSeniorDoTitulo = {
   achouNoSenior: boolean; // o titulo ainda esta aberto na Senior
 };
 
-export type PedidoTitulo = { tituloId: string; numTit: string; codFil: string; codFor: string; numOcp: string | null; tipo?: string; dataEmissao?: string };
-
-const LIMITE_MS = 60_000;
-
-function comLimite<T>(promessa: Promise<T>, ms: number, fonte: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`${fonte}: a Senior não respondeu em ${Math.round(ms / 1000)}s`)), ms);
-    promessa.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      }
-    );
-  });
-}
+export type PedidoTitulo = { tituloId: string; numTit: string; codFil: string; codFor: string; numOcp: string | null; codFilOc?: string | null; tipo?: string; dataEmissao?: string };
 
 // ---------- interpretadores do texto digitado na OC ----------
 
@@ -148,45 +134,52 @@ const lista = (valores: string[]) => valores.join(",");
 export async function buscarDadosPagamento(pedidos: PedidoTitulo[], conferencia = false): Promise<{ dados: DadosSeniorDoTitulo[]; avisos: string[] }> {
   const avisos: string[] = [];
   const fornecedores = [...new Set(pedidos.map((p) => p.codFor).filter((c) => /^\d+$/.test(c)))];
-  const ocs = [...new Set(pedidos.map((p) => p.numOcp).filter((n): n is string => !!n && /^\d+$/.test(n)))];
   if (fornecedores.length === 0) return { dados: [], avisos: ["Nenhum fornecedor válido pra consultar."] };
 
   // Uma consulta por vez: a Senior atende mal várias ao mesmo tempo (medido em
   // 06/10/2026: 4 simultâneas -> 3 estouraram 60s; uma por vez leva ~1,5s cada).
   const tentar = async <T,>(fonte: string, consulta: () => Promise<T>, vazio: T): Promise<T> => {
     try {
-      return await comLimite(consulta(), LIMITE_MS, fonte);
+      return await consulta();
     } catch (e: any) {
-      avisos.push(String(e?.message ?? e).replace(/<[^>]+>/g, " ").slice(0, 160));
+      avisos.push(`${fonte}: ${String(e?.message ?? e).replace(/<[^>]+>/g, " ").slice(0, 160)}`);
       return vazio;
     }
   };
 
+  const titulosSenior = await tentar(
+    "títulos",
+    () => consultarSenior(`SELECT ${CAMPOS_TITULO.join(", ")} FROM E501TCP WHERE CODEMP = 1 AND NUMTIT IN (${[...new Set(pedidos.map(p => "'" + p.numTit.replace(/'/g, "''") + "'"))].join(",")}) AND CODFOR IN (${lista(fornecedores)})`),
+    [] as LinhaSenior[]
+  );
+  // Se a identidade principal nao pode ser lida, nao prolonga a falha com
+  // outras consultas nem tenta construir um destino so pelo fornecedor.
+  if (!titulosSenior.length) return {
+    avisos,
+    dados: pedidos.map(p=>({tituloId:p.tituloId,documento:null,origemDocumento:null,conta:null,chavePix:null,codigoBarras:null,codFpg:null,formaPagamento:null,codFpgTitulo:null,formaPagamentoTitulo:null,achouNoSenior:false,problemas:[avisos.length ? "Consulta dos titulos indisponivel. Dados nao confirmados." : "Titulo nao localizado com identificacao completa na Senior."]})),
+  };
   const fornecedoresSenior = await tentar(
     "cadastro do fornecedor",
     () => consultarSenior(`SELECT CODFOR, NOMFOR, CGCCPF, TIPFOR FROM E095FOR WHERE CODFOR IN (${lista(fornecedores)})`),
-    [] as LinhaSenior[]
-  );
-  const titulosSenior = await tentar(
-    "títulos",
-    () => consultarSenior(`SELECT ${CAMPOS_TITULO.join(", ")} FROM E501TCP WHERE ${conferencia ? `CODEMP = 1 AND NUMTIT IN (${[...new Set(pedidos.map(p => "'" + p.numTit.replace(/'/g, "''") + "'"))].join(",")}) AND ` : ""}CODFOR IN (${lista(fornecedores)}) AND SITTIT = 'AB'`),
     [] as LinhaSenior[]
   );
   const cadastros = await tentar(
     "cadastro bancário do fornecedor",
     () =>
       consultarSenior(
-        `SELECT ${CAMPOS_CADASTRO_BANCARIO.join(", ")} FROM E095HFO WHERE CODEMP = 1 AND CODFIL = 1 AND CODFOR IN (${lista(fornecedores)})`
+        `SELECT ${CAMPOS_CADASTRO_BANCARIO.join(", ")} FROM E095HFO WHERE CODEMP = 1 AND CODFIL IN (${[...new Set(pedidos.map(p=>p.codFil).filter(c=>/^\d+$/.test(c)))].join(',')}) AND CODFOR IN (${lista(fornecedores)})`
       ),
     [] as LinhaSenior[]
   );
+  const precisaComplementoOc = (t: LinhaSenior | undefined) => !!t && t.CODFPG !== "18" && !preenchido(t.CODBAR) && !preenchido(t.CHVPIX) && !(preenchido(t.CODBAN) && preenchido(t.CODAGE) && preenchido(t.CCBFOR));
+  const ocs = [...new Set([...pedidos.filter(p=>precisaComplementoOc(titulosSenior.find(t=>t.NUMTIT === p.numTit && t.CODTPT === p.tipo && t.CODFOR === p.codFor && t.CODFIL === p.codFil && dataIso(t.DATEMI) === p.dataEmissao))).map(p=>p.numOcp),...titulosSenior.filter(precisaComplementoOc).map(t=>t.NUMOCP)].filter((n):n is string=>!!n&&/^\d+$/.test(n)&&Number(n)>0))];
   const ocsSenior =
     ocs.length > 0
       ? await tentar(
           "OC",
           () =>
             consultarSenior(
-              `SELECT NUMOCP, CODFPG, USU_CHVPIX, USU_CODAGE, USU_NUMCCO, USU_DESCCO, USU_CGCCPF FROM E420OCP WHERE CODEMP = 1 AND NUMOCP IN (${lista(ocs)})`
+              `SELECT CODEMP, CODFIL, CODFOR, NUMOCP, CODFPG, USU_CHVPIX, USU_CODAGE, USU_NUMCCO, USU_DESCCO, USU_CGCCPF FROM E420OCP WHERE CODEMP = 1 AND NUMOCP IN (${lista(ocs)}) AND CODFOR IN (${lista(fornecedores)})`
             ),
           [] as LinhaSenior[]
         )
@@ -195,41 +188,60 @@ export async function buscarDadosPagamento(pedidos: PedidoTitulo[], conferencia 
   const fornecedorPorCodigo = new Map(fornecedoresSenior.map((f) => [f.CODFOR.trim(), f]));
   const cadastrosPorFornecedor = new Map<string, LinhaSenior[]>();
   for (const c of cadastros) cadastrosPorFornecedor.set(c.CODFOR.trim(), [...(cadastrosPorFornecedor.get(c.CODFOR.trim()) ?? []), c]);
-  const ocPorNumero = new Map(ocsSenior.map((o) => [o.NUMOCP.trim(), o]));
 
   const dados = pedidos.map((p): DadosSeniorDoTitulo => {
-    const linhasDoTitulo = titulosSenior.filter((t) => t.CODFOR.trim() === p.codFor && t.NUMTIT.trim() === p.numTit && t.CODFIL.trim() === p.codFil &&
-      (!conferencia || (t.CODEMP === "1" && t.CODTPT === p.tipo && dataIso(t.DATEMI) === p.dataEmissao)));
-    const linha = conferencia ? (linhasDoTitulo.length === 1 ? linhasDoTitulo[0] : undefined) : linhasDoTitulo.find((t) => t.CODEMP === "1") ?? linhasDoTitulo[0];
-    if (conferencia && linhasDoTitulo.length > 1) avisos.push(`Titulo ${p.numTit}: mais de um registro corresponde a identificacao. Dados nao conferidos.`);
+    const problemas: string[] = [];
+    const linhasDoTitulo = titulosSenior.filter((t) => Number(t.CODFOR) === Number(p.codFor) && t.NUMTIT.trim() === p.numTit.trim() && Number(t.CODFIL) === Number(p.codFil) &&
+      (t.CODEMP === "1" && t.CODTPT.trim() === p.tipo && dataIso(t.DATEMI) === p.dataEmissao));
+    const encontrada = linhasDoTitulo.length === 1 ? linhasDoTitulo[0] : undefined;
+    const linha = encontrada && Number(encontrada.VLRABE.replace(',', '.')) > 0 && encontrada.SITTIT !== "CA" && !encontrada.SITTIT.startsWith("L") ? encontrada : undefined;
+    if (!linha) problemas.push(linhasDoTitulo.length > 1 ? "Identificacao ambigua: mais de um titulo corresponde ao pedido." : encontrada ? "Titulo pago ou cancelado na Senior." : "Titulo nao localizado pela empresa, filial, fornecedor, numero, tipo e emissao.");
     const forn = fornecedorPorCodigo.get(p.codFor);
     const cadastro = escolherCadastroBancario(cadastrosPorFornecedor.get(p.codFor), linha?.CODEMP ?? "1", p.codFil);
-    const oc = p.numOcp ? ocPorNumero.get(p.numOcp) : undefined;
+    const numeroOc = linha && preenchido(linha.NUMOCP) ? linha.NUMOCP : p.numOcp;
+    const filialOc = linha && preenchido(linha.FILOCP) ? linha.FILOCP : p.codFilOc ?? p.codFil;
+    const candidatasOc = ocsSenior.filter(o=>o.CODEMP === "1" && Number(o.CODFIL) === Number(filialOc) && Number(o.CODFOR) === Number(p.codFor) && o.NUMOCP === numeroOc);
+    const oc = candidatasOc.length === 1 ? candidatasOc[0] : undefined;
     const base = linha ? mapearTitulo(linha, forn, cadastro) : null;
 
     const contaBase =
-      base && base.bancoFavorecido && base.agenciaFavorecido && base.contaFavorecido && base.dacFavorecido
+      base && (base.bancoFavorecido || base.agenciaFavorecido || base.contaFavorecido)
         ? {
-            banco: base.bancoFavorecido,
-            agencia: base.agenciaFavorecido,
-            conta: base.contaFavorecido,
-            dac: base.dacFavorecido,
+            banco: base.bancoFavorecido ?? "",
+            agencia: base.agenciaFavorecido ?? "",
+            conta: base.contaFavorecido ?? "",
+            dac: base.dacFavorecido ?? "",
             fonte: (linha && (preenchido(linha.CCBFOR) || preenchido(linha.CODAGE) || preenchido(linha.CODBAN)) ? "titulo" : "cadastro") as FonteDado,
           }
         : null;
     const contaOc = !contaBase ? interpretarContaDaOc(oc) : null;
+    if (contaBase && !contaBase.dac) problemas.push("Conta bancaria preenchida na Senior sem digito verificador separado por hifen. Banco, agencia e conta foram extraidos; informe/confirme o digito, sem retirar automaticamente o ultimo algarismo da conta.");
 
-    const pixBase = base?.chavePix && base.tipoChavePix && /^[1-4]$/.test(base.tipoChavePix) ? { tipo: `0${base.tipoChavePix}` as TipoChavePix, valor: base.chavePix } : null;
+    const tipoPix = base?.tipoChavePix ? String(Number(base.tipoChavePix)) : "";
+    const pixBase = base?.chavePix && /^[1-4]$/.test(tipoPix) ? { tipo: `0${tipoPix}` as TipoChavePix, valor: base.chavePix } : null;
     const pixOc = !pixBase ? interpretarChavePix(oc?.USU_CHVPIX) : null;
 
-    const codFpg = base?.codFpg ?? (oc && preenchido(oc.CODFPG) ? oc.CODFPG.trim() : null);
+    const codFpg = base?.codFpg ?? null;
+    let codigoBarras: string | null = null;
+    if (linha && preenchido(linha.CODBAR)) {
+      try { codigoBarras = linhaDigitavelParaCodigoBarras(linha.CODBAR); }
+      catch { problemas.push("Codigo de barras/linha digitavel do titulo na Senior invalido: confira tamanho e digitos verificadores."); }
+    }
+    const docTitulo = documentoFavorecido(linha?.DOCIDEFAV) ?? documentoFavorecido(linha?.CODFAV);
+    const favorecidoInformado = preenchido(linha?.DOCIDEFAV) || preenchido(linha?.CODFAV);
+    if (favorecidoInformado && !docTitulo) problemas.push("Documento do favorecido no titulo invalido ou ambiguo; nao foi substituido pelo documento do fornecedor.");
+    const docCadastro = documentoFavorecido(cadastro?.DOCIDEFAV) ?? documentoFavorecido(cadastro?.CODFAV);
+    const docFornecedor = documentoValido(forn?.CGCCPF, forn?.TIPFOR);
+    const docOc = documentoPorDigitos(oc?.USU_CGCCPF);
 
     return {
       tituloId: p.tituloId,
-      documento: base?.documentoFavorecido ?? documentoValido(forn?.CGCCPF, forn?.TIPFOR) ?? documentoPorDigitos(oc?.USU_CGCCPF),
-      conta: contaBase ?? (contaOc ? { ...contaOc, fonte: "oc", nota: oc?.USU_DESCCO?.trim() } : null),
-      chavePix: pixBase ? { ...pixBase, fonte: "titulo" } : pixOc ? { ...pixOc, fonte: "oc" } : null,
-      codigoBarras: base?.codigoBarrasBoleto ?? null,
+      documento: linha ? favorecidoInformado ? docTitulo : docCadastro ?? docFornecedor ?? docOc : null,
+      origemDocumento: !linha ? null : favorecidoInformado ? "titulo" : docCadastro ? "cadastro" : docFornecedor ? "fornecedor" : docOc ? "oc" : null,
+      problemas,
+      conta: linha ? contaBase ?? (contaOc ? { ...contaOc, fonte: "oc", nota: oc?.USU_DESCCO?.trim() } : null) : null,
+      chavePix: linha ? pixBase ? { ...pixBase, fonte: "titulo" } : pixOc ? { ...pixOc, fonte: "oc" } : null : null,
+      codigoBarras,
       codFpg,
       formaPagamento: codFpg ? catalogo.get(codFpg) ?? null : null,
       codFpgTitulo: base?.codFpg ?? null,

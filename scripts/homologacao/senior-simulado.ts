@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { contaTeste } from "./fixtures";
+import { contaTeste, boletoTeste } from "./fixtures";
 
 export function criarSeniorSimulado(porta = 3099) {
   let modo = "OK";
@@ -17,6 +17,7 @@ export function criarSeniorSimulado(porta = 3099) {
     }
     res.setHeader("Content-Type", "text/xml; charset=UTF-8");
     if (req.url === "/leitura") {
+      if (modo === "LEITURA_FALHA") {res.statusCode=503;res.end("Consulta simulada indisponivel");return;}
       const sql = (/<pmSQL>([\s\S]*?)<\/pmSQL>/.exec(corpo)?.[1] ?? "").replace(/&apos;/g, "'").replace(/&gt;/g, ">").replace(/&lt;/g, "<");
       consultas.push(sql); if (consultas.length > 100) consultas.shift();
       if (!/^SELECT\s/i.test(sql)) { res.statusCode = 400; res.end("Somente SELECT permitido no simulador."); return; }
@@ -28,12 +29,15 @@ export function criarSeniorSimulado(porta = 3099) {
         const titulos = titulo ? [titulo] : lista ? [...lista.matchAll(/'([^']+)'/g)].map(m=>m[1]) : [];
         linhas = titulos.filter(t => !/SITTIT = 'AB'/.test(sql) || !pagos.has(t)).map(t => ({ NUMTIT: t, CODTPT: "DUP", CODFOR: "999999", CODFIL: "1", CODEMP: "1", DATEMI: "08/10/2026", SITTIT: pagos.has(t) ? "LQ" : "AB", VLRORI: "100,00", VLRABE: pagos.has(t) ? "0,00" : "100,00", ULTPGT: pagos.get(t) ?? "", CODFPG: modo === "CONFERENCIA_SEM_FORMA" ? "0" : "3", CODBAN:"0", CODAGE:"0", CCBFOR:"0" }));
         if (modo === "CONFERENCIA_OUTRO_TIPO" && linhas.length) linhas.push({ ...linhas[0], CODTPT: "OUT", CODFPG: "19" });
+        if (modo === "CONFERENCIA_AMBIGUA" && linhas.length) linhas.push({...linhas[0],CCBFOR:"11111-1"});
+        if (modo === "CONFERENCIA_BANCO_PARCIAL") linhas=linhas.map(t=>({...t,CODBAN:"237",CODAGE:"1234",CCBFOR:"12345678"}));
+        if (modo === "CONFERENCIA_BOLETO") linhas=linhas.map(t=>({...t,CODFPG:"18",CODBAR:boletoTeste()}));
       }
       if (/E095FOR/i.test(sql)) linhas = [{CODFOR:"999999", NOMFOR:"FORNECEDOR FICTICIO", CGCCPF:"52998224725", TIPFOR:"F"}];
       if (/E095HFO/i.test(sql)) linhas = [{CODFOR:"999999", CODEMP:"1", CODFIL:"1", CODBAN:"341", CODAGE:"9999", CCBFOR:"99999-1", TIPTCC:"1", DOCIDEFAV:"52998224725"}];
       if (/E420OCP/i.test(sql)) {
         const lista = /NUMOCP\s+IN\s*\(([^)]+)\)/i.exec(sql)?.[1];
-        linhas = (lista?.split(",") ?? []).map(n => ({CODEMP:"1", CODFIL:"1", NUMOCP:n.trim(),CODFPG:"19",USU_CHVPIX:"",USU_CODAGE:"",USU_NUMCCO:"",USU_DESCCO:"",USU_CGCCPF:""}));
+        linhas = (lista?.split(",") ?? []).map(n => ({CODEMP:"1", CODFIL:"1", CODFOR:"999999", NUMOCP:n.trim(),CODFPG:"19",USU_CHVPIX:"",USU_CODAGE:"",USU_NUMCCO:"",USU_DESCCO:"",USU_CGCCPF:""}));
       }
       if (/E066FPG/i.test(sql)) linhas = [{ CODEMP: "1", CODFPG: "3", DESFPG: "Deposito em Conta" }, { CODEMP: "1", CODFPG: "18", DESFPG: "Boleto" }, { CODEMP: "1", CODFPG: "19", DESFPG: "PIX" }, { CODEMP:"1",CODFPG:"20",DESFPG:"Cartao de Credito" }];
       const retorno = `<lines>${linhas.map(l => `<line>${Object.entries(l).map(([k, v]) => `<${k}>${xml(v)}</${k}>`).join("")}</line>`).join("")}</lines>`;

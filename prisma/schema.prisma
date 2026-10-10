@@ -1222,6 +1222,7 @@ model RemessaPagamento {
   criadoPorId    String?
   criadoEm       DateTime                @default(now())
   geradoEm       DateTime?
+  arquivadaEm    DateTime? // limpeza reversivel da lista; preserva retorno e bloqueio de duplicidade
 
   contaBancaria ContaBancaria @relation(fields: [contaBancariaId], references: [id])
   criadoPor     User?         @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)

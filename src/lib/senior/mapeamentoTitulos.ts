@@ -8,7 +8,7 @@ import { cnpjValido, cpfValido } from "../cnab240/itau/validacaoItem";
 
 export const CAMPOS_TITULO = [
   "CODEMP", "CODFIL", "NUMTIT", "CODTPT", "CODFOR", "SITTIT", "DATEMI", "VCTORI", "VCTPRO", "VLRORI", "VLRABE",
-  "CODCCU", "NUMNFC", "OBSTCP", "USUGER", "DATGER", "CODBAN", "TIPTCC", "CODAGE", "CCBFOR", "CODBAR", "DOCIDEFAV",
+  "CODCCU", "NUMNFC", "OBSTCP", "USUGER", "DATGER", "CODBAN", "TIPTCC", "CODAGE", "CCBFOR", "CODBAR", "DOCIDEFAV", "CODFAV", "FILOCP", "NUMOCP",
   "TPCPIX", "CHVPIX", "CODFPG",
 ] as const;
 
@@ -101,23 +101,33 @@ export function documentoValido(valor: string | undefined, tipoPessoa?: string):
   }
   if (tipoPessoa === "F" && d.length === 10) d = "0" + d;
   if (tipoPessoa === "J" && d.length === 13) d = "0" + d;
-  if (d.length !== 11 && d.length !== 14) return null;
-  if (/^(\d)\1+$/.test(d)) return null;
-  return d;
+  return cpfValido(d) || cnpjValido(d) ? d : null;
+}
+
+// CODFAV e o documento numerico legado do favorecido, que pode ser outra
+// pessoa que o fornecedor. Nao utiliza TIPFOR do fornecedor para completá-lo.
+export function documentoFavorecido(valor: string | undefined): string | null {
+  const d = soDigitos(valor);
+  if (!d || /^0+$/.test(d)) return null;
+  if (d.length === 14 && cnpjValido(d)) return d;
+  if (d.length === 11 && cpfValido(d)) return d;
+  const candidatos = [d.length <= 11 ? d.padStart(11, "0") : "", d.length <= 14 ? d.padStart(14, "0") : ""]
+    .filter(v => cpfValido(v) || cnpjValido(v));
+  return candidatos.length === 1 ? candidatos[0] : null;
 }
 
 // Cadastro bancario padrao do fornecedor (E095HFO, por empresa/filial): usado
 // quando o titulo em si nao traz conta -- que e' o caso de ~96% dos titulos.
-export const CAMPOS_CADASTRO_BANCARIO = ["CODFOR", "CODEMP", "CODFIL", "CODBAN", "TIPTCC", "CODAGE", "CCBFOR", "DOCIDEFAV"] as const;
+export const CAMPOS_CADASTRO_BANCARIO = ["CODFOR", "CODEMP", "CODFIL", "CODBAN", "TIPTCC", "CODAGE", "CCBFOR", "DOCIDEFAV", "CODFAV"] as const;
 
 function temDadoBancario(l: LinhaSenior | undefined): boolean {
   return !!l && (preenchido(l.CCBFOR) || preenchido(l.CODAGE) || preenchido(l.CODBAN));
 }
 
-/** Entre as linhas de E095HFO de um fornecedor, prefere a da mesma empresa/filial do titulo; senao a primeira com dado bancario. */
+/** Nunca utiliza conta de outra empresa/filial ou escolhe entre cadastros ambiguos. */
 export function escolherCadastroBancario(linhas: LinhaSenior[] | undefined, codEmp: string, codFil: string): LinhaSenior | undefined {
-  const comDado = (linhas ?? []).filter(temDadoBancario);
-  return comDado.find((l) => l.CODEMP === codEmp && l.CODFIL === codFil) ?? comDado[0];
+  const exatos = (linhas ?? []).filter(l => Number(l.CODEMP) === Number(codEmp) && Number(l.CODFIL) === Number(codFil));
+  return exatos.length === 1 ? exatos[0] : undefined;
 }
 
 export function mapearTitulo(
@@ -165,8 +175,8 @@ export function mapearTitulo(
     codFpg: preenchido(t.CODFPG) ? t.CODFPG.trim() : null,
     tipoChavePix: preenchido(t.TPCPIX) ? t.TPCPIX : null,
     documentoFavorecido:
-      documentoValido(t.DOCIDEFAV, fornecedor?.TIPFOR) ??
-      documentoValido(cadastroBancario?.DOCIDEFAV, fornecedor?.TIPFOR) ??
+      documentoFavorecido(t.DOCIDEFAV) ?? documentoFavorecido(t.CODFAV) ??
+      documentoFavorecido(cadastroBancario?.DOCIDEFAV) ?? documentoFavorecido(cadastroBancario?.CODFAV) ??
       documentoValido(fornecedor?.CGCCPF, fornecedor?.TIPFOR),
   };
 

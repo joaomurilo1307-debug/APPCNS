@@ -14,6 +14,7 @@
 
 import { linhaDigitavelParaCodigoBarras } from "./codigoBarras";
 import { FORMA_PAGAMENTO, TIPO_CHAVE_PIX, segmentoDaForma } from "./constantes";
+import { identificacaoBeneficiarioBoleto } from "../../pagamentos/beneficiarioBoleto";
 
 export type GravidadeProblema = "erro" | "aviso";
 
@@ -50,6 +51,7 @@ export type ItemParaValidar = {
   contaFavorecido?: string;
   dacFavorecido?: string;
   codigoBarras?: string;
+  beneficiarioBoletoConferido?: string | null;
   chavePixTipo?: string;
   chavePixValor?: string;
   valor?: number;
@@ -138,7 +140,7 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
     );
   } else {
     const confere = doc.length === 11 ? cpfValido(doc) : cnpjValido(doc);
-    if (!confere) add("favorecidoDocumento", `${doc.length === 11 ? "CPF" : "CNPJ"} com dígito verificador inválido -- confira a digitação.`, "aviso");
+    if (!confere) add("favorecidoDocumento", `${doc.length === 11 ? "CPF" : "CNPJ"} com dígito verificador inválido -- confira a digitação.`, "erro");
     if (item.favorecidoTipoDoc === "1" && doc.length !== 11) add("favorecidoDocumento", "Tipo de documento está como CPF, mas o número tem 14 dígitos.", "aviso");
     if (item.favorecidoTipoDoc === "2" && doc.length !== 14) add("favorecidoDocumento", "Tipo de documento está como CNPJ, mas o número tem 11 dígitos.", "aviso");
   }
@@ -156,6 +158,10 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
   }
 
   if (segmento === "J") {
+    const identificacao = identificacaoBeneficiarioBoleto(item.favorecidoDocumento, item.codigoBarras);
+    if (identificacao && item.beneficiarioBoletoConferido !== identificacao) {
+      add("favorecidoDocumento", "Confirme o CPF/CNPJ do beneficiario registrado neste boleto. O CNPJ do fornecedor e um DV valido nao comprovam correspondencia no cadastro CIP.");
+    }
     const digitos = soDigitos(item.codigoBarras);
     if (!digitos) {
       add("codigoBarras", "Boleto sem código de barras -- digite a linha digitável (47 dígitos) ou o código de barras (44).");

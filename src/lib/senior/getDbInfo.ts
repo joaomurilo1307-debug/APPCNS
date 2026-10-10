@@ -63,7 +63,17 @@ function lerLinhas(xml: string): LinhaSenior[] {
 // <params/> escapado -- tenta as duas formas antes de desistir.
 const FORMAS_DE_PARAMS = ["&lt;params&gt;&lt;/params&gt;", ""];
 
-export async function consultarSenior(sql: string): Promise<LinhaSenior[]> {
+let filaLeituras: Promise<void> = Promise.resolve();
+
+// Todas as telas compartilham uma fila por processo; duas requisicoes HTTP
+// simultaneas nao disparam consultas concorrentes no GetDBInfo.
+export function consultarSenior(sql: string): Promise<LinhaSenior[]> {
+  const consulta = filaLeituras.then(() => executarConsultaSenior(sql));
+  filaLeituras = consulta.then(() => undefined, () => undefined);
+  return consulta;
+}
+
+async function executarConsultaSenior(sql: string): Promise<LinhaSenior[]> {
   const url = process.env.SENIOR_WS_SAPIENS_URL?.trim() || URL_PADRAO;
   let ultimoErro = "erro desconhecido";
 
