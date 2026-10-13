@@ -91,7 +91,8 @@ test("Conferencia bloqueia valor diferente do boleto no prazo e TED depois das 1
     const tarde = await conferirItensRemessa([pedido], undefined, false, new Date("2026-10-08T19:30:00Z")); // 16:30 em Brasilia
     assert.ok(tarde.linhas[0].problemas.some((p) => p.campo === "dataPagamento" && p.gravidade === "erro" && /15:00/.test(p.mensagem)));
     const cedo = await conferirItensRemessa([pedido], undefined, false, new Date("2026-10-08T17:00:00Z")); // 14:00 em Brasilia
-    assert.ok(!cedo.linhas[0].problemas.some((p) => p.campo === "dataPagamento"));
+    // a regra das 15h nao se aplica antes do horario (outros avisos de data, como "ja passou", podem existir conforme o dia em que o teste roda)
+    assert.ok(!cedo.linhas[0].problemas.some((p) => p.campo === "dataPagamento" && /15:00/.test(p.mensagem)));
   } finally {
     await prisma.tituloContasAPagar.deleteMany({ where: { id: { in: [titulo.id, pago.id] } } });
   }
