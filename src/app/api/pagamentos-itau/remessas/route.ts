@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
+import { alterarSituacaoTitulo } from "@/lib/senior/situacaoTitulo";
 import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { lerArquivoRetorno } from "@/lib/cnab240/itau/retorno";
@@ -141,7 +142,7 @@ export async function POST(req: Request) {
   // O titulo e mantido no app; novas remessas usam referencia unica por tentativa.
   const titulosDosItens = await prisma.tituloContasAPagar.findMany({
     where: { id: { in: itensProntos.map((i) => i.tituloId).filter((id): id is string => !!id) } },
-    select: { id: true, numTit: true, codFor: true, tipo: true },
+    select: { id: true, numTit: true, codFor: true, codFil: true, tipo: true },
   });
   const tituloPorId = new Map(titulosDosItens.map((t) => [t.id, t]));
   const catalogoCartao = await carregarCatalogoFormasPagamento();
@@ -308,9 +309,22 @@ export async function POST(req: Request) {
         .catch(() => {});
     }
 
+    // Marca PE na Senior (porta PostDBInfoFinan) pra ninguem pagar o mesmo
+    // titulo de novo por la. Depois do commit: a remessa ja existe, entao uma
+    // falha aqui nao desfaz nada -- so' volta na resposta pra conferir.
+    const situacaoSenior: { numTit: string; ok: boolean; mensagem: string }[] = [];
+    for (const t of titulosDosItens.filter((t) => idsNaRemessa.includes(t.id))) {
+      const r = await alterarSituacaoTitulo({ codFil: Number(t.codFil), codFor: Number(t.codFor), codTpt: t.tipo, numTit: t.numTit }, "PE");
+      situacaoSenior.push({ numTit: t.numTit, ...r });
+      await prisma.auditLog
+        .create({ data: { userId: user.id, action: "SENIOR_SITUACAO_PE", entityType: "TituloContasAPagar", entityId: t.id, metadata: JSON.stringify(r) } })
+        .catch(() => {});
+    }
+
     return NextResponse.json(
       {
         remessas: resultado,
+        situacaoSenior,
         // Itens que ficaram de fora (so' quando pediu "somenteValidos") -- pra
         // pessoa saber exatamente o que ainda falta corrigir e gerar depois.
         ignorados: linhasComErro,

@@ -390,6 +390,17 @@ const ITEM_STATUS_LABEL: Record<string, string> = {
   CANCELADO: "bg-gray-200 text-gray-600",
 };
 
+// Resultado da troca de situacao na Senior (porta PostDBInfoFinan) que a API devolve.
+function textoSituacaoSenior(lista: { numTit: string; ok: boolean; mensagem: string }[] | undefined, sit: "AB" | "PE"): string {
+  if (!lista?.length) return "";
+  const falhas = lista.filter((s) => !s.ok);
+  const certos = lista.length - falhas.length;
+  return (
+    (certos ? ` ${certos} título(s) em ${sit} na Sênior.` : "") +
+    (falhas.length ? ` ATENÇÃO: não mudou para ${sit} na Sênior: ${falhas.map((f) => `${f.numTit} (${f.mensagem})`).join("; ")}.` : "")
+  );
+}
+
 export default function PagamentosItauPage() {
   const [titulos, setTitulos] = useState<Titulo[]>([]);
   const [contas, setContas] = useState<ContaBancaria[]>([]);
@@ -1096,7 +1107,8 @@ export default function PagamentosItauPage() {
           (geradas.length > 1 ? " São 2 arquivos porque o Itaú exige o PIX separado dos demais pagamentos." : "") +
           (ignorados.length > 0
             ? ` ${ignorados.length} item(ns) com problema ficaram no carrinho — corrija o que a conferência aponta e gere de novo.`
-            : "")
+            : "") +
+          textoSituacaoSenior(data.situacaoSenior, "PE")
       );
       carregarTudo();
     } catch (e: any) {
@@ -1182,6 +1194,7 @@ export default function PagamentosItauPage() {
       `Retorno processado: ${data.totalReconhecidos} de ${data.totalLido} pagamento(s) reconhecidos` +
         ` — ${r.PAGO ?? 0} pago(s), ${r.AGENDADO ?? 0} agendado(s), ${r.REJEITADO ?? 0} rejeitado(s), ${r.CANCELADO ?? 0} cancelado(s).` +
         (data.naoReconhecidos.length > 0 ? ` ${data.naoReconhecidos.length} sem correspondência.` : "") +
+        textoSituacaoSenior(data.situacaoSenior, "AB") +
         (data.prontosParaBaixa > 0
           ? ` ${data.prontosParaBaixa} pronto(s) para conferência e baixa na Sênior. Continue pelo resultado da importação abaixo.`
           : (r.AGENDADO ?? 0) > 0

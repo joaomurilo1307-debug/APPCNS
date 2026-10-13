@@ -80,13 +80,18 @@ export async function processarRetorno(db: PrismaClient, dados: { nomeArquivo: s
     } });
     // Uma rejeicao/cancelamento libera a revisao somente se nao houver outro
     // pagamento valido para o titulo; nunca apagar CORRIGIDO ou vinculos manuais.
+    // Mesmo criterio decide quem volta pra AB na Senior (feito pela rota, fora da transacao).
+    const titulosSemPagamentoAtivo: string[] = [];
     for (const tituloId of titulosLiberados) {
       const ativos = await tx.remessaItemPagamento.count({ where: { tituloId, status: { in: ["PENDENTE", "AGENDADO", "PAGO"] } } });
-      if (!ativos) await tx.tituloContasAPagar.updateMany({ where: { id: tituloId, revisadoStatus: "ENVIADO_AGUARDANDO_BAIXA" }, data: { revisadoStatus: null, revisadoEm: null, revisadoPorNome: null } });
+      if (ativos) continue;
+      titulosSemPagamentoAtivo.push(tituloId);
+      await tx.tituloContasAPagar.updateMany({ where: { id: tituloId, revisadoStatus: "ENVIADO_AGUARDANDO_BAIXA" }, data: { revisadoStatus: null, revisadoEm: null, revisadoPorNome: null } });
     }
     await tx.remessaPagamento.updateMany({ where: { id: { in: [...remessas] } }, data: { status: "RETORNO_PROCESSADO" } });
     const remessasVinculadas = await remessasDoRetorno(tx, [...remessas]);
     return { retorno, duplicado: false, totalLido: lido.itens.length, totalReconhecidos: itensAtingidos.size, naoReconhecidos, resumoStatus, remessasVinculadas,
+      titulosSemPagamentoAtivo,
       prontosParaBaixa: remessasVinculadas.reduce((s, r) => s + r.qtdProntos, 0),
     };
   }, { timeout: 60_000, maxWait: 10_000 });

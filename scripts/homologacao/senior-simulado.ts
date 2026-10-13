@@ -6,6 +6,8 @@ export function criarSeniorSimulado(porta = 3099) {
   let envios = 0;
   const consultas: string[] = [];
   const pagos = new Map<string, string>();
+  // Situacao trocada pela porta PostDBInfoFinan (AB/PE); ausente = AB.
+  const situacoes = new Map<string, string>();
   const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const server = createServer(async (req, res) => {
     let corpo = "";
@@ -13,9 +15,22 @@ export function criarSeniorSimulado(porta = 3099) {
     if (req.url === "/_controle") {
       if (req.method === "POST") modo = JSON.parse(corpo).modo;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ modo, envios, pagos: [...pagos.keys()], consultas })); return;
+      res.end(JSON.stringify({ modo, envios, pagos: [...pagos.keys()], consultas, situacoes: Object.fromEntries(situacoes) })); return;
     }
     res.setHeader("Content-Type", "text/xml; charset=UTF-8");
+    if (req.url === "/leitura" && corpo.includes("<ser:PostDBInfoFinan>")) {
+      // Mesma regra da LSP real: so' AB<->PE, e o titulo precisa estar na origem.
+      const numTit = /<numTit>(.*?)<\/numTit>/.exec(corpo)?.[1] ?? "";
+      const destino = /<sitTit>(.*?)<\/sitTit>/.exec(corpo)?.[1] ?? "";
+      const atual = pagos.has(numTit) ? "LQ" : situacoes.get(numTit) ?? "AB";
+      let sucesso = 0, mensagem = "Situacao de destino bloqueada";
+      if (modo === "SITUACAO_FALHA") mensagem = "Falha simulada na troca de situacao";
+      else if (["AB", "PE"].includes(destino)) {
+        if (atual === (destino === "AB" ? "PE" : "AB")) { situacoes.set(numTit, destino); sucesso = 1; mensagem = "SQL executado e transacao confirmada"; }
+        else mensagem = "Titulo nao encontrado na situacao de origem";
+      }
+      res.end(`<PostDBInfoFinanResponse><result><erroExecucao/><mensagem>${mensagem}</mensagem><sucesso>${sucesso}</sucesso></result></PostDBInfoFinanResponse>`); return;
+    }
     if (req.url === "/leitura") {
       if (modo === "LEITURA_FALHA") {res.statusCode=503;res.end("Consulta simulada indisponivel");return;}
       const sql = (/<pmSQL>([\s\S]*?)<\/pmSQL>/.exec(corpo)?.[1] ?? "").replace(/&apos;/g, "'").replace(/&gt;/g, ">").replace(/&lt;/g, "<");
@@ -27,7 +42,7 @@ export function criarSeniorSimulado(porta = 3099) {
         const titulo = /NUMTIT\s*=\s*'([^']+)'/i.exec(sql)?.[1];
         const lista = /NUMTIT\s+IN\s*\(([^)]+)\)/i.exec(sql)?.[1];
         const titulos = titulo ? [titulo] : lista ? [...lista.matchAll(/'([^']+)'/g)].map(m=>m[1]) : [];
-        linhas = titulos.filter(t => !/SITTIT = 'AB'/.test(sql) || !pagos.has(t)).map(t => ({ NUMTIT: t, CODTPT: "DUP", CODFOR: "999999", CODFIL: "1", CODEMP: "1", DATEMI: "08/10/2026", SITTIT: pagos.has(t) ? "LQ" : "AB", VLRORI: "100,00", VLRABE: pagos.has(t) ? "0,00" : "100,00", ULTPGT: pagos.get(t) ?? "", CODFPG: modo === "CONFERENCIA_SEM_FORMA" ? "0" : "3", CODBAN:"0", CODAGE:"0", CCBFOR:"0" }));
+        linhas = titulos.filter(t => !/SITTIT = 'AB'/.test(sql) || !pagos.has(t)).map(t => ({ NUMTIT: t, CODTPT: "DUP", CODFOR: "999999", CODFIL: "1", CODEMP: "1", DATEMI: "08/10/2026", SITTIT: pagos.has(t) ? "LQ" : situacoes.get(t) ?? "AB", VLRORI: "100,00", VLRABE: pagos.has(t) ? "0,00" : "100,00", ULTPGT: pagos.get(t) ?? "", CODFPG: modo === "CONFERENCIA_SEM_FORMA" ? "0" : "3", CODBAN:"0", CODAGE:"0", CCBFOR:"0" }));
         if (modo === "CONFERENCIA_OUTRO_TIPO" && linhas.length) linhas.push({ ...linhas[0], CODTPT: "OUT", CODFPG: "19" });
         if (modo === "CONFERENCIA_AMBIGUA" && linhas.length) linhas.push({...linhas[0],CCBFOR:"11111-1"});
         if (modo === "CONFERENCIA_BANCO_PARCIAL") linhas=linhas.map(t=>({...t,CODBAN:"237",CODAGE:"1234",CCBFOR:"12345678"}));

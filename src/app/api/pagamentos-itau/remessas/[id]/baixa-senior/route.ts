@@ -11,6 +11,7 @@ import {
   type TituloParaBaixa,
 } from "@/lib/senior/baixaTitulos";
 import { erroDoItemBaixa, reservarItemBaixa } from "@/lib/senior/controleBaixa";
+import { alterarSituacaoTitulo } from "@/lib/senior/situacaoTitulo";
 import { registrarBaixaConferida } from "@/lib/senior/registrarBaixaConferida";
 
 // Baixa na Senior (GerarBaixaPorLoteCP) dos pagamentos que o banco confirmou
@@ -40,6 +41,8 @@ type Analise = {
   situacao: "ELEGIVEL" | "JA_BAIXADO" | "BLOQUEADO";
   motivo?: string;
   envio?: TituloParaBaixa;
+  /** Titulo em PE (remessa gerada pelo app): volta pra AB antes da baixa. */
+  voltarAb?: boolean;
   situacaoSenior?: ReturnType<typeof situacaoDoTituloNaSenior>;
 };
 
@@ -141,7 +144,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     if (!situacao.existe) { bloquear("Título não encontrado na Senior (empresa/filial/fornecedor/tipo)."); continue; }
-    if (!situacao.aberto) {
+    // PE com saldo = marcado pela geracao da remessa; a baixa devolve pra AB antes.
+    const emPe = situacao.sittit === "PE" && situacao.valorAberto > 0;
+    if (!situacao.aberto && !emPe) {
       if (["LQ", "AB"].includes(situacao.sittit) && situacao.valorAberto === 0) {
         analises.push({ ...base, situacao: "JA_BAIXADO", situacaoSenior: situacao, motivo: "A Senior já mostra este título liquidado (sem saldo em aberto)." });
       } else {
@@ -164,6 +169,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     analises.push({
       ...base,
       situacao: "ELEGIVEL",
+      ...(emPe ? { voltarAb: true, motivo: "Título em PE na Senior: volta para AB antes da baixa." } : {}),
       envio: {
         numInt: item.referenciaEmpresa,
         codFil: Number(t.codFil),
@@ -228,6 +234,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           comErro++;
           erros.push({ numTit: a.numTit, erro: "Outro envio esta em processamento ou o item ja foi tratado. Atualize a previa." });
         }
+      }
+      // Titulo em PE: devolve pra AB antes (GerarBaixaPorLoteCP e a conferencia
+      // so' tratam AB). Se nao voltar, o item fica de fora com erro.
+      for (const a of parte.filter((x) => x.voltarAb)) {
+        const r = await alterarSituacaoTitulo(a.envio!, "AB");
+        if (r.ok) continue;
+        parte.splice(parte.indexOf(a), 1);
+        const erro = `Título em PE na Senior e não voltou para AB (${r.mensagem}). Conferir na Senior.`;
+        await prisma.remessaItemPagamento.update({
+          where: { id: a.itemId },
+          data: { baixaSeniorStatus: "ERRO", baixaSeniorEm: agora, baixaSeniorMsg: erro, baixaSeniorPorId: user.id },
+        });
+        comErro += 1;
+        erros.push({ numTit: a.numTit, erro });
       }
       if (!parte.length) continue;
       let ok = false;

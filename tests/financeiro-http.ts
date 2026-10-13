@@ -294,6 +294,52 @@ async function main() {
     assert.equal(tituloFinal.pago, true); assert.equal(tituloFinal.valorAberto, 0); assert.ok(tituloFinal.dataPagamento);
     passou("Sincronizacao incremental de liquidacao atualiza programacao e data de pagamento");
 
+    // Situacao do titulo na Senior (porta PostDBInfoFinan): PE ao gerar, AB na rejeicao e antes da baixa.
+    await modo("OK");
+    const situacaoDe = async (tituloId: string) => {
+      const { numTit } = await db.tituloContasAPagar.findUniqueOrThrow({ where: { id: tituloId } });
+      return ((await estadoSenior()) as any).situacoes[numTit] ?? "AB";
+    };
+    const itemPe = await criarItem();
+    const remessaPe = await gerar(itemPe);
+    assert.equal(await situacaoDe(itemPe.tituloId), "PE");
+    passou("Gerar remessa marca o titulo em PE na Senior");
+    const rejeicao = await http("/api/pagamentos-itau/retornos", { nomeArquivo: `TESTE-REJ-${remessaPe.id}.ret`, conteudo: mudarCampo(montarRetornoSimulado(remessaPe.conteudoArquivo!), 2, 231, 240, "AN") });
+    assert.equal(rejeicao.status, 200, JSON.stringify(rejeicao.data));
+    assert.equal(rejeicao.data.resumoStatus.REJEITADO, 1);
+    assert.deepEqual(rejeicao.data.situacaoSenior.map((s: any) => s.ok), [true]);
+    assert.equal(await situacaoDe(itemPe.tituloId), "AB");
+    passou("Retorno rejeitado devolve o titulo para AB na Senior");
+
+    const itemBaixaPe = await criarItem();
+    const remessaBaixaPe = await pago(itemBaixaPe);
+    assert.equal(await situacaoDe(itemBaixaPe.tituloId), "PE");
+    const baixaPe = await http(`/api/pagamentos-itau/remessas/${remessaBaixaPe.id}/baixa-senior`, { confirmar: true });
+    assert.equal(baixaPe.data.enviados, 1, JSON.stringify(baixaPe.data));
+    assert.equal((await db.remessaItemPagamento.findFirstOrThrow({ where: { remessaId: remessaBaixaPe.id } })).baixaSeniorStatus, "ENVIADA");
+    passou("Baixa de titulo em PE volta para AB e baixa na Senior");
+
+    await modo("SITUACAO_FALHA");
+    const itemFalhaPe = await criarItem();
+    const rFalhaPe = await http("/api/pagamentos-itau/remessas", { contaBancariaId: "homologacao-conta", itens: [itemFalhaPe] });
+    assert.equal(rFalhaPe.status, 201, JSON.stringify(rFalhaPe.data)); remessaIds.push(rFalhaPe.data.remessas[0].id);
+    assert.equal(rFalhaPe.data.situacaoSenior[0].ok, false);
+    assert.match(rFalhaPe.data.situacaoSenior[0].mensagem, /Falha simulada/);
+    passou("Falha ao marcar PE nao desfaz a remessa e aparece na resposta");
+
+    await modo("OK");
+    const itemFalhaAb = await criarItem();
+    const remessaFalhaAb = await pago(itemFalhaAb);
+    const enviosAntes = (await estadoSenior()).envios;
+    await modo("SITUACAO_FALHA");
+    const baixaFalhaAb = await http(`/api/pagamentos-itau/remessas/${remessaFalhaAb.id}/baixa-senior`, { confirmar: true });
+    assert.equal(baixaFalhaAb.data.comErro, 1, JSON.stringify(baixaFalhaAb.data));
+    assert.equal((await estadoSenior()).envios, enviosAntes, "Nao pode chamar a baixa se o titulo nao voltou para AB.");
+    const itemErro = await db.remessaItemPagamento.findFirstOrThrow({ where: { remessaId: remessaFalhaAb.id } });
+    assert.equal(itemErro.baixaSeniorStatus, "ERRO"); assert.match(itemErro.baixaSeniorMsg ?? "", /não voltou para AB/);
+    passou("Titulo em PE que nao volta para AB fica fora da baixa com erro");
+    await modo("OK");
+
     mkdirSync("tmp/homologacao", { recursive: true });
     writeFileSync("tmp/homologacao/resultado-http.json", JSON.stringify({ geradoEm: new Date().toISOString(), total: resultados.length, aprovados: resultados }, null, 2));
     console.log(`VALIDADOS: ${resultados.length} cenarios HTTP com NextAuth, Postgres e Senior simulada.`);
@@ -301,6 +347,7 @@ async function main() {
     const itensAuditados=await db.remessaItemPagamento.findMany({where:{remessaId:{in:remessaIds}},select:{id:true}});
     await db.auditLog.deleteMany({where:{entityType:"RemessaItemPagamento",entityId:{in:itensAuditados.map(i=>i.id)}}});
     await db.auditLog.deleteMany({where:{entityType:"RemessaPagamento",entityId:{in:remessaIds}}});
+    await db.auditLog.deleteMany({where:{entityType:"TituloContasAPagar",entityId:{in:tituloIds}}});
     await db.retornoPagamentoArquivo.deleteMany({ where: { remessaId: { in: remessaIds } } });
     await db.remessaPagamento.deleteMany({ where: { id: { in: remessaIds } } });
     await db.tituloContasAPagar.deleteMany({ where: { id: { in: tituloIds } } });
