@@ -41,6 +41,9 @@ const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: 
   // ja existiam prontas, so estavam fora do menu desde antes. Nucleos
   // continua escondido (Joao ainda nao pediu).
   { href: "/equipes", module: "gestao", label: "Equipes", icon: IconUsers, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
+  // Controle de efetivos de campo (MRN): a propria pagina checa o acesso por usuario (Editor/Dashboard),
+  // entao o link aparece para os papeis internos e quem nao foi liberado ve a mensagem de acesso.
+  { href: "/equipes-campo", module: "gestao", label: "Equipes de Campo", icon: IconUsers, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/metas", module: "gestao", label: "Metas", icon: IconTarget, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/relatorios", module: "gestao", label: "Relatórios", icon: IconReport, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/pdi", module: "gestao", label: "PDI", icon: IconTrendingUp, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },

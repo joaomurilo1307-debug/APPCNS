@@ -1371,3 +1371,158 @@ model ConciliacaoBancariaLancamento {
   @@index([contaBancariaId, dataLancamento])
   @@index([status])
 }
+
+// ---------------------------------------------------------------------------
+// Equipes de campo (afugentamento / resgate) -- controle de efetivos MRN.
+// Datas de calendario (sem hora) sao gravadas em UTC 00:00 e comparadas como
+// "AAAA-MM-DD" na camada de regra (src/lib/efetivos/disponibilidade.ts).
+// Quem edita e so quem tem EfetivoAcesso EDITOR (ou ADMIN); os demais veem o painel.
+// ---------------------------------------------------------------------------
+
+// Equipe-base cadastrada (EQ-01...): agrupa as vagas de um projeto/CT.
+model EfetivoEquipe {
+  id       String   @id @default(cuid())
+  codigo   String   @unique // EQ-01
+  projeto  String // CT / projeto base, ex: "3636 PNM"
+  gestor   String? // gestor MRN responsavel
+  grupo    String // Fauna | Flora
+  nome     String // ex: EQUIPE 01 - FLANCO NORTE - PTR
+  status   String   @default("Ativa") // Ativa | Em formação | Inativa
+  ordem    Int      @default(0)
+  criadoEm DateTime @default(now())
+
+  vagas EfetivoVaga[]
+
+  @@index([grupo])
+}
+
+// Uma vaga/posicao da equipe; "nome" vazio = vaga ainda sem profissional.
+model EfetivoVaga {
+  id            String    @id @default(cuid())
+  numero        Int? // "ID VAGA" da planilha original
+  equipeId      String
+  atividade     String    @default("Resgate") // Resgate | Afugentamento | Apoio / Coordenação ...
+  empresa       String // Consominas | Coopermoura/MRN
+  cargo         String
+  nome          String? // profissional
+  status        String    @default("Vigente") // Vigente | Apto com restrição | Afastado | Em contratação | Desmobilizado
+  previsaoInicio DateTime? // vaga em contratacao: quando se espera o profissional
+  nivel         String? // Superior | Técnico | NA
+  direcao4x4    Boolean? // habilitado a dirigir 4x4 (null = nao informado)
+  contratoAtual String? // contrato/projeto onde a pessoa esta hoje, quando fora da propria equipe (ex.: apoio vindo do 4362 LT)
+  disponivelAPartir DateTime? // ate esta data (exclusive) a pessoa segue ocupada em contratoAtual
+  destino       String? // para onde esta previsto migrar depois
+  observacao    String? // restrita a quem edita (pode ter dado de saude)
+  criadoEm      DateTime  @default(now())
+
+  equipe    EfetivoEquipe     @relation(fields: [equipeId], references: [id])
+  ausencias EfetivoAusencia[]
+  alocacoes EfetivoAlocacao[]
+
+  @@index([equipeId])
+}
+
+// Ausencia com data (ferias, atestado, folga, treinamento...). O tipo e restrito.
+model EfetivoAusencia {
+  id         String      @id @default(cuid())
+  vagaId     String
+  tipo       String // Férias | Atestado | Afastado | Folga | Treinamento | Outro
+  inicio     DateTime
+  fim        DateTime
+  observacao String?
+  criadoEm   DateTime    @default(now())
+
+  vaga EfetivoVaga @relation(fields: [vagaId], references: [id], onDelete: Cascade)
+
+  @@index([vagaId, inicio, fim])
+}
+
+// Campanha = a demanda do cliente (solicitacao) + o periodo em que as pessoas ficam alocadas.
+model EfetivoCampanha {
+  id           String    @id @default(cuid())
+  codigo       String    @unique // CAM-001
+  recebidaEm   DateTime?
+  solicitante  String?
+  projeto      String // CT / projeto
+  grupo        String // Fauna | Flora
+  atividade    String // Afugentamento | Resgate | Afugentamento e Resgate | Apoio / Coordenação
+  local        String? // local / frente
+  inicio       DateTime
+  fim          DateTime
+  qtdEquipes   Int       @default(1) // demanda declarada, em equipes
+  prioridade   String    @default("Média") // Alta | Média | Baixa
+  status       String    @default("Nova") // Nova | Em análise | Planejada | Confirmada | Em execução | Concluída | Cancelada
+  observacao   String?
+  criadoPorNome String?
+  criadoEm     DateTime  @default(now())
+
+  alocacoes EfetivoAlocacao[]
+
+  @@index([inicio, fim])
+  @@index([status])
+}
+
+// Pessoa (vaga com nome) reservada para uma campanha, num periodo (padrao = o da campanha).
+model EfetivoAlocacao {
+  id            String   @id @default(cuid())
+  campanhaId    String
+  vagaId        String
+  inicio        DateTime
+  fim           DateTime
+  criadoPorNome String?
+  criadoEm      DateTime @default(now())
+
+  campanha EfetivoCampanha @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  vaga     EfetivoVaga     @relation(fields: [vagaId], references: [id])
+
+  @@unique([campanhaId, vagaId])
+  @@index([vagaId, inicio, fim])
+}
+
+// Nivel de acesso ao modulo por usuario: EDITOR (monta/movimenta equipes) ou
+// DASHBOARD (so consulta). ADMIN tem acesso total sem precisar de registro.
+model EfetivoAcesso {
+  userId      String   @id
+  nivel       String // EDITOR | DASHBOARD
+  concedidoEm DateTime @default(now())
+  concedidoPor String?
+}
+
+// Veiculo (viatura) do controle de campo. A planilha so traz "VL 01/02/03" por equipe,
+// sem placa: placa, modelo e contrato sao preenchidos no sistema.
+model EfetivoVeiculo {
+  id            String   @id @default(cuid())
+  codigo        String   @unique // VEI-001
+  identificacao String // como a equipe chama: VL 01, placa, prefixo...
+  placa         String?
+  modelo        String?
+  tracao4x4     Boolean?
+  status        String   @default("Em operação") // Em operação | Disponível | Em manutenção | Parado | Devolvido
+  observacao    String?
+  criadoEm      DateTime @default(now())
+
+  movimentos EfetivoVeiculoMovimento[]
+
+  @@index([status])
+}
+
+// Onde o veiculo esta (ou esteve): contrato/projeto, equipe e local, por periodo.
+// fim vazio = continua la. Nunca se apaga a passagem anterior: ao mover, fecha-se a anterior.
+model EfetivoVeiculoMovimento {
+  id         String    @id @default(cuid())
+  veiculoId  String
+  inicio     DateTime
+  fim        DateTime?
+  projeto    String // contrato / projeto
+  equipeId   String?
+  campanhaId String?
+  local      String?
+  observacao String?
+  criadoPorNome String?
+  criadoEm   DateTime  @default(now())
+
+  veiculo EfetivoVeiculo @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
+
+  @@index([veiculoId, inicio])
+  @@index([projeto])
+}
