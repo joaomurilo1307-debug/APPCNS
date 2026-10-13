@@ -1,8 +1,8 @@
-// Gerador do arquivo de remessa CNAB240 SISPAG (Itau, layout versao 086),
-// escopo "Fornecedores" (tipo 20): Segmento A (credito em conta / TED) e
-// Segmento J (boleto em cobranca no Itau ou em outros bancos). Tributos,
-// concessionarias e holerite ficam fora deste escopo -- ver
-// docs/integracao-itau.md.
+// Gerador do arquivo de remessa CNAB240 SISPAG (Itau). Todas as formas da
+// Nota 5 que servem a contas a pagar (ver constantes.ts): Segmento A
+// (credito/poupanca/cheque/OP/TED/PIX/NF liquidacao), J (boleto e PIX
+// QR-Code), O (concessionaria/tributo com codigo de barras) e N (tributo sem
+// codigo de barras, Anexo C). Holerite (C/D/E/F) fica fora.
 //
 // Cada linha tem exatamente 240 bytes; o arquivo e' texto puro (CRLF),
 // sem compactacao, conforme "2.1 - Intercambio de informacoes" do manual.
@@ -13,12 +13,18 @@ import {
   CODIGO_COMPENSACAO_PIX,
   FORMA_PAGAMENTO,
   TIPO_MOVIMENTO,
-  TIPO_PAGAMENTO_FORNECEDORES,
   TIPO_TRANSFERENCIA_PIX,
+  TRIBUTO_DA_FORMA,
+  ehFormaPix,
+  formaSoAgencia,
+  layoutLoteDaForma,
   segmentoDaForma,
+  tipoPagamentoDaForma,
+  type Segmento,
 } from "./constantes";
-import { dataVencimentoDoFator, parseCodigoBarras, valorDoCodigoBarras } from "./codigoBarras";
-import type { ContaDebito, ItemRemessa } from "./tipos";
+import { dataVencimentoDoFator, parseCodigoBarras, valorDaArrecadacao, valorDoCodigoBarras } from "./codigoBarras";
+import { lerPixCopiaECola } from "./pixQrCode";
+import type { ContaDebito, DadosTributo, ItemRemessa } from "./tipos";
 
 const QUEBRA_LINHA = "\r\n";
 
@@ -56,6 +62,8 @@ function agenciaContaFavorecido(item: ItemRemessa): string {
   const dac = item.dacFavorecido ?? "";
   // Nota 11: layout muda conforme o banco favorecido seja Itau(341)/Unibanco(409) ou nao.
   if (banco === "341" || banco === "409") {
+    // Nota 11 a: cheque (02) e OP (10) levam so' a agencia onde ficam a disposicao.
+    if (formaSoAgencia(item.formaPagamento)) return [numero(0, 1), numero(agencia, 4), brancos(1), zeros(6), zeros(6), brancos(1), zeros(1)].join("");
     return [numero(0, 1), numero(agencia, 4), brancos(1), zeros(6), numero(conta, 6), brancos(1), numero(dac, 1)].join("");
   }
   return [numero(agencia, 5), brancos(1), numero(conta, 12), brancos(1), alfa(dac, 1)].join("");
@@ -67,7 +75,7 @@ function montarHeaderLote(conta: ContaDebito, numeroLote: string, formaPagamento
     numero(numeroLote, 4),
     numero(1, 1),
     "C",
-    numero(TIPO_PAGAMENTO_FORNECEDORES, 2),
+    numero(tipoPagamentoDaForma(formaPagamento), 2),
     numero(formaPagamento, 2),
     numero(layoutLote, 3),
     brancos(1),
@@ -95,7 +103,12 @@ function montarHeaderLote(conta: ContaDebito, numeroLote: string, formaPagamento
 }
 
 function detalheSegmentoA(numeroLote: string, numeroRegistro: number, item: ItemRemessa): string {
-  const finalidadeTed = "00005"; // Nota 26: "Pagamento de Fornecedores"
+  if (item.formaPagamento === FORMA_PAGAMENTO.NF_LIQUIDACAO_ELETRONICA) return detalheSegmentoANotaFiscal(numeroLote, numeroRegistro, item);
+  // Nota 26 "Pagamento de Fornecedores": mantido como sempre foi nas formas ja
+  // usadas (01/41/43/45); nas novas (cheque, poupanca, mesmo titular, OP) nao
+  // ha TED, entao vai em branco.
+  const formasComFinalidade: string[] = [FORMA_PAGAMENTO.CREDITO_CONTA_ITAU, FORMA_PAGAMENTO.TED_OUTRO_TITULAR, FORMA_PAGAMENTO.TED_MESMO_TITULAR, FORMA_PAGAMENTO.PIX_TRANSFERENCIA];
+  const finalidadeTed = formasComFinalidade.includes(item.formaPagamento) ? "00005" : "";
   const ehPix = item.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
   const temContaReal = !!(item.bancoFavorecido && item.agenciaFavorecido && item.contaFavorecido && item.dacFavorecido);
   // Nota 71/36: PIX leva "009" (codigo de compensacao do SPI) nas posicoes
@@ -228,18 +241,247 @@ function detalheSegmentoJ52(numeroLote: string, numeroRegistro: number, item: It
   ]);
 }
 
-function trailerLote(numeroLote: string, qtdRegistros: number, totalValor: number): string {
+// Segmento A, variante "Nota Fiscal - Liquidacao Eletronica" (forma 32, pag. 16).
+function detalheSegmentoANotaFiscal(numeroLote: string, numeroRegistro: number, item: ItemRemessa): string {
+  const nf = item.nfLiquidacao;
+  if (!nf) throw new Error("NF - Liquidacao Eletronica sem tipo de identificacao (Nota 32).");
+  // Nota 31: por numero de NF usa so' 178-185 (8 posicoes) + brancos; por CNPJ de terceiro, as 14.
+  const numeroNf =
+    nf.tipoIdentificacao === "2" ? numero(nf.numero ?? "", 8) + brancos(6) : nf.tipoIdentificacao === "3" ? numero(nf.numero ?? "", 14) : zeros(14);
+  const temConta = !!(item.bancoFavorecido && item.agenciaFavorecido && item.contaFavorecido);
   return montarRegistro([
     numero(CODIGO_BANCO_ITAU, 3),
     numero(numeroLote, 4),
-    numero(5, 1),
-    brancos(9),
-    numero(qtdRegistros, 6),
-    valorMonetario(totalValor, 16, 2),
-    zeros(18),
-    brancos(171),
+    numero(3, 1),
+    numero(numeroRegistro, 5),
+    "A",
+    numero(TIPO_MOVIMENTO.INCLUSAO, 3),
+    zeros(3),
+    temConta ? numero(item.bancoFavorecido!, 3) : zeros(3),
+    temConta ? agenciaContaFavorecido(item) : zeros(20),
+    alfa(item.favorecidoNome, 30),
+    alfa(item.referenciaEmpresa, 20),
+    dataDDMMAAAA(item.dataPagamento),
+    alfa("REA", 3),
+    zeros(15),
+    valorMonetario(item.valor, 13, 2),
+    brancos(15), // nosso numero (so' retorno)
+    brancos(5),
+    zeros(8), // data efetiva (so' retorno)
+    zeros(15), // valor efetivo (so' retorno)
+    numeroNf,
+    brancos(6),
+    zeros(6), // numero do documento (so' retorno)
+    numero(item.favorecidoDocumento, 14),
+    numero(nf.tipoIdentificacao, 1),
+    brancos(11),
+    "0", // aviso ao favorecido: nao emite
     brancos(10),
   ]);
+}
+
+// Segmento J da forma 47 (PIX QR-Code): a Nota 18 manda zerar banco, moeda, DV,
+// vencimento, valor e campo livre do codigo de barras.
+function detalheSegmentoJPix(numeroLote: string, numeroRegistro: number, item: ItemRemessa): string {
+  return montarRegistro([
+    numero(CODIGO_BANCO_ITAU, 3),
+    numero(numeroLote, 4),
+    numero(3, 1),
+    numero(numeroRegistro, 5),
+    "J",
+    numero(TIPO_MOVIMENTO.INCLUSAO, 3),
+    zeros(44),
+    alfa(item.favorecidoNome, 30),
+    dataDDMMAAAA(item.dataPagamento), // vencimento nominal
+    valorMonetario(item.valor, 13, 2), // valor do titulo
+    zeros(15), // descontos
+    zeros(15), // acrescimos
+    dataDDMMAAAA(item.dataPagamento),
+    valorMonetario(item.valor, 13, 2),
+    zeros(15),
+    alfa(item.referenciaEmpresa, 20),
+    brancos(13),
+    brancos(15),
+    brancos(10),
+  ]);
+}
+
+// Segmento J-52 PIX (pag. 28): sacado/cedente como no J-52 + chave ou URL do QR (Nota 41) e TXID (Nota 38).
+function detalheSegmentoJ52Pix(numeroLote: string, numeroRegistro: number, item: ItemRemessa, conta: ContaDebito): string {
+  const qr = lerPixCopiaECola(item.pixCopiaECola ?? "");
+  return montarRegistro([
+    numero(CODIGO_BANCO_ITAU, 3),
+    numero(numeroLote, 4),
+    numero(3, 1),
+    numero(numeroRegistro, 5),
+    "J",
+    numero(TIPO_MOVIMENTO.INCLUSAO, 3),
+    "52",
+    numero(2, 1),
+    numero(conta.cnpj, 15),
+    alfa(conta.nomeEmpresa, 40),
+    numero(item.favorecidoTipoDocumento, 1),
+    numero(item.favorecidoDocumento, 15),
+    alfa(item.favorecidoNome, 40),
+    // Chave/URL e TXID diferenciam maiusculas: sem alfa() (que converte).
+    qr.chaveOuUrl.padEnd(77, " "),
+    qr.txid.padEnd(32, " "),
+  ]);
+}
+
+// Segmento O (pag. 34): concessionaria / tributo com codigo de barras. O
+// codigo vai como 44 digitos em 018-061 (Anexo B item 1) e 4 brancos; o
+// Anexo B tambem aceita a representacao de 48 nas mesmas posicoes.
+function detalheSegmentoO(numeroLote: string, numeroRegistro: number, item: ItemRemessa): string {
+  const cb = item.codigoBarras ?? "";
+  const nominal = valorDaArrecadacao(cb);
+  if (nominal !== null && Math.round(nominal * 100) !== Math.round(item.valor * 100)) {
+    throw new Error(`Item ${item.referenciaEmpresa}: valor ${item.valor.toFixed(2)} diferente do valor do codigo de barras (${nominal.toFixed(2)}).`);
+  }
+  return montarRegistro([
+    numero(CODIGO_BANCO_ITAU, 3),
+    numero(numeroLote, 4),
+    numero(3, 1),
+    numero(numeroRegistro, 5),
+    "O",
+    numero(TIPO_MOVIMENTO.INCLUSAO, 3),
+    cb.padEnd(48, " "),
+    alfa(item.favorecidoNome, 30), // nome da concessionaria / contribuinte
+    dataDDMMAAAA(item.dataPagamento), // vencimento nominal (o codigo de arrecadacao nao traz data)
+    alfa("REA", 3),
+    zeros(15), // quantidade de moeda (Nota 19: so' moeda diferente de Real)
+    valorMonetario(item.valor, 13, 2),
+    dataDDMMAAAA(item.dataPagamento),
+    zeros(15), // valor pago (so' retorno)
+    brancos(3),
+    zeros(9), // nota fiscal (Nota 33: so' GNRE-SP 10009.9)
+    brancos(3),
+    alfa(item.referenciaEmpresa, 20),
+    brancos(21),
+    brancos(15),
+    brancos(10),
+  ]);
+}
+
+const centavos = (v: number) => Math.round(v * 100);
+
+/** Partes do valor de um tributo do Segmento N, pros totais do trailer (pag. 42, Nota 17). */
+export function partesDoTributo(d: DadosTributo, valorItem: number): { principal: number; outrasEntidades: number; acrescimos: number } {
+  switch (d.tributo) {
+    case "GPS":
+      return { principal: d.valorTributo, outrasEntidades: d.valorOutrasEntidades, acrescimos: d.atualizacaoMonetaria };
+    case "DARF":
+    case "DARF_SIMPLES":
+      return { principal: d.valorPrincipal, outrasEntidades: 0, acrescimos: d.multa + d.juros };
+    case "GARE_SP":
+      return { principal: d.valorReceita, outrasEntidades: 0, acrescimos: d.juros + d.multa };
+    case "IPVA":
+    case "DPVAT":
+      return { principal: d.valorTributo, outrasEntidades: d.desconto, acrescimos: 0 };
+    case "FGTS":
+      return { principal: valorItem, outrasEntidades: 0, acrescimos: 0 };
+  }
+}
+
+/** Quanto a guia paga segundo as partes informadas -- tem que bater com o valor do item. */
+export function totalDoTributo(d: DadosTributo, valorItem: number): number {
+  const p = partesDoTributo(d, valorItem);
+  if (d.tributo === "IPVA" || d.tributo === "DPVAT") return (centavos(p.principal) - centavos(p.outrasEntidades)) / 100;
+  return (centavos(p.principal) + centavos(p.outrasEntidades) + centavos(p.acrescimos)) / 100;
+}
+
+const dataOuZeros = (iso: string | undefined) => (iso ? dataDDMMAAAA(new Date(`${iso}T00:00:00Z`)) : zeros(8));
+
+// Inscricao do contribuinte (Anexo C, obs. (1) do DARF): CPF alinhado a esquerda + 3 brancos; CNPJ com zeros a esquerda.
+function inscricaoContribuinte(tipo: "1" | "2", documento: string): string {
+  return tipo === "1" ? numero(documento, 11) + brancos(3) : numero(documento, 14);
+}
+
+// Dados do tributo, posicoes 018-195 (178 bytes), Anexo C.
+function dadosDoTributo(item: ItemRemessa): string {
+  const d = item.dadosTributo;
+  if (!d) throw new Error(`Item ${item.referenciaEmpresa}: tributo sem os dados da guia (Anexo C).`);
+  const tipoDoc = item.favorecidoTipoDocumento;
+  const doc = item.favorecidoDocumento;
+  const nome = alfa(item.favorecidoNome, 30);
+  const pagamento = dataDDMMAAAA(item.dataPagamento);
+  const valor = (v: number) => valorMonetario(v, 12, 2);
+  const codigo = TRIBUTO_DA_FORMA[item.formaPagamento];
+  switch (d.tributo) {
+    case "GPS":
+      return [codigo, numero(d.codigoPagamento, 4), numero(d.competencia, 6), numero(d.identificador, 14), valor(d.valorTributo),
+        valor(d.valorOutrasEntidades), valor(d.atualizacaoMonetaria), valor(item.valor), pagamento, brancos(8), brancos(50), nome].join("");
+    case "DARF":
+      return [codigo, numero(d.codigoReceita, 4), numero(tipoDoc, 1), inscricaoContribuinte(tipoDoc, doc), dataOuZeros(d.periodoApuracao),
+        numero(d.referencia || "0", 17), valor(d.valorPrincipal), valor(d.multa), valor(d.juros), valor(item.valor), dataOuZeros(d.vencimento),
+        pagamento, brancos(30), nome].join("");
+    case "DARF_SIMPLES":
+      return [codigo, numero(d.codigoReceita, 4), numero(tipoDoc, 1), inscricaoContribuinte(tipoDoc, doc), dataOuZeros(d.periodoApuracao),
+        valorMonetario(d.receitaBruta, 7, 2), valorMonetario(d.percentual, 2, 2), brancos(4), valor(d.valorPrincipal), valor(d.multa), valor(d.juros),
+        valor(item.valor), dataOuZeros(d.vencimento), pagamento, brancos(30), nome].join("");
+    case "GARE_SP":
+      return [codigo, numero(d.codigoReceita, 4), numero(tipoDoc, 1), numero(doc, 14), numero(d.inscricaoEstadual, 12), numero(d.dividaAtiva || "0", 13),
+        numero(d.referencia, 6), numero(d.parcela || "0", 13), valor(d.valorReceita), valor(d.juros), valor(d.multa), valor(item.valor),
+        dataOuZeros(d.vencimento), pagamento, brancos(11), nome].join("");
+    case "IPVA":
+    case "DPVAT": {
+      // Anexo C obs. (5): RENAVAM de 9 digitos em 043-051; de 12 em 154-165.
+      const renavam = d.renavam.replace(/\D/g, "");
+      const curto = renavam.length <= 9;
+      return [codigo, brancos(4), numero(tipoDoc, 1), numero(doc, 14), numero(d.exercicio, 4), curto ? numero(renavam, 9) : zeros(9), alfa(d.uf, 2),
+        numero(d.codigoMunicipio || "0", 5), alfa(d.placa, 7), alfa(d.opcaoPagamento, 1), valor(d.valorTributo), valor(d.desconto), valor(item.valor),
+        dataOuZeros(d.vencimento), pagamento, brancos(29), curto ? zeros(12) : numero(renavam, 12), nome].join("");
+    }
+    case "FGTS":
+      return [codigo, numero(d.codigoReceita, 4), numero(d.tipoInscricao, 1), numero(doc, 14), alfa(d.codigoBarras, 48), numero(d.identificador, 16),
+        numero(d.lacre, 9), numero(d.digitoLacre, 2), nome, pagamento, valor(item.valor), brancos(30)].join("");
+  }
+}
+
+// Segmento N (pag. 38): tributo sem codigo de barras / FGTS-GRF.
+function detalheSegmentoN(numeroLote: string, numeroRegistro: number, item: ItemRemessa): string {
+  const dados = dadosDoTributo(item);
+  if (dados.length !== 178) throw new Error(`Dados do tributo com ${dados.length} posicoes (esperado 178) no item ${item.referenciaEmpresa}.`);
+  return montarRegistro([
+    numero(CODIGO_BANCO_ITAU, 3),
+    numero(numeroLote, 4),
+    numero(3, 1),
+    numero(numeroRegistro, 5),
+    "N",
+    numero(TIPO_MOVIMENTO.INCLUSAO, 3),
+    dados,
+    alfa(item.referenciaEmpresa, 20),
+    brancos(15),
+    brancos(10),
+  ]);
+}
+
+function trailerLote(numeroLote: string, qtdRegistros: number, totalValor: number, segmento: Segmento, itens: ItemRemessa[]): string {
+  const inicio = [numero(CODIGO_BANCO_ITAU, 3), numero(numeroLote, 4), numero(5, 1), brancos(9), numero(qtdRegistros, 6)];
+  if (segmento === "N") {
+    // Pag. 42: principal, outras entidades (GPS / desconto do IPVA), acrescimos e total arrecadado.
+    let principal = 0;
+    let outras = 0;
+    let acrescimos = 0;
+    for (const i of itens) {
+      const p = partesDoTributo(i.dadosTributo!, i.valor);
+      principal += centavos(p.principal);
+      outras += centavos(p.outrasEntidades);
+      acrescimos += centavos(p.acrescimos);
+    }
+    return montarRegistro([
+      ...inicio,
+      valorMonetario(principal / 100, 12, 2),
+      valorMonetario(outras / 100, 12, 2),
+      valorMonetario(acrescimos / 100, 12, 2),
+      valorMonetario(totalValor, 12, 2),
+      brancos(151),
+      brancos(10),
+    ]);
+  }
+  // Pag. 36 (O): quantidade de moeda 9(07)V9(08) + 174 brancos; A e J (pags. 24/32): 18 zeros + 171 brancos.
+  const complemento = segmento === "O" ? [zeros(15), brancos(174)] : [zeros(18), brancos(171)];
+  return montarRegistro([...inicio, valorMonetario(totalValor, 16, 2), ...complemento, brancos(10)]);
 }
 
 function trailerArquivo(qtdLotes: number, qtdRegistrosTotal: number): string {
@@ -257,7 +499,7 @@ function trailerArquivo(qtdLotes: number, qtdRegistrosTotal: number): string {
 export type LoteGerado = {
   numeroLote: string;
   formaPagamento: string;
-  segmento: "A" | "J";
+  segmento: Segmento;
   quantidadeItens: number;
   valorTotal: number;
 };
@@ -284,8 +526,8 @@ export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], da
   // Nao da pra misturar PIX com TED/boleto no mesmo .rem -- se a selecao
   // tiver as duas coisas, melhor recusar com uma mensagem clara do que gerar
   // um arquivo que o banco provavelmente rejeita inteiro.
-  const temPix = itens.some((i) => i.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA);
-  const temOutraForma = itens.some((i) => i.formaPagamento !== FORMA_PAGAMENTO.PIX_TRANSFERENCIA);
+  const temPix = itens.some((i) => ehFormaPix(i.formaPagamento));
+  const temOutraForma = itens.some((i) => !ehFormaPix(i.formaPagamento));
   if (temPix && temOutraForma) {
     throw new Error(
       "PIX Transferência não pode ir na mesma remessa que outras formas de pagamento (exigência do manual SISPAG) -- gere os itens PIX numa remessa separada dos boletos/TED/crédito."
@@ -312,7 +554,7 @@ export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], da
     const numeroLoteStr = String(numeroLoteAtual).padStart(4, "0");
     const itensDoLote = porForma.get(forma)!;
     const segmento = segmentoDaForma(forma);
-    const layoutLote = segmento === "J" ? "030" : "040";
+    const layoutLote = layoutLoteDaForma(forma);
 
     linhas.push(montarHeaderLote(conta, numeroLoteStr, forma, layoutLote));
     totalRegistros += 1;
@@ -321,7 +563,17 @@ export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], da
     let registrosDetalhe = 0;
     itensDoLote.forEach((item, idx) => {
       const numeroRegistro = idx + 1;
-      if (segmento === "J") {
+      if (segmento === "O") {
+        linhas.push(detalheSegmentoO(numeroLoteStr, numeroRegistro, item));
+        registrosDetalhe += 1;
+      } else if (segmento === "N") {
+        linhas.push(detalheSegmentoN(numeroLoteStr, numeroRegistro, item));
+        registrosDetalhe += 1;
+      } else if (item.formaPagamento === FORMA_PAGAMENTO.PIX_QR_CODE) {
+        linhas.push(detalheSegmentoJPix(numeroLoteStr, numeroRegistro, item));
+        linhas.push(detalheSegmentoJ52Pix(numeroLoteStr, numeroRegistro, item, conta));
+        registrosDetalhe += 2;
+      } else if (segmento === "J") {
         linhas.push(detalheSegmentoJ(numeroLoteStr, numeroRegistro, item));
         linhas.push(detalheSegmentoJ52(numeroLoteStr, numeroRegistro, item, conta));
         registrosDetalhe += 2;
@@ -354,7 +606,7 @@ export function gerarArquivoRemessa(conta: ContaDebito, itens: ItemRemessa[], da
 
     // qtd registros do lote inclui header+detalhes (todos os segmentos)+trailer (Nota 17)
     valorTotalLote /= 100;
-    linhas.push(trailerLote(numeroLoteStr, registrosDetalhe + 2, valorTotalLote));
+    linhas.push(trailerLote(numeroLoteStr, registrosDetalhe + 2, valorTotalLote, segmento, itensDoLote));
     totalRegistros += 1;
 
     lotes.push({ numeroLote: numeroLoteStr, formaPagamento: forma, segmento, quantidadeItens: itensDoLote.length, valorTotal: valorTotalLote });

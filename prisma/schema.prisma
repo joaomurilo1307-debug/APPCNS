@@ -1242,7 +1242,7 @@ model RemessaItemPagamento {
   remessaId          String
   tituloId           String?
   numeroSequencial   Int // posicao no lote (Nota 9), 1-based
-  segmento           String // "A" (credito/TED) ou "J" (boleto)
+  segmento           String // "A" credito/TED/PIX, "J" boleto/PIX QR, "O" concessionaria/tributo c/ barras, "N" tributo s/ barras
   formaPagamento     String // codigo da Nota 5 do manual: 01, 41, 43, 30, 31...
   referenciaEmpresa  String   @unique // chave interna do item (continua unica); e' o "Seu Numero" do CNAB quando seuNumero esta vazio
   // Referencia legada no formato Senior (0 + CODFOR 6 + NUMTIT 10 + CODTPT 3).
@@ -1267,6 +1267,10 @@ model RemessaItemPagamento {
   // bancaria completa, so' chave Pix.
   chavePixTipo       String?
   chavePixValor      String?
+
+  // Formas 47 (PIX QR-Code), 32 (NF liquidacao) e Segmento N (tributo sem
+  // codigo de barras): JSON { pixCopiaECola?, nfLiquidacao?, dadosTributo? }.
+  dadosComplementares String? @db.Text
 
   valor              Float
   dataPagamento      DateTime

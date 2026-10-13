@@ -25,8 +25,9 @@ import {
   descreverDuplicidade,
   instanteBrasilia,
 } from "./regrasPreRemessa";
-import { FORMA_PAGAMENTO, segmentoDaForma } from "@/lib/cnab240/itau/constantes";
-import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
+import { FORMA_PAGAMENTO, ehFormaPix, formaDaArrecadacao, segmentoDaForma, type Segmento } from "@/lib/cnab240/itau/constantes";
+import { arrecadacaoParaCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
+import type { ContaDebito, DadosTributo, ItemRemessa, NfLiquidacao } from "@/lib/cnab240/itau/tipos";
 import {
   ROTULO_CAMPO,
   temErroBloqueante,
@@ -58,6 +59,10 @@ export const itemRemessaSchema = z.object({
   chavePixValor: texto,
   valor: numero,
   dataPagamento: texto,
+  // Formas novas (13/10/2026): conteudo conferido por validarItemRemessa, aqui so' o formato bruto.
+  pixCopiaECola: texto,
+  nfLiquidacao: z.preprocess((v) => (v === null ? undefined : v), z.object({ tipoIdentificacao: texto, numero: texto }).optional()),
+  dadosTributo: z.preprocess((v) => (v === null ? undefined : v), z.record(z.unknown()).optional()),
 });
 
 export type ItemConferencia = ItemParaValidar & { tituloId?: string | null };
@@ -94,7 +99,7 @@ export type RelatorioConferencia = {
 // assim um "tipo" desencontrado na tela nunca derruba a geracao.
 export type ItemPronto = {
   tituloId: string | null;
-  segmento: "A" | "J";
+  segmento: Segmento;
   formaPagamento: string;
   favorecidoNome: string;
   favorecidoTipoDoc: "1" | "2";
@@ -108,6 +113,9 @@ export type ItemPronto = {
   chavePixValor?: string;
   valor: number;
   dataPagamento: string;
+  pixCopiaECola?: string;
+  nfLiquidacao?: NfLiquidacao;
+  dadosTributo?: DadosTributo;
 };
 
 const BANCOS_ITAU = ["341", "409"]; // mesmo conjunto da Nota 11 do manual (Itau / Unibanco)
@@ -123,6 +131,21 @@ const BANCOS_ITAU = ["341", "409"]; // mesmo conjunto da Nota 11 do manual (Itau
 export function formaCoerente(item: { formaPagamento?: string; codigoBarras?: string; bancoFavorecido?: string }): { forma: string; motivo: string | null } {
   const forma = item.formaPagamento ?? "";
   const segmento = segmentoDaForma(forma);
+  const digitosBarras = (item.codigoBarras ?? "").replace(/\D/g, "");
+  // Codigo de arrecadacao (comeca com 8, 48/44 digitos) so' vai no Segmento O, e a
+  // forma sai do proprio codigo (Anexo B: 1 prefeitura -> 19, 2-4 consumo -> 13, 5 governo -> 91).
+  if ((segmento === "J" || segmento === "O") && digitosBarras.startsWith("8") && [44, 48].includes(digitosBarras.length)) {
+    try {
+      const esperada = formaDaArrecadacao(arrecadacaoParaCodigoBarras(digitosBarras));
+      if (forma !== esperada) {
+        return { forma: esperada, motivo: `Código de arrecadação (conta de consumo/tributo com código de barras): a forma certa é ${esperada}, e não ${forma}. O arquivo usou ${esperada}.` };
+      }
+    } catch {
+      // codigo invalido: quem barra e' validarItemRemessa
+    }
+    return { forma, motivo: null };
+  }
+  if (forma === FORMA_PAGAMENTO.PIX_QR_CODE) return { forma, motivo: null };
   if (segmento === "J") {
     let banco: string | null = null;
     try {
@@ -151,8 +174,9 @@ export function formaCoerente(item: { formaPagamento?: string; codigoBarras?: st
   return { forma, motivo: null };
 }
 
+/** Vai no arquivo separado de PIX: transferencia (45) e QR-Code (47). */
 export function ehPix(item: { formaPagamento: string }) {
-  return item.formaPagamento === FORMA_PAGAMENTO.PIX_TRANSFERENCIA;
+  return ehFormaPix(item.formaPagamento);
 }
 
 export function prepararItem(item: ItemConferencia): ItemPronto {
@@ -182,11 +206,20 @@ export function prepararItem(item: ItemConferencia): ItemPronto {
     agenciaFavorecido: usaConta ? agencia : undefined,
     contaFavorecido: usaConta ? conta : undefined,
     dacFavorecido: usaConta ? dac : undefined,
-    codigoBarras: segmento === "J" ? linhaDigitavelParaCodigoBarras(item.codigoBarras ?? "") : undefined,
+    codigoBarras:
+      segmento === "O" ? arrecadacaoParaCodigoBarras(item.codigoBarras ?? "")
+      : segmento === "J" && forma !== FORMA_PAGAMENTO.PIX_QR_CODE ? linhaDigitavelParaCodigoBarras(item.codigoBarras ?? "")
+      : undefined,
     chavePixTipo: chave ? vazioParaUndefined(chave.tipo) : undefined,
     chavePixValor: chave ? vazioParaUndefined(chave.valor) : undefined,
     valor: item.valor ?? 0,
     dataPagamento: item.dataPagamento ?? "",
+    pixCopiaECola: forma === FORMA_PAGAMENTO.PIX_QR_CODE ? (item.pixCopiaECola ?? "").trim() : undefined,
+    nfLiquidacao:
+      forma === FORMA_PAGAMENTO.NF_LIQUIDACAO_ELETRONICA
+        ? { tipoIdentificacao: item.nfLiquidacao?.tipoIdentificacao as NfLiquidacao["tipoIdentificacao"], numero: (item.nfLiquidacao?.numero ?? "").replace(/\D/g, "") }
+        : undefined,
+    dadosTributo: segmento === "N" ? (item.dadosTributo as DadosTributo) : undefined,
   };
 }
 
@@ -207,6 +240,9 @@ export function itemParaCnab(item: ItemPronto, referenciaEmpresa: string, numero
     codigoBarras: item.codigoBarras,
     chavePixTipo: item.chavePixTipo as ItemRemessa["chavePixTipo"],
     chavePixValor: item.chavePixValor,
+    pixCopiaECola: item.pixCopiaECola,
+    nfLiquidacao: item.nfLiquidacao,
+    dadosTributo: item.dadosTributo,
   };
 }
 
@@ -332,7 +368,9 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
       const docItem = (item.favorecidoDocumento ?? "").replace(/\D/g, "");
       const docEmpresa = (contaDebito.cnpj ?? "").replace(/\D/g, "");
       if (docItem && docEmpresa) {
-        if (item.formaPagamento === FORMA_PAGAMENTO.TED_MESMO_TITULAR && docItem !== docEmpresa) {
+        if (item.formaPagamento === FORMA_PAGAMENTO.CREDITO_CONTA_MESMO_TITULAR && docItem !== docEmpresa) {
+          problemas.push(problema("formaPagamento", `Crédito em conta de mesma titularidade (06) só vale para o CPF/CNPJ da própria empresa debitada (${docEmpresa}); este é ${docItem}. Use 01 (conta Itaú de terceiro).`, "erro"));
+        } else if (item.formaPagamento === FORMA_PAGAMENTO.TED_MESMO_TITULAR && docItem !== docEmpresa) {
           problemas.push(
             problema(
               "formaPagamento",
@@ -361,7 +399,7 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
         const descricaoForma = (d.formaPagamentoTitulo ?? "").toLowerCase();
         const tituloBoleto = d.codFpgTitulo === "18" || descricaoForma.includes("boleto");
         const tituloPix = d.codFpgTitulo === "19" || descricaoForma.includes("pix");
-        if ((tituloBoleto && segmentoDaForma(item.formaPagamento ?? "") !== "J") || (tituloPix && !ehPix({ formaPagamento: item.formaPagamento ?? "" }))) {
+        if ((tituloBoleto && !["J", "O"].includes(segmentoDaForma(item.formaPagamento ?? ""))) || (tituloPix && !ehPix({ formaPagamento: item.formaPagamento ?? "" }))) {
           problemas.push(problema("formaPagamento", "Forma de pagamento do carrinho difere da forma atual do titulo na Senior. Atualize os dados antes de gerar.", "erro"));
         }
         if (segmentoDaForma(item.formaPagamento ?? "") === "J" && d.codigoBarras) {

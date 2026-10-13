@@ -12,8 +12,11 @@
 // banco recusa o lote inteiro). "aviso" = pode gerar, mas o banco provavelmente
 // vai rejeitar aquele pagamento ou o dado parece digitado errado.
 
-import { linhaDigitavelParaCodigoBarras } from "./codigoBarras";
-import { FORMA_PAGAMENTO, TIPO_CHAVE_PIX, segmentoDaForma } from "./constantes";
+import { arrecadacaoParaCodigoBarras, linhaDigitavelParaCodigoBarras, valorDaArrecadacao } from "./codigoBarras";
+import { FORMA_PAGAMENTO, TIPO_CHAVE_PIX, formaSoAgencia, formaSoItau, segmentoDaForma } from "./constantes";
+import { lerPixCopiaECola } from "./pixQrCode";
+import { totalDoTributo } from "./remessa";
+import type { DadosTributo } from "./tipos";
 import { identificacaoBeneficiarioBoleto } from "../../pagamentos/beneficiarioBoleto";
 
 export type GravidadeProblema = "erro" | "aviso";
@@ -38,7 +41,10 @@ export type CampoItem =
   | "chavePix"
   | "valor"
   | "dataPagamento"
-  | "formaPagamento";
+  | "formaPagamento"
+  | "pixQrCode"
+  | "nfLiquidacao"
+  | "dadosTributo";
 
 export type ItemParaValidar = {
   segmento?: string;
@@ -56,6 +62,9 @@ export type ItemParaValidar = {
   chavePixValor?: string;
   valor?: number;
   dataPagamento?: string; // yyyy-mm-dd
+  pixCopiaECola?: string; // forma 47
+  nfLiquidacao?: { tipoIdentificacao?: string; numero?: string }; // forma 32 (NfLiquidacao)
+  dadosTributo?: DadosTributo | Record<string, unknown>; // Segmento N (formato conferido em validarTributo)
 };
 
 export const ROTULO_CAMPO: Record<CampoItem, string> = {
@@ -72,6 +81,9 @@ export const ROTULO_CAMPO: Record<CampoItem, string> = {
   valor: "Valor",
   dataPagamento: "Data de pagamento",
   formaPagamento: "Forma de pagamento",
+  pixQrCode: "PIX copia e cola",
+  nfLiquidacao: "Identificação da NF",
+  dadosTributo: "Dados da guia do tributo",
 };
 
 function soDigitos(valor: string | undefined | null) {
@@ -121,7 +133,7 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
   const forma = item.formaPagamento ?? "";
   const formasConhecidas = Object.values(FORMA_PAGAMENTO) as string[];
   if (!formasConhecidas.includes(forma)) {
-    add("formaPagamento", `Forma de pagamento "${forma || "vazia"}" não é suportada neste layout (use crédito em conta, TED, PIX ou boleto).`);
+    add("formaPagamento", `Forma de pagamento "${forma || "vazia"}" não existe no SISPAG (Nota 5 do manual).`);
   } else if (item.segmento && segmentoDaForma(forma) !== item.segmento) {
     add("formaPagamento", `A forma ${forma} usa o segmento ${segmentoDaForma(forma)}, mas o item está como segmento ${item.segmento}.`);
   }
@@ -129,9 +141,12 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
 
   if (!(item.favorecidoNome ?? "").trim()) add("favorecidoNome", "Informe o nome do favorecido.");
 
-  // CPF/CNPJ: obrigatorio em qualquer segmento (Segmento A, B e J-52 do CNAB).
+  // CPF/CNPJ: obrigatorio nos Segmentos A, B, J-52 e N (contribuinte). O
+  // Segmento O (concessionaria) nao tem campo de documento -- se vier, confere.
   const doc = soDigitos(item.favorecidoDocumento);
-  if (doc.length !== 11 && doc.length !== 14) {
+  if (segmento === "O" && !doc) {
+    // nada a conferir
+  } else if (doc.length !== 11 && doc.length !== 14) {
     add(
       "favorecidoDocumento",
       doc.length === 0
@@ -157,7 +172,28 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
     add("dataPagamento", "Data de pagamento já passou -- o banco rejeita ou reagenda. Use hoje ou uma data futura.", "aviso");
   }
 
-  if (segmento === "J") {
+  if (forma === FORMA_PAGAMENTO.PIX_QR_CODE) {
+    try {
+      const qr = lerPixCopiaECola(item.pixCopiaECola ?? "");
+      if (qr.valor !== null && typeof item.valor === "number" && Math.round(qr.valor * 100) !== Math.round(item.valor * 100)) {
+        add("valor", `O QR Code é de R$ ${qr.valor.toFixed(2)} e o item está com R$ ${item.valor.toFixed(2)}.`);
+      }
+    } catch (e: any) {
+      add("pixQrCode", (item.pixCopiaECola ?? "").trim() ? String(e?.message ?? e) : "Cole o PIX copia e cola do QR Code (começa com 000201).");
+    }
+  } else if (segmento === "O") {
+    try {
+      const cb = arrecadacaoParaCodigoBarras(item.codigoBarras ?? "");
+      const nominal = valorDaArrecadacao(cb);
+      if (nominal !== null && typeof item.valor === "number" && Math.round(nominal * 100) !== Math.round(item.valor * 100)) {
+        add("valor", `O código de barras é de R$ ${nominal.toFixed(2)} e o item está com R$ ${item.valor.toFixed(2)}.`);
+      }
+    } catch (e: any) {
+      add("codigoBarras", soDigitos(item.codigoBarras) ? String(e?.message ?? e) : "Informe o código de barras da conta/guia (48 dígitos, começa com 8).");
+    }
+  } else if (segmento === "N") {
+    validarTributo(forma, item, add);
+  } else if (segmento === "J") {
     const identificacao = identificacaoBeneficiarioBoleto(item.favorecidoDocumento, item.codigoBarras);
     if (identificacao && item.beneficiarioBoletoConferido !== identificacao) {
       add("favorecidoDocumento", "Confirme o CPF/CNPJ do beneficiario registrado neste boleto. O CNPJ do fornecedor e um DV valido nao comprovam correspondencia no cadastro CIP.");
@@ -168,7 +204,7 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
     } else if (digitos.length === 48) {
       add(
         "codigoBarras",
-        "Linha de 48 dígitos é conta de consumo/concessionária (luz, água, telefone, tributo) -- este layout só aceita boleto bancário de 47 ou 44 dígitos. Pague essa por outro meio."
+        "Linha de 48 dígitos é conta de consumo/concessionária ou tributo com código de barras -- use a forma 13 (concessionária), 19 (tributo municipal) ou 91 (tributo com código de barras), não boleto."
       );
     } else {
       try {
@@ -227,16 +263,35 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
       }
     }
 
-    // Crédito/TED: conta completa obrigatória. PIX: a chave dispensa a conta
-    // (e já foi cobrada acima) -- só confere o tamanho se a conta veio completa,
-    // porque aí é ela que vai pro arquivo.
-    const validarConta = !ehPix || temConta;
-    if (validarConta) {
-      if (!ehPix) {
+    const nf = forma === FORMA_PAGAMENTO.NF_LIQUIDACAO_ELETRONICA;
+    if (nf) {
+      // Notas 31/32: identificacao 1 (CNPJ do cedente), 2 (numero da NF, exige conta) ou 3 (CNPJ de terceiro/filial).
+      const tipoNf = item.nfLiquidacao?.tipoIdentificacao ?? "";
+      const numeroNf = soDigitos(item.nfLiquidacao?.numero);
+      if (!["1", "2", "3"].includes(tipoNf)) add("nfLiquidacao", "Escolha como a NF é identificada: 1 CNPJ do cedente, 2 número da NF ou 3 CNPJ de terceiro/filial.");
+      else if (tipoNf === "2" && (!numeroNf || numeroNf.length > 8)) add("nfLiquidacao", "Informe o número da NF (até 8 dígitos).");
+      else if (tipoNf === "3" && !cnpjValido(numeroNf)) add("nfLiquidacao", "Informe o CNPJ de terceiro/filial (14 dígitos válidos).");
+    }
+
+    // Credito/TED: conta completa obrigatoria. Cheque/OP: so' agencia Itau
+    // (Nota 11 a). PIX: a chave dispensa a conta. NF: conta so' quando
+    // identificada pelo numero da NF (Nota 31).
+    const soAgencia = formaSoAgencia(forma);
+    const contaOpcional = ehPix || (nf && item.nfLiquidacao?.tipoIdentificacao !== "2");
+    const validarConta = !contaOpcional || temConta;
+    if (soAgencia) {
+      if (banco && banco !== "341" && banco !== "409") add("bancoFavorecido", "Cheque e ordem de pagamento ficam numa agência Itaú: use banco 341.");
+      if (!agencia) add("agenciaFavorecido", "Informe a agência Itaú onde o cheque/OP fica à disposição.");
+      else if (agencia.length > 4) add("agenciaFavorecido", `Agência com ${agencia.length} dígitos -- agência Itaú tem 4.`);
+    } else if (validarConta) {
+      if (!contaOpcional) {
         if (!banco) add("bancoFavorecido", "Banco do favorecido não informado.");
         if (!agencia) add("agenciaFavorecido", "Agência do favorecido não informada.");
         if (!conta) add("contaFavorecido", "Conta do favorecido não informada.");
         if (!dac) add("dacFavorecido", "Dígito (DAC) da conta não informado.");
+      }
+      if (formaSoItau(forma) && banco && banco !== "341" && banco !== "409") {
+        add("formaPagamento", `A forma ${forma} só credita conta no Itaú; para o banco ${banco} use TED (41/43) ou PIX.`);
       }
       if (banco.length > 3) add("bancoFavorecido", `Código do banco com ${banco.length} dígitos -- são 3 (ex.: 341 Itaú).`);
       if (dac.length > 1) add("dacFavorecido", "O DAC é um único caractere -- o dígito não pode vir junto da conta.");
@@ -257,6 +312,85 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
   }
 
   return problemas;
+}
+
+// Segmento N: dados obrigatorios de cada guia (Anexo C) e soma das partes = valor do item.
+const TRIBUTO_ESPERADO: Record<string, DadosTributo["tributo"]> = {
+  [FORMA_PAGAMENTO.DARF_NORMAL]: "DARF",
+  [FORMA_PAGAMENTO.GPS]: "GPS",
+  [FORMA_PAGAMENTO.DARF_SIMPLES]: "DARF_SIMPLES",
+  [FORMA_PAGAMENTO.GARE_SP_ICMS]: "GARE_SP",
+  [FORMA_PAGAMENTO.IPVA]: "IPVA",
+  [FORMA_PAGAMENTO.DPVAT]: "DPVAT",
+  [FORMA_PAGAMENTO.FGTS]: "FGTS",
+};
+
+function validarTributo(forma: string, item: ItemParaValidar, add: (campo: CampoItem, mensagem: string, gravidade?: GravidadeProblema) => void) {
+  const d = item.dadosTributo as DadosTributo | undefined;
+  const esperado = TRIBUTO_ESPERADO[forma];
+  if (!d) return add("dadosTributo", "Preencha os dados da guia do tributo (código da receita, período, valores).");
+  if (d.tributo !== esperado) return add("dadosTributo", `Os dados da guia são de ${d.tributo}, mas a forma ${forma} é ${esperado}.`);
+  const faltando: string[] = [];
+  const exigir = (rotulo: string, valor: string | undefined, digitos: number) => {
+    const v = soDigitos(valor);
+    if (!v || v.length > digitos) faltando.push(`${rotulo} (até ${digitos} dígitos)`);
+  };
+  const exigirData = (rotulo: string, valor: string | undefined) => {
+    if (!valor || !dataValida(valor)) faltando.push(rotulo);
+  };
+  const exigirMmaaaa = (rotulo: string, valor: string | undefined) => {
+    if (!/^(0[1-9]|1[0-2])\d{4}$/.test(soDigitos(valor))) faltando.push(`${rotulo} (MMAAAA)`);
+  };
+  switch (d.tributo) {
+    case "GPS":
+      exigir("Código de pagamento", d.codigoPagamento, 4);
+      exigirMmaaaa("Competência", d.competencia);
+      exigir("Identificador (CNPJ/CEI/NIT)", d.identificador, 14);
+      break;
+    case "DARF":
+      exigir("Código da receita", d.codigoReceita, 4);
+      exigirData("Período de apuração", d.periodoApuracao);
+      exigirData("Vencimento", d.vencimento);
+      if (d.referencia && soDigitos(d.referencia).length > 17) faltando.push("Referência (até 17 dígitos)");
+      break;
+    case "DARF_SIMPLES":
+      exigir("Código da receita", d.codigoReceita, 4);
+      exigirData("Período de apuração", d.periodoApuracao);
+      exigirData("Vencimento", d.vencimento);
+      if (!(d.receitaBruta >= 0 && d.receitaBruta < 10_000_000)) faltando.push("Receita bruta acumulada (até 9.999.999,99)");
+      if (!(d.percentual >= 0 && d.percentual < 100)) faltando.push("Percentual (até 99,99)");
+      break;
+    case "GARE_SP":
+      exigir("Código da receita", d.codigoReceita, 4);
+      exigir("Inscrição estadual", d.inscricaoEstadual, 12);
+      exigirMmaaaa("Referência", d.referencia);
+      exigirData("Vencimento", d.vencimento);
+      break;
+    case "IPVA":
+    case "DPVAT":
+      exigir("Exercício", d.exercicio, 4);
+      exigir("RENAVAM", d.renavam, 12);
+      if (!/^(MG|SP)$/i.test(d.uf ?? "")) faltando.push("UF (o SISPAG só paga IPVA/DPVAT de MG e SP)");
+      if (!(d.placa ?? "").trim()) faltando.push("Placa");
+      if (!/^[0-8]$/.test(d.opcaoPagamento ?? "")) faltando.push("Opção de pagamento (Nota 28)");
+      if (d.tributo === "IPVA") { exigir("Código do município", d.codigoMunicipio, 5); exigirData("Vencimento", d.vencimento); }
+      break;
+    case "FGTS":
+      exigir("Código da receita", d.codigoReceita, 4);
+      if (!["1", "2"].includes(d.tipoInscricao)) faltando.push("Tipo de inscrição (1 CNPJ / 2 CEI)");
+      if (soDigitos(d.codigoBarras).length !== 48) faltando.push("Código de barras da guia (48 dígitos)");
+      exigir("Identificador do FGTS", d.identificador, 16);
+      exigir("Lacre da Conectividade Social", d.lacre, 9);
+      exigir("Dígito do lacre", d.digitoLacre, 2);
+      break;
+  }
+  if (faltando.length) add("dadosTributo", `Falta ou está inválido na guia: ${faltando.join(", ")}.`);
+  if (typeof item.valor === "number" && d.tributo !== "FGTS") {
+    const total = totalDoTributo(d, item.valor);
+    if (Math.round(total * 100) !== Math.round(item.valor * 100)) {
+      add("dadosTributo", `As partes da guia somam R$ ${total.toFixed(2)}, mas o valor do item é R$ ${item.valor.toFixed(2)}.`);
+    }
+  }
 }
 
 export function temErroBloqueante(problemas: ProblemaItem[]) {

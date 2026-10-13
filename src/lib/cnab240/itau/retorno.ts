@@ -1,7 +1,29 @@
 // SISPAG v086: valida o arquivo inteiro antes de permitir qualquer gravacao.
-import { CODIGO_BANCO_ITAU, descricaoOcorrencia, FORMA_PAGAMENTO } from "./constantes";
+import { CODIGO_BANCO_ITAU, descricaoOcorrencia, FORMA_PAGAMENTO, segmentoDaForma } from "./constantes";
 import { fatia, fatiaCrua, fatiaData, fatiaValor } from "./campos";
 import type { ArquivoRetornoLido, ContaDebito, ItemRetorno, OcorrenciaRetorno } from "./tipos";
+
+type Faixa = [number, number];
+type Posicoes = { seuNumero: Faixa; data: Faixa; valor: Faixa; valorPago?: Faixa };
+
+// Segmento O (pag. 34): valor a pagar 122-136, data 137-144, valor pago 145-159, seu numero 175-194.
+const posicoesSegmentoO: Posicoes = { seuNumero: [175, 194], data: [137, 144], valor: [122, 136], valorPago: [145, 159] };
+
+// Segmento N: seu numero 196-215; data e valor do pagamento variam por tributo (Anexo C, codigo em 018-019).
+function posicoesSegmentoN(tributo: string): Posicoes {
+  const porTributo: Record<string, { data: Faixa; valor: Faixa }> = {
+    "01": { data: [100, 107], valor: [86, 99] }, // GPS: data/valor arrecadado
+    "02": { data: [128, 135], valor: [106, 119] }, // DARF
+    "03": { data: [128, 135], valor: [106, 119] }, // DARF Simples
+    "05": { data: [147, 154], valor: [125, 138] }, // GARE-SP ICMS
+    "07": { data: [117, 124], valor: [95, 108] }, // IPVA
+    "08": { data: [117, 124], valor: [95, 108] }, // DPVAT
+    "11": { data: [144, 151], valor: [152, 165] }, // FGTS
+  };
+  const p = porTributo[tributo];
+  if (!p) throw new Error(`Tributo ${tributo} do Segmento N sem layout no Anexo C.`);
+  return { seuNumero: [196, 215], ...p };
+}
 
 export function normalizarRetorno(conteudo: string): string {
   return conteudo.replace(/^\uFEFF/, "").replace(/\r\n|\r/g, "\n").replace(/\n+$/, "").split("\n").join("\r\n") + "\r\n";
@@ -70,14 +92,35 @@ export function lerArquivoRetorno(conteudo: string): ArquivoRetornoLido {
       const segmento = fatia(linha, 14, 14);
       const seq = inteiro(linha, 9, 13);
       if (seq === 0) throw new Error(`Sequencia de detalhe zerada no registro ${i + 1}.`);
-      if (segmento === "A" || (segmento === "J" && fatia(linha, 18, 19) !== "52")) {
+      if (segmento === "O" || segmento === "N") {
+        const chave = `${codigo}|${seq}|${segmento}`;
+        if (chavesDetalhe.has(chave)) throw new Error(`Detalhe de pagamento repetido no registro ${i + 1}.`);
+        chavesDetalhe.add(chave);
+        if (segmentoDaForma(lote.forma) !== segmento) throw new Error(`Segmento ${segmento} incompativel com a forma ${lote.forma}.`);
+        const pos = segmento === "O" ? posicoesSegmentoO : posicoesSegmentoN(fatia(linha, 18, 19));
+        const item: ItemRetorno = {
+          segmento, formaPagamento: lote.forma, contaDebito: lote.conta,
+          referenciaEmpresa: fatia(linha, ...pos.seuNumero),
+          nossoNumero: fatia(linha, 216, 230) || null,
+          dataProgramada: fatiaData(linha, ...pos.data),
+          valorProgramado: fatiaValor(linha, ...pos.valor, 2),
+          dataEfetiva: fatiaData(linha, ...pos.data),
+          valorEfetivo: fatiaValor(linha, ...(pos.valorPago ?? pos.valor), 2) || null,
+          codigoBarras: segmento === "O" ? fatia(linha, 18, 61) : undefined,
+          ocorrencias: lerOcorrencias(linha),
+        };
+        if (!item.referenciaEmpresa) throw new Error(`Pagamento sem Seu Numero no registro ${i + 1}.`);
+        if (!item.ocorrencias.length) throw new Error(`Pagamento sem ocorrencia no registro ${i + 1}.`);
+        lote.itens.push(item);
+        porSequencia.set(`${codigo}|${seq}`, item);
+      } else if (segmento === "A" || (segmento === "J" && fatia(linha, 18, 19) !== "52")) {
         const chave = `${codigo}|${seq}|${segmento}`;
         if (chavesDetalhe.has(chave)) throw new Error(`Detalhe de pagamento repetido no registro ${i + 1}.`);
         chavesDetalhe.add(chave);
         const boleto = segmento === "J";
         const bancoFavorecido = fatia(linha, 21, 23);
         const itau = ["341", "409"].includes(bancoFavorecido);
-        if (boleto !== ["30", "31"].includes(lote.forma)) throw new Error(`Segmento ${segmento} incompativel com a forma ${lote.forma}.`);
+        if (boleto !== (segmentoDaForma(lote.forma) === "J")) throw new Error(`Segmento ${segmento} incompativel com a forma ${lote.forma}.`);
         const item: ItemRetorno = {
           segmento, formaPagamento: lote.forma, contaDebito: lote.conta,
           referenciaEmpresa: boleto ? fatia(linha, 183, 202) : fatia(linha, 74, 93),
@@ -109,7 +152,7 @@ export function lerArquivoRetorno(conteudo: string): ArquivoRetornoLido {
         if (doc && !/^0+$/.test(doc)) pagamento.favorecidoDocumento = doc;
         const complementares = lerOcorrencias(linha);
         pagamento.ocorrencias.push(...complementares.filter(o => !pagamento.ocorrencias.some(a => a.codigo === o.codigo)));
-      } else if (!["B", "C", "D", "E", "F", "Z"].includes(segmento) && !(segmento === "J" && fatia(linha, 18, 19) === "52")) {
+      } else if (!["B", "C", "D", "E", "F", "W", "Z"].includes(segmento) && !(segmento === "J" && fatia(linha, 18, 19) === "52")) {
         throw new Error(`Segmento ${segmento} nao suportado no registro ${i + 1}.`);
       }
     } else if (tipo === "5") {

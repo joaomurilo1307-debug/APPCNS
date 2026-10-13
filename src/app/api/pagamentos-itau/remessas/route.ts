@@ -224,6 +224,10 @@ export async function POST(req: Request) {
                 codigoBarras: item.codigoBarras ?? null,
                 chavePixTipo: item.chavePixTipo ?? null,
                 chavePixValor: item.chavePixValor ?? null,
+                dadosComplementares:
+                  item.pixCopiaECola || item.nfLiquidacao || item.dadosTributo
+                    ? JSON.stringify({ pixCopiaECola: item.pixCopiaECola, nfLiquidacao: item.nfLiquidacao, dadosTributo: item.dadosTributo })
+                    : null,
                 valor: item.valor,
                 dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
               },

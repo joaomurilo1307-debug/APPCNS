@@ -34,7 +34,26 @@ export type ItemRemessa = {
   // "04" aleatoria -- mesmo codigo do TPCPIX da Senior, so' com zero a esquerda.
   chavePixTipo?: "01" | "02" | "03" | "04";
   chavePixValor?: string;
+
+  // Forma 47 (Segmento J + J-52 PIX): o "copia e cola" inteiro do QR Code.
+  pixCopiaECola?: string;
+  // Forma 32 (Segmento A, NF - Liquidacao Eletronica, Notas 31/32).
+  nfLiquidacao?: NfLiquidacao;
+  // Segmento N (tributo sem codigo de barras): dados da guia, Anexo C. O
+  // contribuinte e' o favorecido do item (nome/CPF-CNPJ). Valores em reais.
+  dadosTributo?: DadosTributo;
 };
+
+export type NfLiquidacao = { tipoIdentificacao: "1" | "2" | "3"; numero?: string };
+
+/** Datas em yyyy-mm-dd; competencia/referencia em MMAAAA. Soma dos valores = valor do item. */
+export type DadosTributo =
+  | { tributo: "GPS"; codigoPagamento: string; competencia: string; identificador: string; valorTributo: number; valorOutrasEntidades: number; atualizacaoMonetaria: number }
+  | { tributo: "DARF"; codigoReceita: string; periodoApuracao: string; referencia?: string; valorPrincipal: number; multa: number; juros: number; vencimento: string }
+  | { tributo: "DARF_SIMPLES"; codigoReceita: string; periodoApuracao: string; receitaBruta: number; percentual: number; valorPrincipal: number; multa: number; juros: number; vencimento: string }
+  | { tributo: "GARE_SP"; codigoReceita: string; inscricaoEstadual: string; dividaAtiva?: string; referencia: string; parcela?: string; valorReceita: number; juros: number; multa: number; vencimento: string }
+  | { tributo: "IPVA" | "DPVAT"; exercicio: string; renavam: string; uf: string; codigoMunicipio?: string; placa: string; opcaoPagamento: string; valorTributo: number; desconto: number; vencimento?: string }
+  | { tributo: "FGTS"; codigoReceita: string; tipoInscricao: "1" | "2"; codigoBarras: string; identificador: string; lacre: string; digitoLacre: string };
 
 export type OcorrenciaRetorno = {
   codigo: string;
@@ -42,7 +61,7 @@ export type OcorrenciaRetorno = {
 };
 
 export type ItemRetorno = {
-  segmento: "A" | "J";
+  segmento: "A" | "J" | "O" | "N";
   formaPagamento: string;
   contaDebito: ContaDebito;
   dataProgramada: Date | null;

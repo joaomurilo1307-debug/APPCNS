@@ -27,7 +27,7 @@ import {
   dataIso,
 } from "./mapeamentoTitulos";
 import { cnpjValido, cpfValido } from "../cnab240/itau/validacaoItem";
-import { linhaDigitavelParaCodigoBarras } from "../cnab240/itau/codigoBarras";
+import { arrecadacaoParaCodigoBarras, linhaDigitavelParaCodigoBarras } from "../cnab240/itau/codigoBarras";
 
 export type FonteDado = "titulo" | "cadastro" | "oc";
 export type TipoChavePix = "01" | "02" | "03" | "04";
@@ -224,7 +224,9 @@ export async function buscarDadosPagamento(pedidos: PedidoTitulo[], conferencia 
     const codFpg = base?.codFpg ?? null;
     let codigoBarras: string | null = null;
     if (linha && preenchido(linha.CODBAR)) {
-      try { codigoBarras = linhaDigitavelParaCodigoBarras(linha.CODBAR); }
+      // Conta de consumo / tributo com codigo de barras (48 digitos, comeca com 8) vai pelo Segmento O.
+      const digitos = linha.CODBAR.replace(/\D/g, "");
+      try { codigoBarras = digitos.startsWith("8") && [44, 48].includes(digitos.length) ? arrecadacaoParaCodigoBarras(digitos) : linhaDigitavelParaCodigoBarras(linha.CODBAR); }
       catch { problemas.push("Codigo de barras/linha digitavel do titulo na Senior invalido: confira tamanho e digitos verificadores."); }
     }
     const docTitulo = documentoFavorecido(linha?.DOCIDEFAV) ?? documentoFavorecido(linha?.CODFAV);

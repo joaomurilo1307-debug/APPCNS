@@ -294,6 +294,32 @@ async function main() {
     assert.equal(tituloFinal.pago, true); assert.equal(tituloFinal.valorAberto, 0); assert.ok(tituloFinal.dataPagamento);
     passou("Sincronizacao incremental de liquidacao atualiza programacao e data de pagamento");
 
+    // Formas novas (13/10/2026): conta de consumo (Segmento O) e DARF (Segmento N) pelo ciclo inteiro.
+    await modo("OK");
+    const semConta = { bancoFavorecido: undefined, agenciaFavorecido: undefined, contaFavorecido: undefined, dacFavorecido: undefined, chavePixTipo: undefined, chavePixValor: undefined };
+    const consumo = { ...(await criarItem()), ...semConta, segmento: "O", formaPagamento: "31", codigoBarras: "826500000003816701066234019425090529837800000007", valor: 81.67 };
+    const darf = { ...(await criarItem()), ...semConta, segmento: "N", formaPagamento: "16", codigoBarras: undefined, valor: 100,
+      dadosTributo: { tributo: "DARF", codigoReceita: "5952", periodoApuracao: "2026-09-30", valorPrincipal: 90, multa: 6, juros: 4, vencimento: "2026-10-20" } };
+    const geracaoNovas = await http("/api/pagamentos-itau/remessas", { contaBancariaId: "homologacao-conta", itens: [consumo, darf] });
+    assert.equal(geracaoNovas.status, 201, JSON.stringify(geracaoNovas.data));
+    const remNovas = await db.remessaPagamento.findUniqueOrThrow({ where: { id: geracaoNovas.data.remessas[0].id }, include: { itens: true } });
+    remessaIds.push(remNovas.id);
+    assert.deepEqual(remNovas.itens.map((i) => [i.segmento, i.formaPagamento]).sort(), [["N", "16"], ["O", "13"]]);
+    assert.ok(remNovas.conteudoArquivo!.split("\r\n").some((l) => l[13] === "O") && remNovas.conteudoArquivo!.split("\r\n").some((l) => l[13] === "N"));
+    passou("Conta de consumo digitada como boleto vira forma 13 (Segmento O) e DARF gera Segmento N");
+    const retornoNovas = await http("/api/pagamentos-itau/retornos", { nomeArquivo: `TESTE-${remNovas.id}.ret`, conteudo: montarRetornoSimulado(remNovas.conteudoArquivo!) });
+    assert.equal(retornoNovas.status, 200, JSON.stringify(retornoNovas.data));
+    assert.equal(retornoNovas.data.resumoStatus.PAGO, 2);
+    const baixaNovas = await http(`/api/pagamentos-itau/remessas/${remNovas.id}/baixa-senior`, { confirmar: true });
+    // DARF (100,00 = em aberto na Senior simulada) baixa; a conta de 81,67 contra 100,00 em aberto fica pra baixa manual.
+    assert.equal(baixaNovas.data.enviados, 1, JSON.stringify(baixaNovas.data));
+    assert.match(JSON.stringify(baixaNovas.data.bloqueados), /81\.67/);
+    passou("Retorno dos Segmentos O e N casa com a remessa; baixa respeita o valor em aberto na Senior");
+    const darfIncompleto = await http("/api/pagamentos-itau/remessas", { contaBancariaId: "homologacao-conta", itens: [{ ...(await criarItem()), ...semConta, segmento: "N", formaPagamento: "16", valor: 110 }] });
+    assert.equal(darfIncompleto.status, 422);
+    assert.match(JSON.stringify(darfIncompleto.data.conferencia), /dados da guia/);
+    passou("DARF sem os dados da guia nao gera remessa e a conferencia diz o que falta");
+
     // Situacao do titulo na Senior (porta PostDBInfoFinan): PE ao gerar, AB na rejeicao e antes da baixa.
     await modo("OK");
     const situacaoDe = async (tituloId: string) => {

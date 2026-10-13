@@ -183,7 +183,8 @@ export function mapearTitulo(
   // Codigo de barras: so' vai quando o Senior tiver -- omitido (nao null) pra
   // nao apagar um codigo digitado manualmente no app (hoje o Senior nao
   // preenche esse campo em nenhum titulo em aberto).
-  if (barras.length === 44 || barras.length === 47) item.codigoBarrasBoleto = barras;
+  // 48 digitos comecando com 8 = conta de consumo/tributo (Segmento O, Anexo B).
+  if (barras.length === 44 || barras.length === 47 || (barras.length === 48 && barras.startsWith("8"))) item.codigoBarrasBoleto = barras;
 
   return item;
 }

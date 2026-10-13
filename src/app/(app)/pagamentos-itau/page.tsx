@@ -5,6 +5,7 @@ import type { CampoItem, ProblemaItem } from "@/lib/cnab240/itau/validacaoItem";
 import type { RelatorioConferencia } from "@/lib/pagamentos/conferenciaRemessa";
 import { removerDaSelecaoSalva } from "@/lib/selecaoProgramacao";
 import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
+import { formaDaArrecadacao } from "@/lib/cnab240/itau/constantes";
 import { montarBlocoSenior, podeAtualizarPagamento } from "@/lib/pagamentos/preenchimentoRemessa";
 import { identificacaoBeneficiarioBoleto } from "@/lib/pagamentos/beneficiarioBoleto";
 
@@ -64,7 +65,7 @@ type ContaBancaria = {
   dac: string;
 };
 
-type Segmento = "A" | "J";
+type Segmento = "A" | "J" | "O" | "N";
 
 type ItemCarrinho = {
   chave: string; // ID completo do titulo: numero/fornecedor nao distinguem tipos e emissoes.
@@ -89,6 +90,9 @@ type ItemCarrinho = {
   // só preenchido quando formaPagamento = "45" e não há conta bancária completa.
   chavePixTipo?: "01" | "02" | "03" | "04";
   chavePixValor?: string;
+  pixCopiaECola?: string; // forma 47 (PIX QR-Code)
+  nfLiquidacao?: { tipoIdentificacao: string; numero: string }; // forma 32
+  dadosTributo?: Record<string, string | number>; // Segmento N (guia sem codigo de barras)
   // Foto do bloco de pagamento como veio da Senior (só quando preenchido
   // automaticamente). Serve pra, quando a Senior mudar esse dado, atualizar o item
   // SÓ se ninguém tiver mexido nele à mão (bloco ainda igual à foto).
@@ -353,7 +357,8 @@ function formatarDocumento(doc: string) {
 // O mesmo dado que o item tinha no carrinho: boleto -> código de barras; PIX -> chave;
 // crédito/TED -> banco/agência/conta.
 function dadosDePagamentoDoHistorico(i: ItemHistorico): string {
-  if (i.segmento === "J") return i.codigoBarras ? `Boleto: ${i.codigoBarras}` : "—";
+  if (i.segmento === "J" || i.segmento === "O") return i.codigoBarras ? `${i.segmento === "O" ? "Conta/guia" : "Boleto"}: ${i.codigoBarras}` : "—";
+  if (i.segmento === "N") return "Guia de tributo";
   if (i.chavePixValor) return `PIX (${TIPO_CHAVE_PIX_ITAU[i.chavePixTipo ?? ""] ?? "chave"}): ${i.chavePixValor}`;
   if (i.agenciaFavorecido || i.contaFavorecido) {
     return [
@@ -367,14 +372,114 @@ function dadosDePagamentoDoHistorico(i: ItemHistorico): string {
   return "—";
 }
 
-const FORMAS: { valor: string; segmento: Segmento; label: string }[] = [
+// Todas as formas da Nota 5 do manual SISPAG que servem a contas a pagar
+// (ver src/lib/cnab240/itau/constantes.ts). DOC 03/07 (extintos) e cartao
+// salario (so' folha) ficam fora.
+const FORMAS: { valor: string; segmento: Segmento; label: string; tributo?: string }[] = [
   { valor: "01", segmento: "A", label: "Crédito em conta corrente Itaú" },
+  { valor: "05", segmento: "A", label: "Crédito em poupança Itaú" },
+  { valor: "06", segmento: "A", label: "Crédito em conta Itaú — mesmo titular" },
   { valor: "41", segmento: "A", label: "TED — outro titular" },
   { valor: "43", segmento: "A", label: "TED — mesmo titular" },
   { valor: "45", segmento: "A", label: "PIX Transferência" },
+  { valor: "47", segmento: "J", label: "PIX QR-Code (copia e cola)" },
   { valor: "30", segmento: "J", label: "Boleto Itaú" },
   { valor: "31", segmento: "J", label: "Boleto de outros bancos" },
+  { valor: "13", segmento: "O", label: "Conta de concessionária (luz, água, telefone, gás)" },
+  { valor: "19", segmento: "O", label: "Tributo municipal com código de barras (IPTU/ISS)" },
+  { valor: "91", segmento: "O", label: "Tributo com código de barras (GNRE, DAE, DARF numerado...)" },
+  { valor: "16", segmento: "N", label: "DARF (sem código de barras)", tributo: "DARF" },
+  { valor: "18", segmento: "N", label: "DARF Simples", tributo: "DARF_SIMPLES" },
+  { valor: "17", segmento: "N", label: "GPS — Previdência Social", tributo: "GPS" },
+  { valor: "22", segmento: "N", label: "GARE-SP ICMS", tributo: "GARE_SP" },
+  { valor: "25", segmento: "N", label: "IPVA (MG/SP)", tributo: "IPVA" },
+  { valor: "27", segmento: "N", label: "DPVAT (MG/SP)", tributo: "DPVAT" },
+  { valor: "35", segmento: "N", label: "FGTS — GRF/GRRF/GRDE", tributo: "FGTS" },
+  { valor: "02", segmento: "A", label: "Cheque pagamento (retirada na agência)" },
+  { valor: "10", segmento: "A", label: "Ordem de pagamento (retirada na agência)" },
+  { valor: "32", segmento: "A", label: "Nota Fiscal — Liquidação Eletrônica" },
 ];
+
+// Campos de cada guia do Segmento N (Anexo C do manual). Datas yyyy-mm-dd,
+// competencia/referencia MMAAAA, valores em reais. A soma das partes tem que
+// dar o valor do item (a conferencia aponta se nao der).
+type CampoTributo = { chave: string; rotulo: string; tipo: "texto" | "valor" | "data" };
+const CAMPOS_TRIBUTO: Record<string, CampoTributo[]> = {
+  DARF: [
+    { chave: "codigoReceita", rotulo: "Código da receita", tipo: "texto" },
+    { chave: "periodoApuracao", rotulo: "Período de apuração", tipo: "data" },
+    { chave: "vencimento", rotulo: "Vencimento", tipo: "data" },
+    { chave: "referencia", rotulo: "Nº de referência (opcional)", tipo: "texto" },
+    { chave: "valorPrincipal", rotulo: "Valor principal", tipo: "valor" },
+    { chave: "multa", rotulo: "Multa", tipo: "valor" },
+    { chave: "juros", rotulo: "Juros/encargos", tipo: "valor" },
+  ],
+  DARF_SIMPLES: [
+    { chave: "codigoReceita", rotulo: "Código da receita", tipo: "texto" },
+    { chave: "periodoApuracao", rotulo: "Período de apuração", tipo: "data" },
+    { chave: "vencimento", rotulo: "Vencimento", tipo: "data" },
+    { chave: "receitaBruta", rotulo: "Receita bruta acumulada", tipo: "valor" },
+    { chave: "percentual", rotulo: "Percentual (%)", tipo: "valor" },
+    { chave: "valorPrincipal", rotulo: "Valor principal", tipo: "valor" },
+    { chave: "multa", rotulo: "Multa", tipo: "valor" },
+    { chave: "juros", rotulo: "Juros/encargos", tipo: "valor" },
+  ],
+  GPS: [
+    { chave: "codigoPagamento", rotulo: "Código de pagamento", tipo: "texto" },
+    { chave: "competencia", rotulo: "Competência (MMAAAA)", tipo: "texto" },
+    { chave: "identificador", rotulo: "Identificador (CNPJ/CEI/NIT)", tipo: "texto" },
+    { chave: "valorTributo", rotulo: "Valor do INSS", tipo: "valor" },
+    { chave: "valorOutrasEntidades", rotulo: "Outras entidades", tipo: "valor" },
+    { chave: "atualizacaoMonetaria", rotulo: "Atualização monetária", tipo: "valor" },
+  ],
+  GARE_SP: [
+    { chave: "codigoReceita", rotulo: "Código da receita", tipo: "texto" },
+    { chave: "inscricaoEstadual", rotulo: "Inscrição estadual", tipo: "texto" },
+    { chave: "referencia", rotulo: "Referência (MMAAAA)", tipo: "texto" },
+    { chave: "vencimento", rotulo: "Vencimento", tipo: "data" },
+    { chave: "dividaAtiva", rotulo: "Dívida ativa / etiqueta (opcional)", tipo: "texto" },
+    { chave: "parcela", rotulo: "Parcela / notificação (opcional)", tipo: "texto" },
+    { chave: "valorReceita", rotulo: "Valor da receita", tipo: "valor" },
+    { chave: "juros", rotulo: "Juros", tipo: "valor" },
+    { chave: "multa", rotulo: "Multa", tipo: "valor" },
+  ],
+  IPVA: [
+    { chave: "exercicio", rotulo: "Exercício (AAAA)", tipo: "texto" },
+    { chave: "renavam", rotulo: "RENAVAM", tipo: "texto" },
+    { chave: "uf", rotulo: "UF (MG ou SP)", tipo: "texto" },
+    { chave: "codigoMunicipio", rotulo: "Código do município", tipo: "texto" },
+    { chave: "placa", rotulo: "Placa", tipo: "texto" },
+    { chave: "opcaoPagamento", rotulo: "Opção (1 única c/ desc., 2 única s/ desc., 3-8 parcela 1-6)", tipo: "texto" },
+    { chave: "vencimento", rotulo: "Vencimento", tipo: "data" },
+    { chave: "valorTributo", rotulo: "Valor do IPVA", tipo: "valor" },
+    { chave: "desconto", rotulo: "Desconto", tipo: "valor" },
+  ],
+  DPVAT: [
+    { chave: "exercicio", rotulo: "Exercício (AAAA)", tipo: "texto" },
+    { chave: "renavam", rotulo: "RENAVAM", tipo: "texto" },
+    { chave: "uf", rotulo: "UF (MG ou SP)", tipo: "texto" },
+    { chave: "placa", rotulo: "Placa", tipo: "texto" },
+    { chave: "valorTributo", rotulo: "Valor do DPVAT", tipo: "valor" },
+  ],
+  FGTS: [
+    { chave: "codigoReceita", rotulo: "Código da receita", tipo: "texto" },
+    { chave: "tipoInscricao", rotulo: "Tipo de inscrição (1 CNPJ / 2 CEI)", tipo: "texto" },
+    { chave: "codigoBarras", rotulo: "Código de barras da guia (48 dígitos)", tipo: "texto" },
+    { chave: "identificador", rotulo: "Identificador do FGTS", tipo: "texto" },
+    { chave: "lacre", rotulo: "Lacre da Conectividade Social", tipo: "texto" },
+    { chave: "digitoLacre", rotulo: "Dígito do lacre", tipo: "texto" },
+  ],
+};
+
+/** Guia vazia do tributo da forma: valores zerados e DPVAT ja com a opcao 0 (Nota 28). */
+function tributoInicial(forma: string): Record<string, string | number> | undefined {
+  const tributo = FORMAS.find((f) => f.valor === forma)?.tributo;
+  if (!tributo) return undefined;
+  const dados: Record<string, string | number> = { tributo };
+  for (const c of CAMPOS_TRIBUTO[tributo]) dados[c.chave] = c.tipo === "valor" ? 0 : "";
+  if (tributo === "DPVAT") Object.assign(dados, { opcaoPagamento: "0", desconto: 0 });
+  return dados;
+}
 
 const STATUS_LABEL: Record<string, string> = {
   RASCUNHO: "Rascunho",
@@ -842,11 +947,17 @@ export default function PagamentosItauPage() {
     const tipoChaveCnab = tipoChavePixCnab(t.tipoChavePix);
     let item = base;
     if (t.codigoBarrasBoleto) {
+      // Codigo de arrecadacao (comeca com 8) = conta de consumo/tributo: Segmento O, forma pelo Anexo B.
+      const arrecadacao = t.codigoBarrasBoleto.startsWith("8");
+      let forma = "31";
+      if (arrecadacao) {
+        try { forma = formaDaArrecadacao(t.codigoBarrasBoleto); } catch { forma = "13"; }
+      }
       item = {
         ...base,
         preenchidoAutomaticamente: true,
-        segmento: "J",
-        formaPagamento: "31",
+        segmento: arrecadacao ? "O" : "J",
+        formaPagamento: forma,
         codigoBarras: t.codigoBarrasBoleto,
       };
     } else if (contaCompleta(t)) {
@@ -1054,7 +1165,10 @@ export default function PagamentosItauPage() {
       agenciaFavorecido: i.segmento === "A" ? i.agenciaFavorecido : undefined,
       contaFavorecido: i.segmento === "A" ? i.contaFavorecido : undefined,
       dacFavorecido: i.segmento === "A" ? i.dacFavorecido : undefined,
-      codigoBarras: i.segmento === "J" ? i.codigoBarras.replace(/\D/g, "") : undefined,
+      codigoBarras: (i.segmento === "J" && i.formaPagamento !== "47") || i.segmento === "O" ? i.codigoBarras.replace(/\D/g, "") : undefined,
+      pixCopiaECola: i.formaPagamento === "47" ? i.pixCopiaECola : undefined,
+      nfLiquidacao: i.formaPagamento === "32" ? i.nfLiquidacao : undefined,
+      dadosTributo: i.segmento === "N" ? i.dadosTributo : undefined,
       beneficiarioBoletoConferido: i.beneficiarioBoletoConferido,
       chavePixTipo: i.formaPagamento === "45" ? i.chavePixTipo : undefined,
       chavePixValor: i.formaPagamento === "45" ? i.chavePixValor : undefined,
@@ -1608,7 +1722,11 @@ export default function PagamentosItauPage() {
                         value={item.formaPagamento}
                         onChange={(e) => {
                           const forma = FORMAS.find((f) => f.valor === e.target.value)!;
-                          atualizarItem(item.chave, { formaPagamento: forma.valor, segmento: forma.segmento });
+                          atualizarItem(item.chave, {
+                            formaPagamento: forma.valor,
+                            segmento: forma.segmento,
+                            dadosTributo: forma.tributo === item.dadosTributo?.tributo ? item.dadosTributo : tributoInicial(forma.valor),
+                          });
                         }}
                         className={classeCampo(item.chave, "formaPagamento")}
                       >
@@ -1666,7 +1784,53 @@ export default function PagamentosItauPage() {
                       />
                     </label>
 
-                    {formaInfo.segmento === "J" ? (
+                    {item.formaPagamento === "47" ? (
+                      <label className="col-span-2">
+                        PIX copia e cola (código do QR Code)
+                        <textarea
+                          value={item.pixCopiaECola ?? ""}
+                          onChange={(e) => atualizarItem(item.chave, { pixCopiaECola: e.target.value.trim() })}
+                          placeholder="000201..."
+                          rows={3}
+                          className={classeCampo(item.chave, "pixQrCode")}
+                        />
+                      </label>
+                    ) : formaInfo.segmento === "O" ? (
+                      <label className="col-span-2">
+                        Código de barras da conta/guia (começa com 8)
+                        <input
+                          value={item.codigoBarras}
+                          onChange={(e) => atualizarItem(item.chave, { codigoBarras: e.target.value })}
+                          placeholder="48 dígitos (ou 44 do código de barras)"
+                          className={classeCampo(item.chave, "codigoBarras")}
+                        />
+                      </label>
+                    ) : formaInfo.segmento === "N" ? (
+                      <>
+                        <p className="col-span-2 text-[11px] text-gray-500">
+                          Dados da guia, como impressos nela. O favorecido acima é o contribuinte (nome e CPF/CNPJ). As partes têm que somar o valor do item.
+                        </p>
+                        {(CAMPOS_TRIBUTO[formaInfo.tributo!] ?? []).map((c) => (
+                          <label key={c.chave} className={c.chave === "codigoBarras" ? "col-span-2" : undefined}>
+                            {c.rotulo}
+                            <input
+                              type={c.tipo === "valor" ? "number" : c.tipo === "data" ? "date" : "text"}
+                              step={c.tipo === "valor" ? "0.01" : undefined}
+                              value={item.dadosTributo?.[c.chave] ?? ""}
+                              onChange={(e) =>
+                                atualizarItem(item.chave, {
+                                  dadosTributo: {
+                                    ...(item.dadosTributo ?? tributoInicial(item.formaPagamento)),
+                                    [c.chave]: c.tipo === "valor" ? Number(e.target.value) : e.target.value,
+                                  },
+                                })
+                              }
+                              className={classeCampo(item.chave, "dadosTributo")}
+                            />
+                          </label>
+                        ))}
+                      </>
+                    ) : formaInfo.segmento === "J" ? (
                       <label className="col-span-2">
                         Código de barras / linha digitável do boleto
                         <input
@@ -1711,6 +1875,32 @@ export default function PagamentosItauPage() {
                             </label>
                           </>
                         )}
+                        {item.formaPagamento === "32" && (
+                          <>
+                            <label>
+                              Identificação da NF
+                              <select
+                                value={item.nfLiquidacao?.tipoIdentificacao ?? ""}
+                                onChange={(e) => atualizarItem(item.chave, { nfLiquidacao: { numero: item.nfLiquidacao?.numero ?? "", tipoIdentificacao: e.target.value } })}
+                                className={classeCampo(item.chave, "nfLiquidacao")}
+                              >
+                                <option value="">selecione...</option>
+                                <option value="1">CNPJ do cedente</option>
+                                <option value="2">Número da NF</option>
+                                <option value="3">CNPJ de terceiro/filial</option>
+                              </select>
+                            </label>
+                            <label>
+                              Nº da NF / CNPJ
+                              <input
+                                value={item.nfLiquidacao?.numero ?? ""}
+                                disabled={item.nfLiquidacao?.tipoIdentificacao === "1"}
+                                onChange={(e) => atualizarItem(item.chave, { nfLiquidacao: { tipoIdentificacao: item.nfLiquidacao?.tipoIdentificacao ?? "", numero: e.target.value.replace(/\D/g, "") } })}
+                                className={classeCampo(item.chave, "nfLiquidacao")}
+                              />
+                            </label>
+                          </>
+                        )}
                         <label>
                           Banco favorecido
                           <input
@@ -1727,6 +1917,7 @@ export default function PagamentosItauPage() {
                             className={classeCampo(item.chave, "agenciaFavorecido")}
                           />
                         </label>
+                        {!["02", "10"].includes(item.formaPagamento) && (<>
                         <label>
                           Conta
                           <input
@@ -1743,6 +1934,7 @@ export default function PagamentosItauPage() {
                             className={classeCampo(item.chave, "dacFavorecido")}
                           />
                         </label>
+                        </>)}
                       </>
                     )}
                     {item.chavePix && item.formaPagamento === "45" && !!item.bancoFavorecido && (
@@ -1753,7 +1945,7 @@ export default function PagamentosItauPage() {
                     )}
                   </div>
                   {item.senior?.problemas?.map((p,k)=><p key={k} className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{p}</p>)}
-                  {item.segmento === "J" && (
+                  {item.segmento === "J" && item.formaPagamento !== "47" && (
                     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                       <p>CPF/CNPJ consultado: {item.senior?.origemDocumento === "titulo" ? "favorecido do titulo" : item.senior?.origemDocumento === "cadastro" ? "favorecido do cadastro" : item.senior?.origemDocumento === "fornecedor" ? "cadastro do fornecedor (pode ser diferente do beneficiario do boleto)" : "preenchimento local/manual"}. A validacao dos digitos do boleto e do documento nao consulta o cadastro CIP.</p>
                       <label className="mt-2 flex items-start gap-2 font-medium">

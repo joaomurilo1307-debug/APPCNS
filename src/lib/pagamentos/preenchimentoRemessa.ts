@@ -1,5 +1,7 @@
+import { formaDaArrecadacao } from "../cnab240/itau/constantes";
+
 export type BlocoPagamento = {
-  formaPagamento: string; segmento: "A" | "J"; bancoFavorecido: string;
+  formaPagamento: string; segmento: "A" | "J" | "O" | "N"; bancoFavorecido: string;
   agenciaFavorecido: string; contaFavorecido: string; dacFavorecido: string;
   codigoBarras: string; chavePixTipo?: "01" | "02" | "03" | "04"; chavePixValor?: string;
 };
@@ -20,6 +22,12 @@ export function montarBlocoSenior(d: FontePreenchimento): BlocoPagamento | null 
   const boleto=/boleto/.test(descricao)||d.codFpg==="18";
   const pix=/pix/.test(descricao)||d.codFpg==="19";
   const vazio:BlocoPagamento={formaPagamento:"01",segmento:"A",bancoFavorecido:"",agenciaFavorecido:"",contaFavorecido:"",dacFavorecido:"",codigoBarras:"",chavePixTipo:undefined,chavePixValor:undefined};
+  // Codigo de arrecadacao (comeca com 8): conta de consumo/tributo, Segmento O com a forma do Anexo B.
+  if (d.codigoBarras?.startsWith("8")) {
+    let forma = "13";
+    try { forma = formaDaArrecadacao(d.codigoBarras); } catch { /* segmento fora do Anexo B: a conferencia aponta */ }
+    return {...vazio,segmento:"O",formaPagamento:forma,codigoBarras:d.codigoBarras};
+  }
   if (boleto || (!d.codFpg && d.codigoBarras)) return {...vazio,segmento:"J",formaPagamento:"31",codigoBarras:d.codigoBarras??""};
   // Chave especifica do titulo precede uma conta generica do cadastro.
   if (pix && d.chavePix?.fonte === "titulo" && d.conta?.fonte !== "titulo") return {...vazio,formaPagamento:"45",chavePixTipo:d.chavePix.tipo,chavePixValor:d.chavePix.valor};

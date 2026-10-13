@@ -60,9 +60,11 @@ export function montarRetornoSimulado(conteudoRemessa: string): string {
       if (linha[7] === "0") return `${linha.slice(0, 142)}2${linha.slice(143)}`;
       if (linha.length < 240 || linha[7] !== "3") return linha; // so' detalhe (tipo de registro 3)
       const segmento = linha[13];
-      if (segmento !== "A" && segmento !== "J") return linha;
+      if (!"AJON".includes(segmento)) return linha;
       if (segmento === "J" && linha.slice(17, 19) === "52") return linha;
       if (segmento === "A") linha = `${linha.slice(0, 154)}${linha.slice(93, 101)}${linha.slice(119, 134)}${linha.slice(177)}`;
+      // Segmento O: valor pago (145-159) = valor a pagar (122-136). No N data/valor ja sao os do pagamento.
+      if (segmento === "O") linha = `${linha.slice(0, 144)}${linha.slice(121, 136)}${linha.slice(159)}`;
       return `${linha.slice(0, 230)}${"00".padEnd(10, " ")}${linha.slice(240)}`;
     })
     .join("\r\n");
