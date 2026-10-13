@@ -6,6 +6,7 @@ import { montarConferenciaPagamento } from "../src/lib/pagamentos/conferenciaPag
 import { consultarSenior } from "../src/lib/senior/getDbInfo";
 import { prisma } from "../src/lib/prisma";
 import { conferirItensRemessa } from "../src/lib/pagamentos/conferenciaRemessa";
+import { identificacaoBeneficiarioBoleto } from "../src/lib/pagamentos/beneficiarioBoleto";
 import { itemTeste, dataTeste } from "../scripts/homologacao/fixtures";
 import type { DadosSeniorDoTitulo } from "../src/lib/senior/dadosPagamentoTitulos";
 
@@ -64,6 +65,36 @@ test("Conferencia de remessa bloqueia cartao mesmo com conta valida e revisao ap
     assert.equal(r.resumo.comErro,1); assert.ok(r.linhas[0].problemas.some(p=>p.mensagem.includes("Cartão de Crédito")));
     assert.equal((await prisma.tituloContasAPagar.findUniqueOrThrow({where:{id:titulo.id}})).revisadoStatus,"APROVADO");
   } finally {await prisma.tituloContasAPagar.delete({where:{id:titulo.id}});}
+});
+
+test("Conferencia bloqueia valor diferente do boleto no prazo e TED depois das 15h; avisa possivel duplicidade", async () => {
+  const base = { codFil: "1", codFor: "999999", tipo: "DUP", situacao: "AB", pago: false, dataEmissao: dataTeste, valorOriginal: 100, valorAberto: 100, codFpg: "18", revisadoStatus: "APROVADO" };
+  const titulo = await prisma.tituloContasAPagar.create({ data: { ...base, numTit: `V${randomUUID()}` } });
+  // mesmo fornecedor, mesmo valor, mesma emissao, outro numero, ja pago: o caso 14914$01 x 47822$01
+  const pago = await prisma.tituloContasAPagar.create({ data: { ...base, numTit: `P${randomUUID()}`, pago: true, valorAberto: 0, situacao: "LQ", dataPagamento: dataTeste } });
+  const meioDia = new Date("2026-10-08T15:00:00Z"); // 12:00 em Brasilia
+  try {
+    const boleto = itemTeste("30");
+    const entrada = (valor: number) => ({
+      ...boleto, tituloId: titulo.id, favorecidoTipoDoc: boleto.favorecidoTipoDocumento, dataPagamento: "2026-10-08", valor,
+      beneficiarioBoletoConferido: identificacaoBeneficiarioBoleto(boleto.favorecidoDocumento, boleto.codigoBarras) ?? undefined,
+    });
+    const divergente = await conferirItensRemessa([entrada(90)], undefined, false, meioDia);
+    assert.ok(divergente.linhas[0].problemas.some((p) => p.campo === "valor" && p.gravidade === "erro" && /diferente do valor do boleto/.test(p.mensagem)));
+    assert.equal(divergente.linhas[0].situacao, "erro");
+    const exato = await conferirItensRemessa([entrada(100)], undefined, false, meioDia);
+    assert.ok(!exato.linhas[0].problemas.some((p) => p.campo === "valor"));
+    assert.ok(exato.linhas[0].problemas.some((p) => p.campo === "titulo" && p.gravidade === "aviso" && /Possível lançamento duplicado/.test(p.mensagem)));
+
+    const ted = itemTeste("41");
+    const pedido = { ...ted, tituloId: titulo.id, favorecidoTipoDoc: ted.favorecidoTipoDocumento, dataPagamento: "2026-10-08" };
+    const tarde = await conferirItensRemessa([pedido], undefined, false, new Date("2026-10-08T19:30:00Z")); // 16:30 em Brasilia
+    assert.ok(tarde.linhas[0].problemas.some((p) => p.campo === "dataPagamento" && p.gravidade === "erro" && /15:00/.test(p.mensagem)));
+    const cedo = await conferirItensRemessa([pedido], undefined, false, new Date("2026-10-08T17:00:00Z")); // 14:00 em Brasilia
+    assert.ok(!cedo.linhas[0].problemas.some((p) => p.campo === "dataPagamento"));
+  } finally {
+    await prisma.tituloContasAPagar.deleteMany({ where: { id: { in: [titulo.id, pago.id] } } });
+  }
 });
 
 test("Forma da OC nunca substitui forma ausente do titulo na conferencia", () => {

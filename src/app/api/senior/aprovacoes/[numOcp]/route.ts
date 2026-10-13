@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
+import { criarMotorVinculo, aplicarCorrecaoManual, chavesFornecedor, dataCompativel, mesmoValor } from "@/lib/vinculoOcTitulo";
 import { carregarCatalogoFormasPagamento, garantirFormasPagamentoAtualizadas } from "@/lib/senior/formasPagamento";
 
 // Busca UMA OC por numOcp, com o mapa completo (rateio, níveis, eventos) +
@@ -101,5 +101,29 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
       dac: t.dacFavorecido,
     }));
 
-  return NextResponse.json({ aprovacao, codToNome, titulosVinculados });
+  // Aviso (13/10/2026, caso Ana Beatriz): a OC 15903 citava o titulo "007990" e o titulo real era 007900 --
+  // o motor nao liga por valor/data (de proposito), entao a OC ficava "sem titulo" sem explicar por que.
+  // Quando a OC TEM referencia digitada mas nenhum titulo casou, o painel avisa e mostra o provavel
+  // (mesmo fornecedor, valor e data, ainda aberto e sem OC). Nao liga nada: so' informa.
+  let avisoVinculo: { referencia: string; candidatos: { id: string; numTit: string; valorOriginal: number; vencimentoProgramado: Date | null }[] } | null = null;
+  const referenciaDigitada = (aprovacao.usuNumTit ?? "").trim();
+  const ocDoMotor = ocPorNumero.get(params.numOcp);
+  if (titulosVinculados.length === 0 && referenciaDigitada && ocDoMotor && !["REP", "CAN"].includes(aprovacao.situacaoAtual)) {
+    const chavesDaOc = chavesFornecedor(aprovacao.fornecedorCodigo);
+    const candidatos = titulos.filter(
+      (t) =>
+        !t.pago &&
+        t.tipo !== "PRV" &&
+        chavesFornecedor(t.codFor).some((k) => chavesDaOc.includes(k)) &&
+        mesmoValor(ocDoMotor.valor, t.valorOriginal) &&
+        dataCompativel(ocDoMotor, t) &&
+        !aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada // ja ligado a outra OC: nao e' candidato
+    );
+    avisoVinculo = {
+      referencia: referenciaDigitada,
+      candidatos: candidatos.slice(0, 3).map((t) => ({ id: t.id, numTit: t.numTit, valorOriginal: t.valorOriginal, vencimentoProgramado: t.vencimentoProgramado })),
+    };
+  }
+
+  return NextResponse.json({ aprovacao: { ...aprovacao, avisoVinculo }, codToNome, titulosVinculados });
 }

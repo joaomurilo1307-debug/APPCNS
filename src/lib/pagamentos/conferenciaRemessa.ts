@@ -17,7 +17,14 @@ import { ehCartaoCredito } from "./cartaoCredito";
 import { buscarDadosPagamento, type DadosSeniorDoTitulo } from "../senior/dadosPagamentoTitulos";
 import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
-import { linhaDigitavelParaCodigoBarras, parseCodigoBarras, valorDoCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
+import { dataVencimentoDoFator, linhaDigitavelParaCodigoBarras, parseCodigoBarras, valorDoCodigoBarras } from "@/lib/cnab240/itau/codigoBarras";
+import {
+  acharPossivelDuplicidade,
+  avaliarDataPagamento,
+  avaliarValorDoBoleto,
+  descreverDuplicidade,
+  instanteBrasilia,
+} from "./regrasPreRemessa";
 import { FORMA_PAGAMENTO, segmentoDaForma } from "@/lib/cnab240/itau/constantes";
 import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
 import {
@@ -237,7 +244,9 @@ export function resumirConferencia(linhas: LinhaConferencia[]): ResumoConferenci
   };
 }
 
-export async function conferirItensRemessa(itensOriginais: ItemConferencia[], contaDebito?: ContaDebito, verificarSenior = false): Promise<RelatorioConferencia> {
+// `agora` so' existe pra dar pra testar as regras de data/hora (TED depois das 15h, dia util) sem depender do relogio.
+export async function conferirItensRemessa(itensOriginais: ItemConferencia[], contaDebito?: ContaDebito, verificarSenior = false, agora: Date = new Date()): Promise<RelatorioConferencia> {
+  const agoraBr = instanteBrasilia(agora);
   // Chave PIX que e' o CPF/CNPJ do favorecido digitado como telefone e' corrigida sozinha (tipo 03) e
   // vira aviso -- o mesmo ajuste que prepararItem faz na hora de montar o arquivo.
   const correcoesChave = itensOriginais.map((i) =>
@@ -269,6 +278,7 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
       pago: true,
       numNfc: true,
       vencimentoProgramado: true,
+      valorOriginal: true,
     },
   });
   const porId = new Map(titulos.map((t) => [t.id, t]));
@@ -336,6 +346,10 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
           );
         }
       }
+    }
+    // Dia sem expediente (o banco move a data e avisa) e TED do mesmo dia depois das 15h.
+    for (const r of avaliarDataPagamento({ forma: item.formaPagamento, dataPagamento: item.dataPagamento, hoje: agoraBr.iso, hora: agoraBr.hora })) {
+      problemas.push(problema("dataPagamento", r.mensagem, r.gravidade));
     }
     const titulo = item.tituloId ? porId.get(item.tituloId) : undefined;
     if (verificarSenior && titulo && titulo.tipo !== "PRV") {
@@ -461,7 +475,11 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
     if (segmentoDaForma(item.formaPagamento ?? "") !== "J") return null;
     try {
       const cb = linhaDigitavelParaCodigoBarras(item.codigoBarras ?? "");
-      return { cb, nominal: valorDoCodigoBarras(parseCodigoBarras(cb).valor) };
+      const decomposto = parseCodigoBarras(cb);
+      // Vencimento embutido no codigo (fator de vencimento); o ciclo certo do fator e' o mais proximo da data do pagamento.
+      const referencia = item.dataPagamento && /^\d{4}-\d{2}-\d{2}$/.test(item.dataPagamento) ? new Date(`${item.dataPagamento}T12:00:00Z`) : agora;
+      const vencimento = dataVencimentoDoFator(decomposto.fatorVencimento, referencia);
+      return { cb, nominal: valorDoCodigoBarras(decomposto.valor), vencimentoIso: vencimento ? vencimento.toISOString().slice(0, 10) : null };
     } catch {
       return null; // codigo invalido ja foi apontado por validarItemRemessa
     }
@@ -502,7 +520,13 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
     const b = boletoDoItem[i];
     if (emBoletoRepetido.has(i) || !b || !(b.nominal > 0) || typeof item.valor !== "number") return;
     const valor = item.valor;
-    if (Math.abs(b.nominal - valor) <= 0.01) return;
+    // 13/10/2026: valor do item x boleto -- erro antes do vencimento (o banco so' aceita o valor exato), aviso se
+    // vencido (juros/multa). Ver regrasPreRemessa.ts.
+    const avaliacaoValor = avaliarValorDoBoleto({ valor, nominal: b.nominal, vencimentoIso: b.vencimentoIso, dataPagamento: item.dataPagamento || agoraBr.iso });
+    if (Math.abs(b.nominal - valor) <= 0.01) {
+      if (avaliacaoValor) linhas[i].problemas.push(problema("valor", avaliacaoValor.mensagem, avaliacaoValor.gravidade)); // boleto vencido pago pelo valor original
+      return;
+    }
     const meuId = linhas[i].tituloId;
     const meu = meuId ? porId.get(meuId) : undefined;
     const pontos = (s: (typeof abertosDoFornecedor)[number]) =>
@@ -519,6 +543,8 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
           "erro"
         )
       );
+    } else if (avaliacaoValor) {
+      linhas[i].problemas.push(problema("valor", avaliacaoValor.mensagem, avaliacaoValor.gravidade));
     } else {
       linhas[i].problemas.push(
         problema(
@@ -579,6 +605,35 @@ export async function conferirItensRemessa(itensOriginais: ItemConferencia[], co
       }
     }
   });
+
+  // (e) 13/10/2026: possivel lancamento duplicado contra QUALQUER titulo do mesmo fornecedor (inclusive ja pago):
+  // mesmo valor, emissao a ate 3 dias e outro numero (14914$01 repetia o 47822$01, pago em 02/09). So' avisa --
+  // quem decide e' o usuario --, mas aparece no relatorio antes de gerar. Parcelas ($01/$02) e mensalidades ficam de fora.
+  const emissoes = titulos.map((t) => t.dataEmissao.getTime());
+  const comEmissaoProxima = emissoes.length
+    ? await prisma.tituloContasAPagar.findMany({
+        where: {
+          codFor: { in: codFors },
+          tipo: { not: "PRV" },
+          dataEmissao: { gte: new Date(Math.min(...emissoes) - 4 * 86_400_000), lte: new Date(Math.max(...emissoes) + 4 * 86_400_000) },
+        },
+        select: { id: true, numTit: true, codFor: true, valorOriginal: true, dataEmissao: true, pago: true, situacao: true, dataPagamento: true },
+      })
+    : [];
+  for (const l of linhas) {
+    const t = l.tituloId ? porId.get(l.tituloId) : undefined;
+    if (!t || t.tipo === "PRV") continue;
+    const parecidos = acharPossivelDuplicidade(t, comEmissaoProxima);
+    if (parecidos.length > 0) {
+      l.problemas.push(
+        problema(
+          "titulo",
+          `Possível lançamento duplicado: o mesmo fornecedor tem ${parecidos.slice(0, 2).map(descreverDuplicidade).join(" e ")} com o MESMO valor e emissão na mesma época. Se for o mesmo pagamento lançado duas vezes, pague só um e cancele o outro na Senior.`,
+          "aviso"
+        )
+      );
+    }
+  }
 
   for (const l of linhas) {
     l.situacao = temErroBloqueante(l.problemas) ? "erro" : l.problemas.length > 0 ? "aviso" : "ok";

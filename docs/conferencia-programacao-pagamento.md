@@ -27,6 +27,22 @@ A indicação **Cartão de Crédito** é calculada pela forma do título sincron
 
 A classificação depende do `CODFPG` do título sincronizado. Uma alteração feita na Sênior precisa chegar à base local para atualizar a indicação da lista e a proteção baseada nela. A consulta do modal permite conferir a forma atual, mas não grava dados nem executa operações no ERP.
 
+## Relatório de falhas antes da remessa — regras acrescentadas em 13/10/2026
+
+Objetivo: o que passar no relatório deve ser aceito pelo Itaú de uma vez, sem item voltando em retorno. As regras novas moram em `src/lib/pagamentos/regrasPreRemessa.ts` (funções puras, testadas em `tests/regras-pre-remessa.test.ts`) e são chamadas por `conferirItensRemessa`. Origem: ocorrências do manual SISPAG v086 (Nota 8) e os casos reais de 13/10/2026.
+
+| Regra | Gravidade | Por quê |
+|---|---|---|
+| Valor do item ≠ valor do boleto **e o boleto ainda está no prazo** | **Erro** | Antes do vencimento o banco só aceita o valor exato (ocorrências IB/CF valor inválido, IE/IF mora/multa, ID desconto). Casos: boleto R$ 626,09 em título de R$ 437,55; R$ 6.098,06 × R$ 6.098,11; R$ 1.150,00 × R$ 805,00 |
+| Boleto **vencido** (valor igual ou diferente do original) | Aviso | O banco recalcula juros/multa; só a 2ª via diz o valor. Vencimento em dia sem expediente vale até o próximo dia útil |
+| TED (41/43) no mesmo dia **depois das 15:00** | **Erro** | Quadro de prazos do manual: "TED — mesmo dia até 15:00" |
+| Data de pagamento em sábado, domingo ou feriado bancário | Aviso | O Itaú move para o próximo dia útil e devolve "data de pagamento alterada" (AE). O calendário inclui Carnaval, Sexta-feira Santa e Corpus Christi |
+| **Possível lançamento duplicado**: mesmo fornecedor, mesmo valor, emissão a até 3 dias e outro número base (inclui títulos já pagos) | Aviso | Ex.: 14914$01 repetia o 47822$01 (R$ 83, mesma emissão), pago em 02/09. Parcelas ($01/$02) e recorrências mensais não são marcadas |
+
+Já existiam e continuam: boleto único para 2 títulos, mesmo boleto em 2 itens, título duplicado de mesma parcela, linha de 48 dígitos (concessionária) com mensagem própria, cartão de crédito e PRV bloqueados, titularidade da TED, chave PIX, forma × banco.
+
+Painel da OC: quando a OC tem título digitado mas nenhum título casou (ex.: OC 15903 citava 007990 e o título era 007900), o painel avisa e mostra o título provável (mesmo fornecedor, valor e data, em aberto e sem OC). O motor de vínculo continua sem ligar por valor/data; a correção é ajustar o número na OC (Sênior) ou usar o vínculo manual da Programação ("Corrigido" + nº da OC).
+
 ## Desempenho e integridade
 
 Abrir a Programação, o descritivo da OC ou a lista de dossiês atualiza somente o catálogo pequeno de formas de pagamento, quando necessário. Essas aberturas deixam de disparar varreduras de todos os títulos abertos e de todo o histórico, que disputavam o acesso à Sênior com a conferência. O catálogo possui controle de consulta em andamento e intervalo de 15 minutos.

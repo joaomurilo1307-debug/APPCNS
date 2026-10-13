@@ -91,6 +91,8 @@ export type Aprovacao = {
   previsaoPagamento: string | null;
   usuNumTit?: string | null;
   usuNumNfc?: string | null;
+  // So' vem da rota de uma OC (/api/senior/aprovacoes/[numOcp]): a OC tem titulo digitado mas nenhum titulo casou.
+  avisoVinculo?: { referencia: string; candidatos: { id: string; numTit: string; valorOriginal: number; vencimentoProgramado: string | null }[] } | null;
   pago: boolean;
   situacaoAtual: string;
   niveisExigidos: string | null;
@@ -501,6 +503,14 @@ export default function MapaOC({
               <div className="col-span-2">
                 <dt className="text-xs text-gray-500">Título(s) vinculado(s) (digitado na OC)</dt>
                 <dd className="font-medium">{a.usuNumTit}</dd>
+                {a.avisoVinculo && (
+                  <p role="alert" className="mt-1 rounded bg-amber-50 p-2 text-xs font-medium text-amber-800">
+                    O título digitado na OC ({a.avisoVinculo.referencia}) não foi encontrado para este fornecedor — por isso a OC aparece sem título.
+                    {a.avisoVinculo.candidatos.length > 0
+                      ? ` Provável: ${a.avisoVinculo.candidatos.map((c) => `${c.numTit} (${formatMoeda(c.valorOriginal)})`).join(", ")} — mesmo fornecedor, valor e data, ainda em aberto e sem OC. Corrija o número na OC (Senior) ou, na Programação de Pagamento, marque o título como "Corrigido" e informe a OC ${a.numOcp}.`
+                      : " Confira o número digitado na OC (Senior)."}
+                  </p>
+                )}
               </div>
             )}
             {a.usuNumNfc && (
