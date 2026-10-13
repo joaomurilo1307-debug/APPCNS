@@ -240,6 +240,21 @@ function dentroDaSemana(iso: string | null, inicio: Date, fim: Date) {
   return dUTC >= inicio && dUTC <= fim;
 }
 
+// 13/10/2026 (pedido do João): "tem coisas que ficam de uma semana pra outra" -- o que venceu na semana
+// passada e não foi pago sumia da "Semana atual" (e do filtro de datas dentro dela). Agora o atrasado
+// em aberto dos últimos 14 dias continua na semana, com selo; o mais antigo segue na aba "Em aberto".
+const DIAS_DE_ATRASO_NA_SEMANA = 14;
+
+/** Dias de atraso de um título em aberto (0 se pago, PRV, sem vencimento real ou ainda no prazo). */
+function diasDeAtraso(t: Pick<Titulo, "pago" | "tipo" | "vencimentoProgramado">) {
+  if (t.pago || t.tipo === "PRV" || !t.vencimentoProgramado || vencimentoSentinela(t.vencimentoProgramado)) return 0;
+  const d = new Date(t.vencimentoProgramado);
+  const venc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const agora = new Date();
+  const hoje = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  return Math.max(0, Math.round((hoje - venc) / 86_400_000));
+}
+
 type Filtro = "semana" | "proxima" | "aberto" | "pagos" | "todos";
 
 const ABAS: [Filtro, string][] = [
@@ -685,14 +700,20 @@ export default function ProgramacaoPagamentoPage() {
   }
 
   const { inicio: inicioSemana, fim: fimSemana } = useMemo(() => semanaAtual(), []);
+  // Janela dos atrasados que continuam na semana: dos 14 dias antes da segunda-feira até o domingo anterior.
+  const inicioAtraso = useMemo(
+    () => new Date(inicioSemana.getFullYear(), inicioSemana.getMonth(), inicioSemana.getDate() - DIAS_DE_ATRASO_NA_SEMANA),
+    [inicioSemana]
+  );
+  const fimAtraso = useMemo(() => new Date(inicioSemana.getFullYear(), inicioSemana.getMonth(), inicioSemana.getDate() - 1), [inicioSemana]);
 
-  // "Semana atual" = vence nesta semana OU foi jogado pra próxima programação
-  // a partir desta semana. O adiado continua aqui, sinalizado, porque o
-  // vencimento muda no Senior e ele sumiria da programação de origem sem
-  // aviso (pedido do João 06/10/2026).
+  // "Semana atual" = vence nesta semana OU ficou atrasado em aberto da(s) semana(s) passada(s) (até 14 dias)
+  // OU foi jogado pra próxima programação a partir desta semana. O adiado continua aqui, sinalizado, porque o
+  // vencimento muda no Senior e ele sumiria da programação de origem sem aviso (pedido do João 06/10/2026).
   function naSemana(t: Titulo) {
     if (t.pago) return false;
     if (dentroDaSemana(t.vencimentoProgramado, inicioSemana, fimSemana)) return true;
+    if (t.tipo !== "PRV" && dentroDaSemana(t.vencimentoProgramado, inicioAtraso, fimAtraso)) return true;
     return naProximaProgramacao(t) && dentroDaSemana(t.adiamento!.programacaoOrigem, inicioSemana, fimSemana);
   }
 
@@ -713,7 +734,9 @@ export default function ProgramacaoPagamentoPage() {
     const termo = busca.trim().toLowerCase();
     return titulos
       .filter((t) => {
-        if (filtro === "semana") return naSemana(t);
+        // Com filtro de datas ativo, o intervalo manda: a aba "Semana atual" não pode cortar o que o usuário pediu
+        // (13/10/2026: filtrando 10 a 13, o título do dia 10 sumia por ser da semana passada). Mostra todo o não pago.
+        if (filtro === "semana") return naSemana(t) || ((!!dataDe || !!dataAte) && !t.pago);
         if (filtro === "proxima") return naProximaProgramacao(t);
         if (filtro === "aberto") return !t.pago;
         if (filtro === "pagos") return t.pago;
@@ -912,6 +935,7 @@ export default function ProgramacaoPagamentoPage() {
           {ABAS.map(([v, label]) => (
             <button
               key={v}
+              title={v === "semana" ? "Vence nesta semana, ficou atrasado em aberto dos 14 dias anteriores ou foi jogado pra próxima programação. Mais antigo que isso: aba Em aberto." : undefined}
               onClick={() => setFiltro(v)}
               className={`px-3 py-1.5 whitespace-nowrap transition-colors ${
                 filtro === v ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"
@@ -926,7 +950,7 @@ export default function ProgramacaoPagamentoPage() {
         <div className="flex flex-wrap items-center gap-3">
           {filtro === "semana" && !dataDe && !dataAte && (
             <span className="text-xs text-gray-400">
-              {formatData(inicioSemana.toISOString())} – {formatData(fimSemana.toISOString())}
+              {formatData(inicioSemana.toISOString())} – {formatData(fimSemana.toISOString())} + atrasados desde {formatData(inicioAtraso.toISOString())}
             </span>
           )}
           <div className="flex items-center gap-1.5">
@@ -1332,6 +1356,14 @@ export default function ProgramacaoPagamentoPage() {
                 </td>
                 <td className="px-3 py-1.5 tabular-nums text-gray-500">
                   {formatData(t.vencimentoProgramado)}
+                  {diasDeAtraso(t) > 0 && (
+                    <span
+                      className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                      title="Venceu e ainda está em aberto. Continua na programação até ser pago, adiado ou baixado."
+                    >
+                      atrasado há {diasDeAtraso(t)} {diasDeAtraso(t) === 1 ? "dia" : "dias"}
+                    </span>
+                  )}
                   {vencimentoSentinela(t.vencimentoProgramado) && (
                     <span
                       className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
