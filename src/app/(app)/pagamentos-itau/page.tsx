@@ -2200,7 +2200,7 @@ export default function PagamentosItauPage() {
                     </button>
                   )}
                   <a href={`/api/pagamentos-itau/remessas/${r.id}/arquivo`} className="text-xs text-brand underline">
-                    baixar .rem
+                    baixar .txt
                   </a>
                 </td>
               </tr>

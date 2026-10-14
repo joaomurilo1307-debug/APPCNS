@@ -239,7 +239,7 @@ export async function POST(req: Request) {
 
           const gerado = gerarArquivoRemessa(contaDebito, itensCnab, dataGeracao);
           const arquivoPix = ehPix(grupo[0]);
-          const nomeArquivo = `SISPAG_${dataGeracao.toISOString().slice(0, 10).replace(/-/g, "")}_${arquivoPix ? "PIX_" : ""}${remessa.id.slice(-6)}.rem`;
+          const nomeArquivo = `SISPAG_${dataGeracao.toISOString().slice(0, 10).replace(/-/g, "")}_${arquivoPix ? "PIX_" : ""}${remessa.id.slice(-6)}.txt`;
 
           const atualizada = await tx.remessaPagamento.update({
             where: { id: remessa.id },

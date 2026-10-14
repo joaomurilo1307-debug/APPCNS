@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return new NextResponse(remessa.conteudoArquivo, {
     headers: {
       "Content-Type": "text/plain; charset=ascii",
-      "Content-Disposition": `attachment; filename="${remessa.nomeArquivo ?? `remessa-${remessa.id}.rem`}"`,
+      "Content-Disposition": `attachment; filename="${(remessa.nomeArquivo ?? `remessa-${remessa.id}`).replace(/\.(rem|txt)$/i, "")}.txt"`,
     },
   });
 }
