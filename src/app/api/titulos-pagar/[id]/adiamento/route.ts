@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { alterarVencimentoTitulo } from "@/lib/senior/alterarVencimento";
 
 // "Proxima programacao" (06/10/2026): LEMBRETE do que foi deixado pra depois.
 // Nao troca o status de revisao do titulo e nao o tira da lista onde ele esta
@@ -14,7 +15,12 @@ import { prisma } from "@/lib/prisma";
 
 const ROLES = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
-const bodySchema = z.object({ motivo: z.string().max(200).nullable().optional() });
+// novoVencimento (aaaa-mm-dd), opcional: ao deixar pra proxima programacao o vencimento
+// programado tambem e' alterado NA SENIOR (AlteraTitulosCP). Se a Senior recusar, nada e' marcado.
+const bodySchema = z.object({
+  motivo: z.string().max(200).nullable().optional(),
+  novoVencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
 
 const SELECAO = { id: true, programacaoOrigem: true, marcadoPorNome: true, marcadoEm: true, motivo: true, resolvidoEm: true, resolvidoComo: true } as const;
 
@@ -33,6 +39,29 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (titulo.pago) return NextResponse.json({ error: "Título já está pago -- não há o que deixar pra próxima programação." }, { status: 422 });
 
   const motivo = parsed.data.motivo?.trim() || null;
+
+  let vencimentoNovo: Date | null = null;
+  if (parsed.data.novoVencimento) {
+    vencimentoNovo = new Date(`${parsed.data.novoVencimento}T00:00:00Z`);
+    if (Number.isNaN(vencimentoNovo.getTime()) || vencimentoNovo.toISOString().slice(0, 10) !== parsed.data.novoVencimento)
+      return NextResponse.json({ error: "Data inválida." }, { status: 422 });
+    const hoje = new Date().toISOString().slice(0, 10);
+    if (parsed.data.novoVencimento < hoje) return NextResponse.json({ error: "O novo vencimento não pode ser no passado." }, { status: 422 });
+    if (titulo.vencimentoProgramado && parsed.data.novoVencimento <= titulo.vencimentoProgramado.toISOString().slice(0, 10))
+      return NextResponse.json({ error: "O novo vencimento precisa ser depois do vencimento atual." }, { status: 422 });
+    try {
+      const r = await alterarVencimentoTitulo(
+        { codFil: Number(titulo.codFil), numTit: titulo.numTit, codTpt: titulo.tipo, codFor: Number(titulo.codFor) },
+        vencimentoNovo
+      );
+      if (!r.ok) return NextResponse.json({ error: `A Senior não alterou o vencimento: ${r.mensagem}` }, { status: 422 });
+    } catch (e) {
+      return NextResponse.json({ error: `Não foi possível falar com a Senior (${(e as Error).message}). Confira o vencimento do título lá antes de repetir.` }, { status: 502 });
+    }
+    // Senior alterada e conferida: espelha aqui pra tela nao mostrar a data antiga ate o proximo sync.
+    await prisma.tituloContasAPagar.update({ where: { id: titulo.id }, data: { vencimentoProgramado: vencimentoNovo } });
+  }
+
   const aberto = await prisma.tituloAdiamento.findFirst({
     where: { tituloId: titulo.id, resolvidoEm: null },
     orderBy: { marcadoEm: "desc" },

@@ -483,18 +483,20 @@ export default function ProgramacaoPagamentoPage() {
   // Lembrete "próxima programação": deixa (POST, com motivo opcional) ou devolve
   // o título à programação normal (DELETE). Não mexe no status de revisão e não
   // tira o título de nenhuma lista.
-  function mudarAdiamento(id: string, acao: "deixar" | "devolver", motivo?: string) {
+  function mudarAdiamento(id: string, acao: "deixar" | "devolver", motivo?: string, novoVencimento?: string) {
     setSalvandoAdiamento(id);
     fetch(`/api/titulos-pagar/${id}/adiamento`, {
       method: acao === "deixar" ? "POST" : "DELETE",
       ...(acao === "deixar"
-        ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ motivo: motivo ?? null }) }
+        ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ motivo: motivo ?? null, ...(novoVencimento ? { novoVencimento } : {}) }) }
         : {}),
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Erro ao atualizar o lembrete");
-        setTitulos((anterior) => anterior.map((t) => (t.id === id ? { ...t, adiamento: data.adiamento ?? undefined } : t)));
+        setTitulos((anterior) =>
+          anterior.map((t) => (t.id === id ? { ...t, adiamento: data.adiamento ?? undefined, ...(novoVencimento ? { vencimentoProgramado: `${novoVencimento}T00:00:00.000Z` } : {}) } : t))
+        );
         setMotivoAdiamentoInput((prev) => {
           const novo = { ...prev };
           delete novo[id];
@@ -503,6 +505,24 @@ export default function ProgramacaoPagamentoPage() {
       })
       .catch((e) => setErroOC(e.message))
       .finally(() => setSalvandoAdiamento(null));
+  }
+
+  // Deixar pra próxima programação = mudar o vencimento programado NA SENIOR (AlteraTitulosCP) e marcar o lembrete.
+  function adiarParaProximaSemana(t: Titulo) {
+    const seg = new Date(inicioSemana.getFullYear(), inicioSemana.getMonth(), inicioSemana.getDate() + 7);
+    const padrao = `${String(seg.getDate()).padStart(2, "0")}/${String(seg.getMonth() + 1).padStart(2, "0")}/${seg.getFullYear()}`;
+    const resposta = window.prompt(
+      `Novo vencimento na Senior para o título ${t.numTit} (hoje ${formatData(t.vencimentoProgramado)}).\nFormato dd/mm/aaaa. Deixe em branco para só marcar o lembrete, sem alterar a Senior.`,
+      padrao
+    );
+    if (resposta === null) return;
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(resposta.trim());
+    if (resposta.trim() && !m) {
+      setErroOC("Data inválida. Use dd/mm/aaaa.");
+      return;
+    }
+    if (m && !window.confirm(`Alterar o vencimento do título ${t.numTit} na Senior para ${resposta.trim()}?`)) return;
+    mudarAdiamento(t.id, "deixar", undefined, m ? `${m[3]}-${m[2]}-${m[1]}` : undefined);
   }
 
   // Manda só este título pra tela de remessa (mesmo caminho da seleção em lote).
@@ -1421,9 +1441,9 @@ export default function ProgramacaoPagamentoPage() {
                   {!t.pago && !naProximaProgramacao(t) && (
                     <div className="mt-1">
                       <button
-                        onClick={() => mudarAdiamento(t.id, "deixar")}
+                        onClick={() => adiarParaProximaSemana(t)}
                         disabled={salvandoAdiamento === t.id}
-                        title="Deixa um lembrete de que este título foi deixado pra próxima programação. Não muda o status nem tira o título desta lista."
+                        title="Deixa o título pra próxima programação e, se você informar a data, altera o vencimento programado na Senior. Não muda o status nem tira o título desta lista."
                         className="rounded-full border border-violet-200 px-2 py-0.5 text-[10px] font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50"
                       >
                         ↪ deixar pra próxima programação
