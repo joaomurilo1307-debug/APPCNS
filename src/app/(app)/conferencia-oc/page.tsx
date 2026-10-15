@@ -91,7 +91,10 @@ export default function ConferenciaOcPage() {
 
   useEffect(carregar, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function abrirOC(numOcp: string) {
+  // O chip da OC abre o descritivo completo (base sincronizada do APPCNS). OC que ainda nao foi sincronizada
+  // cai no painel Conferir, que le direto da Senior e funciona para qualquer OC.
+  function abrirOC(oc: Oc) {
+    const numOcp = oc.numOcp;
     setCarregandoOC(numOcp);
     fetch(`/api/senior/aprovacoes/${numOcp}`)
       .then(json)
@@ -100,7 +103,10 @@ export default function ConferenciaOcPage() {
         setCodToNomeOC(d.codToNome ?? {});
         setTitulosDaOC(d.titulosVinculados ?? []);
       })
-      .catch((e) => setAviso(`OC ${numOcp}: ${e.message}`))
+      .catch((e) => {
+        if (/n[aã]o encontrada/i.test(e.message)) conferir(oc);
+        else setAviso(`OC ${numOcp}: ${e.message}`);
+      })
       .finally(() => setCarregandoOC(null));
   }
 
@@ -335,7 +341,7 @@ export default function ConferenciaOcPage() {
                 <td className="px-3 py-1.5 tabular-nums text-gray-500">{dataBr(o.vencimento)}</td>
                 <td className="px-3 py-1.5">
                   <button
-                    onClick={() => abrirOC(o.numOcp)}
+                    onClick={() => abrirOC(o)}
                     disabled={carregandoOC === o.numOcp}
                     title={o.descricao ?? "Abrir o descritivo da OC"}
                     className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700 underline decoration-dotted underline-offset-2 disabled:opacity-50"
