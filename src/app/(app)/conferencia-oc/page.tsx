@@ -480,6 +480,16 @@ export default function ConferenciaOcPage() {
               ))}
             </div>
 
+            {(() => {
+              const assoc: any[] = notas?.associadas ?? [];
+              const comTitulo = assoc.find((a) => a.naSenior?.tituloDaNf);
+              const naoLancada = assoc.filter((a) => !a.naSenior?.lancada);
+              if (comTitulo)
+                return <p className="mb-2 rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">A NF {comTitulo.numeroNf} já gerou o título {comTitulo.naSenior.tituloDaNf} na Senior — siga na Programação de Pagamento.</p>;
+              if (naoLancada.length)
+                return <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">NF {naoLancada.map((a) => a.numeroNf).join(", ")} ainda não lançada na Senior. Lance a NF na Senior (o título nasce da entrada) antes de gerar título por aqui.</p>;
+              return null;
+            })()}
             <div className="flex items-center justify-end gap-2">
               {detalhe.numTit ? (
                 <span className="text-sm text-gray-600">
@@ -488,7 +498,7 @@ export default function ConferenciaOcPage() {
               ) : (
                 <button
                   onClick={() => gerarTitulo(detalheOc)}
-                  disabled={!detalhe.podeGerar || gerando === detalheOc.numOcp}
+                  disabled={!detalhe.podeGerar || gerando === detalheOc.numOcp || !!notas?.associadas?.some((a: any) => a.naSenior?.tituloDaNf)}
                   title={detalhe.podeGerar ? "" : "Só gera com aprovação completa e valor na OC"}
                   className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
                 >
