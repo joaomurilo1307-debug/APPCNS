@@ -96,6 +96,7 @@ export async function POST(req: Request) {
       ...pagamento.campos,
       codPor: oc.CODPOR || undefined,
       codCrt: oc.CODCRT || undefined,
+      codMoe: oc.CODMOE || "01",
     };
     let r = comGrid
       ? await gravarTituloComRateioCP(base, linhasRateio)

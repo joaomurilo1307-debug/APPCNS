@@ -27,6 +27,8 @@ export type TituloNovo = {
   valor: number;
   obs: string;
   codFpg?: string;
+  /** Moeda (E420OCP.CODMOE, ex.: "01"). A Senior exige. */
+  codMoe?: string;
   codCcu?: string;
   ctaFin?: string;
   numPrj?: string;
@@ -67,12 +69,14 @@ export function montarEnvelopeTitulo(t: TituloNovo, usuario: string, senha: stri
     ["codFor", String(t.codFor)],
     ["codFpg", t.codFpg],
     ["codFpj", t.codFpj],
+    ["codMoe", t.codMoe],
     ["codPor", t.codPor],
     ["codTns", t.codTns],
     ["codTpt", t.codTpt],
     ["ctaFin", t.ctaFin],
     ["datEmi", dataSenior(t.emissao)],
     ["datEnt", dataSenior(t.emissao)],
+    ["datPpt", dataSenior(t.vencimento)],
     ["docIdeFav", t.docIdeFav],
     ["numPrj", t.numPrj],
     ["numTit", t.numTit],
@@ -185,14 +189,15 @@ export function montarEnvelopeTituloRateio(t: TituloNovo, rateio: LinhaRateio[],
   const cab: [string, string | undefined][] = [
     ["ccbFor", t.ccbFor], ["chvPix", t.chvPix], ["codAge", t.codAge], ["codBan", t.codBan], ["codBar", t.codBar],
     ["codCrt", t.codCrt], ["codFil", String(t.codFil)], ["codFor", String(t.codFor)], ["codFpg", t.codFpg],
-    ["codPor", t.codPor], ["codTns", t.codTns], ["codTpt", t.codTpt],
-    ["datEmi", dataSenior(t.emissao)], ["datEnt", dataSenior(t.emissao)], ["docIdeFav", t.docIdeFav],
+    ["codMoe", t.codMoe], ["codPor", t.codPor], ["codTns", t.codTns], ["codTpt", t.codTpt],
+    ["datEmi", dataSenior(t.emissao)], ["datEnt", dataSenior(t.emissao)], ["datPpt", dataSenior(t.vencimento)], ["docIdeFav", t.docIdeFav],
     ["numTit", t.numTit], ["obsTcp", t.obs.slice(0, 250)],
   ];
   const cab2: [string, string | undefined][] = [
     ["tipTcc", t.tipTcc ? String(t.tipTcc) : undefined],
     ["tpcPix", t.chvPix && t.tpcPix ? String(t.tpcPix) : undefined],
     ["vctOri", dataSenior(t.vencimento)],
+    ["vctPro", dataSenior(t.vencimento)],
     ["vlrOri", ponto(t.valor)],
   ];
   const tag = (l: [string, string | undefined][]) => l.filter(([, v]) => v).map(([k, v]) => `<${k}>${esc(v!)}</${k}>`).join("");
