@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { avaliarAprovacao, niveisDaExpressao, termosDaExpressao } from "../src/lib/senior/aprovacaoOc";
+import { avaliarAprovacao, consolidarRateio, niveisDaExpressao, termosDaExpressao } from "../src/lib/senior/aprovacaoOc";
 import { cadastroBancarioReal } from "../src/lib/senior/pagamentoParaTitulo";
 
 const pessoa = { codUsu: "1", nome: "x", email: null };
@@ -38,4 +38,16 @@ test("cadastro bancario placeholder (111/11111/111111) nao conta como dado real"
   assert.equal(cadastroBancarioReal({ CODBAN: "341", CODAGE: "7415", CCBFOR: "01130-8" }), true);
   assert.equal(cadastroBancarioReal({ CODBAN: "341", CODAGE: "0", CCBFOR: "" }), false);
   assert.equal(cadastroBancarioReal(undefined), false);
+});
+
+test("rateio: PERRAT=100 por item nao soma 300%; fatia = valor do CCU / total (OC 15857 real)", () => {
+  const linhas = [
+    { CODCCU: "190", PERRAT: "100", VLRRAT: "94,15" }, { CODCCU: "210", PERRAT: "100", VLRRAT: "255,85" },
+    { CODCCU: "190", PERRAT: "100", VLRRAT: "6191,3" }, { CODCCU: "210", PERRAT: "100", VLRRAT: "16824,7" },
+    { CODCCU: "190", PERRAT: "100", VLRRAT: "80,7" }, { CODCCU: "210", PERRAT: "100", VLRRAT: "219,3" },
+  ];
+  const r = consolidarRateio(linhas);
+  assert.deepEqual(r.map((c) => [c.codCcu, c.valor, c.percentual]), [["190", 6366.15, 26.9], ["210", 17299.85, 73.1]]);
+  assert.deepEqual(consolidarRateio([]), []);
+  assert.equal(consolidarRateio([{ CODCCU: "1", PERRAT: "100", VLRRAT: "0" }])[0].percentual, 0);
 });

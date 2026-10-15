@@ -15,13 +15,13 @@ const linha = (vct: string, sit: string, abe = "181,06") =>
 const resposta = (txt: string) => `<S:Envelope><S:Body><r><result><gridRetorno><txtRet>${txt}</txtRet></gridRetorno><resultado>OK</resultado></result></r></S:Body></S:Envelope>`;
 
 /** Simula Senior: leituras devolvem a fila de VCTPRO; escrita registra o envelope. */
-function simular(leituras: [string, string][], retornoEscrita: string) {
+function simular(leituras: [string, string, string?][], retornoEscrita: string) {
   const escritas: string[] = [];
   let i = 0;
   globalThis.fetch = (async (url: any, init: any) => {
     if (String(url).includes("alteratituloscp")) { escritas.push(String(init.body)); return new Response(retornoEscrita); }
-    const [v, s] = leituras[Math.min(i++, leituras.length - 1)];
-    return new Response(linha(v, s));
+    const [v, s, abe] = leituras[Math.min(i++, leituras.length - 1)];
+    return new Response(linha(v, s, abe));
   }) as typeof fetch;
   return escritas;
 }

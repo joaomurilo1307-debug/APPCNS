@@ -43,6 +43,22 @@ export type AprovacaoOc = {
 const num = (v: string | undefined) => Number((v ?? "").trim().replace(/\./g, "").replace(",", "."));
 const soInteiros = (valores: (string | undefined)[]) => [...new Set(valores.filter((v): v is string => !!v && /^\d+$/.test(v)))];
 
+/**
+ * Rateio por centro de custo. A Senior grava uma linha por ITEM da OC e PERRAT e' o percentual
+ * dentro do item (100 em cada linha), entao somar PERRAT da "300%". A fatia real do CCU e' o
+ * valor dele sobre o valor rateado total (confere com PERCTA da propria Senior).
+ */
+export function consolidarRateio(linhas: LinhaSenior[]): { codCcu: string; valor: number; percentual: number }[] {
+  const porCcu = new Map<string, number>();
+  for (const l of linhas) porCcu.set(l.CODCCU, (porCcu.get(l.CODCCU) ?? 0) + num(l.VLRRAT));
+  const total = [...porCcu.values()].reduce((a, b) => a + b, 0);
+  return [...porCcu].map(([codCcu, v]) => ({
+    codCcu,
+    valor: Math.round(v * 100) / 100,
+    percentual: total > 0 ? Math.round((v / total) * 10000) / 100 : 0,
+  }));
+}
+
 /** "(1*1)*(2)" -> [1, 2]; "1" -> [1]. So' digitos 1..9 contam como nivel. */
 export function niveisDaExpressao(expr: string | null | undefined): number[] {
   return [...new Set([...(expr ?? "").matchAll(/\d/g)].map((m) => Number(m[0])).filter((n) => n >= 1))].sort();
@@ -121,14 +137,14 @@ export async function lerAprovacaoOc(numOcp: string, codFil: string): Promise<Ap
     ...base,
     nivelExigido: cab?.NIVEXI ?? null,
     ...av,
-    ccus: [...new Set(rateio.map((r) => r.CODCCU))].map((ccu) => ({
-      codCcu: ccu,
-      descricao: descricoes.get(ccu) ?? null,
-      percentual: Math.round(rateio.filter((r) => r.CODCCU === ccu).reduce((t, r) => t + num(r.PERRAT), 0) * 100) / 100,
-      valor: Math.round(rateio.filter((r) => r.CODCCU === ccu).reduce((t, r) => t + num(r.VLRRAT), 0) * 100) / 100,
+    ccus: consolidarRateio(rateio).map((c) => ({
+      codCcu: c.codCcu,
+      descricao: descricoes.get(c.codCcu) ?? null,
+      percentual: c.percentual,
+      valor: c.valor,
       aprovadoresCadastrados: (niveisExigidos.length ? niveisExigidos : [1, 2, 3]).map((nivel) => ({
         nivel,
-        pessoas: cadastro.filter((c) => c.CODCCU === ccu && Number(c.CODNAP) === nivel).map((c) => quem(c.CODUSU)),
+        pessoas: cadastro.filter((x) => x.CODCCU === c.codCcu && Number(x.CODNAP) === nivel).map((x) => quem(x.CODUSU)),
       })),
     })),
   };
