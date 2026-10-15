@@ -1375,3 +1375,22 @@ model ConciliacaoBancariaLancamento {
   @@index([contaBancariaId, dataLancamento])
   @@index([status])
 }
+
+// Titulo a pagar gerado na Senior (GravarTitulosCP) a partir de uma OC na tela
+// Conferencia de OC. A Senior nao deixa gravar USU_NUMTIT na OC por web service,
+// entao o vinculo OC <-> titulo gerado por aqui fica guardado neste registro.
+model TituloGeradoOC {
+  id         String   @id @default(cuid())
+  numOcp     String
+  codFil     String
+  codFor     String
+  numTit     String
+  codTpt     String
+  valor      Float
+  vencimento DateTime
+  geradoPor  String   // nome de quem clicou "Gerar titulo"
+  geradoEm   DateTime @default(now())
+
+  @@unique([numOcp, codFil])
+  @@index([numTit])
+}
