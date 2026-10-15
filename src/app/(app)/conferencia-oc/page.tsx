@@ -55,6 +55,9 @@ export default function ConferenciaOcPage() {
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [gerando, setGerando] = useState<string | null>(null);
   const [baixando, setBaixando] = useState(false);
+  const [detalhe, setDetalhe] = useState<any | null>(null);
+  const [detalheOc, setDetalheOc] = useState<Oc | null>(null);
+  const [carregandoDetalhe, setCarregandoDetalhe] = useState<string | null>(null);
 
   const [ocAberta, setOcAberta] = useState<Aprovacao | null>(null);
   const [codToNomeOC, setCodToNomeOC] = useState<Record<string, string>>({});
@@ -95,6 +98,19 @@ export default function ConferenciaOcPage() {
       .finally(() => setCarregandoOC(null));
   }
 
+  function conferir(oc: Oc) {
+    setCarregandoDetalhe(oc.numOcp);
+    setAviso(null);
+    fetch(`/api/conferencia-oc/detalhe?numOcp=${oc.numOcp}&codFil=${oc.codFil}`)
+      .then(json)
+      .then((d) => {
+        setDetalhe(d);
+        setDetalheOc(oc);
+      })
+      .catch((e) => setAviso(`OC ${oc.numOcp}: ${e.message}`))
+      .finally(() => setCarregandoDetalhe(null));
+  }
+
   async function gerarTitulo(oc: Oc) {
     const numTit = window.prompt(`Número do título para a OC ${oc.numOcp} (${oc.fornecedorNome ?? oc.codFor}, ${moeda(oc.valor)}, venc. ${dataBr(oc.vencimento)}):`)?.trim();
     if (!numTit) return;
@@ -109,6 +125,7 @@ export default function ConferenciaOcPage() {
       }).then(json);
       setOcs((l) => l.map((o) => (o.numOcp === oc.numOcp && o.codFil === oc.codFil ? { ...o, numTit: r.numTit, tituloGeradoAqui: true } : o)));
       setAviso([`Título ${r.codTpt} ${r.numTit} gerado na Senior.`, ...(r.avisos ?? [])].join(" "));
+      setDetalhe(null);
     } catch (e) {
       setAviso(`OC ${oc.numOcp}: ${(e as Error).message}`);
     } finally {
@@ -266,18 +283,14 @@ export default function ConferenciaOcPage() {
                     <span className="font-medium text-gray-800" title={o.tituloGeradoAqui ? "Gerado por esta tela" : "Informado na OC (USU_NUMTIT)"}>
                       {o.numTit}
                     </span>
-                  ) : o.sitApr === "APR" && o.valor > 0 ? (
-                    <button
-                      onClick={() => gerarTitulo(o)}
-                      disabled={gerando === o.numOcp}
-                      className="rounded-lg bg-brand px-2.5 py-1 text-[11px] font-medium text-white disabled:opacity-50"
-                    >
-                      {gerando === o.numOcp ? "Gerando…" : "Gerar título"}
-                    </button>
                   ) : (
-                    <span className="text-gray-400" title={o.sitApr === "APR" ? "OC sem valor no cabeçalho (compra de itens): gere o título direto na Senior" : "Só gera título de OC totalmente aprovada"}>
-                      {o.sitApr === "APR" ? "OC sem valor" : "aguarda aprovação"}
-                    </span>
+                    <button
+                      onClick={() => conferir(o)}
+                      disabled={carregandoDetalhe === o.numOcp}
+                      className="rounded-lg border border-brand px-2.5 py-1 text-[11px] font-medium text-brand disabled:opacity-50"
+                    >
+                      {carregandoDetalhe === o.numOcp ? "Consultando…" : "Conferir / gerar título"}
+                    </button>
                   )}
                 </td>
                 <td className="px-3 py-1.5">
@@ -301,6 +314,109 @@ export default function ConferenciaOcPage() {
           </tbody>
         </table>
       </div>
+
+      {detalhe && detalheOc && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={() => setDetalhe(null)}>
+          <div className="my-6 w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  OC {detalhe.oc.numOcp} — {detalhe.oc.fornecedorNome ?? `Fornecedor ${detalhe.oc.codFor}`}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Vencimento {dataBr(detalhe.oc.vencimento)} · {moeda(detalhe.oc.valor)} · filial {detalhe.oc.codFil}
+                </p>
+              </div>
+              <button onClick={() => setDetalhe(null)} className="text-gray-400 hover:text-gray-600" aria-label="Fechar">
+                ✕
+              </button>
+            </div>
+            {detalhe.oc.descricao && <p className="mb-3 rounded-lg bg-gray-50 p-2.5 text-[13px] text-gray-700">{detalhe.oc.descricao}</p>}
+
+            <h3 className="mb-1.5 text-sm font-semibold">Aprovação multinível</h3>
+            {detalhe.aprovacao ? (
+              <div className="mb-4 text-[13px]">
+                <p className={`mb-2 rounded-lg px-3 py-2 font-medium ${detalhe.aprovacao.completa ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
+                  {detalhe.aprovacao.completa
+                    ? `Totalmente aprovada (níveis exigidos: ${detalhe.aprovacao.nivelExigido ?? "—"})`
+                    : detalhe.aprovacao.motivoIncompleta}
+                </p>
+                {detalhe.aprovacao.eventos.length > 0 && (
+                  <table className="mb-2 w-full">
+                    <thead className="text-left text-[11px] uppercase text-gray-500">
+                      <tr>
+                        <th className="py-1">Nível</th>
+                        <th>Centro de custo</th>
+                        <th>Aprovador</th>
+                        <th>Data</th>
+                        <th>Situação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detalhe.aprovacao.eventos.map((e: any, i: number) => (
+                        <tr key={i} className="border-t border-gray-100">
+                          <td className="py-1">{e.nivel}</td>
+                          <td>{e.codCcu}</td>
+                          <td>{e.por.nome}</td>
+                          <td>{dataBr(e.data)}</td>
+                          <td className={e.situacao === "APR" ? "text-emerald-700" : "text-red-700"}>{e.situacao === "APR" ? "Aprovou" : "Reprovou"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {detalhe.aprovacao.niveisPendentes.length > 0 && (
+                  <p className="mb-2 text-amber-800">Nível(is) sem aprovação: {detalhe.aprovacao.niveisPendentes.join(", ")}</p>
+                )}
+                <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">Aprovadores cadastrados por centro de custo</p>
+                {detalhe.aprovacao.ccus.map((c: any) => (
+                  <p key={c.codCcu} className="text-gray-600">
+                    <strong>{c.codCcu}</strong> {c.descricao ?? ""} ({c.percentual}%):{" "}
+                    {c.aprovadoresCadastrados.map((n: any) => `N${n.nivel} ${n.pessoas.map((p: any) => p.nome).join("/") || "—"}`).join(" · ")}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="mb-4 text-sm text-red-700">Não foi possível ler a aprovação desta OC.</p>
+            )}
+
+            <h3 className="mb-1.5 text-sm font-semibold">Dados de pagamento que vão no título</h3>
+            <div className="mb-4 space-y-0.5 text-[13px] text-gray-700">
+              <p>Forma de pagamento: {detalhe.pagamento.formaPagamento ?? detalhe.pagamento.codFpg ?? "—"}</p>
+              <p>
+                Conta:{" "}
+                {detalhe.pagamento.conta
+                  ? `banco ${detalhe.pagamento.conta.banco} · ag. ${detalhe.pagamento.conta.agencia} · conta ${detalhe.pagamento.conta.conta} (${detalhe.pagamento.conta.fonte === "oc" ? "digitada na OC" : "cadastro do fornecedor"})`
+                  : "não identificada"}
+              </p>
+              <p>PIX: {detalhe.pagamento.pix ? `${detalhe.pagamento.pix.valor} (tipo ${detalhe.pagamento.pix.tipo})` : "não informado"}</p>
+              <p>Favorecido (CPF/CNPJ): {detalhe.pagamento.documentoFavorecido ?? "—"}</p>
+              {detalhe.pagamento.avisos.map((a: string, i: number) => (
+                <p key={i} className="text-amber-800">
+                  ⚠ {a}
+                </p>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              {detalhe.numTit ? (
+                <span className="text-sm text-gray-600">
+                  Título já existente: <strong>{detalhe.numTit}</strong>
+                </span>
+              ) : (
+                <button
+                  onClick={() => gerarTitulo(detalheOc)}
+                  disabled={!detalhe.podeGerar || gerando === detalheOc.numOcp}
+                  title={detalhe.podeGerar ? "" : "Só gera com aprovação completa e valor na OC"}
+                  className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                >
+                  {gerando === detalheOc.numOcp ? "Gerando…" : "Gerar título"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {ocAberta && <MapaOC aprovacao={ocAberta} codToNome={codToNomeOC} titulosVinculados={titulosDaOC} onClose={() => setOcAberta(null)} />}
     </div>

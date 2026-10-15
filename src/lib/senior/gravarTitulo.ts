@@ -39,23 +39,13 @@ export type TituloNovo = {
   tipTcc?: number;
   tpcPix?: number;
   chvPix?: string;
+  docIdeFav?: string;
   codBar?: string;
 };
 
 export type ResultadoGravacao = { ok: boolean; mensagem: string; erroExecucao: string };
 
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-/** Chave PIX -> TPCPIX (1 tel, 2 e-mail, 3 CPF/CNPJ, 4 aleatoria). 11 digitos e' ambiguo (CPF ou celular): devolve null. */
-export function tipoChavePix(chave: string): number | null {
-  const c = chave.trim();
-  if (!c) return null;
-  if (c.includes("@")) return 2;
-  if (/^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(c)) return 4;
-  if (/^\+55\d{10,11}$/.test(c.replace(/[\s()-]/g, ""))) return 1;
-  if (/^\d{14}$/.test(c.replace(/\D/g, "")) && !/[a-z]/i.test(c)) return 3;
-  return null;
-}
 
 export function montarEnvelopeTitulo(t: TituloNovo, usuario: string, senha: string): string {
   const inteiro = (n: number) => Number.isSafeInteger(n) && n > 0 && n <= 2147483647;
@@ -83,6 +73,7 @@ export function montarEnvelopeTitulo(t: TituloNovo, usuario: string, senha: stri
     ["ctaFin", t.ctaFin],
     ["datEmi", dataSenior(t.emissao)],
     ["datEnt", dataSenior(t.emissao)],
+    ["docIdeFav", t.docIdeFav],
     ["numPrj", t.numPrj],
     ["numTit", t.numTit],
     ["obsTcp", t.obs.slice(0, 250)],

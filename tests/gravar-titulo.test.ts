@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gravarTituloCP, lerRespostaTitulo, montarEnvelopeTitulo, tipoChavePix, type TituloNovo } from "../src/lib/senior/gravarTitulo";
+import { gravarTituloCP, lerRespostaTitulo, montarEnvelopeTitulo, type TituloNovo } from "../src/lib/senior/gravarTitulo";
 import { dataIso, numeroSenior, paraOc } from "../src/lib/senior/ocsConferencia";
 
 const base: TituloNovo = {
@@ -45,15 +45,6 @@ test("falha 2: dados invalidos barram antes de chamar a Senior", () => {
   assert.throws(() => montarEnvelopeTitulo({ ...base, codTpt: "ABCD" }, "u", "s"));
   assert.throws(() => montarEnvelopeTitulo({ ...base, valor: 0 }, "u", "s"));
   assert.throws(() => montarEnvelopeTitulo({ ...base, codFor: 0 }, "u", "s"));
-});
-
-test("PIX: 11 digitos e' ambiguo e nao e' tipado; demais tipos sim", () => {
-  assert.equal(tipoChavePix("a@b.com"), 2);
-  assert.equal(tipoChavePix("17517437000108"), 3);
-  assert.equal(tipoChavePix("123e4567-e89b-12d3-a456-426614174000"), 4);
-  assert.equal(tipoChavePix("+5531999998888"), 1);
-  assert.equal(tipoChavePix("03198451403"), null);
-  assert.equal(tipoChavePix(""), null);
 });
 
 test("leitura da OC: datas e valores da Senior", () => {

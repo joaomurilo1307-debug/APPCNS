@@ -93,7 +93,7 @@ async function nomesFornecedores(codigos: string[]): Promise<Map<string, string>
 export async function lerOcParaTitulo(numOcp: string, codFil: string) {
   if (!/^\d+$/.test(numOcp) || !/^\d+$/.test(codFil)) throw new Error("OC/filial inválida.");
   const [oc] = await consultarSenior(
-    `SELECT ${COLUNAS}, CODPOR, CODCRT, USU_CHVPIX, USU_CODAGE, USU_NUMCCO FROM E420OCP WHERE CODEMP = ${COD_EMP} AND CODFIL = ${codFil} AND NUMOCP = ${numOcp}`
+    `SELECT ${COLUNAS}, CODPOR, CODCRT, USU_CHVPIX, USU_CODAGE, USU_NUMCCO, USU_DESCCO, USU_CGCCPF FROM E420OCP WHERE CODEMP = ${COD_EMP} AND CODFIL = ${codFil} AND NUMOCP = ${numOcp}`
   );
   if (!oc) return null;
   const rateio = await consultarSenior(
