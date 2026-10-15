@@ -97,7 +97,7 @@ export async function lerOcParaTitulo(numOcp: string, codFil: string) {
   );
   if (!oc) return null;
   const rateio = await consultarSenior(
-    `SELECT CODCCU, CTAFIN, NUMPRJ, CODFPJ FROM E420RAT WHERE CODEMP = ${COD_EMP} AND CODFIL = ${codFil} AND NUMOCP = ${numOcp}`
+    `SELECT CODCCU, CTAFIN, NUMPRJ, CODFPJ, VLRRAT FROM E420RAT WHERE CODEMP = ${COD_EMP} AND CODFIL = ${codFil} AND NUMOCP = ${numOcp}`
   );
   return { oc, rateio };
 }

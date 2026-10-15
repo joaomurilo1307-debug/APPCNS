@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { COD_EMP, dataIso, lerOcParaTitulo, numeroSenior, tituloExiste } from "@/lib/senior/ocsConferencia";
-import { gravarTituloCP, TNS_PADRAO, TPT_PADRAO } from "@/lib/senior/gravarTitulo";
+import { consolidarRateioTitulo, gravarTituloComRateioCP, gravarTituloCP, TNS_PADRAO, TPT_PADRAO, type TituloNovo } from "@/lib/senior/gravarTitulo";
 import { lerAprovacaoOc } from "@/lib/senior/aprovacaoOc";
 import { situacaoNfNoSenior } from "@/lib/senior/nfEntrada";
 import { montarPagamentoDoTitulo } from "@/lib/senior/pagamentoParaTitulo";
@@ -65,7 +65,11 @@ export async function POST(req: Request) {
   } catch (e) {
     return recusa(`Não foi possível ler os dados de pagamento na Senior: ${(e as Error).message}`, 502);
   }
-  const um = rateio.length === 1 ? rateio[0] : null; // rateio múltiplo: CCU/conta ficam pro financeiro
+  // Rateio do título: 1 grupo (CCU+conta+projeto) vai no cabeçalho (GravarTitulosCP); 2 ou mais vão no
+  // grid de EntradaTitulosLoteCP_2 -- a Senior exige o rateio quando a empresa controla projetos.
+  const linhasRateio = consolidarRateioTitulo(rateio as any, valor);
+  const um = linhasRateio.length === 1 ? linhasRateio[0] : null;
+  const comGrid = linhasRateio.length >= 2;
   const venc = new Date(`${vencimento}T00:00:00Z`);
 
   // Reserva a OC ANTES de escrever na Senior: dois cliques/usuários não geram dois títulos.
@@ -78,7 +82,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const r = await gravarTituloCP({
+    const base: TituloNovo = {
       codEmp: COD_EMP,
       codFil: Number(codFil),
       numTit,
@@ -92,11 +96,12 @@ export async function POST(req: Request) {
       ...pagamento.campos,
       codPor: oc.CODPOR || undefined,
       codCrt: oc.CODCRT || undefined,
-      codCcu: um?.CODCCU || undefined,
-      ctaFin: um?.CTAFIN || undefined,
-      numPrj: um?.NUMPRJ || undefined,
-      codFpj: um?.CODFPJ || undefined,
-    });
+    };
+    let r = comGrid
+      ? await gravarTituloComRateioCP(base, linhasRateio)
+      : await gravarTituloCP({ ...base, codCcu: um?.codCcu, ctaFin: um?.ctaFin, numPrj: um?.numPrj, codFpj: um?.codFpj });
+    // A prova do sucesso e' o titulo existir na Senior (o texto de retorno nao e' confiavel).
+    if (!r.ok && (await tituloExiste(oc.CODFOR, numTit, codTpt).catch(() => false))) r = { ...r, ok: true };
     if (!r.ok) {
       await prisma.tituloGeradoOC.delete({ where: { numOcp_codFil: { numOcp, codFil } } });
       return recusa(`A Senior recusou o título: ${r.erroExecucao || r.mensagem || "sem detalhe"}`, 422);
@@ -107,7 +112,8 @@ export async function POST(req: Request) {
       codTpt,
       mensagem: r.mensagem,
       avisos: [
-        ...(rateio.length > 1 ? ["OC com rateio em mais de um centro de custo: complete CCU/conta financeira do título na Senior."] : []),
+        ...(comGrid ? [`Título gerado com rateio em ${linhasRateio.length} centros de custo (grid de rateio).`] : []),
+        ...(linhasRateio.length === 0 ? ["A OC não tem rateio lido: centro de custo/conta/projeto não foram enviados."] : []),
         ...pagamento.avisos,
       ],
     });
