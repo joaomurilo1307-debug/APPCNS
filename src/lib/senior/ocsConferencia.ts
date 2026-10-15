@@ -112,3 +112,17 @@ export async function tituloExiste(codFor: string, numTit: string, codTpt: strin
   );
   return l.length > 0;
 }
+
+/** Quais titulos (codFor|numTit|codTpt) existem na Senior -- UMA consulta pra varios (lotes de 40, IN grande estoura na Senior). */
+export async function titulosQueExistem(chaves: { codFor: string; numTit: string; codTpt: string }[]): Promise<Set<string>> {
+  const validas = chaves.filter((c) => /^\d+$/.test(c.codFor) && /^[A-Za-z0-9]{1,15}$/.test(c.numTit) && /^[A-Za-z0-9]{1,3}$/.test(c.codTpt));
+  const achados = new Set<string>();
+  for (let i = 0; i < validas.length; i += 40) {
+    const lote = validas.slice(i, i + 40);
+    const linhas = await consultarSenior(
+      `SELECT CODFOR, NUMTIT, CODTPT FROM E501TCP WHERE CODEMP IN (${COD_EMP}) AND NUMTIT IN (${[...new Set(lote.map((c) => `'${c.numTit}'`))].join(",")})`
+    );
+    for (const l of linhas) achados.add(`${l.CODFOR}|${l.NUMTIT}|${l.CODTPT}`);
+  }
+  return achados;
+}

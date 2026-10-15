@@ -7,6 +7,7 @@ import { COD_EMP, dataIso, lerOcParaTitulo, numeroSenior, tituloExiste } from "@
 import { consolidarRateioTitulo, gravarTituloComRateioCP, gravarTituloCP, TNS_PADRAO, TPT_PADRAO, type TituloNovo } from "@/lib/senior/gravarTitulo";
 import { lerAprovacaoOc } from "@/lib/senior/aprovacaoOc";
 import { situacaoNfNoSenior } from "@/lib/senior/nfEntrada";
+import { decidirReserva } from "@/lib/senior/reservaTitulo";
 import { montarPagamentoDoTitulo } from "@/lib/senior/pagamentoParaTitulo";
 
 // Gera na Senior (GravarTitulosCP_4) o titulo a pagar de UMA OC. Tudo e' relido
@@ -42,7 +43,16 @@ export async function POST(req: Request) {
     const aprovacao = await lerAprovacaoOc(numOcp, codFil);
     if (!aprovacao?.completa) return recusa(`Aprovação incompleta: ${aprovacao?.motivoIncompleta ?? "não foi possível ler a aprovação"}`);
     if ((oc.USU_NUMTIT ?? "").trim()) return recusa(`OC já tem título informado na Senior (${oc.USU_NUMTIT}).`);
-    if (await prisma.tituloGeradoOC.findUnique({ where: { numOcp_codFil: { numOcp, codFil } } })) return recusa("Já foi gerado um título para esta OC.");
+    // Reserva anterior: so' vale se o titulo existe na Senior. Reserva orfa (gravacao que falhou sem criar nada) e' liberada.
+    const reserva = await prisma.tituloGeradoOC.findUnique({ where: { numOcp_codFil: { numOcp, codFil } } });
+    if (reserva) {
+      const existe = await tituloExiste(reserva.codFor, reserva.numTit, reserva.codTpt).catch(() => null);
+      const decisao = decidirReserva(reserva.geradoEm, existe);
+      if (decisao === "orfa") await prisma.tituloGeradoOC.delete({ where: { id: reserva.id } });
+      else if (decisao === "em-andamento") return recusa("Este título está sendo gerado agora. Aguarde um minuto e atualize a lista.");
+      else if (decisao === "vale") return recusa(`Já foi gerado o título ${reserva.codTpt} ${reserva.numTit} para esta OC.`);
+      else return recusa("Existe uma geração anterior desta OC e não foi possível conferir na Senior agora. Tente novamente em instantes.", 502);
+    }
     // Fluxo normal: a entrada da NF na Senior costuma gerar o título sozinha. Não duplicar.
     for (const nf of await prisma.nfAssociadaOC.findMany({ where: { numOcp, codFil } })) {
       const s = await situacaoNfNoSenior(oc.CODFOR, nf.numeroNf);
@@ -119,7 +129,17 @@ export async function POST(req: Request) {
       ],
     });
   } catch (e) {
-    // Falha de rede/timeout: a Senior pode ter gravado. Mantém a reserva (bloqueia repetição) e manda conferir.
-    return recusa(`Sem resposta confiável da Senior (${(e as Error).message}). Confira se o título ${codTpt} ${numTit} foi criado antes de tentar de novo.`, 502);
+    // Falha de rede/timeout: a Senior pode ou nao ter gravado. Confere: se criou, mantem a reserva e avisa;
+    // se NAO criou, libera a reserva (pode tentar de novo); se nao da pra conferir, mantem (a lista libera depois).
+    const msg = (e as Error).message;
+    const existe = await tituloExiste(oc.CODFOR, numTit, codTpt).catch(() => null);
+    if (existe === true) {
+      return NextResponse.json({ ok: true, numTit, codTpt, mensagem: "", avisos: [`A Senior demorou a responder (${msg}), mas o título foi criado.`, ...pagamento.avisos] });
+    }
+    if (existe === false) {
+      await prisma.tituloGeradoOC.delete({ where: { numOcp_codFil: { numOcp, codFil } } }).catch(() => {});
+      return recusa(`Sem resposta da Senior (${msg}) e o título ${codTpt} ${numTit} NÃO foi criado. Pode tentar de novo.`, 502);
+    }
+    return recusa(`Sem resposta confiável da Senior (${msg}) e não foi possível conferir. Confira se o título ${codTpt} ${numTit} foi criado antes de tentar de novo.`, 502);
   }
 }

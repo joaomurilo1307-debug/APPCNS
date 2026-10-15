@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { listarOcsPorVencimento } from "@/lib/senior/ocsConferencia";
+import { listarOcsPorVencimento, titulosQueExistem } from "@/lib/senior/ocsConferencia";
+import { decidirReserva } from "@/lib/senior/reservaTitulo";
 
 // Conferencia de OC: TODAS as OCs com vencimento no periodo, direto da Senior
 // (GetDBInfo), com a situacao de aprovacao, se ja tem titulo e se tem dossie.
@@ -46,7 +47,21 @@ export async function GET(req: Request) {
     if (d.arquivoPath && !dossiePorOc.has(d.numOcp)) dossiePorOc.set(d.numOcp, d.id);
     if (!ultimoPorOc.has(d.numOcp)) ultimoPorOc.set(d.numOcp, d);
   }
-  const geradoPorOc = new Map(gerados.map((g) => [`${g.numOcp}|${g.codFil}`, g]));
+  // Reserva de titulo gerado aqui so' vale se o titulo existe na Senior; a que ficou orfa (gravacao que falhou
+  // sem criar nada) e' apagada. Uma consulta so' na Senior; falha ao conferir = mantem.
+  let existentes: Set<string> | null = null;
+  try {
+    existentes = gerados.length ? await titulosQueExistem(gerados) : new Set();
+  } catch {
+    existentes = null; // sem conferir: mantem tudo
+  }
+  const validos = [];
+  for (const g of gerados) {
+    const existe = existentes === null ? null : existentes.has(`${g.codFor}|${g.numTit}|${g.codTpt}`);
+    if (decidirReserva(g.geradoEm, existe) === "orfa") await prisma.tituloGeradoOC.delete({ where: { id: g.id } }).catch(() => {});
+    else validos.push(g);
+  }
+  const geradoPorOc = new Map(validos.map((g) => [`${g.numOcp}|${g.codFil}`, g]));
 
   return NextResponse.json({
     ocs: ocs.map((o) => {
