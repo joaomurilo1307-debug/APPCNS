@@ -20,6 +20,7 @@ type Oc = {
   numNfc: string | null;
   descricao: string | null;
   dossieId: string | null;
+  nfs: string[];
 };
 
 const SIT_LABEL: Record<string, string> = {
@@ -57,6 +58,8 @@ export default function ConferenciaOcPage() {
   const [baixando, setBaixando] = useState(false);
   const [detalhe, setDetalhe] = useState<any | null>(null);
   const [detalheOc, setDetalheOc] = useState<Oc | null>(null);
+  const [notas, setNotas] = useState<any | null>(null);
+  const [ocupadoNf, setOcupadoNf] = useState<string | null>(null);
   const [carregandoDetalhe, setCarregandoDetalhe] = useState<string | null>(null);
 
   const [ocAberta, setOcAberta] = useState<Aprovacao | null>(null);
@@ -98,6 +101,33 @@ export default function ConferenciaOcPage() {
       .finally(() => setCarregandoOC(null));
   }
 
+  function carregarNotas(oc: Oc) {
+    setNotas(null);
+    fetch(`/api/conferencia-oc/notas?numOcp=${oc.numOcp}&codFil=${oc.codFil}`)
+      .then(json)
+      .then((d) => {
+        setNotas(d);
+        setOcs((l) => l.map((o) => (o.numOcp === oc.numOcp && o.codFil === oc.codFil ? { ...o, nfs: d.associadas.map((a: any) => a.numeroNf) } : o)));
+      })
+      .catch((e) => setNotas({ erro: e.message, associadas: [], sugestoes: [] }));
+  }
+
+  async function mudarAssociacao(oc: Oc, chaveAcesso: string, metodo: "POST" | "DELETE") {
+    setOcupadoNf(chaveAcesso);
+    try {
+      await fetch("/api/conferencia-oc/associar-nf", {
+        method: metodo,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numOcp: oc.numOcp, codFil: oc.codFil, chaveAcesso }),
+      }).then(json);
+      carregarNotas(oc);
+    } catch (e) {
+      setAviso(`OC ${oc.numOcp}: ${(e as Error).message}`);
+    } finally {
+      setOcupadoNf(null);
+    }
+  }
+
   function conferir(oc: Oc) {
     setCarregandoDetalhe(oc.numOcp);
     setAviso(null);
@@ -106,6 +136,7 @@ export default function ConferenciaOcPage() {
       .then((d) => {
         setDetalhe(d);
         setDetalheOc(oc);
+        carregarNotas(oc);
       })
       .catch((e) => setAviso(`OC ${oc.numOcp}: ${e.message}`))
       .finally(() => setCarregandoDetalhe(null));
@@ -247,6 +278,7 @@ export default function ConferenciaOcPage() {
               <th className="px-3 py-2 font-medium">Fornecedor</th>
               <th className="px-3 py-2 text-right font-medium">Valor</th>
               <th className="px-3 py-2 font-medium">Aprovação</th>
+              <th className="px-3 py-2 font-medium">NF</th>
               <th className="px-3 py-2 font-medium">Título</th>
               <th className="px-3 py-2 font-medium">Dossiê</th>
             </tr>
@@ -278,6 +310,7 @@ export default function ConferenciaOcPage() {
                     {SIT_LABEL[o.sitApr] ?? (o.sitApr || "—")}
                   </span>
                 </td>
+                <td className="px-3 py-1.5 text-gray-600">{o.nfs.length ? o.nfs.join(", ") : <span className="text-gray-300">—</span>}</td>
                 <td className="px-3 py-1.5">
                   {o.numTit ? (
                     <span className="font-medium text-gray-800" title={o.tituloGeradoAqui ? "Gerado por esta tela" : "Informado na OC (USU_NUMTIT)"}>
@@ -306,7 +339,7 @@ export default function ConferenciaOcPage() {
             ))}
             {!filtradas.length && (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-6 text-center text-gray-400">
                   {loading ? "Consultando a Senior…" : "Nenhuma OC com vencimento nesse período/filtro."}
                 </td>
               </tr>
@@ -379,6 +412,55 @@ export default function ConferenciaOcPage() {
             ) : (
               <p className="mb-4 text-sm text-red-700">Não foi possível ler a aprovação desta OC.</p>
             )}
+
+            <h3 className="mb-1.5 text-sm font-semibold">Nota fiscal</h3>
+            <div className="mb-4 text-[13px]">
+              {!notas ? (
+                <p className="text-gray-500">Buscando notas no eDocs…</p>
+              ) : (
+                <>
+                  {notas.erro && <p className="mb-2 text-red-700">{notas.erro}</p>}
+                  {notas.avisoEdocs && <p className="mb-2 text-amber-800">{notas.avisoEdocs}</p>}
+                  {notas.associadas.length > 0 && (
+                    <div className="mb-2">
+                      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">Associadas a esta OC</p>
+                      {notas.associadas.map((a: any) => (
+                        <div key={a.chaveAcesso} className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 py-1.5">
+                          <span>
+                            <strong>NF {a.numeroNf}</strong> série {a.serie} · {a.emitente} · {moeda(a.valor)} · emitida {dataBr(a.emissao ? String(a.emissao).slice(0, 10) : null)}
+                            <br />
+                            <span className="text-gray-500">
+                              {a.naSenior?.lancada ? "Lançada no Senior" : "Ainda não lançada no Senior"}
+                              {a.naSenior?.tituloDaNf ? ` · título gerado pela NF: ${a.naSenior.tituloDaNf}` : ""} · associada por {a.associadoPor}
+                            </span>
+                          </span>
+                          <button onClick={() => mudarAssociacao(detalheOc, a.chaveAcesso, "DELETE")} disabled={ocupadoNf === a.chaveAcesso} className="text-[12px] text-red-700 underline disabled:opacity-50">
+                            desfazer
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">Sugestões do eDocs (você escolhe)</p>
+                  {notas.sugestoes.length === 0 && <p className="text-gray-500">Nenhuma nota recebida bate com o fornecedor desta OC. Sem NF ainda (compra pela internet ou fatura internacional), gere o título e associe depois.</p>}
+                  {notas.sugestoes.map((s: any) => (
+                    <div key={s.nota.chave} className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 py-1.5">
+                      <span>
+                        <strong>NF {s.nota.numero}</strong> série {s.nota.serie} · {s.nota.emitente} · {moeda(s.nota.valor)} · {dataBr(s.nota.emissao)}
+                        <br />
+                        <span className="text-gray-500">
+                          {s.motivos.join(" · ")} ({s.pontos} pts)
+                          {s.tambemAssociadaA.length ? ` · já associada à OC ${s.tambemAssociadaA.join(", ")}` : ""}
+                        </span>
+                      </span>
+                      <button onClick={() => mudarAssociacao(detalheOc, s.nota.chave, "POST")} disabled={ocupadoNf === s.nota.chave} className="rounded-lg border border-brand px-2.5 py-1 text-[12px] font-medium text-brand disabled:opacity-50">
+                        Associar
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
 
             <h3 className="mb-1.5 text-sm font-semibold">Dados de pagamento que vão no título</h3>
             <div className="mb-4 space-y-0.5 text-[13px] text-gray-700">

@@ -36,6 +36,9 @@ export async function GET(req: Request) {
     }),
     prisma.tituloGeradoOC.findMany({ where: { numOcp: { in: numeros } } }),
   ]);
+  const nfs = await prisma.nfAssociadaOC.findMany({ where: { numOcp: { in: numeros } }, select: { numOcp: true, codFil: true, numeroNf: true } });
+  const nfsPorOc = new Map<string, string[]>();
+  for (const n of nfs) nfsPorOc.set(`${n.numOcp}|${n.codFil}`, [...(nfsPorOc.get(`${n.numOcp}|${n.codFil}`) ?? []), n.numeroNf]);
   const dossiePorOc = new Map<string, string>();
   for (const d of dossies) if (d.numOcp && !dossiePorOc.has(d.numOcp)) dossiePorOc.set(d.numOcp, d.id); // o mais recente
   const geradoPorOc = new Map(gerados.map((g) => [`${g.numOcp}|${g.codFil}`, g]));
@@ -43,7 +46,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ocs: ocs.map((o) => {
       const g = geradoPorOc.get(`${o.numOcp}|${o.codFil}`);
-      return { ...o, numTit: g?.numTit ?? o.numTitSenior, tituloGeradoAqui: !!g, dossieId: dossiePorOc.get(o.numOcp) ?? null };
+      return { ...o, numTit: g?.numTit ?? o.numTitSenior, tituloGeradoAqui: !!g, dossieId: dossiePorOc.get(o.numOcp) ?? null, nfs: nfsPorOc.get(`${o.numOcp}|${o.codFil}`) ?? [] };
     }),
   });
 }

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { COD_EMP, dataIso, lerOcParaTitulo, numeroSenior, tituloExiste } from "@/lib/senior/ocsConferencia";
 import { gravarTituloCP, TNS_PADRAO, TPT_PADRAO } from "@/lib/senior/gravarTitulo";
 import { lerAprovacaoOc } from "@/lib/senior/aprovacaoOc";
+import { situacaoNfNoSenior } from "@/lib/senior/nfEntrada";
 import { montarPagamentoDoTitulo } from "@/lib/senior/pagamentoParaTitulo";
 
 // Gera na Senior (GravarTitulosCP_4) o titulo a pagar de UMA OC. Tudo e' relido
@@ -42,6 +43,11 @@ export async function POST(req: Request) {
     if (!aprovacao?.completa) return recusa(`Aprovação incompleta: ${aprovacao?.motivoIncompleta ?? "não foi possível ler a aprovação"}`);
     if ((oc.USU_NUMTIT ?? "").trim()) return recusa(`OC já tem título informado na Senior (${oc.USU_NUMTIT}).`);
     if (await prisma.tituloGeradoOC.findUnique({ where: { numOcp_codFil: { numOcp, codFil } } })) return recusa("Já foi gerado um título para esta OC.");
+    // Fluxo normal: a entrada da NF na Senior costuma gerar o título sozinha. Não duplicar.
+    for (const nf of await prisma.nfAssociadaOC.findMany({ where: { numOcp, codFil } })) {
+      const s = await situacaoNfNoSenior(oc.CODFOR, nf.numeroNf);
+      if (s.tituloDaNf) return recusa(`A NF ${nf.numeroNf} associada a esta OC já gerou o título ${s.tituloDaNf} na Senior.`);
+    }
     if (await tituloExiste(oc.CODFOR, numTit, codTpt)) return recusa(`Já existe o título ${codTpt} ${numTit} deste fornecedor na Senior.`);
   } catch (e) {
     return recusa(`Não foi possível conferir na Senior: ${(e as Error).message}`, 502);

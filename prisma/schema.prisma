@@ -1394,3 +1394,23 @@ model TituloGeradoOC {
   @@unique([numOcp, codFil])
   @@index([numTit])
 }
+
+// Nota fiscal recebida (eDocs X) associada MANUALMENTE a uma OC na Conferencia de OC.
+// Uma OC pode ter varias NFs (entregas parciais); a mesma NF pode atender mais de uma OC.
+model NfAssociadaOC {
+  id           String   @id @default(cuid())
+  numOcp       String
+  codFil       String
+  chaveAcesso  String
+  numeroNf     String
+  serie        String
+  emitente     String
+  emitenteDoc  String
+  valor        Float
+  emissao      DateTime?
+  associadoPor String
+  associadoEm  DateTime @default(now())
+
+  @@unique([numOcp, codFil, chaveAcesso])
+  @@index([chaveAcesso])
+}
