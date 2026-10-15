@@ -30,6 +30,8 @@ services:
       # de quem fez a integracao -- ver GabrielOS/senior_conhecimento_tecnico.md.
       SENIOR_WS_SAPIENS_USER: ${SENIOR_WS_SAPIENS_USER}
       SENIOR_WS_SAPIENS_PASSWORD: ${SENIOR_WS_SAPIENS_PASSWORD}
+      # Gera o PDF do dossie de OC (botao Gerar dossie da Conferencia de OC): servico abaixo, so' na rede do compose
+      GOTENBERG_URL: ${GOTENBERG_URL:-http://gotenberg:3000}
       SENIORX_ACCOUNT: ${SENIORX_ACCOUNT:-}
       SENIORX_PASSWORD: ${SENIORX_PASSWORD:-}
       # Endpoints opcionais: vazio usa o padrao do cliente SOAP; definir ambos
@@ -74,6 +76,11 @@ services:
       # resposta grande, nao so' essa.
       - "traefik.http.middlewares.consominas-gestao-compress.compress=true"
       - "traefik.http.routers.consominas-gestao.middlewares=consominas-gestao-compress"
+
+  # HTML -> PDF do dossie de OC (o mesmo Gotenberg que o n8n usava). Sem porta publicada: so' o app o acessa.
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
 
   db:
     image: postgres:16-alpine

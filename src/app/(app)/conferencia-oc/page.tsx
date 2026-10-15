@@ -20,6 +20,8 @@ type Oc = {
   numNfc: string | null;
   descricao: string | null;
   dossieId: string | null;
+  dossieStatus: string | null;
+  dossieMotivo: string | null;
   nfs: string[];
 };
 
@@ -56,6 +58,7 @@ export default function ConferenciaOcPage() {
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [gerando, setGerando] = useState<string | null>(null);
   const [baixando, setBaixando] = useState(false);
+  const [gerandoDossie, setGerandoDossie] = useState(false);
   const [detalhe, setDetalhe] = useState<any | null>(null);
   const [detalheOc, setDetalheOc] = useState<Oc | null>(null);
   const [notas, setNotas] = useState<any | null>(null);
@@ -164,6 +167,38 @@ export default function ConferenciaOcPage() {
     }
   }
 
+  async function gerarDossies(lista: Oc[]) {
+    if (!lista.length) return;
+    setGerandoDossie(true);
+    setAviso(null);
+    try {
+      const r = await fetch("/api/dossies/gerar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ocs: lista.map((o) => ({ numOcp: o.numOcp, codFil: o.codFil })) }),
+      }).then(json);
+      setOcs((l) => l.map((o) => (r.aceitas.includes(o.numOcp) ? { ...o, dossieStatus: "GERANDO", dossieMotivo: null } : o)));
+      setAviso(`Gerando ${r.aceitas.length} dossiê(s), um por vez (cerca de 20 s cada)${r.jaGerando.length ? `; ${r.jaGerando.length} já estava(m) em geração` : ""}. A lista atualiza sozinha.`);
+    } catch (e) {
+      setAviso((e as Error).message);
+    } finally {
+      setGerandoDossie(false);
+    }
+  }
+
+  // Enquanto houver dossiê sendo gerado, atualiza só o status dos dossiês a cada 8 s.
+  const algumGerando = ocs.some((o) => o.dossieStatus === "GERANDO");
+  useEffect(() => {
+    if (!algumGerando) return;
+    const id = setInterval(() => {
+      fetch(`/api/conferencia-oc?de=${de}&ate=${ate}`)
+        .then(json)
+        .then((d) => setOcs((atual) => atual.map((o) => ({ ...o, ...(d.ocs.find((n: Oc) => n.numOcp === o.numOcp && n.codFil === o.codFil) ? { dossieId: d.ocs.find((n: Oc) => n.numOcp === o.numOcp && n.codFil === o.codFil).dossieId, dossieStatus: d.ocs.find((n: Oc) => n.numOcp === o.numOcp && n.codFil === o.codFil).dossieStatus, dossieMotivo: d.ocs.find((n: Oc) => n.numOcp === o.numOcp && n.codFil === o.codFil).dossieMotivo } : {}) }))))
+        .catch(() => {});
+    }, 8000);
+    return () => clearInterval(id);
+  }, [algumGerando, de, ate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function baixarDossies() {
     setBaixando(true);
     try {
@@ -242,9 +277,17 @@ export default function ConferenciaOcPage() {
           ))}
         </div>
         <button
+          onClick={() => gerarDossies(ocs.filter((o) => selecionadas.has(o.numOcp)))}
+          disabled={!selecionadas.size || gerandoDossie}
+          title="Gera (ou gera de novo) o dossiê das OCs marcadas, pelo próprio sistema"
+          className="ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-40"
+        >
+          {gerandoDossie ? "Enviando…" : `Gerar dossiês (${selecionadas.size})`}
+        </button>
+        <button
           onClick={baixarDossies}
           disabled={!selecionadas.size || baixando}
-          className="ml-auto rounded-lg border border-brand px-3 py-1.5 text-sm font-medium text-brand disabled:opacity-40"
+          className="rounded-lg border border-brand px-3 py-1.5 text-sm font-medium text-brand disabled:opacity-40"
         >
           {baixando ? "Montando ZIP…" : `Baixar dossiês (${selecionadas.size})`}
         </button>
@@ -327,12 +370,23 @@ export default function ConferenciaOcPage() {
                   )}
                 </td>
                 <td className="px-3 py-1.5">
-                  {o.dossieId ? (
-                    <a href={`/api/dossies/${o.dossieId}/arquivo`} target="_blank" rel="noreferrer" className="text-brand underline decoration-dotted underline-offset-2">
-                      abrir PDF
-                    </a>
+                  {o.dossieStatus === "GERANDO" ? (
+                    <span className="text-amber-700">gerando…</span>
                   ) : (
-                    <span className="text-gray-400">sem dossiê</span>
+                    <div className="flex flex-col items-start gap-0.5">
+                      {o.dossieId ? (
+                        <a href={`/api/dossies/${o.dossieId}/arquivo`} target="_blank" rel="noreferrer" className="text-brand underline decoration-dotted underline-offset-2">
+                          abrir PDF
+                        </a>
+                      ) : (
+                        <span className={o.dossieStatus === "ERRO" ? "text-red-700" : "text-gray-400"} title={o.dossieMotivo ?? undefined}>
+                          {o.dossieStatus === "ERRO" ? "falhou" : "sem dossiê"}
+                        </span>
+                      )}
+                      <button onClick={() => gerarDossies([o])} className="text-[11px] text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-700">
+                        {o.dossieId ? "gerar de novo" : o.dossieStatus === "ERRO" ? "tentar de novo" : "gerar"}
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>

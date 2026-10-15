@@ -1,0 +1,760 @@
+{
+ "entrada": "Entrada OC",
+ "saida": "Gerar HTML do Dossiê",
+ "nos": {
+  "Coletar Cabeçalho OC": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n            <password>__SENIOR_PASSWORD__</password>\n            <encryption>0</encryption>\n\n            <parameters>\n\n                <pmSQL>SELECT CODEMP, CODFIL, NUMOCP, TNSPRO, TNSSER, DATEMI, CODFOR, VLRLIQ, VLRFIN, VLRORI, NUMAPR, SITAPR, SITOCP, USUGER, FILAPR, ROTNAP, USU_DATVECT, USU_NUMNFC, USU_NUMTIT, USU_CONFRO, USU_REEMB FROM E420OCP WHERE CODEMP=:CodEmp AND CODFIL=:CodFil AND NUMOCP=:NumOcp</pmSQL>\n\n                <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFil&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFil}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;NumOcp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.numOcp}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n\n            </parameters>\n\n        </ser:GetDBInfo>\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Decodificador Cabeçalho OC": {
+   "tipo": "code"
+  },
+  "Normalizar Cabeçalho OC": {
+   "tipo": "code"
+  },
+  "Coletar Produtos OC": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n            <password>__SENIOR_PASSWORD__</password>\n            <encryption>0</encryption>\n\n            <parameters>\n\n                <pmSQL>SELECT * FROM E420IPO WHERE CODEMP=:CodEmp AND CODFIL=:CodFil AND NUMOCP=:NumOcp</pmSQL>\n\n                <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFil&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFil}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;NumOcp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.numOcp}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n\n            </parameters>\n\n        </ser:GetDBInfo>\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Decodificador Produtos OC": {
+   "tipo": "code"
+  },
+  "Normalizar Produtos OC": {
+   "tipo": "code"
+  },
+  "Coletar Serviços OC": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n            <password>__SENIOR_PASSWORD__</password>\n            <encryption>0</encryption>\n\n            <parameters>\n<pmSQL>SELECT * FROM E420ISO WHERE CODEMP=:CodEmp AND CODFIL=:CodFil AND NUMOCP=:NumOcp</pmSQL>\n\n                <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFil&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFil}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;NumOcp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.numOcp}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n\n            </parameters>\n\n        </ser:GetDBInfo>\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Decodificador Serviços OC": {
+   "tipo": "code"
+  },
+  "Normalizar Serviços OC": {
+   "tipo": "code"
+  },
+  "Coletar Rateios OC": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ser=\"http://services.senior.com.br\"> <soapenv:Header/> <soapenv:Body> <ser:GetDBInfo> <user>__SENIOR_USER__</user> <password>__SENIOR_PASSWORD__</password> <encryption>0</encryption> <parameters> <pmSQL>\nSELECT\n    R.*,\n    PF.DESCTA AS DESCTAFIN,\n    CC.DESCCU AS DESCCU\nFROM\n    E420RAT R,\n    E091PLF PF,\n    E044CCU CC\nWHERE R.CODEMP = :CodEmp\n  AND R.CODFIL = :CodFil\n  AND R.NUMOCP = :NumOcp\n  AND PF.CODEMP = R.CODEMP\n  AND PF.CTAFIN = R.CTAFIN\n  AND CC.CODEMP = R.CODEMP\n  AND CC.CODCCU = R.CODCCU\n</pmSQL> <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFil&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFil}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;NumOcp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.numOcp}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams> </parameters> </ser:GetDBInfo> </soapenv:Body> </soapenv:Envelope>"
+  },
+  "Decodificador Rateios OC": {
+   "tipo": "code"
+  },
+  "Normalizar Rateios OC": {
+   "tipo": "code"
+  },
+  "Coletar Níveis de Aprovação": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n            <password>__SENIOR_PASSWORD__</password>\n            <encryption>0</encryption>\n\n            <parameters>\n\n                <pmSQL>SELECT * FROM E614USU WHERE NUMAPR=:NumApr AND ROTNAP=:RotNap</pmSQL>\n\n                <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;NumApr&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.ordemCompra.aprovacao.numero}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;RotNap&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.ordemCompra.aprovacao.rota}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n\n            </parameters>\n\n        </ser:GetDBInfo>\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Decodificador Níveis Aprovação": {
+   "tipo": "code"
+  },
+  "Normalizar Níveis Aprovação": {
+   "tipo": "code"
+  },
+  "Preparar Aprovadores": {
+   "tipo": "code"
+  },
+  "Coletar Cadastro Aprovadores": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ser=\"http://services.senior.com.br\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <ser:GetDBInfo>\n\n      <user>__SENIOR_USER__</user>\n      <password>__SENIOR_PASSWORD__</password>\n      <encryption>0</encryption>\n\n      <parameters>\n\n        <pmSQL>SELECT\n    U.*,\n    R.NOMCOM AS NOMCOMPLETO,\n    R.DESUSU AS DESCRICAOUSUARIO\nFROM\n    E099USU U,\n    R910USU R\nWHERE U.CODEMP = :CodEmp\n  AND U.CODUSU = :CodUsu\n  AND R.CODENT = U.CODUSU</pmSQL>\n\n        <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodUsu&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codUsu}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n\n      </parameters>\n\n    </ser:GetDBInfo>\n  </soapenv:Body>\n</soapenv:Envelope>"
+  },
+  "Decodificar Cadastro Aprovadores": {
+   "tipo": "code"
+  },
+  "Normalizar Cadastro Aprovadores": {
+   "tipo": "code"
+  },
+  "Preparar Títulos Informados": {
+   "tipo": "code",
+   "sempreEmitir": true,
+   "seguirComErro": true
+  },
+  "Coletar Títulos Financeiros": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n            <password>__SENIOR_PASSWORD__</password>\n            <encryption>0</encryption>\n\n            <parameters>\n\n<pmSQL>SELECT * FROM E501TCP WHERE CODEMP=:CodEmp AND NUMTIT=:NumTit</pmSQL>\n\n<pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;NumTit&lt;/name&gt;&lt;type&gt;String&lt;/type&gt;&lt;value&gt;{{$json.numTit}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n            </parameters>\n\n        </ser:GetDBInfo>\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Decodificar Títulos Financeiros": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Normalizar Títulos Financeiros": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Preparar Notas Fiscais": {
+   "tipo": "code",
+   "sempreEmitir": true,
+   "seguirComErro": true
+  },
+  "Coletar Notas Fiscais": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n            <password>__SENIOR_PASSWORD__</password>\n            <encryption>0</encryption>\n\n            <parameters>\n\n<pmSQL>SELECT * FROM E440NFC WHERE CODEMP=:CodEmp AND CODFIL=:CodFil AND CODFOR=:CodFor AND NUMNFC=:NumNfc AND CODSNF=:CodSnf</pmSQL>\n\n<pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFil&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFil}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFor&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFor}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;NumNfc&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.numNfc}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodSnf&lt;/name&gt;&lt;type&gt;String&lt;/type&gt;&lt;value&gt;{{$json.codSnf}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n            </parameters>\n\n        </ser:GetDBInfo>\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Decodificar Notas Fiscais": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Normalizar Notas Fiscais": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Preparar Movimentações Financeiras": {
+   "tipo": "code",
+   "sempreEmitir": true
+  },
+  "Coletar Movimentações Financeiras": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ser=\"http://services.senior.com.br\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <ser:GetDBInfo>\n\n      <user>__SENIOR_USER__</user>\n      <password>__SENIOR_PASSWORD__</password>\n      <encryption>0</encryption>\n\n      <parameters>\n\n        <pmSQL>SELECT * FROM E501MCP WHERE CODEMP=:CodEmp AND CODFIL=:CodFil AND CODFOR=:CodFor AND NUMTIT=:NumTit AND CODTPT=:CodTpt</pmSQL>\n\n        <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFil&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFil}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFor&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFor}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;NumTit&lt;/name&gt;&lt;type&gt;String&lt;/type&gt;&lt;value&gt;{{$json.numTit}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodTpt&lt;/name&gt;&lt;type&gt;String&lt;/type&gt;&lt;value&gt;{{$json.codTpt}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n\n      </parameters>\n\n    </ser:GetDBInfo>\n  </soapenv:Body>\n</soapenv:Envelope>"
+  },
+  "Decodificar Movimentações Financeiras": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Normalizar Movimentações Financeiras": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Conciliação Geral OC": {
+   "tipo": "code"
+  },
+  "Sincronizar Blocos OC": {
+   "tipo": "merge",
+   "modo": "append"
+  },
+  "Preparar Documentos Originais": {
+   "tipo": "code"
+  },
+  "Separar Documentos Originais": {
+   "tipo": "splitOut",
+   "campo": "documentosOriginais",
+   "sempreEmitir": true
+  },
+  "Classificar Estratégia Documento": {
+   "tipo": "switch",
+   "regras": [
+    {
+     "expr": "$json.documentosOriginais.estrategiaIntegracao",
+     "igual": "EDOCS_NFE_POR_CHAVE"
+    },
+    {
+     "expr": "$json.documentosOriginais.estrategiaIntegracao",
+     "igual": "EDOCS_NFSE_POR_REFERENCIA"
+    }
+   ],
+   "fallback": true,
+   "sempreEmitir": true
+  },
+  "Preparar Requisição NF-e e-Docs": {
+   "tipo": "code",
+   "sempreEmitir": true,
+   "seguirComErro": true
+  },
+  "Merge": {
+   "tipo": "merge",
+   "modo": "append",
+   "sempreEmitir": true,
+   "seguirComErro": true
+  },
+  "Consolidar Dossiê Final": {
+   "tipo": "code",
+   "sempreEmitir": true,
+   "seguirComErro": true
+  },
+  "Gerar HTML do Dossiê": {
+   "tipo": "code",
+   "sempreEmitir": true,
+   "seguirComErro": true
+  },
+  "Coletar Itens Produto NF": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n            <password>__SENIOR_PASSWORD__</password>\n            <encryption>0</encryption>\n\n            <parameters>\n\n<pmSQL>SELECT * FROM E440IPC WHERE CODEMP=:CodEmp AND CODFIL=:CodFil AND CODFOR=:CodFor AND NUMNFC=:NumNfc AND CODSNF=:CodSnf</pmSQL>\n\n<pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFil&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFil}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFor&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFor}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;NumNfc&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.numNfc}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodSnf&lt;/name&gt;&lt;type&gt;String&lt;/type&gt;&lt;value&gt;{{$json.codSnf}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n            </parameters>\n\n        </ser:GetDBInfo>\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Coletar Itens Serviço NF": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n            <password>__SENIOR_PASSWORD__</password>\n            <encryption>0</encryption>\n\n            <parameters>\n\n<pmSQL>SELECT * FROM E440ISC WHERE CODEMP=:CodEmp AND CODFIL=:CodFil AND CODFOR=:CodFor AND NUMNFC=:NumNfc AND CODSNF=:CodSnf</pmSQL>\n\n<pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;param&gt;&lt;name&gt;CodEmp&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codEmp}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFil&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFil}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodFor&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.codFor}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;NumNfc&lt;/name&gt;&lt;type&gt;Integer&lt;/type&gt;&lt;value&gt;{{$json.numNfc}}&lt;/value&gt;&lt;/param&gt;&lt;param&gt;&lt;name&gt;CodSnf&lt;/name&gt;&lt;type&gt;String&lt;/type&gt;&lt;value&gt;{{$json.codSnf}}&lt;/value&gt;&lt;/param&gt;&lt;/params&gt;</pmParams>\n            </parameters>\n\n        </ser:GetDBInfo>\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Decodificar Itens Produto NF": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Decodificar Serviços NF": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Normalizar Itens Produto NF": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Normalizar Itens Serviço NF": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Sincronizar Dados Fiscais Detalhados": {
+   "tipo": "merge",
+   "modo": "append"
+  },
+  "Enriquecer Notas Fiscais": {
+   "tipo": "code",
+   "sempreEmitir": true,
+   "seguirComErro": true
+  },
+  "Preparar Histórico Fornecedor": {
+   "tipo": "code"
+  },
+  "Montar SQL Histórico Fornecedor": {
+   "tipo": "code"
+  },
+  "Coletar OCs Histórico Fornecedor": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n\n            <password>__SENIOR_PASSWORD__</password>\n\n            <encryption>0</encryption>\n\n            <parameters>\n\n                <pmSQL>{{ $node[\"Montar SQL Histórico Fornecedor\"].json[\"sqlHistoricoFornecedor\"] }}</pmSQL>\n\n                <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;/params&gt;</pmParams>\n\n            </parameters>\n\n        </ser:GetDBInfo>\n\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Normalizar Últimas 3 Compras": {
+   "tipo": "code"
+  },
+  "Montar SQL Referências Financeiras Histórico": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Coletar Referências Financeiras Histórico": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n\n            <password>__SENIOR_PASSWORD__</password>\n\n            <encryption>0</encryption>\n\n            <parameters>\n\n    <pmSQL>{{ $node[\"Montar SQL Referências Financeiras Histórico\"].json[\"consultaReferenciasFinanceiras\"][\"sql\"] }}</pmSQL>\n\n            <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;/params&gt;</pmParams>\n\n            </parameters>\n\n        </ser:GetDBInfo>\n\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Normalizar Referências Financeiras Histórico": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Preparar Títulos Histórico E501TCP": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Coletar Títulos Histórico E501TCP": {
+   "tipo": "http",
+   "body": "=<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns:ser=\"http://services.senior.com.br\">\n\n    <soapenv:Header/>\n\n    <soapenv:Body>\n\n        <ser:GetDBInfo>\n\n            <user>__SENIOR_USER__</user>\n\n            <password>__SENIOR_PASSWORD__</password>\n\n            <encryption>0</encryption>\n\n      <parameters>\n\n    <pmSQL>{{ $json.sqlTituloAtual }}</pmSQL>\n\n    <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;&lt;/params&gt;</pmParams>\n\n</parameters>\n\n        </ser:GetDBInfo>\n\n    </soapenv:Body>\n\n</soapenv:Envelope>"
+  },
+  "Normalizar Títulos Histórico E501TCP": {
+   "tipo": "code",
+   "seguirComErro": true
+  },
+  "Merge3": {
+   "tipo": "merge",
+   "modo": "append",
+   "seguirComErro": true
+  },
+  "Consolidar Histórico Pagamento Fornecedor": {
+   "tipo": "code"
+  },
+  "Montar Modelo Dossiê OC": {
+   "tipo": "code"
+  },
+  "Consolidar Blocos OC": {
+   "tipo": "code"
+  },
+  "Merge FINAL DOSSIÊ OC": {
+   "tipo": "merge",
+   "modo": "combineByPosition"
+  },
+  "Code in JavaScript NFS-e": {
+   "tipo": "code",
+   "sempreEmitir": true,
+   "seguirComErro": true
+  },
+  "Consolidar Documentos e-DOCS": {
+   "tipo": "code",
+   "sempreEmitir": true,
+   "seguirComErro": true
+  },
+  "Decodificador Fornecedor": {
+   "tipo": "code"
+  },
+  "Normalizar Fornecedor": {
+   "tipo": "code"
+  },
+  "Coletar Fornecedor": {
+   "tipo": "http",
+   "body": "==<soapenv:Envelope     xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"     xmlns:ser=\"http://services.senior.com.br\">   <soapenv:Header/>   <soapenv:Body>     <ser:GetDBInfo>       <user>__SENIOR_USER__</user>       <password>__SENIOR_PASSWORD__</password>       <encryption>0</encryption>       <parameters>         <pmSQL>SELECT CODFOR, NOMFOR, APEFOR, CGCCPF, INSEST\nFROM E095FOR WHERE CODFOR=:CodFor</pmSQL>         <pmParams>&lt;?xml version=\"1.0\" encoding=\"ISO-8859-1\"?&gt;&lt;params&gt;           &lt;param&gt;&lt;name&gt;CodFor&lt;/name&gt;           &lt;type&gt;Integer&lt;/type&gt;           &lt;value&gt;{{$json.ordemCompra.fornecedor.codigo}}&lt;/value&gt;           &lt;/param&gt;&lt;/params&gt;</pmParams>       </parameters>     </ser:GetDBInfo>   </soapenv:Body> </soapenv:Envelope>"
+  }
+ },
+ "conexoes": [
+  {
+   "de": "Separar Documentos Originais",
+   "saida": 0,
+   "para": "Classificar Estratégia Documento",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Cabeçalho OC",
+   "saida": 0,
+   "para": "Decodificador Cabeçalho OC",
+   "entrada": 0
+  },
+  {
+   "de": "Preparar Requisição NF-e e-Docs",
+   "saida": 0,
+   "para": "Merge",
+   "entrada": 0
+  },
+  {
+   "de": "Consolidar Histórico Pagamento Fornecedor",
+   "saida": 0,
+   "para": "Merge FINAL DOSSIÊ OC",
+   "entrada": 1
+  },
+  {
+   "de": "Coletar Títulos Financeiros",
+   "saida": 0,
+   "para": "Decodificar Títulos Financeiros",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Notas Fiscais",
+   "saida": 0,
+   "para": "Sincronizar Dados Fiscais Detalhados",
+   "entrada": 1
+  },
+  {
+   "de": "Merge3",
+   "saida": 0,
+   "para": "Sincronizar Blocos OC",
+   "entrada": 3
+  },
+  {
+   "de": "Normalizar Títulos Financeiros",
+   "saida": 0,
+   "para": "Preparar Notas Fiscais",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Títulos Financeiros",
+   "saida": 0,
+   "para": "Preparar Movimentações Financeiras",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Títulos Financeiros",
+   "saida": 0,
+   "para": "Sincronizar Blocos OC",
+   "entrada": 2
+  },
+  {
+   "de": "Normalizar Serviços OC",
+   "saida": 0,
+   "para": "Sincronizar Blocos OC",
+   "entrada": 6
+  },
+  {
+   "de": "Enriquecer Notas Fiscais",
+   "saida": 0,
+   "para": "Sincronizar Blocos OC",
+   "entrada": 1
+  },
+  {
+   "de": "Coletar Fornecedor",
+   "saida": 0,
+   "para": "Decodificador Fornecedor",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Movimentações Financeiras",
+   "saida": 0,
+   "para": "Decodificar Movimentações Financeiras",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Itens Serviço NF",
+   "saida": 0,
+   "para": "Decodificar Serviços NF",
+   "entrada": 0
+  },
+  {
+   "de": "Preparar Movimentações Financeiras",
+   "saida": 0,
+   "para": "Coletar Movimentações Financeiras",
+   "entrada": 0
+  },
+  {
+   "de": "Merge",
+   "saida": 0,
+   "para": "Consolidar Documentos e-DOCS",
+   "entrada": 0
+  },
+  {
+   "de": "Sincronizar Blocos OC",
+   "saida": 0,
+   "para": "Consolidar Blocos OC",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificar Movimentações Financeiras",
+   "saida": 0,
+   "para": "Normalizar Movimentações Financeiras",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Referências Financeiras Histórico",
+   "saida": 0,
+   "para": "Preparar Títulos Histórico E501TCP",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Referências Financeiras Histórico",
+   "saida": 0,
+   "para": "Merge3",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificador Produtos OC",
+   "saida": 0,
+   "para": "Normalizar Produtos OC",
+   "entrada": 0
+  },
+  {
+   "de": "Sincronizar Dados Fiscais Detalhados",
+   "saida": 0,
+   "para": "Enriquecer Notas Fiscais",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Itens Produto NF",
+   "saida": 0,
+   "para": "Sincronizar Dados Fiscais Detalhados",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Produtos OC",
+   "saida": 0,
+   "para": "Sincronizar Blocos OC",
+   "entrada": 5
+  },
+  {
+   "de": "Preparar Aprovadores",
+   "saida": 0,
+   "para": "Coletar Cadastro Aprovadores",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificar Títulos Financeiros",
+   "saida": 0,
+   "para": "Normalizar Títulos Financeiros",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificador Fornecedor",
+   "saida": 0,
+   "para": "Normalizar Fornecedor",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Produtos OC",
+   "saida": 0,
+   "para": "Decodificador Produtos OC",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Últimas 3 Compras",
+   "saida": 0,
+   "para": "Montar SQL Referências Financeiras Histórico",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Cadastro Aprovadores",
+   "saida": 0,
+   "para": "Sincronizar Blocos OC",
+   "entrada": 4
+  },
+  {
+   "de": "Consolidar Blocos OC",
+   "saida": 0,
+   "para": "Conciliação Geral OC",
+   "entrada": 0
+  },
+  {
+   "de": "Consolidar Blocos OC",
+   "saida": 0,
+   "para": "Merge FINAL DOSSIÊ OC",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificador Cabeçalho OC",
+   "saida": 0,
+   "para": "Normalizar Cabeçalho OC",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Serviços OC",
+   "saida": 0,
+   "para": "Decodificador Serviços OC",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificador Rateios OC",
+   "saida": 0,
+   "para": "Normalizar Rateios OC",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificar Serviços NF",
+   "saida": 0,
+   "para": "Normalizar Itens Serviço NF",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificar Notas Fiscais",
+   "saida": 0,
+   "para": "Normalizar Notas Fiscais",
+   "entrada": 0
+  },
+  {
+   "de": "Entrada OC",
+   "saida": 0,
+   "para": "Coletar Cabeçalho OC",
+   "entrada": 0
+  },
+  {
+   "de": "Entrada OC",
+   "saida": 0,
+   "para": "Coletar Produtos OC",
+   "entrada": 0
+  },
+  {
+   "de": "Entrada OC",
+   "saida": 0,
+   "para": "Coletar Serviços OC",
+   "entrada": 0
+  },
+  {
+   "de": "Entrada OC",
+   "saida": 0,
+   "para": "Coletar Rateios OC",
+   "entrada": 0
+  },
+  {
+   "de": "Montar SQL Histórico Fornecedor",
+   "saida": 0,
+   "para": "Coletar OCs Histórico Fornecedor",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Movimentações Financeiras",
+   "saida": 0,
+   "para": "Sincronizar Blocos OC",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Notas Fiscais",
+   "saida": 0,
+   "para": "Decodificar Notas Fiscais",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar OCs Histórico Fornecedor",
+   "saida": 0,
+   "para": "Normalizar Últimas 3 Compras",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Níveis Aprovação",
+   "saida": 0,
+   "para": "Preparar Aprovadores",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Fornecedor",
+   "saida": 0,
+   "para": "Preparar Histórico Fornecedor",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Cadastro Aprovadores",
+   "saida": 0,
+   "para": "Decodificar Cadastro Aprovadores",
+   "entrada": 0
+  },
+  {
+   "de": "Classificar Estratégia Documento",
+   "saida": 0,
+   "para": "Preparar Requisição NF-e e-Docs",
+   "entrada": 0
+  },
+  {
+   "de": "Classificar Estratégia Documento",
+   "saida": 1,
+   "para": "Code in JavaScript NFS-e",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Títulos Histórico E501TCP",
+   "saida": 0,
+   "para": "Normalizar Títulos Histórico E501TCP",
+   "entrada": 0
+  },
+  {
+   "de": "Merge FINAL DOSSIÊ OC",
+   "saida": 0,
+   "para": "Montar Modelo Dossiê OC",
+   "entrada": 0
+  },
+  {
+   "de": "Montar Modelo Dossiê OC",
+   "saida": 0,
+   "para": "Preparar Documentos Originais",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificar Cadastro Aprovadores",
+   "saida": 0,
+   "para": "Normalizar Cadastro Aprovadores",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Itens Produto NF",
+   "saida": 0,
+   "para": "Decodificar Itens Produto NF",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificador Níveis Aprovação",
+   "saida": 0,
+   "para": "Normalizar Níveis Aprovação",
+   "entrada": 0
+  },
+  {
+   "de": "Montar SQL Referências Financeiras Histórico",
+   "saida": 0,
+   "para": "Coletar Referências Financeiras Histórico",
+   "entrada": 0
+  },
+  {
+   "de": "Preparar Notas Fiscais",
+   "saida": 0,
+   "para": "Coletar Notas Fiscais",
+   "entrada": 0
+  },
+  {
+   "de": "Preparar Notas Fiscais",
+   "saida": 0,
+   "para": "Coletar Itens Produto NF",
+   "entrada": 0
+  },
+  {
+   "de": "Preparar Notas Fiscais",
+   "saida": 0,
+   "para": "Coletar Itens Serviço NF",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Níveis de Aprovação",
+   "saida": 0,
+   "para": "Decodificador Níveis Aprovação",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificador Serviços OC",
+   "saida": 0,
+   "para": "Normalizar Serviços OC",
+   "entrada": 0
+  },
+  {
+   "de": "Preparar Documentos Originais",
+   "saida": 0,
+   "para": "Separar Documentos Originais",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Rateios OC",
+   "saida": 0,
+   "para": "Decodificador Rateios OC",
+   "entrada": 0
+  },
+  {
+   "de": "Decodificar Itens Produto NF",
+   "saida": 0,
+   "para": "Normalizar Itens Produto NF",
+   "entrada": 0
+  },
+  {
+   "de": "Preparar Histórico Fornecedor",
+   "saida": 0,
+   "para": "Montar SQL Histórico Fornecedor",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Rateios OC",
+   "saida": 0,
+   "para": "Sincronizar Blocos OC",
+   "entrada": 7
+  },
+  {
+   "de": "Normalizar Itens Serviço NF",
+   "saida": 0,
+   "para": "Sincronizar Dados Fiscais Detalhados",
+   "entrada": 2
+  },
+  {
+   "de": "Normalizar Cabeçalho OC",
+   "saida": 0,
+   "para": "Coletar Níveis de Aprovação",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Cabeçalho OC",
+   "saida": 0,
+   "para": "Preparar Títulos Informados",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Cabeçalho OC",
+   "saida": 0,
+   "para": "Coletar Fornecedor",
+   "entrada": 0
+  },
+  {
+   "de": "Preparar Títulos Histórico E501TCP",
+   "saida": 0,
+   "para": "Coletar Títulos Histórico E501TCP",
+   "entrada": 0
+  },
+  {
+   "de": "Consolidar Documentos e-DOCS",
+   "saida": 0,
+   "para": "Consolidar Dossiê Final",
+   "entrada": 0
+  },
+  {
+   "de": "Preparar Títulos Informados",
+   "saida": 0,
+   "para": "Coletar Títulos Financeiros",
+   "entrada": 0
+  },
+  {
+   "de": "Normalizar Títulos Histórico E501TCP",
+   "saida": 0,
+   "para": "Merge3",
+   "entrada": 1
+  },
+  {
+   "de": "Consolidar Dossiê Final",
+   "saida": 0,
+   "para": "Gerar HTML do Dossiê",
+   "entrada": 0
+  },
+  {
+   "de": "Coletar Referências Financeiras Histórico",
+   "saida": 0,
+   "para": "Normalizar Referências Financeiras Histórico",
+   "entrada": 0
+  },
+  {
+   "de": "Code in JavaScript NFS-e",
+   "saida": 0,
+   "para": "Merge",
+   "entrada": 1
+  },
+  {
+   "de": "Conciliação Geral OC",
+   "saida": 0,
+   "para": "Consolidar Histórico Pagamento Fornecedor",
+   "entrada": 0
+  }
+ ]
+}

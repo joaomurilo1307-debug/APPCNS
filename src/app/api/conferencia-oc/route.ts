@@ -30,23 +30,28 @@ export async function GET(req: Request) {
   const numeros = ocs.map((o) => o.numOcp);
   const [dossies, gerados] = await Promise.all([
     prisma.dossieOC.findMany({
-      where: { numOcp: { in: numeros }, arquivoPath: { not: null } },
-      select: { id: true, numOcp: true },
-      orderBy: { geradoEm: "desc" },
+      where: { numOcp: { in: numeros } },
+      select: { id: true, numOcp: true, status: true, motivo: true, arquivoPath: true, atualizadoEm: true },
+      orderBy: { atualizadoEm: "desc" },
     }),
     prisma.tituloGeradoOC.findMany({ where: { numOcp: { in: numeros } } }),
   ]);
   const nfs = await prisma.nfAssociadaOC.findMany({ where: { numOcp: { in: numeros } }, select: { numOcp: true, codFil: true, numeroNf: true } });
   const nfsPorOc = new Map<string, string[]>();
   for (const n of nfs) nfsPorOc.set(`${n.numOcp}|${n.codFil}`, [...(nfsPorOc.get(`${n.numOcp}|${n.codFil}`) ?? []), n.numeroNf]);
-  const dossiePorOc = new Map<string, string>();
-  for (const d of dossies) if (d.numOcp && !dossiePorOc.has(d.numOcp)) dossiePorOc.set(d.numOcp, d.id); // o mais recente
+  const dossiePorOc = new Map<string, string>(); // dossie com PDF mais recente
+  const ultimoPorOc = new Map<string, (typeof dossies)[number]>(); // registro mais recente (qualquer status)
+  for (const d of dossies) {
+    if (!d.numOcp) continue;
+    if (d.arquivoPath && !dossiePorOc.has(d.numOcp)) dossiePorOc.set(d.numOcp, d.id);
+    if (!ultimoPorOc.has(d.numOcp)) ultimoPorOc.set(d.numOcp, d);
+  }
   const geradoPorOc = new Map(gerados.map((g) => [`${g.numOcp}|${g.codFil}`, g]));
 
   return NextResponse.json({
     ocs: ocs.map((o) => {
       const g = geradoPorOc.get(`${o.numOcp}|${o.codFil}`);
-      return { ...o, numTit: g?.numTit ?? o.numTitSenior, tituloGeradoAqui: !!g, dossieId: dossiePorOc.get(o.numOcp) ?? null, nfs: nfsPorOc.get(`${o.numOcp}|${o.codFil}`) ?? [] };
+      return { ...o, numTit: g?.numTit ?? o.numTitSenior, tituloGeradoAqui: !!g, dossieId: dossiePorOc.get(o.numOcp) ?? null, dossieStatus: ultimoPorOc.get(o.numOcp)?.status ?? null, dossieMotivo: ultimoPorOc.get(o.numOcp)?.motivo ?? null, nfs: nfsPorOc.get(`${o.numOcp}|${o.codFil}`) ?? [] };
     }),
   });
 }
