@@ -472,7 +472,7 @@ export default function ConferenciaOcPage() {
                   : "não identificada"}
               </p>
               <p>PIX: {detalhe.pagamento.pix ? `${detalhe.pagamento.pix.valor} (tipo ${detalhe.pagamento.pix.tipo})` : "não informado"}</p>
-              <p>Favorecido (CPF/CNPJ): {detalhe.pagamento.documentoFavorecido ?? "—"}</p>
+              <p>Favorecido (CPF/CNPJ, só para conferência — não vai no título): {detalhe.pagamento.documentoFavorecido ?? "—"}</p>
               {detalhe.pagamento.avisos.map((a: string, i: number) => (
                 <p key={i} className="text-amber-800">
                   ⚠ {a}

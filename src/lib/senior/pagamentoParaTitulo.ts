@@ -19,7 +19,7 @@ export type PagamentoDoTitulo = {
   documentoFavorecido: string | null;
   avisos: string[];
   /** Campos prontos pra entrar no GravarTitulosCP. */
-  campos: Pick<TituloNovo, "codFpg" | "codBan" | "codAge" | "ccbFor" | "tipTcc" | "tpcPix" | "chvPix" | "docIdeFav">;
+  campos: Pick<TituloNovo, "codFpg" | "codBan" | "codAge" | "ccbFor" | "tipTcc" | "tpcPix" | "chvPix">;
 };
 
 const repetido = (v: string) => v.length > 0 && /^(.)\1*$/.test(v);
@@ -74,11 +74,11 @@ export async function montarPagamentoDoTitulo(oc: LinhaSenior, codFor: string, c
   if (preenchido(oc.USU_CHVPIX) && !pixLido) avisos.push(`Chave PIX da OC ("${oc.USU_CHVPIX.trim()}") ambígua: não enviada no título.`);
   const pix = pixLido ? { tipo: Number(pixLido.tipo), valor: pixLido.valor } : null;
 
-  // Favorecido diferente do fornecedor (ex.: reembolso): CPF/CNPJ do cadastro ou da OC vai em docIdeFav.
+  // Favorecido (docIdeFav/codFav) NAO vai no titulo: a Senior recusa quando o favorecido nao esta
+  // cadastrado (erro real 15/10/2026). A remessa usa o CPF/CNPJ do cadastro do fornecedor.
   const docOc = soDigitos(oc.USU_CGCCPF);
   const documento =
     documentoFavorecido(cad?.DOCIDEFAV) ?? documentoFavorecido(cad?.CODFAV) ?? (docOc ? documentoFavorecido(docOc) : null) ?? documentoValido(forn?.CGCCPF, forn?.TIPFOR);
-  const docParaEnviar = documentoFavorecido(cad?.DOCIDEFAV) ?? documentoFavorecido(cad?.CODFAV) ?? (docOc ? documentoFavorecido(docOc) : null);
 
   if (!conta && !pix) avisos.push("Sem conta bancária nem PIX: o financeiro precisa completar os dados de pagamento do título na Senior antes da remessa.");
   if (/BOLETO|BLOQUETO/i.test(formaPagamento ?? "")) avisos.push("Forma de pagamento é boleto: o código de barras não vem da OC e precisa ser informado no título na Senior.");
@@ -98,7 +98,6 @@ export async function montarPagamentoDoTitulo(oc: LinhaSenior, codFor: string, c
       tipTcc,
       tpcPix: pix?.tipo,
       chvPix: pix?.valor,
-      docIdeFav: docParaEnviar ?? undefined,
     },
   };
 }
