@@ -150,7 +150,7 @@ export function lerPagamentoDoXml(xml: string): PagamentoDaNota {
   };
 }
 
-export async function baixarPagamentoDaNota(chave: string, nova = false): Promise<PagamentoDaNota> {
+export async function baixarXmlDaNota(chave: string, nova = false): Promise<string> {
   const tk = !nova && token && token.expiraEm > Date.now() ? token.valor : await login();
   const r = await fetch(`${BASE}edocsx_nfe/issuer/actions/downloadNfeIncoming`, {
     method: "POST",
@@ -158,11 +158,47 @@ export async function baixarPagamentoDaNota(chave: string, nova = false): Promis
     body: JSON.stringify({ accessKey: chave, xmlType: "AUTHORIZED" }),
     signal: AbortSignal.timeout(60_000),
   });
-  if (r.status === 401 && !nova) return baixarPagamentoDaNota(chave, true);
+  if (r.status === 401 && !nova) return baixarXmlDaNota(chave, true);
   if (!r.ok) throw new Error(`eDocs respondeu HTTP ${r.status}.`);
   const { xmlUrl } = (await r.json()) as { xmlUrl?: string };
   if (!xmlUrl?.startsWith("https://")) throw new Error("eDocs não devolveu a URL do XML.");
   const x = await fetch(xmlUrl, { signal: AbortSignal.timeout(60_000) });
   if (!x.ok) throw new Error(`XML da nota indisponível (HTTP ${x.status}).`);
-  return lerPagamentoDoXml(await x.text());
+  return x.text();
+}
+
+export async function baixarPagamentoDaNota(chave: string): Promise<PagamentoDaNota> {
+  return lerPagamentoDoXml(await baixarXmlDaNota(chave));
+}
+
+export type CampoXml = { caminho: string; valor: string };
+
+/** Achata o XML em (caminho, valor) -- todos os campos da nota. Tags repetidas ganham indice: det[2]. Ignora a assinatura digital. */
+export function achatarXml(xml: string): CampoXml[] {
+  const campos: CampoXml[] = [];
+  const pilha: { nome: string; filhos: Map<string, number> }[] = [{ nome: "", filhos: new Map() }];
+  const decodifica = (t: string) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  const caminho = () => pilha.slice(1).map((p) => p.nome).join(" › ");
+  let ignorar = 0;
+  for (const m of xml.matchAll(/<(\/?)([A-Za-z_][\w:.-]*)([^>]*?)(\/?)>|([^<]+)/g)) {
+    if (m[5] !== undefined) {
+      const v = m[5].trim();
+      if (v && !ignorar && pilha.length > 1) campos.push({ caminho: caminho(), valor: decodifica(v) });
+      continue;
+    }
+    const [, fecha, nome, attrs, autoFecha] = m;
+    if (fecha) {
+      if (nome === "Signature") ignorar--;
+      pilha.pop();
+      continue;
+    }
+    if (nome === "Signature") ignorar++;
+    const pai = pilha[pilha.length - 1];
+    const n = (pai.filhos.get(nome) ?? 0) + 1;
+    pai.filhos.set(nome, n);
+    pilha.push({ nome: n > 1 ? `${nome}[${n}]` : nome, filhos: new Map() });
+    if (!ignorar) for (const a of attrs.matchAll(/([\w:-]+)="([^"]*)"/g)) if (!a[1].startsWith("xmlns")) campos.push({ caminho: `${caminho()} @${a[1]}`, valor: decodifica(a[2]) });
+    if (autoFecha) pilha.pop();
+  }
+  return campos;
 }
