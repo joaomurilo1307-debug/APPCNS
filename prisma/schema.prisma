@@ -507,6 +507,23 @@ model TituloContasAPagar {
   @@index([codFor])
 }
 
+// Associacao manual Titulo <-> OC feita na Programacao de Pagamento. Chave natural
+// (sem FK) de proposito: o sincronismo apaga e recria TituloContasAPagar, e o vinculo
+// nao pode se perder junto. Tem prioridade sobre o motor automatico e sobre
+// TituloContasAPagar.numOcpCorrigido (vinculoOcTitulo.aplicarCorrecaoManual).
+model TituloOcVinculo {
+  id          String   @id @default(cuid())
+  numTit      String
+  codFil      String
+  codFor      String
+  numOcp      String
+  criadoPorNome String
+  criadoEm    DateTime @default(now())
+
+  @@unique([numTit, codFil, codFor])
+  @@index([numOcp])
+}
+
 model Nucleo {
   id          String   @id @default(cuid())
   name        String   @unique

@@ -87,6 +87,8 @@ type Titulo = {
   dataPagamento: string | null;
   ccuNome: string | null;
   ocRelacionada: OcRelacionada | null;
+  ocCodFil?: string | null;
+  vinculoManual?: { numOcp: string; por: string; em: string } | null;
   motivoSemOC: string | null;
   ocEsperada: boolean;
   dossie: DossieDoTitulo | null;
@@ -376,6 +378,46 @@ export default function ProgramacaoPagamentoPage() {
   const [totalPago, setTotalPago] = useState(0);
   const [sincronizando, setSincronizando] = useState(false);
   const [msgSincronizacao, setMsgSincronizacao] = useState<string | null>(null);
+
+  // Associação manual Título <-> OC (tabela TituloOcVinculo) e dossiê da OC do título.
+  const [ocBusy, setOcBusy] = useState<string | null>(null);
+  function associarOc(t: Titulo) {
+    const r = window.prompt(`Número da OC do título ${t.numTit} (${t.fornecedorNome}).
+Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
+    if (!r?.trim()) return;
+    setOcBusy(t.id);
+    fetch(`/api/titulos-pagar/${t.id}/vinculo-oc`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ numOcp: r.trim() }) })
+      .then(async (res) => { if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erro ao associar a OC"); })
+      .then(() => carregar())
+      .catch((e) => setErroOC(e.message))
+      .finally(() => setOcBusy(null));
+  }
+  function desfazerOc(t: Titulo) {
+    if (!window.confirm(`Desfazer a associação manual do título ${t.numTit} com a OC ${t.vinculoManual?.numOcp}? Volta ao vínculo automático.`)) return;
+    setOcBusy(t.id);
+    fetch(`/api/titulos-pagar/${t.id}/vinculo-oc`, { method: "DELETE" })
+      .then(async (res) => { if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erro ao desfazer") })
+      .then(() => carregar())
+      .catch((e) => setErroOC(e.message))
+      .finally(() => setOcBusy(null));
+  }
+  function gerarDossieDoTitulo(t: Titulo) {
+    if (!t.ocRelacionada || !t.ocCodFil) return;
+    setOcBusy(t.id);
+    fetch("/api/dossies/gerar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ocs: [{ numOcp: t.ocRelacionada.numOcp, codFil: t.ocCodFil }] }) })
+      .then(async (res) => { if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erro ao gerar o dossiê") })
+      .then(() => carregar())
+      .catch((e) => setErroOC(e.message))
+      .finally(() => setOcBusy(null));
+  }
+  // Enquanto algum dossiê estiver sendo gerado (~20 s cada), recarrega a lista a cada 8 s.
+  const algumGerando = titulos.some((t) => t.dossie?.status === "GERANDO");
+  useEffect(() => {
+    if (!algumGerando) return;
+    const id = setInterval(() => { carregar().catch(() => {}); }, 8000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [algumGerando]);
 
   function carregar() {
     return fetch("/api/titulos-pagar")
@@ -1334,6 +1376,32 @@ export default function ProgramacaoPagamentoPage() {
                       </p>
                     </details>
                   )}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
+                    {t.dossie?.status === "GERANDO" ? (
+                      <span className="text-gray-500">gerando dossiê…</span>
+                    ) : (
+                      <>
+                        {t.dossie?.temArquivo && (
+                          <a href={`/api/dossies/${t.dossie.id}/arquivo`} target="_blank" rel="noreferrer" className="font-medium text-brand underline decoration-dotted underline-offset-2">
+                            abrir dossiê
+                          </a>
+                        )}
+                        {t.ocRelacionada && t.ocCodFil && (
+                          <button onClick={() => gerarDossieDoTitulo(t)} disabled={ocBusy === t.id} title={`Gera o dossiê da OC ${t.ocRelacionada.numOcp} (leva cerca de 20 s)`} className="text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-700 disabled:opacity-50">
+                            {t.dossie?.temArquivo ? "gerar de novo" : t.dossie?.status === "ERRO" ? "tentar dossiê de novo" : "gerar dossiê"}
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <button onClick={() => associarOc(t)} disabled={ocBusy === t.id} title="Associa manualmente este título a uma OC (mesmo fornecedor). Vale mais que o vínculo automático." className="text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-700 disabled:opacity-50">
+                      {t.ocRelacionada ? "trocar OC" : "associar OC"}
+                    </button>
+                    {t.vinculoManual && (
+                      <button onClick={() => desfazerOc(t)} disabled={ocBusy === t.id} title={`Associada por ${t.vinculoManual.por} em ${formatDataHora(t.vinculoManual.em)}`} className="text-red-600 underline decoration-dotted underline-offset-2 disabled:opacity-50">
+                        desfazer associação
+                      </button>
+                    )}
+                  </div>
                 </td>
                 <td className="px-3 py-1.5 text-gray-500">{t.tipo}</td>
                 <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataEmissao)}</td>

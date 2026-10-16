@@ -24,7 +24,7 @@ export async function GET() {
   garantirFormasPagamentoAtualizadas(true);
   const catalogoFormas = await carregarCatalogoFormasPagamento();
 
-  const [titulos, ocs, usuariosSenior, dossies, adiamentos] = await Promise.all([
+  const [titulos, ocs, usuariosSenior, dossies, adiamentos, vinculosManuais] = await Promise.all([
     prisma.tituloContasAPagar.findMany({
       orderBy: [{ pago: "asc" }, { vencimentoProgramado: "asc" }],
     }),
@@ -66,7 +66,10 @@ export async function GET() {
       orderBy: { marcadoEm: "desc" },
       select: { id: true, tituloId: true, programacaoOrigem: true, marcadoPorNome: true, marcadoEm: true, motivo: true, resolvidoEm: true, resolvidoComo: true },
     }),
+    prisma.tituloOcVinculo.findMany(),
   ]);
+
+  const vinculoManualDe = new Map(vinculosManuais.map((v) => [`${v.numTit}|${v.codFil}|${v.codFor}`, v]));
 
   // Mais recente por titulo (a query ja vem ordenada por marcadoEm desc).
   const adiamentoPorTitulo = new Map<string, (typeof adiamentos)[number]>();
@@ -109,7 +112,13 @@ export async function GET() {
 
   return NextResponse.json({
     titulos: titulos.map((t) => {
-      const vinculo = aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t));
+      const vinculoManual = vinculoManualDe.get(`${t.numTit}|${t.codFil}|${t.codFor}`);
+      const vinculo = aplicarCorrecaoManual(
+        { numOcpCorrigido: vinculoManual?.numOcp ?? t.numOcpCorrigido },
+        (n) => ocPorNumero.get(n),
+        motor.ocRelacionadaDe(t)
+      );
+      const ocCodFil = vinculo.ocRelacionada ? ocPorNumero.get(vinculo.ocRelacionada.numOcp)?.codFil ?? null : null;
       return {
         id: t.id,
         numTit: t.numTit,
@@ -127,6 +136,8 @@ export async function GET() {
         dataPagamento: t.dataPagamento,
         ccuNome: t.ccuNome ?? t.codccu,
         ocRelacionada: vinculo.ocRelacionada,
+        ocCodFil,
+        vinculoManual: vinculoManual ? { numOcp: vinculoManual.numOcp, por: vinculoManual.criadoPorNome, em: vinculoManual.criadoEm } : null,
         motivoSemOC: vinculo.motivoSemOC,
         ocEsperada: vinculo.ocEsperada,
         descricao: t.descricao,
