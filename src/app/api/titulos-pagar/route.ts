@@ -118,7 +118,7 @@ export async function GET() {
         (n) => ocPorNumero.get(n),
         motor.ocRelacionadaDe(t)
       );
-      const ocCodFil = vinculo.ocRelacionada ? ocPorNumero.get(vinculo.ocRelacionada.numOcp)?.codFil ?? null : null;
+      const ocCodFil = vinculo.ocRelacionada ? ocPorNumero.get(vinculo.ocRelacionada.numOcp)?.codFil ?? t.codFil : null;
       return {
         id: t.id,
         numTit: t.numTit,
