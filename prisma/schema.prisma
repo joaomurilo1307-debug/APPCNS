@@ -1431,3 +1431,13 @@ model NfAssociadaOC {
   @@unique([numOcp, codFil, chaveAcesso])
   @@index([chaveAcesso])
 }
+
+// Dados de pagamento lidos do XML de uma NF-e recebida (eDocs X). O XML nao muda,
+// entao cada nota e' lida uma vez so'. vencimentos = cobr/dup/dVenc; formasPag = pag/detPag/tPag.
+model NfRecebidaPagamento {
+  chave       String   @id // chave de acesso, 44 digitos
+  vencimentos String[] // yyyy-mm-dd
+  formasPag   String[] // codigos tPag (01, 15, 17...)
+  indPag      String?  // 0 = a vista, 1 = a prazo
+  lidoEm      DateTime @default(now())
+}

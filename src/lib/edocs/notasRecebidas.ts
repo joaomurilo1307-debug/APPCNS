@@ -135,3 +135,34 @@ export function sugerirNotas(
   }
   return saida.sort((a, b) => b.pontos - a.pontos || (b.nota.emissao ?? "").localeCompare(a.nota.emissao ?? "")).slice(0, limite);
 }
+
+// ---------- pagamento (vem do XML da nota) ----------
+
+export type PagamentoDaNota = { vencimentos: string[]; formasPag: string[]; indPag: string | null };
+
+/** Le o XML autorizado da nota e extrai vencimentos (cobr/dup) e forma de pagamento (pag/detPag). */
+export function lerPagamentoDoXml(xml: string): PagamentoDaNota {
+  const todos = (re: RegExp) => [...xml.matchAll(re)].map((m) => m[1]);
+  return {
+    vencimentos: todos(/<dVenc>(\d{4}-\d{2}-\d{2})<\/dVenc>/g),
+    formasPag: todos(/<tPag>(\d{2})<\/tPag>/g),
+    indPag: xml.match(/<indPag>(\d)<\/indPag>/)?.[1] ?? null,
+  };
+}
+
+export async function baixarPagamentoDaNota(chave: string, nova = false): Promise<PagamentoDaNota> {
+  const tk = !nova && token && token.expiraEm > Date.now() ? token.valor : await login();
+  const r = await fetch(`${BASE}edocsx_nfe/issuer/actions/downloadNfeIncoming`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${tk}`, "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ accessKey: chave, xmlType: "AUTHORIZED" }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (r.status === 401 && !nova) return baixarPagamentoDaNota(chave, true);
+  if (!r.ok) throw new Error(`eDocs respondeu HTTP ${r.status}.`);
+  const { xmlUrl } = (await r.json()) as { xmlUrl?: string };
+  if (!xmlUrl?.startsWith("https://")) throw new Error("eDocs não devolveu a URL do XML.");
+  const x = await fetch(xmlUrl, { signal: AbortSignal.timeout(60_000) });
+  if (!x.ok) throw new Error(`XML da nota indisponível (HTTP ${x.status}).`);
+  return lerPagamentoDoXml(await x.text());
+}
