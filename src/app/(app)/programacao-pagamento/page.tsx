@@ -410,6 +410,27 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
       .catch((e) => setErroOC(e.message))
       .finally(() => setOcBusy(null));
   }
+  // Botão da barra de seleção: gera o dossiê da OC de cada título selecionado que ainda não tem PDF.
+  const [msgDossies, setMsgDossies] = useState<string | null>(null);
+  function gerarDossiesSelecionados() {
+    const sel = titulos.filter((t) => selecionados.has(t.id));
+    const porOc = new Map<string, { numOcp: string; codFil: string }>();
+    for (const t of sel) {
+      if (t.ocRelacionada && t.ocCodFil && !t.dossie?.temArquivo && t.dossie?.status !== "GERANDO") {
+        porOc.set(t.ocRelacionada.numOcp, { numOcp: t.ocRelacionada.numOcp, codFil: t.ocCodFil });
+      }
+    }
+    const semOc = sel.filter((t) => !t.ocRelacionada).length;
+    if (porOc.size === 0) {
+      setMsgDossies(semOc ? `Nada a gerar: ${semOc} selecionado(s) sem OC (use "associar OC"); os demais já têm dossiê.` : "Todos os selecionados já têm dossiê (ou estão sendo gerados).");
+      return;
+    }
+    setMsgDossies(null);
+    fetch("/api/dossies/gerar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ocs: [...porOc.values()].slice(0, 100) }) })
+      .then(async (res) => { if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erro ao gerar os dossiês"); return res.json(); })
+      .then((r) => { setMsgDossies(`Gerando ${r.aceitas.length} dossiê(s), cerca de 20 s cada${semOc ? `; ${semOc} selecionado(s) sem OC ficaram de fora` : ""}. Depois use "Exportar pacote" para baixar.`); return carregar(); })
+      .catch((e) => setMsgDossies(e.message));
+  }
   // Enquanto algum dossiê estiver sendo gerado (~20 s cada), recarrega a lista a cada 8 s.
   const algumGerando = titulos.some((t) => t.dossie?.status === "GERANDO");
   useEffect(() => {
@@ -917,6 +938,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
               Selecionar {qtdAprovados} aprovado(s)
             </button>
           )}
+          {msgDossies && <span className="max-w-[320px] text-[11px] text-gray-600">{msgDossies}</span>}
           {selecionados.size > 0 && (
             <>
               <span className="text-xs text-gray-500">
@@ -927,6 +949,13 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                 className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50"
               >
                 Limpar seleção
+              </button>
+              <button
+                onClick={gerarDossiesSelecionados}
+                title="Gera o dossiê (PDF) da OC de cada título selecionado que ainda não tem. Para baixar, use Exportar pacote."
+                className="rounded-lg border border-brand px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand-light"
+              >
+                📄 Gerar dossiês
               </button>
               <button
                 onClick={enviarParaRemessaItau}

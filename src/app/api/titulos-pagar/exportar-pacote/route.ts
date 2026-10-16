@@ -68,11 +68,13 @@ export async function POST(req: Request) {
       orderBy: { geradoEm: "desc" },
     }),
   ]);
+  const vinculosManuais = await prisma.tituloOcVinculo.findMany();
+  const vinculoManualDe = new Map(vinculosManuais.map((v) => [`${v.numTit}|${v.codFil}|${v.codFor}`, v.numOcp]));
   const motor = criarMotorVinculo(ocs);
   const ocPorNumero = new Map(ocs.map((o) => [o.numOcp, o]));
   const indiceDossies = criarIndiceDossies(dossies);
   function dossieDe(t: (typeof titulos)[number]) {
-    const numOcpVinculado = aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada?.numOcp;
+    const numOcpVinculado = aplicarCorrecaoManual({ numOcpCorrigido: vinculoManualDe.get(`${t.numTit}|${t.codFil}|${t.codFor}`) ?? t.numOcpCorrigido }, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada?.numOcp;
     return indiceDossies.dossieDoTitulo({ numTit: t.numTit, codFor: t.codFor, numOcp: numOcpVinculado });
   }
 
