@@ -49,6 +49,7 @@ const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: 
   { href: "/programacao-pagamento", module: "financeiro", label: "Programação de Pagamento", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
   { href: "/pagamentos-itau", module: "financeiro", label: "Pagamentos Itaú (SISPAG)", icon: IconBarChart, roles: ["ADMIN", "DIRETOR"] },
   { href: "/conferencia-oc", module: "financeiro", label: "Conferência de OC", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
+  { href: "/alertas-financeiro", module: "financeiro", label: "Alertas do Financeiro", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
   { href: "/notas-fiscais", module: "financeiro", label: "Notas Fiscais recebidas", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
   { href: "/custos/plano-de-contas", module: "financeiro", label: "Custo por Plano de Contas", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/usuarios", module: "comum", label: "Usuários", icon: IconShieldUser, roles: ["ADMIN"] },

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { baixarPagamentoDaNota, listarNotasRecebidas } from "@/lib/edocs/notasRecebidas";
+import { listarNotasRecebidas } from "@/lib/edocs/notasRecebidas";
+import { pagamentoDasNotas } from "@/lib/edocs/pagamentoNotas";
 
 // Notas fiscais emitidas contra a Consominas (eDocs X). Emissao/numero/fornecedor/valor vem da lista;
 // vencimento e forma de pagamento vem do XML de cada nota, lido uma vez e guardado (NfRecebidaPagamento).
@@ -10,7 +10,6 @@ import { baixarPagamentoDaNota, listarNotasRecebidas } from "@/lib/edocs/notasRe
 
 const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const ORCAMENTO_MS = 40_000;
-const PARALELO = 6;
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -20,34 +19,14 @@ export async function GET(req: Request) {
   try {
     const forcar = new URL(req.url).searchParams.get("atualizar") === "1";
     const notas = await listarNotasRecebidas(forcar);
-    const lidos = await prisma.nfRecebidaPagamento.findMany({ where: { chave: { in: notas.map((n) => n.chave) } } });
-    const porChave = new Map(lidos.map((l) => [l.chave, l]));
-
-    const faltam = notas.filter((n) => !porChave.has(n.chave));
-    const fim = Date.now() + ORCAMENTO_MS;
-    let falhas = 0;
-    let i = 0;
-    await Promise.all(
-      Array.from({ length: PARALELO }, async () => {
-        while (i < faltam.length && Date.now() < fim) {
-          const n = faltam[i++];
-          try {
-            const p = await baixarPagamentoDaNota(n.chave);
-            porChave.set(n.chave, await prisma.nfRecebidaPagamento.upsert({ where: { chave: n.chave }, create: { chave: n.chave, ...p }, update: p }));
-          } catch {
-            falhas++;
-          }
-        }
-      })
-    );
-
+    const porChave = await pagamentoDasNotas(notas, ORCAMENTO_MS);
     const linhas = notas
       .map((n) => {
         const p = porChave.get(n.chave);
         return { ...n, lido: !!p, vencimentos: p?.vencimentos ?? [], formasPag: p?.formasPag ?? [], indPag: p?.indPag ?? null };
       })
       .sort((a, b) => (b.emissao ?? "").localeCompare(a.emissao ?? ""));
-    return NextResponse.json({ notas: linhas, pendentes: linhas.filter((l) => !l.lido).length, falhas });
+    return NextResponse.json({ notas: linhas, pendentes: linhas.filter((l) => !l.lido).length });
   } catch (e) {
     return NextResponse.json({ error: `Não foi possível consultar o eDocs: ${(e as Error).message}` }, { status: 502 });
   }

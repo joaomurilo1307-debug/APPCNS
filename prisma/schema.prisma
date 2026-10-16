@@ -1434,6 +1434,13 @@ model NfAssociadaOC {
 
 // Dados de pagamento lidos do XML de uma NF-e recebida (eDocs X). O XML nao muda,
 // entao cada nota e' lida uma vez so'. vencimentos = cobr/dup/dVenc; formasPag = pag/detPag/tPag.
+// Controle do que ja virou notificacao no sino (alertas do financeiro): a chave identifica o
+// aviso (ex.: "NFNOVA|<chave da NF>" ou "TIT_VENCIDO|2026-10-16") e impede repeti-lo.
+model AlertaFinanceiroEnviado {
+  chave    String   @id
+  criadoEm DateTime @default(now())
+}
+
 model NfRecebidaPagamento {
   chave       String   @id // chave de acesso, 44 digitos
   vencimentos String[] // yyyy-mm-dd
