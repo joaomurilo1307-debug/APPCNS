@@ -32,21 +32,11 @@ const TOM: Record<Tom, { caixa: string; linha: string }> = {
   azul: { caixa: "border-sky-200 bg-sky-50", linha: "text-sky-900" },
 };
 
-function Secao({ titulo, tom, total, children, vazio }: { titulo: string; tom: Tom; total?: number; children: React.ReactNode; vazio: boolean }) {
-  return (
-    <section className={`mb-4 rounded-xl border p-3.5 shadow-sm ${TOM[tom].caixa}`}>
-      <h2 className="mb-2 text-sm font-semibold">
-        {titulo} <span className="font-normal text-gray-500">({total ?? 0})</span>
-      </h2>
-      {vazio ? <p className="text-sm text-gray-400">Nada por aqui.</p> : <div className="overflow-x-auto">{children}</div>}
-    </section>
-  );
-}
-
 export default function AlertasFinanceiroPage() {
   const [a, setA] = useState<Alertas | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [aba, setAba] = useState("nf-vencidas");
 
   function carregar(atualizar = false) {
     setCarregando(true);
@@ -113,32 +103,40 @@ export default function AlertasFinanceiroPage() {
       {a?.avisos.map((v) => <p key={v} className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{v}</p>)}
       {carregando && !a && <p className="py-8 text-center text-sm text-gray-400">Conferindo notas e títulos (inclui consulta à Senior)…</p>}
 
-      {a && (
-        <>
-          <Secao titulo="Notas fiscais vencidas e não lançadas na Senior" tom="vermelho" total={a.notasVencidas.length} vazio={!a.notasVencidas.length}>
-            {tabelaNotas(a.notasVencidas, "vermelho", true)}
-            {rodape(a.notasVencidas.length)}
-          </Secao>
-          <Secao titulo="Títulos a pagar vencidos" tom="vermelho" total={a.titulosVencidos.length} vazio={!a.titulosVencidos.length}>
-            {tabelaTitulos(a.titulosVencidos, "vermelho")}
-            {rodape(a.titulosVencidos.length)}
-          </Secao>
-          <Secao titulo="Notas fiscais vencendo em até 3 dias (não lançadas na Senior)" tom="ambar" total={a.notasVencendo.length} vazio={!a.notasVencendo.length}>
-            {tabelaNotas(a.notasVencendo, "ambar", true)}
-          </Secao>
-          <Secao titulo="Títulos a pagar vencendo em até 3 dias" tom="ambar" total={a.titulosVencendo.length} vazio={!a.titulosVencendo.length}>
-            {tabelaTitulos(a.titulosVencendo, "ambar")}
-            {rodape(a.titulosVencendo.length)}
-          </Secao>
-          <Secao titulo="Notas fiscais recebidas nos últimos 7 dias" tom="azul" total={a.notasNovas.length} vazio={!a.notasNovas.length}>
-            {tabelaNotas(a.notasNovas, "azul", false)}
-          </Secao>
-          <Secao titulo="Notas com vencimento próximo/vencido, mas já lançadas na Senior (sem alerta)" tom="neutro" total={a.notasLancadas.length} vazio={!a.notasLancadas.length}>
-            {tabelaNotas(a.notasLancadas, "neutro", true)}
-          </Secao>
-          <p className="text-[11px] text-gray-400">Calculado em {new Date(a.geradoEm).toLocaleString("pt-BR")}. O vencimento das notas é o informado no XML (só notas já lidas em Notas Fiscais recebidas entram).</p>
-        </>
-      )}
+      {a && (() => {
+        const abas: { id: string; rotulo: string; tom: Tom; total: number; corpo: React.ReactNode }[] = [
+          { id: "nf-vencidas", rotulo: "NF vencidas", tom: "vermelho", total: a.notasVencidas.length, corpo: <>{tabelaNotas(a.notasVencidas, "vermelho", true)}{rodape(a.notasVencidas.length)}</> },
+          { id: "tit-vencidos", rotulo: "Títulos vencidos", tom: "vermelho", total: a.titulosVencidos.length, corpo: <>{tabelaTitulos(a.titulosVencidos, "vermelho")}{rodape(a.titulosVencidos.length)}</> },
+          { id: "nf-vencendo", rotulo: "NF vencendo", tom: "ambar", total: a.notasVencendo.length, corpo: tabelaNotas(a.notasVencendo, "ambar", true) },
+          { id: "tit-vencendo", rotulo: "Títulos vencendo", tom: "ambar", total: a.titulosVencendo.length, corpo: <>{tabelaTitulos(a.titulosVencendo, "ambar")}{rodape(a.titulosVencendo.length)}</> },
+          { id: "nf-novas", rotulo: "NF novas (7 dias)", tom: "azul", total: a.notasNovas.length, corpo: tabelaNotas(a.notasNovas, "azul", false) },
+          { id: "nf-lancadas", rotulo: "Já lançadas na Senior", tom: "neutro", total: a.notasLancadas.length, corpo: tabelaNotas(a.notasLancadas, "neutro", true) },
+        ];
+        const ativa = abas.find((x) => x.id === aba) ?? abas[0];
+        const COR_ABA: Record<Tom, string> = { vermelho: "text-red-700", ambar: "text-amber-700", azul: "text-sky-700", neutro: "text-gray-600" };
+        return (
+          <>
+            <div className="mb-3 flex flex-wrap gap-1 border-b border-gray-200">
+              {abas.map((x) => (
+                <button
+                  key={x.id}
+                  onClick={() => setAba(x.id)}
+                  className={`-mb-px rounded-t-lg border border-b-0 px-3 py-2 text-sm font-medium ${
+                    ativa.id === x.id ? `border-gray-200 bg-white ${COR_ABA[x.tom]}` : "border-transparent text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  {x.rotulo}{" "}
+                  <span className={`ml-1 rounded-full px-2 py-0.5 text-[11px] ${x.total && x.tom === "vermelho" ? "bg-red-100 text-red-700" : x.total && x.tom === "ambar" ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-500"}`}>{x.total}</span>
+                </button>
+              ))}
+            </div>
+            <section className={`rounded-xl border p-3.5 shadow-sm ${TOM[ativa.tom].caixa}`}>
+              {ativa.total ? <div className="overflow-x-auto">{ativa.corpo}</div> : <p className="text-sm text-gray-400">Nada por aqui.</p>}
+            </section>
+            <p className="mt-3 text-[11px] text-gray-400">Calculado em {new Date(a.geradoEm).toLocaleString("pt-BR")}. O vencimento das notas é o informado no XML da nota.</p>
+          </>
+        );
+      })()}
     </div>
   );
 }
