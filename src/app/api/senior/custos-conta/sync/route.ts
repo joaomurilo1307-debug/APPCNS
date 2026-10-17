@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { seniorDiretoAssumiu } from "@/lib/custos/atualizacaoCusto";
 
 // Sincronizacao do custo por plano de contas (conta_financeira), agregado
 // por CCU/mes, a partir de rito_financeiro.composicao_custo_financeiro.
@@ -46,6 +47,14 @@ export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
   if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
+  }
+
+  // Desde 17/10/2026 o Custo por Contrato le o Senior direto (src/lib/custos). Este envio vindo do Rito passa a ser
+  // IGNORADO enquanto existir uma atualizacao direta concluida -- senao ele sobrescreveria numeros mais novos com a
+  // foto mensal do Rito (e voltaria com as contas sem nome). Para devolver o comando ao Rito: apagar as linhas de
+  // "AtualizacaoCusto" com status OK.
+  if (await seniorDiretoAssumiu()) {
+    return NextResponse.json({ ok: true, ignorado: true, motivo: "Custo por Contrato agora é lido direto do Senior; envio do Rito ignorado." });
   }
 
   const body = await req.json().catch(() => null);
@@ -137,6 +146,18 @@ export async function GET(req: Request) {
   const chave = req.headers.get("x-sync-key");
   if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
+  }
+  // conferencia: ?resumo=1 devolve o total por mes de toda a tabela; ?codccu=190 o total por mes daquele CCU
+  const url = new URL(req.url);
+  const codccu = url.searchParams.get("codccu");
+  if (codccu || url.searchParams.get("resumo")) {
+    const linhas = await prisma.custoContaFinanceira.findMany({ where: codccu ? { codccu } : undefined, select: { competencia: true, valor: true } });
+    const porMes: Record<string, number> = {};
+    for (const l of linhas) {
+      const mes = l.competencia.toISOString().slice(0, 7);
+      porMes[mes] = Math.round(((porMes[mes] ?? 0) + l.valor) * 100) / 100;
+    }
+    return NextResponse.json({ codccu: codccu ?? null, linhas: linhas.length, porMes });
   }
   const total = await prisma.custoContaFinanceira.count();
   const ultimaCompetencia = await prisma.custoContaFinanceira.findFirst({ orderBy: { competencia: "desc" }, select: { competencia: true } });

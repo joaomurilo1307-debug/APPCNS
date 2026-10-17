@@ -67,13 +67,13 @@ let filaLeituras: Promise<void> = Promise.resolve();
 
 // Todas as telas compartilham uma fila por processo; duas requisicoes HTTP
 // simultaneas nao disparam consultas concorrentes no GetDBInfo.
-export function consultarSenior(sql: string): Promise<LinhaSenior[]> {
-  const consulta = filaLeituras.then(() => executarConsultaSenior(sql));
+export function consultarSenior(sql: string, opcoes?: { timeoutMs?: number }): Promise<LinhaSenior[]> {
+  const consulta = filaLeituras.then(() => executarConsultaSenior(sql, opcoes?.timeoutMs));
   filaLeituras = consulta.then(() => undefined, () => undefined);
   return consulta;
 }
 
-async function executarConsultaSenior(sql: string): Promise<LinhaSenior[]> {
+async function executarConsultaSenior(sql: string, timeoutMs = 60_000): Promise<LinhaSenior[]> {
   const url = process.env.SENIOR_WS_SAPIENS_URL?.trim() || URL_PADRAO;
   let ultimoErro = "erro desconhecido";
 
@@ -82,7 +82,7 @@ async function executarConsultaSenior(sql: string): Promise<LinhaSenior[]> {
       method: "POST",
       headers: { "Content-Type": "text/xml; charset=UTF-8", SOAPAction: '""' },
       body: montarEnvelope(sql, params),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const texto = await resposta.text();
     if (!resposta.ok) throw new Error(`Senior respondeu HTTP ${resposta.status}. Os dados nao puderam ser conferidos.`);

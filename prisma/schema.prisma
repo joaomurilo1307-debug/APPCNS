@@ -379,6 +379,26 @@ model CustoFinanceiroDetalhe {
   @@index([codccu, contaFinanceira, competencia])
 }
 
+// Execucoes da atualizacao do Custo por Contrato (/custos/plano-de-contas), que le o custo DIRETO do Senior
+// (regra validada contra o Rel114/Rito: src/lib/custos/motorCustoContrato.ts). Uma linha por execucao: serve de
+// trava (so' uma por vez), de barra de progresso do botao "Atualizar" e de "atualizado em" da tela. Enquanto
+// existir ao menos uma execucao OK, os syncs antigos vindos do Rito (/api/senior/custos-conta/sync e
+// /api/senior/custo-financeiro-detalhe/sync) sao ignorados -- apagar estas linhas devolve o comando ao Rito.
+model AtualizacaoCusto {
+  id           String    @id @default(cuid())
+  status       String // EXECUTANDO | OK | ERRO
+  etapa        String?
+  progresso    Int       @default(0)
+  iniciadoEm   DateTime  @default(now())
+  finalizadoEm DateTime?
+  disparadoPor String?
+  resumo       Json?
+  erro         String?
+
+  @@index([iniciadoEm])
+  @@index([status, finalizadoEm])
+}
+
 // Ledger IMUTAVEL de qual centro de custo cada colaborador CLT tinha em
 // cada mes -- vem de rito_financeiro.historico_ccu_colaborador (Postgres
 // do Rito, VPS 2.25.191.135), capturado la TODO MES pela cascata (nunca

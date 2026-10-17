@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { seniorDiretoAssumiu } from "@/lib/custos/atualizacaoCusto";
 
 // Detalhe titulo-a-titulo por tras de cada linha de Custo por Plano de
 // Contas -- pedido do Joao 15/09/2026: "abrir a conta financeira e ver os
@@ -40,6 +41,14 @@ export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
   if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
+  }
+
+  // Desde 17/10/2026 o Custo por Contrato le o Senior direto (src/lib/custos). Este envio vindo do Rito passa a ser
+  // IGNORADO enquanto existir uma atualizacao direta concluida -- senao ele sobrescreveria numeros mais novos com a
+  // foto mensal do Rito (e voltaria com as contas sem nome). Para devolver o comando ao Rito: apagar as linhas de
+  // "AtualizacaoCusto" com status OK.
+  if (await seniorDiretoAssumiu()) {
+    return NextResponse.json({ ok: true, ignorado: true, motivo: "Custo por Contrato agora é lido direto do Senior; envio do Rito ignorado." });
   }
 
   const body = await req.json().catch(() => null);

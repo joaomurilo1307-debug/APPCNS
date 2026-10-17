@@ -52,7 +52,7 @@ const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: 
   { href: "/despesas-recorrentes", module: "financeiro", label: "Despesas recorrentes", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
   { href: "/alertas-financeiro", module: "financeiro", label: "Alertas do Financeiro", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
   { href: "/notas-fiscais", module: "financeiro", label: "Notas Fiscais recebidas", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/custos/plano-de-contas", module: "financeiro", label: "Custo por Plano de Contas", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+  { href: "/custos/plano-de-contas", module: "financeiro", label: "Custo por Contrato", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
   { href: "/usuarios", module: "comum", label: "Usuários", icon: IconShieldUser, roles: ["ADMIN"] },
   { href: "/usuarios/senior", module: "comum", label: "Usuários do Senior", icon: IconShieldUser, roles: ["ADMIN"] },
 ];
