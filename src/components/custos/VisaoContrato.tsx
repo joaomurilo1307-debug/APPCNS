@@ -23,11 +23,13 @@ import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/cust
 import { baixarCsv } from "@/lib/custos/csv";
 import type { AlvoDetalhe } from "./DetalheConta";
 import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, estiloCelulaCalor, type SerieEmpilhada } from "./graficos";
-import { BarrasVariacao, Cascata, LegendaLinha, LinhaAcompanhamento, TabelaMovimentos } from "./acompanhamento";
+import { BarrasVariacao, Cascata, LegendaLinha, LinhaAcompanhamento } from "./acompanhamento";
 import { Cartao, Kpi, SeloInativa, SeloReembolsavel, Variacao, VazioPeriodo } from "./ui";
-import MapaDoCusto from "./MapaDoCusto";
+import InsightsFornecedores from "./InsightsFornecedores";
+import MatrizRepresentatividade from "./MatrizRepresentatividade";
 import ParetoFornecedores from "./ParetoFornecedores";
-import QuandoSai from "./QuandoSai";
+import VariacaoPorConta from "./VariacaoPorConta";
+import { useLancamentos } from "./useLancamentos";
 
 export default function VisaoContrato({
   contrato,
@@ -60,6 +62,7 @@ export default function VisaoContrato({
   const [baixando, setBaixando] = useState(false);
   // mes em analise no painel "O que mudou": clicar numa barra de variacao muda o mes (padrao: o ultimo mes fechado do periodo)
   const [mesAnalise, setMesAnalise] = useState<string | null>(null);
+  const lancamentos = useLancamentos(contrato.codccu, filtros, base);
 
   // meta mensal do coordenador: fica guardada neste navegador, por centro de custo
   useEffect(() => {
@@ -389,28 +392,23 @@ export default function VisaoContrato({
           </div>
 
           {ponte && (
-            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-              <Cartao
-                titulo={`O que mudou: ${mesCurto(mesesAsc[iPonte - 1])} → ${mesCurto(mesesAsc[iPonte])}`}
-                subtitulo={`Ponte do custo por tipo de custo${!mesAnalise && refParcial ? " · compara os dois últimos meses fechados" : ""} · vermelho = custo subiu, verde = custo caiu`}
-              >
-                <Cascata rotuloInicio={mesCurto(mesesAsc[iPonte - 1])} valorInicio={ponte.inicio} rotuloFim={mesCurto(mesesAsc[iPonte])} valorFim={ponte.fim} passos={ponte.passos} />
-              </Cartao>
-              <Cartao titulo="Maiores variações por conta" subtitulo={`${mesLongo(mesesAsc[iPonte - 1])} contra ${mesLongo(mesesAsc[iPonte])}`}>
-                <div className="space-y-5">
-                  <TabelaMovimentos titulo="Maiores altas" itens={ponte.movimentos.altas} tom="alta" rotuloAnterior={mesCurto(mesesAsc[iPonte - 1])} rotuloAtual={mesCurto(mesesAsc[iPonte])} />
-                  <TabelaMovimentos titulo="Maiores quedas" itens={ponte.movimentos.quedas} tom="queda" rotuloAnterior={mesCurto(mesesAsc[iPonte - 1])} rotuloAtual={mesCurto(mesesAsc[iPonte])} />
-                </div>
-              </Cartao>
-            </div>
+            <Cartao
+              titulo={`O que mudou: ${mesCurto(mesesAsc[iPonte - 1])} → ${mesCurto(mesesAsc[iPonte])}`}
+              subtitulo={`Ponte do custo por tipo de custo${!mesAnalise && refParcial ? " · compara os dois últimos meses fechados" : ""} · vermelho = custo subiu, verde = custo caiu`}
+            >
+              <Cascata rotuloInicio={mesCurto(mesesAsc[iPonte - 1])} valorInicio={ponte.inicio} rotuloFim={mesCurto(mesesAsc[iPonte])} valorFim={ponte.fim} passos={ponte.passos} />
+            </Cartao>
           )}
 
-          <MapaDoCusto itens={linhas.map((l) => ({ grupo: l.conta.grupoCodigo, grupoNome: l.conta.grupoNome, conta: l.conta.contaFinanceira, valor: l.totalP }))} cores={cores} />
+          {temPonte && (
+            <VariacaoPorConta linhas={todas} mesesAsc={mesesAsc} iMes={iPonte} mesesEscolha={mesesP.filter((m) => mesesAsc.indexOf(m) > 0)} onMes={setMesAnalise} />
+          )}
 
-          <div className="grid items-start gap-5 xl:grid-cols-2">
-            <ParetoFornecedores codccu={contrato.codccu} filtros={filtros} base={base} busca={busca} />
-            <QuandoSai codccu={contrato.codccu} filtros={filtros} base={base} busca={busca} />
-          </div>
+          <MatrizRepresentatividade grupos={grupos} meses={mesesP} totaisMes={totaisMes} totalP={totalP} cores={cores} mesCorrente={mesCorrente} />
+
+          <InsightsFornecedores dados={lancamentos} filtros={filtros} busca={busca} meses={mesesP} mesAtual={temPonte ? mesesAsc[iPonte] : undefined} mesAnterior={temPonte ? mesesAsc[iPonte - 1] : undefined} mesParcial={refParcial ? mesCorrente : undefined} />
+
+          <ParetoFornecedores dados={lancamentos} filtros={filtros} base={base} busca={busca} />
 
           <Cartao
             titulo="Plano de contas × mês"

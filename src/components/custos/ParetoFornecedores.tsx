@@ -8,27 +8,15 @@ import type { BaseMes, Filtros } from "@/lib/custos/agregacao";
 import { moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 import { eReembolsavel, grupoDaConta } from "@/lib/custos/planoContas";
 import { Cartao } from "./ui";
+import type { DadosLancamentos } from "./useLancamentos";
 
-type Lanc = { contaCodigo: number | null; contaFinanceira: string; numTit: string; codFor: string; fornecedor: string | null; valorRateado: number; competencia: string; dataPagamento?: string | null; formaBaixa?: string | null };
-
-export default function ParetoFornecedores({ codccu, filtros, base, busca }: { codccu: string; filtros: Filtros; base: BaseMes; busca: string }) {
-  const [dados, setDados] = useState<Lanc[] | "carregando" | "erro">("carregando");
+export default function ParetoFornecedores({ dados, filtros, base, busca }: { dados: DadosLancamentos; filtros: Filtros; base: BaseMes; busca: string }) {
   const [aberto, setAberto] = useState<string | null>(null);
   const [todos, setTodos] = useState(false);
 
   useEffect(() => {
-    let cancelado = false;
-    setDados("carregando");
     setAberto(null);
-    const qs = new URLSearchParams({ codccu, de: filtros.de, ate: filtros.ate, base });
-    fetch(`/api/custos-conta/lancamentos?${qs.toString()}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => !cancelado && setDados(d.linhas as Lanc[]))
-      .catch(() => !cancelado && setDados("erro"));
-    return () => {
-      cancelado = true;
-    };
-  }, [codccu, filtros.de, filtros.ate, base]);
+  }, [dados]);
 
   const termo = busca.trim().toLowerCase();
   const linhas = useMemo(() => {
