@@ -9,8 +9,8 @@ export function Cartao({ titulo, subtitulo, acao, children, className = "" }: { 
       {(titulo || acao) && (
         <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            {titulo && <h2 className="text-sm font-semibold text-gray-900">{titulo}</h2>}
-            {subtitulo && <p className="mt-0.5 text-xs text-gray-500">{subtitulo}</p>}
+            {titulo && <h2 className="text-base font-semibold text-gray-900">{titulo}</h2>}
+            {subtitulo && <p className="mt-0.5 text-[13px] text-gray-500">{subtitulo}</p>}
           </div>
           {acao}
         </header>
@@ -23,9 +23,9 @@ export function Cartao({ titulo, subtitulo, acao, children, className = "" }: { 
 export function Kpi({ rotulo, valor, detalhe, destaque }: { rotulo: string; valor: ReactNode; detalhe?: ReactNode; destaque?: boolean }) {
   return (
     <div className={`min-w-0 rounded-2xl border p-4 shadow-soft ${destaque ? "border-brand/30 bg-brand-light/60" : "border-gray-100 bg-white"}`}>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{rotulo}</p>
-      <p className="mt-1 truncate text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{valor}</p>
-      {detalhe && <div className="mt-1 text-xs text-gray-500">{detalhe}</div>}
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{rotulo}</p>
+      <p className="mt-1 truncate text-[28px] font-semibold leading-tight tabular-nums tracking-tight text-gray-900">{valor}</p>
+      {detalhe && <div className="mt-1 text-[13px] text-gray-500">{detalhe}</div>}
     </div>
   );
 }
@@ -43,7 +43,7 @@ export function Variacao({ v, sufixo }: { v: number | null; sufixo?: string }) {
 
 export function SeloReembolsavel({ curto = false }: { curto?: boolean }) {
   return (
-    <span className="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800" title="Conta reembolsável (conta antiga “Despesas Reembolsáveis” ou plano novo “R - …”)">
+    <span className="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-800" title="Conta reembolsável (conta antiga “Despesas Reembolsáveis” ou plano novo “R - …”)">
       {curto ? "R" : "Reembolsável"}
     </span>
   );
@@ -51,7 +51,7 @@ export function SeloReembolsavel({ curto = false }: { curto?: boolean }) {
 
 export function SeloInativa() {
   return (
-    <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Conta marcada como inativa no plano de contas do Senior (ainda tem lançamento no período)">
+    <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800" title="Conta marcada como inativa no plano de contas do Senior (ainda tem lançamento no período)">
       inativa no Senior
     </span>
   );

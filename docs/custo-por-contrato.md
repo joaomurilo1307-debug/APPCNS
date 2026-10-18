@@ -69,3 +69,16 @@ confirmou nos 3686 (PLT02/PMRE/BAQ) â€” ver o relatÃ³rio de conferÃªncia. Inativ
 `GET /api/senior/custos-conta/sync?auditoria=1` (header `x-sync-key`): confere que cada cÃ©lula (CCU Ã— conta Ã— mÃªs) Ã© a soma
 exata dos lanÃ§amentos, totais por mÃªs, lanÃ§amentos fora da ProgramaÃ§Ã£o de Pagamento e centros de custo **sem equipe**
 (sem equipe vinculada sÃ³ ADMIN/DIRETOR/`verTodosCustos` enxergam; coordenadores sÃ³ veem os CCUs das equipes de que participam).
+
+## Acompanhamento e conferência (18/10/2026)
+
+- **Gráficos de acompanhamento** (visão geral e por centro de custo): linha mensal ou acumulada com média dos meses fechados,
+  média móvel de 3 meses e **meta mensal** (digitada pelo coordenador, guardada no navegador por CCU); variação contra o mês
+  anterior; **ponte** entre o mês de referência e o anterior por tipo de custo (se o mês está em andamento, compara os dois
+  últimos meses fechados); maiores altas e quedas por conta / centro de custo. O mês em andamento fica sempre de fora da média.
+- **Exportar lançamentos (Rel114)**: CSV título a título (`GET /api/custos-conta/lancamentos`), mesmos nomes de coluna do Rel114,
+  para conferir com a planilha da área. Mesma regra de visibilidade da tela; "todos" só para quem vê tudo.
+- **Conferência com o Rel114 oficial** (FPCP114 FILTROS MARCADOS.xls, todos os CCUs, mar–jul/26): 4.327 de 4.327 linhas do
+  relatório estão na tela, com o mesmo título, fornecedor, CCU, conta e valor. A tela tem 222 linhas a mais (R$ 300.980,52,
+  3,2%): 97% delas são títulos com vencimento fora da janela do relatório (152 linhas / R$ 252.626,61 com o vencimento provisório
+  30/12/2030 do Senior). Detalhe em `Conferencia_Custo_por_Centro_de_Custo_2026-10-18.xlsx`.

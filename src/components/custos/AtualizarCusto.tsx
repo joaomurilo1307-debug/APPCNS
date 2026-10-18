@@ -105,20 +105,20 @@ export default function AtualizarCusto({ estadoInicial, onConcluida }: { estadoI
       <div className="min-w-0 text-right" aria-live="polite">
         {rodando ? (
           <div className="flex flex-col items-end gap-1">
-            <p className="text-xs font-medium text-gray-700">
+            <p className="text-[13px] font-medium text-gray-700">
               <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-sky-500 align-middle" />
               Lendo do Senior… <span className="tabular-nums">{estado.emCurso!.progresso}%</span>
             </p>
             <div className="h-1.5 w-52 overflow-hidden rounded-full bg-gray-200">
               <div className="h-full rounded-full bg-brand transition-all duration-700" style={{ width: `${Math.max(3, estado.emCurso!.progresso)}%` }} />
             </div>
-            <p className="max-w-[18rem] truncate text-[11px] text-gray-400" title={estado.emCurso!.etapa ?? ""}>
+            <p className="max-w-[18rem] truncate text-xs text-gray-400" title={estado.emCurso!.etapa ?? ""}>
               {estado.emCurso!.etapa}
             </p>
           </div>
         ) : (
           <>
-            <p className="text-xs text-gray-600" title={resumo ? `Leitura direta do Senior: ${resumo.titulos ?? "?"} lançamentos pagos · ${resumo.ccusComCusto ?? "?"} centros de custo · ${resumo.duracaoSegundos ?? "?"} s` : undefined}>
+            <p className="text-[13px] text-gray-600" title={resumo ? `Leitura direta do Senior: ${resumo.titulos ?? "?"} lançamentos pagos · ${resumo.ccusComCusto ?? "?"} centros de custo · ${resumo.duracaoSegundos ?? "?"} s` : undefined}>
               <span className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${corPonto}`} />
               {ok ? (
                 <>
@@ -128,7 +128,7 @@ export default function AtualizarCusto({ estadoInicial, onConcluida }: { estadoI
                 "Ainda não atualizado pelo Senior"
               )}
             </p>
-            <p className="text-[11px] text-gray-400">
+            <p className="text-xs text-gray-400">
               {ok ? haQuantoTempo(ok.finalizadoEm) : "clique em Atualizar"}
               {comErro && <span className="ml-1 font-medium text-red-600">· a última tentativa falhou</span>}
             </p>

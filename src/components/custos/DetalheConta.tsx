@@ -52,7 +52,7 @@ function badgeOc(oc: OcRelacionada | null) {
   const cor =
     oc.situacao === "APR" ? "bg-emerald-100 text-emerald-800" : oc.situacao === "REP" || oc.situacao === "CAN" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800";
   return (
-    <span title={oc.motivo} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${cor}`}>
+    <span title={oc.motivo} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cor}`}>
       OC {oc.numOcp} · {oc.situacaoLabel}
     </span>
   );
@@ -136,10 +136,10 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
         <aside role="dialog" aria-modal="true" aria-label="Lançamentos da conta" className="flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <header className="flex items-start justify-between gap-4 border-b border-gray-100 bg-gradient-to-r from-brand/10 to-transparent px-6 py-4">
             <div className="min-w-0">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Lançamentos · {mesLongo(alvo.competencia.slice(0, 7))}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Lançamentos · {mesLongo(alvo.competencia.slice(0, 7))}</p>
               <h2 className="mt-0.5 flex flex-wrap items-center gap-2 text-lg font-semibold text-gray-900">
                 {alvo.conta}
-                {alvo.reembolsavel && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-800">Reembolsável</span>}
+                {alvo.reembolsavel && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">Reembolsável</span>}
               </h2>
               <p className="truncate text-sm text-gray-500">
                 {alvo.contrato} <span className="text-gray-400">· CCU {alvo.codccu}</span>
@@ -152,15 +152,15 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
 
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-gray-100 px-6 py-3">
             <div>
-              <p className="text-[11px] text-gray-500">Valor da célula</p>
+              <p className="text-xs text-gray-500">Valor da célula</p>
               <p className="text-xl font-semibold tabular-nums text-gray-900">{moeda(alvo.valor)}</p>
             </div>
             <div>
-              <p className="text-[11px] text-gray-500">Lançamentos</p>
+              <p className="text-xs text-gray-500">Lançamentos</p>
               <p className="text-xl font-semibold tabular-nums text-gray-900">{dados === "carregando" || dados === "erro" ? "—" : dados.itens.length}</p>
             </div>
             {bate !== null && (
-              <p className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${bate ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+              <p className={`rounded-full px-2.5 py-1 text-xs font-medium ${bate ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
                 {bate ? "✓ a soma dos lançamentos fecha com a célula" : `✗ soma dos lançamentos ${moeda(somaItens)} ≠ célula — atualize os dados`}
               </p>
             )}
@@ -185,7 +185,7 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
             {dados === "erro" && <p className="py-10 text-center text-sm text-red-600">Não foi possível carregar os lançamentos. Tente atualizar a tela.</p>}
             {dados !== "carregando" && dados !== "erro" && (
               <div className="overflow-x-auto rounded-xl border border-gray-100">
-                <table className="w-full text-xs">
+                <table className="w-full text-[13px]">
                   <thead className="bg-gray-50 text-left uppercase text-gray-400">
                     <tr>
                       <th className="px-3 py-2">Título</th>
@@ -209,7 +209,7 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
                             {l.lancadoPorNome || "—"}
                           </button>
                           {l.entradaManual !== null && (
-                            <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${l.entradaManual ? "bg-gray-100 text-gray-500" : "bg-sky-100 text-sky-700"}`}>{l.entradaManual ? "manual" : "NF"}</span>
+                            <span className={`ml-1 rounded-full px-1.5 py-0.5 text-xs font-medium ${l.entradaManual ? "bg-gray-100 text-gray-500" : "bg-sky-100 text-sky-700"}`}>{l.entradaManual ? "manual" : "NF"}</span>
                           )}
                         </td>
                         <td className="max-w-[220px] truncate px-3 py-1.5" title={l.fornecedorNome}>
@@ -223,7 +223,7 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
                               {badgeOc(l.ocRelacionada)}
                             </button>
                           ) : (
-                            <span title={l.motivoSemOC ?? "Sem motivo de vínculo informado."} className="cursor-help rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500 underline decoration-dotted underline-offset-2">
+                            <span title={l.motivoSemOC ?? "Sem motivo de vínculo informado."} className="cursor-help rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 underline decoration-dotted underline-offset-2">
                               Sem OC
                             </span>
                           )}

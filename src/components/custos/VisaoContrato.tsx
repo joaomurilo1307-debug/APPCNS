@@ -3,14 +3,18 @@
 // Visao de UM centro de custo: KPIs, evolucao mensal por grupo, composicao do periodo por conta e a tabela plano de contas x mes
 // (mapa de calor, agrupada por tipo, com subtotais). Clicar numa celula abre os lancamentos (titulo a titulo, com OC).
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   COR_DEMAIS,
   PALETA_GRUPOS,
   agruparPorGrupo,
   linhasDoContrato,
+  maioresMovimentos,
+  mediaDoPeriodo,
+  passosDaPonte,
   soma,
   variacao,
+  variacoesMensais,
   type ContratoCusto,
   type Filtros,
 } from "@/lib/custos/agregacao";
@@ -18,6 +22,7 @@ import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/cust
 import { baixarCsv } from "@/lib/custos/csv";
 import type { AlvoDetalhe } from "./DetalheConta";
 import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, estiloCelulaCalor, type SerieEmpilhada } from "./graficos";
+import { BarrasVariacao, Cascata, LegendaLinha, LinhaAcompanhamento, TabelaMovimentos } from "./acompanhamento";
 import { Cartao, Kpi, SeloInativa, SeloReembolsavel, Variacao, VazioPeriodo } from "./ui";
 
 export default function VisaoContrato({
@@ -42,6 +47,34 @@ export default function VisaoContrato({
   const [agrupar, setAgrupar] = useState(true);
   const [fechados, setFechados] = useState<Set<string>>(new Set());
   const [ocultos, setOcultos] = useState<Set<string>>(new Set());
+  const [modo, setModo] = useState<"mensal" | "acumulado">("mensal");
+  const [mostrarMedia, setMostrarMedia] = useState(true);
+  const [mostrarMM3, setMostrarMM3] = useState(true);
+  const [metaTexto, setMetaTexto] = useState("");
+  const [baixando, setBaixando] = useState(false);
+
+  // meta mensal do coordenador: fica guardada neste navegador, por centro de custo
+  useEffect(() => {
+    try {
+      setMetaTexto(localStorage.getItem(`custo_meta_${contrato.codccu}`) ?? "");
+    } catch {
+      setMetaTexto("");
+    }
+  }, [contrato.codccu]);
+  const meta = (() => {
+    const n = Number(metaTexto.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })();
+  function mudarMeta(v: string) {
+    const limpo = v.replace(/[^\d.,]/g, "");
+    setMetaTexto(limpo);
+    try {
+      if (limpo) localStorage.setItem(`custo_meta_${contrato.codccu}`, limpo);
+      else localStorage.removeItem(`custo_meta_${contrato.codccu}`);
+    } catch {
+      /* sem armazenamento: a meta vale so' nesta sessao */
+    }
+  }
 
   const idxDe = Math.max(0, mesesAsc.indexOf(filtros.de));
   const idxAte = Math.max(idxDe, mesesAsc.indexOf(filtros.ate));
@@ -79,6 +112,34 @@ export default function VisaoContrato({
   const maiorConta = linhas[0];
   const mesesComCusto = totaisMes.filter((t) => t !== 0).length;
 
+  // acompanhamento: media dos meses fechados, variacao mensal, meses acima da meta
+  const mediaFechada = mediaDoPeriodo(totaisMes, refParcial);
+  const variacoes = variacoesMensais(totaisMes, refParcial);
+  const mesesFechados = refParcial ? totaisMes.slice(0, -1) : totaisMes;
+  const acimaDaMeta = meta ? mesesFechados.filter((v) => v > meta).length : 0;
+
+  // ponte: o mes de referencia contra o anterior (se o mes esta em andamento, usa o ultimo mes FECHADO)
+  const iPonte = refParcial ? idxAte - 1 : idxAte;
+  const temPonte = iPonte > 0 && iPonte - 1 >= 0;
+  const ponte = useMemo(() => {
+    if (!temPonte) return null;
+    const porGrupo = new Map<string, { nome: string; anterior: number; atual: number }>();
+    for (const l of linhas) {
+      const g = porGrupo.get(l.conta.grupoNome) ?? { nome: l.conta.grupoNome, anterior: 0, atual: 0 };
+      g.anterior += l.serie[iPonte - 1] ?? 0;
+      g.atual += l.serie[iPonte] ?? 0;
+      porGrupo.set(l.conta.grupoNome, g);
+    }
+    const grupos2 = Array.from(porGrupo.values());
+    const contas = linhas.map((l) => ({ nome: l.conta.contaFinanceira, anterior: l.serie[iPonte - 1] ?? 0, atual: l.serie[iPonte] ?? 0 }));
+    return {
+      inicio: soma(grupos2.map((g) => g.anterior)),
+      fim: soma(grupos2.map((g) => g.atual)),
+      passos: passosDaPonte(grupos2, 5),
+      movimentos: maioresMovimentos(contas, 6),
+    };
+  }, [linhas, iPonte, temPonte]);
+
   // grafico: por grupo (cor segue o grupo no sistema todo)
   const { series, legenda } = useMemo(() => {
     const lista = grupos.map((g) => ({ codigo: g.grupoCodigo, nome: g.grupoNome, valores: g.serie, total: g.total, cor: cores.get(g.grupoCodigo) ?? COR_DEMAIS }));
@@ -102,6 +163,25 @@ export default function VisaoContrato({
     baixarCsv(`custo_${contrato.codccu}_${contrato.nome.replace(/[^\w]+/g, "_").slice(0, 40)}_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
   }
 
+  async function exportarLancamentos() {
+    setBaixando(true);
+    try {
+      const qs = new URLSearchParams({ codccu: contrato.codccu, de: filtros.de, ate: filtros.ate });
+      const res = await fetch(`/api/custos-conta/lancamentos?${qs.toString()}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao buscar os lançamentos");
+      const d = await res.json();
+      const br = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "");
+      const cab = ["Centro de Custo", "Descrição Centro de Custo", "Competência", "Conta Financeira", "Descrição Conta Financeira", "Número do Título", "Código do Fornecedor", "Descrição do Fornecedor", "Data de Entrada", "Data de Vencimento", "Valor Rateio"];
+      const corpo = (d.linhas as any[]).map((l) => [l.codccu, l.centroDeCusto, l.competencia.split("-").reverse().join("/"), l.contaCodigo ?? "", l.contaFinanceira, l.numTit, l.codFor, l.fornecedor ?? "", br(l.dataEntrada), br(l.dataVencimento), l.valorRateado]);
+      corpo.push(["", "TOTAL", "", "", "", "", "", "", "", "", d.total]);
+      baixarCsv(`lancamentos_${contrato.codccu}_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
+    } catch (e: any) {
+      alert(e?.message || "Não foi possível exportar os lançamentos.");
+    } finally {
+      setBaixando(false);
+    }
+  }
+
   function abrir(conta: string, mesIdx: number, valor: number, reembolsavel: boolean) {
     onAbrirDetalhe({ codccu: contrato.codccu, contrato: contrato.nome, conta, competencia: `${mesesP[mesIdx]}-01T00:00:00.000Z`, valor, reembolsavel });
   }
@@ -114,7 +194,7 @@ export default function VisaoContrato({
       return n;
     });
 
-  const celula = (v: number, max: number, mesIdx: number, conta: string, reembolsavel: boolean, tamanho = "text-xs") =>
+  const celula = (v: number, max: number, mesIdx: number, conta: string, reembolsavel: boolean, tamanho = "text-[13px]") =>
     v ? (
       <button
         type="button"
@@ -126,7 +206,7 @@ export default function VisaoContrato({
         {moedaCompacta(v).replace("R$ ", "")}
       </button>
     ) : (
-      <span className="block px-1.5 py-1 text-right text-xs text-gray-300">–</span>
+      <span className="block px-1.5 py-1 text-right text-[13px] text-gray-300">–</span>
     );
 
   return (
@@ -136,7 +216,7 @@ export default function VisaoContrato({
           <button type="button" onClick={onVoltar} className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-brand hover:text-brand-dark">
             ← Todos os centros de custo
           </button>
-          <h2 className="truncate text-2xl font-semibold tracking-tight text-gray-900">{contrato.nome}</h2>
+          <h2 className="truncate text-3xl font-semibold tracking-tight text-gray-900">{contrato.nome}</h2>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
             <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">CCU {contrato.codccu}</span>
             {contrato.teamName ? <span>Equipe {contrato.teamName}</span> : <span className="text-amber-700">sem equipe vinculada</span>}
@@ -154,14 +234,75 @@ export default function VisaoContrato({
             <Kpi
               rotulo={`Mês de referência · ${mesCurto(filtros.ate)}`}
               valor={moedaCompacta(totalRef)}
-              detalhe={refParcial ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">em andamento · só o já pago</span> : <Variacao v={variacao(totalRef, totalAnt)} sufixo="vs mês anterior" />}
+              detalhe={refParcial ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">em andamento · só o já pago</span> : <Variacao v={variacao(totalRef, totalAnt)} sufixo="vs mês anterior" />}
             />
             <Kpi rotulo="Média mensal" valor={moedaCompacta(mesesP.length ? totalP / mesesP.length : 0)} detalhe={`em ${mesesP.length} ${mesesP.length === 1 ? "mês" : "meses"} do período`} />
             <Kpi rotulo="Maior conta" valor={<span className="block truncate text-lg">{maiorConta.conta.contaFinanceira}</span>} detalhe={`${moedaCompacta(maiorConta.totalP)} · ${percentual(maiorConta.totalP / totalP)} do centro de custo`} />
             <Kpi rotulo="Reembolsável" valor={moedaCompacta(reemb)} detalhe={reemb ? `conta antiga ${moedaCompacta(reembAntiga)} · contas R ${moedaCompacta(reembR)}` : "nenhum no período"} />
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <Cartao
+            titulo="Acompanhamento mensal"
+            subtitulo={
+              <>
+                {modo === "acumulado" ? "Quanto o centro de custo já acumulou ao longo do período" : "Linha do custo de cada mês contra a média e a tendência"}
+                {refParcial && <> · <span className="font-medium">* mês em andamento (só o já pago)</span></>}
+              </>
+            }
+            acao={
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-gray-600">
+                <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group">
+                  {(["mensal", "acumulado"] as const).map((k) => (
+                    <button key={k} type="button" onClick={() => setModo(k)} className={`px-3 py-1.5 text-[13px] font-medium ${modo === k ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+                      {k === "mensal" ? "Mensal" : "Acumulado"}
+                    </button>
+                  ))}
+                </div>
+                {modo === "mensal" && (
+                  <>
+                    <label className="flex cursor-pointer items-center gap-1.5">
+                      <input type="checkbox" checked={mostrarMedia} onChange={(e) => setMostrarMedia(e.target.checked)} className="h-4 w-4 accent-[#00A99D]" /> Média
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-1.5">
+                      <input type="checkbox" checked={mostrarMM3} onChange={(e) => setMostrarMM3(e.target.checked)} className="h-4 w-4 accent-[#00A99D]" /> Média móvel 3 meses
+                    </label>
+                  </>
+                )}
+                <label className="flex items-center gap-1.5">
+                  Meta mensal R$
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={metaTexto}
+                    onChange={(e) => mudarMeta(e.target.value)}
+                    placeholder="opcional"
+                    className="w-28 rounded-lg border border-gray-200 px-2 py-1 text-[13px] tabular-nums focus:border-brand focus:outline-none"
+                    aria-label="Meta mensal em reais"
+                  />
+                </label>
+              </div>
+            }
+          >
+            <div className="mb-3">
+              <LegendaLinha modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} temMeta={!!meta} />
+            </div>
+            <LinhaAcompanhamento meses={mesesP} valores={totaisMes} mesParcial={refParcial ? mesCorrente : undefined} mesDestaque={filtros.ate} modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} meta={meta} />
+            {meta && (
+              <p className={`mt-1 text-[13px] font-medium ${acimaDaMeta ? "text-red-700" : "text-emerald-700"}`}>
+                {acimaDaMeta ? `▲ ${acimaDaMeta} de ${mesesFechados.length} meses fechados ficaram acima da meta de ${moeda(meta)}` : `✓ Nenhum dos ${mesesFechados.length} meses fechados passou da meta de ${moeda(meta)}`}
+              </p>
+            )}
+            {modo === "mensal" && (
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                <h3 className="mb-1 text-sm font-semibold text-gray-800">
+                  Variação contra o mês anterior <span className="font-normal text-gray-500">· média dos meses fechados {moedaCompacta(mediaFechada)}</span>
+                </h3>
+                <BarrasVariacao meses={mesesP} variacoes={variacoes} />
+              </div>
+            )}
+          </Cartao>
+
+          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
             <Cartao
               titulo="Evolução mensal por tipo de custo"
               subtitulo={
@@ -208,6 +349,23 @@ export default function VisaoContrato({
             </Cartao>
           </div>
 
+          {ponte && (
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+              <Cartao
+                titulo={`O que mudou: ${mesCurto(mesesAsc[iPonte - 1])} → ${mesCurto(mesesAsc[iPonte])}`}
+                subtitulo={`Ponte do custo por tipo de custo${refParcial ? " · compara os dois últimos meses fechados" : ""} · vermelho = custo subiu, verde = custo caiu`}
+              >
+                <Cascata rotuloInicio={mesCurto(mesesAsc[iPonte - 1])} valorInicio={ponte.inicio} rotuloFim={mesCurto(mesesAsc[iPonte])} valorFim={ponte.fim} passos={ponte.passos} />
+              </Cartao>
+              <Cartao titulo="Maiores variações por conta" subtitulo={`${mesLongo(mesesAsc[iPonte - 1])} contra ${mesLongo(mesesAsc[iPonte])}`}>
+                <div className="space-y-5">
+                  <TabelaMovimentos titulo="Maiores altas" itens={ponte.movimentos.altas} tom="alta" rotuloAnterior={mesCurto(mesesAsc[iPonte - 1])} rotuloAtual={mesCurto(mesesAsc[iPonte])} />
+                  <TabelaMovimentos titulo="Maiores quedas" itens={ponte.movimentos.quedas} tom="queda" rotuloAnterior={mesCurto(mesesAsc[iPonte - 1])} rotuloAtual={mesCurto(mesesAsc[iPonte])} />
+                </div>
+              </Cartao>
+            </div>
+          )}
+
           <Cartao
             titulo="Plano de contas × mês"
             subtitulo="Cada célula é clicável: abre os lançamentos (título a título, com a OC). A cor mostra os meses mais pesados de cada conta."
@@ -217,16 +375,25 @@ export default function VisaoContrato({
                   <input type="checkbox" checked={agrupar} onChange={(e) => setAgrupar(e.target.checked)} className="h-3.5 w-3.5 accent-[#00A99D]" />
                   Agrupar por tipo
                 </label>
-                <button type="button" onClick={exportar} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50">
-                  Exportar CSV
+                <button type="button" onClick={exportar} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-gray-600 transition hover:bg-gray-50">
+                  Exportar quadro (CSV)
+                </button>
+                <button
+                  type="button"
+                  onClick={exportarLancamentos}
+                  disabled={baixando}
+                  title="Todos os lançamentos do período, título a título, no layout do Rel114 do Senior — para conferir com a planilha da área"
+                  className="rounded-lg border border-brand px-3 py-1.5 text-[13px] font-medium text-brand transition hover:bg-brand-light disabled:opacity-60"
+                >
+                  {baixando ? "Gerando…" : "Exportar lançamentos (Rel114)"}
                 </button>
               </div>
             }
           >
             <div className="-mx-5 overflow-x-auto px-5">
-              <table className="w-full border-separate border-spacing-0 text-sm">
+              <table className="w-full border-separate border-spacing-0 text-[15px]">
                 <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
+                  <tr className="text-left text-[13px] uppercase tracking-wide text-gray-500">
                     <th className="sticky left-0 z-10 min-w-[17rem] border-b border-gray-200 bg-white py-2 pr-3 font-semibold">Conta financeira</th>
                     {mesesP.map((m) => (
                       <th key={m} className="border-b border-gray-200 px-1.5 py-2 text-right font-semibold">
@@ -249,19 +416,19 @@ export default function VisaoContrato({
                             <tr className="cursor-pointer bg-gray-50/80" onClick={() => alternarGrupo(g.grupoCodigo)}>
                               <td className="sticky left-0 z-10 border-b border-gray-100 bg-gray-50 py-2 pr-3">
                                 <span className="flex items-center gap-2 font-semibold text-gray-800">
-                                  <span className="w-3 text-[10px] text-gray-400">{fechado ? "▶" : "▼"}</span>
+                                  <span className="w-3 text-xs text-gray-400">{fechado ? "▶" : "▼"}</span>
                                   <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: cor }} />
                                   {g.grupoNome}
-                                  <span className="text-[11px] font-normal text-gray-400">{g.linhas.length} {g.linhas.length === 1 ? "conta" : "contas"}</span>
+                                  <span className="text-xs font-normal text-gray-400">{g.linhas.length} {g.linhas.length === 1 ? "conta" : "contas"}</span>
                                 </span>
                               </td>
                               {g.serie.map((v, i) => (
-                                <td key={i} className="border-b border-gray-100 px-1.5 py-2 text-right text-xs font-semibold tabular-nums text-gray-700">
+                                <td key={i} className="border-b border-gray-100 px-1.5 py-2 text-right text-[13px] font-semibold tabular-nums text-gray-700">
                                   {v ? moedaCompacta(v).replace("R$ ", "") : <span className="font-normal text-gray-300">–</span>}
                                 </td>
                               ))}
                               <td className="border-b border-gray-100 px-3 py-2 text-right font-semibold tabular-nums text-gray-900">{moeda(g.total)}</td>
-                              <td className="border-b border-gray-100 px-3 py-2 text-right text-xs tabular-nums text-gray-500">{percentual(totalP ? g.total / totalP : 0, 1)}</td>
+                              <td className="border-b border-gray-100 px-3 py-2 text-right text-[13px] tabular-nums text-gray-500">{percentual(totalP ? g.total / totalP : 0, 1)}</td>
                             </tr>
                             {!fechado &&
                               g.linhas.map((l) => {
@@ -283,7 +450,7 @@ export default function VisaoContrato({
                                       </td>
                                     ))}
                                     <td className="border-b border-gray-100 px-3 py-1 text-right tabular-nums text-gray-800">{moeda(l.total)}</td>
-                                    <td className="border-b border-gray-100 px-3 py-1 text-right text-xs tabular-nums text-gray-400">{percentual(totalP ? l.total / totalP : 0, 1)}</td>
+                                    <td className="border-b border-gray-100 px-3 py-1 text-right text-[13px] tabular-nums text-gray-500">{percentual(totalP ? l.total / totalP : 0, 1)}</td>
                                   </tr>
                                 );
                               })}
@@ -309,7 +476,7 @@ export default function VisaoContrato({
                               </td>
                             ))}
                             <td className="border-b border-gray-100 px-3 py-1 text-right tabular-nums text-gray-800">{moeda(l.totalP)}</td>
-                            <td className="border-b border-gray-100 px-3 py-1 text-right text-xs tabular-nums text-gray-400">{percentual(totalP ? l.totalP / totalP : 0, 1)}</td>
+                            <td className="border-b border-gray-100 px-3 py-1 text-right text-[13px] tabular-nums text-gray-500">{percentual(totalP ? l.totalP / totalP : 0, 1)}</td>
                           </tr>
                         );
                       })}
@@ -318,7 +485,7 @@ export default function VisaoContrato({
                   <tr className="font-semibold">
                     <td className="sticky left-0 z-10 bg-gray-100 py-2.5 pr-3 text-gray-800">Total do centro de custo</td>
                     {totaisMes.map((v, i) => (
-                      <td key={i} className="bg-gray-100 px-1.5 py-2.5 text-right text-xs tabular-nums text-gray-800">
+                      <td key={i} className="bg-gray-100 px-1.5 py-2.5 text-right text-[13px] tabular-nums text-gray-800">
                         {v ? moedaCompacta(v).replace("R$ ", "") : "–"}
                       </td>
                     ))}

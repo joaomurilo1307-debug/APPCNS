@@ -45,12 +45,12 @@ export default function FiltrosCusto({
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
           <div>
-            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-gray-500">Período</label>
+            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Período</label>
             <div className="flex items-center gap-1.5">
               <select
                 value={filtros.de}
                 onChange={(e) => onMudar({ de: e.target.value, ate: e.target.value > filtros.ate ? e.target.value : filtros.ate })}
-                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:border-brand focus:outline-none"
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] focus:border-brand focus:outline-none"
                 aria-label="Mês inicial"
               >
                 {mesesAsc.map((m) => (
@@ -63,7 +63,7 @@ export default function FiltrosCusto({
               <select
                 value={filtros.ate}
                 onChange={(e) => onMudar({ ate: e.target.value, de: e.target.value < filtros.de ? e.target.value : filtros.de })}
-                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:border-brand focus:outline-none"
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] focus:border-brand focus:outline-none"
                 aria-label="Mês final"
               >
                 {mesesAsc.map((m) => (
@@ -83,7 +83,7 @@ export default function FiltrosCusto({
                   key={a.nome}
                   type="button"
                   onClick={() => onMudar({ de: a.de, ate: a.ate })}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${ativo ? "border-brand bg-brand text-white" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"}`}
+                  className={`rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition ${ativo ? "border-brand bg-brand text-white" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"}`}
                 >
                   {a.nome}
                 </button>
@@ -93,27 +93,27 @@ export default function FiltrosCusto({
         </div>
 
         <div>
-          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-gray-500">Buscar</label>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Buscar</label>
           <input
             type="search"
             value={busca}
             onChange={(e) => onBusca(e.target.value)}
             placeholder={placeholderBusca}
-            className="w-60 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+            className="w-72 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] focus:border-brand focus:outline-none"
           />
         </div>
       </div>
 
       <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-3 border-t border-gray-100 pt-3">
         <div>
-          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-gray-500">Tipo de custo</label>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Tipo de custo</label>
           <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group">
             {tipos.map((t) => (
               <button
                 key={t.valor}
                 type="button"
                 onClick={() => onMudar({ tipo: t.valor })}
-                className={`px-3 py-1.5 text-xs font-medium transition ${filtros.tipo === t.valor ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                className={`px-3.5 py-1.5 text-[13px] font-medium transition ${filtros.tipo === t.valor ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
               >
                 {t.nome}
               </button>
@@ -122,8 +122,8 @@ export default function FiltrosCusto({
         </div>
 
         <div>
-          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-gray-500">Grupo de contas</label>
-          <select value={filtros.grupo} onChange={(e) => onMudar({ grupo: e.target.value })} className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:border-brand focus:outline-none">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Grupo de contas</label>
+          <select value={filtros.grupo} onChange={(e) => onMudar({ grupo: e.target.value })} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] focus:border-brand focus:outline-none">
             <option value="todos">Todos os grupos</option>
             {grupos.map((g) => (
               <option key={g.codigo} value={g.codigo}>

@@ -120,8 +120,8 @@ function CustoPorContrato() {
     <div className="mx-auto max-w-[1400px]">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-gray-900">Custo por centro de custo</h1>
-          <p className="mt-0.5 max-w-2xl text-sm text-gray-500">
+          <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Custo por centro de custo</h1>
+          <p className="mt-1 max-w-3xl text-[15px] text-gray-500">
             Quanto cada centro de custo custa por mês e em quê, direto do Senior. Você vê os centros de custo das equipes de que participa.
           </p>
         </div>
@@ -159,9 +159,9 @@ function CustoPorContrato() {
             <VisaoGeral contratos={dados.contratos} filtros={filtros} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onAbrirContrato={abrirContrato} />
           )}
 
-          <details className="mt-8 rounded-2xl border border-gray-100 bg-white/80 p-4 text-sm text-gray-600">
+          <details className="mt-8 rounded-2xl border border-gray-100 bg-white/80 p-5 text-[15px] text-gray-600">
             <summary className="cursor-pointer text-sm font-medium text-gray-700">Como este custo é calculado</summary>
-            <div className="mt-3 space-y-2 text-[13px] leading-relaxed">
+            <div className="mt-3 space-y-2 text-sm leading-relaxed">
               <p>
                 O valor de cada mês é a soma do <b>rateio dos títulos já pagos (baixados)</b> no Senior, por centro de custo, conta financeira e <b>mês de competência</b> — a mesma regra do relatório do Rito de Gestão (conferida
                 centro de custo a centro de custo, ao centavo). Por isso o mês em andamento mostra só o que já foi pago até agora e cresce a cada atualização.
@@ -171,7 +171,7 @@ function CustoPorContrato() {
                 contas “R - …” (reembolsáveis) que espelham essas mesmas contas.
               </p>
               <p>
-                Contas <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">R</span> são reembolsáveis: o novo plano “R - …” do Senior e a conta “Despesas Reembolsáveis”. O filtro “Tipo de custo” separa o custo próprio do reembolsável.
+                Contas <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-800">R</span> são reembolsáveis: o novo plano “R - …” do Senior e a conta “Despesas Reembolsáveis”. O filtro “Tipo de custo” separa o custo próprio do reembolsável.
               </p>
               {mesCorrente && <p className="text-xs text-gray-400">Dados de {mesLongo(primeiro)} até {mesLongo(mesCorrente)}.</p>}
             </div>

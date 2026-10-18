@@ -92,7 +92,7 @@ export function ColunasEmpilhadas({
         {marcas.map((v) => (
           <g key={v}>
             <line x1={m.l} x2={w - m.r} y1={y(v)} y2={y(v)} stroke={v === 0 ? "#cbd5e1" : "#eef1f4"} strokeWidth={1} />
-            <text x={m.l - 8} y={y(v) + 3.5} textAnchor="end" fontSize={10.5} fill="#6b7280">
+            <text x={m.l - 8} y={y(v) + 3.5} textAnchor="end" fontSize={12} fill="#6b7280">
               {moedaEixo(v)}
             </text>
           </g>
@@ -127,12 +127,12 @@ export function ColunasEmpilhadas({
                 );
               })}
               {(passoRotulo === 1 || i % passoRotulo === 0 || ehDestaque) && totais[i] > 0 && (
-                <text x={xCentro(i)} y={y(totais[i]) - 7} textAnchor="middle" fontSize={10.5} fontWeight={ehDestaque ? 700 : 500} fill={ehDestaque ? "#00635b" : "#4b5563"}>
+                <text x={xCentro(i)} y={y(totais[i]) - 7} textAnchor="middle" fontSize={12} fontWeight={ehDestaque ? 700 : 500} fill={ehDestaque ? "#00635b" : "#4b5563"}>
                   {moedaCompacta(totais[i]).replace("R$ ", "")}
                 </text>
               )}
               {(i % passoRotulo === 0 || ehDestaque) && (
-                <text x={xCentro(i)} y={h - 10} textAnchor="middle" fontSize={11} fontWeight={ehDestaque ? 700 : 500} fill={ehDestaque ? "#00635b" : "#6b7280"}>
+                <text x={xCentro(i)} y={h - 10} textAnchor="middle" fontSize={12.5} fontWeight={ehDestaque ? 700 : 500} fill={ehDestaque ? "#00635b" : "#6b7280"}>
                   {mesCurto(mes)}
                   {parcial ? "*" : ""}
                 </text>
@@ -155,12 +155,12 @@ export function ColunasEmpilhadas({
 
       {tip && hover !== null && (
         <div
-          className="pointer-events-none absolute z-10 w-60 rounded-xl border border-gray-200 bg-white/95 p-3 text-xs shadow-elevated backdrop-blur"
+          className="pointer-events-none absolute z-10 w-64 rounded-xl border border-gray-200 bg-white/95 p-3 text-[13px] shadow-elevated backdrop-blur"
           style={{ left: Math.min(Math.max(8, xCentro(hover) - 120), w - 248), top: 4 }}
         >
           <div className="mb-1.5 flex items-baseline justify-between gap-2">
             <span className="font-semibold text-gray-800">{maiusculaInicial(mesLongo(tip.mes))}</span>
-            {tip.mes === mesParcial && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">em andamento</span>}
+            {tip.mes === mesParcial && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">em andamento</span>}
           </div>
           <div className="mb-1.5 flex items-baseline justify-between border-b border-gray-100 pb-1.5">
             <span className="text-gray-500">Total</span>
@@ -203,7 +203,7 @@ export function LegendaGrupos({
             type="button"
             onClick={() => onAlternar(it.chave)}
             title={off ? "Mostrar no gráfico" : "Ocultar do gráfico"}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition ${
               off ? "border-gray-200 bg-white text-gray-400" : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
             }`}
           >
@@ -220,7 +220,7 @@ export function LegendaGrupos({
 
 export function Sparkline({ valores, cor = "#0e9f94", largura = 84, altura = 24 }: { valores: number[]; cor?: string; largura?: number; altura?: number }) {
   const max = Math.max(...valores, 0);
-  if (valores.length < 2 || max <= 0) return <span className="inline-block text-[11px] text-gray-300">—</span>;
+  if (valores.length < 2 || max <= 0) return <span className="inline-block text-xs text-gray-300">—</span>;
   const pad = 3;
   const xs = valores.map((_, i) => pad + (i * (largura - pad * 2)) / (valores.length - 1));
   const ys = valores.map((v) => altura - pad - (v / max) * (altura - pad * 2));
@@ -260,14 +260,14 @@ export function BarrasRanking({
           <>
             <div className="flex items-baseline justify-between gap-3">
               <span className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-[13px] font-medium text-gray-800" title={it.rotulo}>
+                <span className="truncate text-sm font-medium text-gray-800" title={it.rotulo}>
                   {it.rotulo}
                 </span>
                 {it.selo}
               </span>
               <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
-                <span className="text-[13px] font-semibold text-gray-900">{moedaCompacta(it.valor)}</span>
-                <span className="w-10 text-right text-[11px] text-gray-400">{percentual(pct, pct < 0.1 ? 1 : 0)}</span>
+                <span className="text-sm font-semibold text-gray-900">{moedaCompacta(it.valor)}</span>
+                <span className="w-10 text-right text-xs text-gray-400">{percentual(pct, pct < 0.1 ? 1 : 0)}</span>
               </span>
             </div>
             <div className="mt-0.5 flex items-center gap-3">
@@ -276,7 +276,7 @@ export function BarrasRanking({
               </div>
               {it.serie && <Sparkline valores={it.serie} cor={it.cor} largura={72} altura={20} />}
             </div>
-            {it.subrotulo && <p className="truncate text-[11px] leading-4 text-gray-400">{it.subrotulo}</p>}
+            {it.subrotulo && <p className="truncate text-xs leading-4 text-gray-500">{it.subrotulo}</p>}
           </>
         );
         return (

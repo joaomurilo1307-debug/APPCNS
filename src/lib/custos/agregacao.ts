@@ -145,3 +145,62 @@ export function escalaBonita(max: number, ticks = 4): { topo: number; marcas: nu
   }
   return { topo: marcas[marcas.length - 1], marcas };
 }
+
+// ---------------------------------------------------------------- acompanhamento (linhas, variacao, ponte)
+
+/** Valores acumulados mes a mes. */
+export function acumulado(valores: ReadonlyArray<number>): number[] {
+  let s = 0;
+  return valores.map((v) => (s += v));
+}
+
+/** Media dos meses FECHADOS (o mes em andamento fica de fora para nao puxar a media para baixo). */
+export function mediaDoPeriodo(valores: ReadonlyArray<number>, ignorarUltimo: boolean): number {
+  const base = ignorarUltimo ? valores.slice(0, -1) : valores;
+  return base.length ? soma(base) / base.length : 0;
+}
+
+/** Media movel de `janela` meses; null onde nao ha meses suficientes ou no mes em andamento (quando `ignorarUltimo`). */
+export function mediaMovel(valores: ReadonlyArray<number>, janela: number, ignorarUltimo: boolean): (number | null)[] {
+  return valores.map((_, i) => {
+    if (ignorarUltimo && i === valores.length - 1) return null;
+    if (i < janela - 1) return null;
+    return soma(valores.slice(i - janela + 1, i + 1)) / janela;
+  });
+}
+
+/** Variacao de cada mes contra o anterior (null no primeiro mes, ou quando o anterior e' zero, ou no mes em andamento). */
+export function variacoesMensais(valores: ReadonlyArray<number>, ignorarUltimo: boolean): (number | null)[] {
+  return valores.map((v, i) => {
+    if (i === 0) return null;
+    if (ignorarUltimo && i === valores.length - 1) return null;
+    return variacao(v, valores[i - 1]);
+  });
+}
+
+export type PassoPonte = { nome: string; delta: number };
+
+/**
+ * Ponte (cascata) entre dois meses: variacao de cada item (grupo/conta/centro) do mes anterior para o mes de referencia.
+ * Mostra os `n` maiores movimentos (em modulo) e junta o resto em "Demais".
+ */
+export function passosDaPonte(itens: ReadonlyArray<{ nome: string; anterior: number; atual: number }>, n = 5): PassoPonte[] {
+  const deltas = itens.map((i) => ({ nome: i.nome, delta: i.atual - i.anterior })).filter((d) => Math.abs(d.delta) >= 0.005);
+  deltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const topo = deltas.slice(0, n);
+  const resto = soma(deltas.slice(n).map((d) => d.delta));
+  return Math.abs(resto) >= 0.005 ? [...topo, { nome: "Demais", delta: resto }] : topo;
+}
+
+export type Movimento = { nome: string; anterior: number; atual: number; delta: number; pct: number | null };
+
+/** Maiores altas e maiores quedas entre dois meses. */
+export function maioresMovimentos(itens: ReadonlyArray<{ nome: string; anterior: number; atual: number }>, n = 6): { altas: Movimento[]; quedas: Movimento[] } {
+  const todos: Movimento[] = itens
+    .map((i) => ({ ...i, delta: i.atual - i.anterior, pct: variacao(i.atual, i.anterior) }))
+    .filter((m) => Math.abs(m.delta) >= 0.005);
+  return {
+    altas: todos.filter((m) => m.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, n),
+    quedas: todos.filter((m) => m.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, n),
+  };
+}

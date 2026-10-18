@@ -149,3 +149,33 @@ test("cores por grupo: o grupo das contas R (reembolsaveis novos) sempre ganha c
   assert.ok(PALETA_GRUPOS.includes(cores.get("reembR") as any));
   assert.equal(new Set([...cores.values()].filter((c) => c !== COR_DEMAIS)).size, PALETA_GRUPOS.length, "cada cor da paleta so' em um grupo");
 });
+
+import { acumulado, maioresMovimentos, mediaDoPeriodo, mediaMovel, passosDaPonte, variacoesMensais } from "../src/lib/custos/agregacao";
+
+test("acompanhamento: acumulado, media (sem o mes em andamento), media movel e variacao mensal", () => {
+  const v = [100, 200, 300, 40];
+  assert.deepEqual(acumulado(v), [100, 300, 600, 640]);
+  assert.equal(mediaDoPeriodo(v, true), 200); // o mes em andamento (40) fica de fora
+  assert.equal(mediaDoPeriodo(v, false), 160);
+  assert.deepEqual(mediaMovel(v, 3, true), [null, null, 200, null]);
+  assert.deepEqual(mediaMovel(v, 3, false), [null, null, 200, 180]);
+  assert.deepEqual(variacoesMensais(v, true), [null, 1, 0.5, null]);
+  assert.deepEqual(variacoesMensais([0, 50], false), [null, null]); // base zero nao inventa percentual
+});
+
+test("ponte: maiores movimentos + 'Demais'; deltas somam a diferenca entre os meses", () => {
+  const itens = [
+    { nome: "Pessoal", anterior: 100, atual: 160 },
+    { nome: "Veículos", anterior: 80, atual: 50 },
+    { nome: "TI", anterior: 10, atual: 12 },
+    { nome: "Admin", anterior: 5, atual: 4 },
+    { nome: "Igual", anterior: 7, atual: 7 },
+  ];
+  const p = passosDaPonte(itens, 2);
+  assert.deepEqual(p.map((x) => x.nome), ["Pessoal", "Veículos", "Demais"]);
+  assert.equal(Math.round(p.reduce((s, x) => s + x.delta, 0) * 100) / 100, 31); // (160+50+12+4+7) - (100+80+10+5+7)
+  const m = maioresMovimentos(itens, 2);
+  assert.deepEqual(m.altas.map((x) => x.nome), ["Pessoal", "TI"]);
+  assert.deepEqual(m.quedas.map((x) => x.nome), ["Veículos", "Admin"]);
+  assert.equal(m.altas[0].pct, 0.6);
+});

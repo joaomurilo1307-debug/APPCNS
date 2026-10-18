@@ -9,15 +9,20 @@ import {
   PALETA_GRUPOS,
   contaPassa,
   linhasDoPortfolio,
+  maioresMovimentos,
+  mediaDoPeriodo,
+  passosDaPonte,
   serieDaConta,
   soma,
   variacao,
+  variacoesMensais,
   type ContratoCusto,
   type Filtros,
 } from "@/lib/custos/agregacao";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 import { baixarCsv } from "@/lib/custos/csv";
 import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, Sparkline, estiloCelulaCalor, type SerieEmpilhada } from "./graficos";
+import { BarrasVariacao, Cascata, LegendaLinha, LinhaAcompanhamento, TabelaMovimentos } from "./acompanhamento";
 import { Cartao, Kpi, Variacao, VazioPeriodo } from "./ui";
 
 type Ordem = "total" | "nome" | "ultimo" | "variacao";
@@ -42,6 +47,10 @@ export default function VisaoGeral({
   const [ocultos, setOcultos] = useState<Set<string>>(new Set());
   const [ordem, setOrdem] = useState<Ordem>("total");
   const [desc, setDesc] = useState(true);
+  const [modo, setModo] = useState<"mensal" | "acumulado">("mensal");
+  const [mostrarMedia, setMostrarMedia] = useState(true);
+  const [mostrarMM3, setMostrarMM3] = useState(true);
+  const [baixando, setBaixando] = useState(false);
 
   const idxDe = Math.max(0, mesesAsc.indexOf(filtros.de));
   const idxAte = Math.max(idxDe, mesesAsc.indexOf(filtros.ate));
@@ -122,6 +131,48 @@ export default function VisaoGeral({
     });
   }, [linhas, ordem, desc]);
 
+  // acompanhamento do total e ponte (mes de referencia contra o anterior; se o mes esta em andamento, os dois ultimos FECHADOS)
+  const totaisMes = mesesP.map((_, i) => soma(linhas.map((l) => l.serieP[i])));
+  const mediaFechada = mediaDoPeriodo(totaisMes, refParcial);
+  const variacoes = variacoesMensais(totaisMes, refParcial);
+  const iPonte = refParcial ? idxAte - 1 : idxAte;
+  const ponte = useMemo(() => {
+    if (iPonte <= 0) return null;
+    const porGrupo = new Map<string, { nome: string; anterior: number; atual: number }>();
+    for (const l of linhas) {
+      for (const conta of l.contrato.contas) {
+        if (!contaPassa(conta, filtros)) continue;
+        const s = serieDaConta(conta, mesesAsc);
+        const g = porGrupo.get(conta.grupoNome) ?? { nome: conta.grupoNome, anterior: 0, atual: 0 };
+        g.anterior += s[iPonte - 1] ?? 0;
+        g.atual += s[iPonte] ?? 0;
+        porGrupo.set(conta.grupoNome, g);
+      }
+    }
+    const grupos2 = Array.from(porGrupo.values());
+    const centros = linhas.map((l) => ({ nome: l.contrato.nome, anterior: l.serie[iPonte - 1] ?? 0, atual: l.serie[iPonte] ?? 0 }));
+    return { inicio: soma(grupos2.map((g) => g.anterior)), fim: soma(grupos2.map((g) => g.atual)), passos: passosDaPonte(grupos2, 5), movimentos: maioresMovimentos(centros, 6) };
+  }, [linhas, filtros, mesesAsc, iPonte]);
+
+  async function exportarLancamentos() {
+    setBaixando(true);
+    try {
+      const qs = new URLSearchParams({ codccu: "todos", de: filtros.de, ate: filtros.ate });
+      const res = await fetch(`/api/custos-conta/lancamentos?${qs.toString()}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao buscar os lançamentos");
+      const d = await res.json();
+      const br = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "");
+      const cab = ["Centro de Custo", "Descrição Centro de Custo", "Competência", "Conta Financeira", "Descrição Conta Financeira", "Número do Título", "Código do Fornecedor", "Descrição do Fornecedor", "Data de Entrada", "Data de Vencimento", "Valor Rateio"];
+      const corpo = (d.linhas as any[]).map((l) => [l.codccu, l.centroDeCusto, l.competencia.split("-").reverse().join("/"), l.contaCodigo ?? "", l.contaFinanceira, l.numTit, l.codFor, l.fornecedor ?? "", br(l.dataEntrada), br(l.dataVencimento), l.valorRateado]);
+      corpo.push(["", "TOTAL", "", "", "", "", "", "", "", "", d.total]);
+      baixarCsv(`lancamentos_todos_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
+    } catch (e: any) {
+      alert(e?.message || "Não foi possível exportar os lançamentos.");
+    } finally {
+      setBaixando(false);
+    }
+  }
+
   function ordenarPor(o: Ordem) {
     if (ordem === o) setDesc(!desc);
     else {
@@ -152,7 +203,7 @@ export default function VisaoGeral({
           valor={moedaCompacta(totalRef)}
           detalhe={
             refParcial ? (
-              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">em andamento · só o que já foi pago</span>
+              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">em andamento · só o que já foi pago</span>
             ) : (
               <Variacao v={variacao(totalRef, totalAnt)} sufixo="vs mês anterior" />
             )
@@ -162,7 +213,51 @@ export default function VisaoGeral({
         <Kpi rotulo="Reembolsável" valor={moedaCompacta(reparto.reemb)} detalhe={`${percentual(pctReemb, pctReemb < 0.1 ? 1 : 0)} do custo · conta antiga ${moedaCompacta(reparto.reembAntiga)} · contas R ${moedaCompacta(reparto.reembR)}`} />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+      <Cartao
+        titulo="Acompanhamento mensal — todos os centros de custo"
+        subtitulo={
+          <>
+            {modo === "acumulado" ? "Quanto já foi acumulado ao longo do período" : "Linha do custo total de cada mês contra a média e a tendência"}
+            {refParcial && <> · <span className="font-medium">* mês em andamento (só o já pago)</span></>}
+          </>
+        }
+        acao={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-gray-600">
+            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group">
+              {(["mensal", "acumulado"] as const).map((k) => (
+                <button key={k} type="button" onClick={() => setModo(k)} className={`px-3 py-1.5 text-[13px] font-medium ${modo === k ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+                  {k === "mensal" ? "Mensal" : "Acumulado"}
+                </button>
+              ))}
+            </div>
+            {modo === "mensal" && (
+              <>
+                <label className="flex cursor-pointer items-center gap-1.5">
+                  <input type="checkbox" checked={mostrarMedia} onChange={(e) => setMostrarMedia(e.target.checked)} className="h-4 w-4 accent-[#00A99D]" /> Média
+                </label>
+                <label className="flex cursor-pointer items-center gap-1.5">
+                  <input type="checkbox" checked={mostrarMM3} onChange={(e) => setMostrarMM3(e.target.checked)} className="h-4 w-4 accent-[#00A99D]" /> Média móvel 3 meses
+                </label>
+              </>
+            )}
+          </div>
+        }
+      >
+        <div className="mb-3">
+          <LegendaLinha modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} temMeta={false} />
+        </div>
+        <LinhaAcompanhamento meses={mesesP} valores={totaisMes} mesParcial={refParcial ? mesCorrente : undefined} mesDestaque={filtros.ate} modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} />
+        {modo === "mensal" && (
+          <div className="mt-4 border-t border-gray-100 pt-3">
+            <h3 className="mb-1 text-sm font-semibold text-gray-800">
+              Variação contra o mês anterior <span className="font-normal text-gray-500">· média dos meses fechados {moedaCompacta(mediaFechada)}</span>
+            </h3>
+            <BarrasVariacao meses={mesesP} variacoes={variacoes} />
+          </div>
+        )}
+      </Cartao>
+
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <Cartao
           titulo="Custo mensal por tipo de custo"
           subtitulo={
@@ -204,19 +299,47 @@ export default function VisaoGeral({
         </Cartao>
       </div>
 
+      {ponte && (
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          <Cartao
+            titulo={`O que mudou: ${mesCurto(mesesAsc[iPonte - 1])} → ${mesCurto(mesesAsc[iPonte])}`}
+            subtitulo={`Ponte do custo total por tipo de custo${refParcial ? " · compara os dois últimos meses fechados" : ""} · vermelho = custo subiu, verde = custo caiu`}
+          >
+            <Cascata rotuloInicio={mesCurto(mesesAsc[iPonte - 1])} valorInicio={ponte.inicio} rotuloFim={mesCurto(mesesAsc[iPonte])} valorFim={ponte.fim} passos={ponte.passos} />
+          </Cartao>
+          <Cartao titulo="Maiores variações por centro de custo" subtitulo={`${mesLongo(mesesAsc[iPonte - 1])} contra ${mesLongo(mesesAsc[iPonte])}`}>
+            <div className="space-y-5">
+              <TabelaMovimentos titulo="Maiores altas" itens={ponte.movimentos.altas} tom="alta" rotuloAnterior={mesCurto(mesesAsc[iPonte - 1])} rotuloAtual={mesCurto(mesesAsc[iPonte])} />
+              <TabelaMovimentos titulo="Maiores quedas" itens={ponte.movimentos.quedas} tom="queda" rotuloAnterior={mesCurto(mesesAsc[iPonte - 1])} rotuloAtual={mesCurto(mesesAsc[iPonte])} />
+            </div>
+          </Cartao>
+        </div>
+      )}
+
       <Cartao
         titulo="Centros de custo × meses"
         subtitulo="A cor de cada linha mostra os meses mais pesados daquele centro de custo (escala própria por linha) · clique na linha para abrir"
         acao={
-          <button type="button" onClick={exportar} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50">
-            Exportar CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={exportar} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-gray-600 transition hover:bg-gray-50">
+              Exportar quadro (CSV)
+            </button>
+            <button
+              type="button"
+              onClick={exportarLancamentos}
+              disabled={baixando}
+              title="Todos os lançamentos do período, título a título, no layout do Rel114 do Senior (disponível para quem vê todos os centros de custo)"
+              className="rounded-lg border border-brand px-3 py-1.5 text-[13px] font-medium text-brand transition hover:bg-brand-light disabled:opacity-60"
+            >
+              {baixando ? "Gerando…" : "Exportar lançamentos (Rel114)"}
+            </button>
+          </div>
         }
       >
         <div className="-mx-5 overflow-x-auto px-5">
-          <table className="w-full border-separate border-spacing-0 text-sm">
+          <table className="w-full border-separate border-spacing-0 text-[15px]">
             <thead>
-              <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
+              <tr className="text-left text-[13px] uppercase tracking-wide text-gray-500">
                 <th className="sticky left-0 z-10 min-w-[15rem] border-b border-gray-200 bg-white py-2 pr-3">
                   <button type="button" onClick={() => ordenarPor("nome")} className="font-semibold uppercase hover:text-gray-800">
                     Centro de custo <SetaOrdem o="nome" />
@@ -251,21 +374,21 @@ export default function VisaoGeral({
                       <p className="truncate font-medium text-gray-900" title={l.contrato.nome}>
                         {l.contrato.nome}
                       </p>
-                      <p className="text-[11px] text-gray-400">
+                      <p className="text-[13px] text-gray-500">
                         CCU {l.contrato.codccu}
                         {l.contrato.teamName ? ` · ${l.contrato.teamName}` : " · sem equipe vinculada"}
                       </p>
                     </td>
                     {l.serieP.map((v, i) => (
                       <td key={i} className="border-b border-gray-100 p-0.5 text-right tabular-nums">
-                        <div className="rounded-md px-1.5 py-1 text-xs" style={estiloCelulaCalor(v, maxLinha)} title={`${mesLongo(mesesP[i])}: ${moeda(v)}`}>
+                        <div className="rounded-md px-1.5 py-1 text-[13px]" style={estiloCelulaCalor(v, maxLinha)} title={`${mesLongo(mesesP[i])}: ${moeda(v)}`}>
                           {v ? moedaCompacta(v).replace("R$ ", "") : <span className="text-gray-300">–</span>}
                         </div>
                       </td>
                     ))}
                     <td className="border-b border-gray-100 px-3 py-2 text-right font-semibold tabular-nums group-hover:bg-gray-50">{moeda(l.totalP)}</td>
                     <td className="border-b border-gray-100 px-3 py-2 text-right tabular-nums text-gray-600 group-hover:bg-gray-50">{moedaCompacta(l.media)}</td>
-                    <td className="border-b border-gray-100 px-3 py-2 text-right text-xs group-hover:bg-gray-50">{refParcial ? <span className="text-gray-300">parcial</span> : <Variacao v={l.delta} />}</td>
+                    <td className="border-b border-gray-100 px-3 py-2 text-right text-[13px] group-hover:bg-gray-50">{refParcial ? <span className="text-gray-300">parcial</span> : <Variacao v={l.delta} />}</td>
                     <td className="border-b border-gray-100 px-3 py-1 text-right group-hover:bg-gray-50">
                       <Sparkline valores={l.serieP} />
                     </td>
@@ -277,7 +400,7 @@ export default function VisaoGeral({
               <tr className="font-semibold">
                 <td className="sticky left-0 z-10 bg-gray-50 py-2.5 pr-3 text-gray-700">Total ({linhas.length} centros de custo)</td>
                 {mesesP.map((m, i) => (
-                  <td key={m} className="bg-gray-50 px-2 py-2.5 text-right text-xs tabular-nums text-gray-700">
+                  <td key={m} className="bg-gray-50 px-2 py-2.5 text-right text-[13px] tabular-nums text-gray-700">
                     {moedaCompacta(soma(ordenadas.map((l) => l.serieP[i]))).replace("R$ ", "")}
                   </td>
                 ))}
