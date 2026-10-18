@@ -9,6 +9,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AtualizarCusto, { type EstadoAtualizacaoUI } from "@/components/custos/AtualizarCusto";
 import DetalheConta, { type AlvoDetalhe } from "@/components/custos/DetalheConta";
 import FiltrosCusto from "@/components/custos/FiltrosCusto";
+import SeloSenior from "@/components/custos/SeloSenior";
 import VisaoContrato from "@/components/custos/VisaoContrato";
 import VisaoGeral from "@/components/custos/VisaoGeral";
 import { chaveMes, contratosNaBase, coresDosGrupos, type BaseMes, type ContratoCusto, type Filtros, type TipoCusto } from "@/lib/custos/agregacao";
@@ -132,6 +133,7 @@ function CustoPorContrato() {
           <p className="mt-1 max-w-3xl text-[15px] text-gray-500">
             {unico ? "Quanto este centro de custo custa por mês e em quê, direto do Senior." : "Quanto cada centro de custo custa por mês e em quê, direto do Senior. Você vê os centros de custo das equipes de que participa."}
           </p>
+          <SeloSenior />
         </div>
         <AtualizarCusto estadoInicial={dados.atualizacao} onConcluida={carregar} />
       </header>
