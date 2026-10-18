@@ -10,7 +10,10 @@ export type ContaDoContrato = {
   reembolsavel: boolean;
   inativa?: boolean;
   total: number;
+  /** Custo por data de pagamento (padrao): cada parcela no mes em que foi paga. */
   meses: MesValor[];
+  /** Custo por competencia: a compra inteira no mes da nota. Ausente = ainda nao ha detalhe com competencia. */
+  mesesCompetencia?: MesValor[];
 };
 export type ContratoCusto = {
   codccu: string;
@@ -25,6 +28,17 @@ export type ContratoCusto = {
 };
 
 export type TipoCusto = "todos" | "proprio" | "reembolsavel";
+/** Mes de referencia das series: data de pagamento (parcela a parcela) ou competencia (a compra inteira, no mes da nota). */
+export type BaseMes = "pagamento" | "competencia";
+
+/** Contratos com a serie mensal da base escolhida (as telas so' leem `conta.meses`, entao trocar a base nao muda mais nada). */
+export function contratosNaBase(contratos: ReadonlyArray<ContratoCusto>, base: BaseMes): ContratoCusto[] {
+  if (base === "pagamento") return contratos as ContratoCusto[];
+  return contratos.map((c) => ({
+    ...c,
+    contas: c.contas.map((x) => ({ ...x, meses: x.mesesCompetencia ?? x.meses })),
+  }));
+}
 export type Filtros = { de: string; ate: string; tipo: TipoCusto; grupo: string };
 
 /** "2026-04-01T00:00:00.000Z" -> "2026-04" */

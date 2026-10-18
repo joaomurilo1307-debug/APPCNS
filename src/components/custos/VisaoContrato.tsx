@@ -15,6 +15,7 @@ import {
   soma,
   variacao,
   variacoesMensais,
+  type BaseMes,
   type ContratoCusto,
   type Filtros,
 } from "@/lib/custos/agregacao";
@@ -28,6 +29,7 @@ import { Cartao, Kpi, SeloInativa, SeloReembolsavel, Variacao, VazioPeriodo } fr
 export default function VisaoContrato({
   contrato,
   filtros,
+  base = "pagamento",
   mesesAsc,
   mesCorrente,
   busca,
@@ -37,6 +39,7 @@ export default function VisaoContrato({
 }: {
   contrato: ContratoCusto;
   filtros: Filtros;
+  base?: BaseMes;
   mesesAsc: string[];
   mesCorrente: string;
   busca: string;
@@ -52,6 +55,8 @@ export default function VisaoContrato({
   const [mostrarMM3, setMostrarMM3] = useState(true);
   const [metaTexto, setMetaTexto] = useState("");
   const [baixando, setBaixando] = useState(false);
+  // mes em analise no painel "O que mudou": clicar numa barra de variacao muda o mes (padrao: o ultimo mes fechado do periodo)
+  const [mesAnalise, setMesAnalise] = useState<string | null>(null);
 
   // meta mensal do coordenador: fica guardada neste navegador, por centro de custo
   useEffect(() => {
@@ -118,9 +123,30 @@ export default function VisaoContrato({
   const mesesFechados = refParcial ? totaisMes.slice(0, -1) : totaisMes;
   const acimaDaMeta = meta ? mesesFechados.filter((v) => v > meta).length : 0;
 
-  // ponte: o mes de referencia contra o anterior (se o mes esta em andamento, usa o ultimo mes FECHADO)
-  const iPonte = refParcial ? idxAte - 1 : idxAte;
+  // ponte: o mes em analise contra o anterior (padrao: o ultimo mes FECHADO do periodo; clicar numa barra de variacao troca o mes)
+  const iPadraoPonte = refParcial ? idxAte - 1 : idxAte;
+  const iSelecionado = mesAnalise ? mesesAsc.indexOf(mesAnalise) : -1;
+  const iPonte = iSelecionado > 0 && iSelecionado >= idxDe && iSelecionado <= idxAte ? iSelecionado : iPadraoPonte;
   const temPonte = iPonte > 0 && iPonte - 1 >= 0;
+
+  // balao de cada mes no grafico de variacao: a conta que mais subiu e a que mais caiu contra o mes anterior
+  const dicasVariacao = useMemo(
+    () =>
+      mesesP.map((_, i) => {
+        const g = idxDe + i;
+        if (g <= 0) return null;
+        let alta: { nome: string; d: number } | null = null;
+        let queda: { nome: string; d: number } | null = null;
+        for (const l of linhas) {
+          const d = (l.serie[g] ?? 0) - (l.serie[g - 1] ?? 0);
+          if (d > 0 && (!alta || d > alta.d)) alta = { nome: l.conta.contaFinanceira, d };
+          if (d < 0 && (!queda || d < queda.d)) queda = { nome: l.conta.contaFinanceira, d };
+        }
+        const partes = [alta ? `▲ ${alta.nome}: +${moedaCompacta(alta.d)}` : null, queda ? `▼ ${queda.nome}: ${moedaCompacta(queda.d)}` : null].filter(Boolean);
+        return partes.length ? partes.join("\n") : null;
+      }),
+    [mesesP, idxDe, linhas]
+  );
   const ponte = useMemo(() => {
     if (!temPonte) return null;
     const porGrupo = new Map<string, { nome: string; anterior: number; atual: number }>();
@@ -166,15 +192,15 @@ export default function VisaoContrato({
   async function exportarLancamentos() {
     setBaixando(true);
     try {
-      const qs = new URLSearchParams({ codccu: contrato.codccu, de: filtros.de, ate: filtros.ate });
+      const qs = new URLSearchParams({ codccu: contrato.codccu, de: filtros.de, ate: filtros.ate, base });
       const res = await fetch(`/api/custos-conta/lancamentos?${qs.toString()}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao buscar os lançamentos");
       const d = await res.json();
       const br = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "");
-      const cab = ["Centro de Custo", "Descrição Centro de Custo", "Competência", "Conta Financeira", "Descrição Conta Financeira", "Número do Título", "Código do Fornecedor", "Descrição do Fornecedor", "Data de Entrada", "Data de Vencimento", "Valor Rateio"];
-      const corpo = (d.linhas as any[]).map((l) => [l.codccu, l.centroDeCusto, l.competencia.split("-").reverse().join("/"), l.contaCodigo ?? "", l.contaFinanceira, l.numTit, l.codFor, l.fornecedor ?? "", br(l.dataEntrada), br(l.dataVencimento), l.valorRateado]);
-      corpo.push(["", "TOTAL", "", "", "", "", "", "", "", "", d.total]);
-      baixarCsv(`lancamentos_${contrato.codccu}_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
+      const cab = ["Centro de Custo", "Descrição Centro de Custo", "Competência", "Conta Financeira", "Descrição Conta Financeira", "Número do Título", "Código do Fornecedor", "Descrição do Fornecedor", "Data de Entrada", "Data de Vencimento", "Valor Rateio", "Data de Pagamento", "Competência da nota", "Forma de baixa"];
+      const corpo = (d.linhas as any[]).map((l) => [l.codccu, l.centroDeCusto, l.competencia.split("-").reverse().join("/"), l.contaCodigo ?? "", l.contaFinanceira, l.numTit, l.codFor, l.fornecedor ?? "", br(l.dataEntrada), br(l.dataVencimento), l.valorRateado, br(l.dataPagamento), l.competenciaNota ? l.competenciaNota.split("-").reverse().join("/") : "", l.formaBaixa ?? ""]);
+      corpo.push(["", "TOTAL", "", "", "", "", "", "", "", "", d.total, "", "", ""]);
+      baixarCsv(`lancamentos_${contrato.codccu}_${base === "competencia" ? "competencia_" : ""}${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
     } catch (e: any) {
       alert(e?.message || "Não foi possível exportar os lançamentos.");
     } finally {
@@ -183,7 +209,7 @@ export default function VisaoContrato({
   }
 
   function abrir(conta: string, mesIdx: number, valor: number, reembolsavel: boolean) {
-    onAbrirDetalhe({ codccu: contrato.codccu, contrato: contrato.nome, conta, competencia: `${mesesP[mesIdx]}-01T00:00:00.000Z`, valor, reembolsavel });
+    onAbrirDetalhe({ codccu: contrato.codccu, contrato: contrato.nome, conta, competencia: `${mesesP[mesIdx]}-01T00:00:00.000Z`, valor, reembolsavel, base });
   }
 
   const alternarGrupo = (g: string) =>
@@ -299,7 +325,15 @@ export default function VisaoContrato({
                 <h3 className="mb-1 text-sm font-semibold text-gray-800">
                   Variação contra o mês anterior <span className="font-normal text-gray-500">· média dos meses fechados {moedaCompacta(mediaFechada)}</span>
                 </h3>
-                <BarrasVariacao meses={mesesP} variacoes={variacoes} />
+                <BarrasVariacao meses={mesesP} variacoes={variacoes} selecionado={temPonte ? mesesAsc[iPonte] : undefined} onSelecionar={setMesAnalise} dicas={dicasVariacao} />
+                <p className="mt-1 text-xs text-gray-500">
+                  Clique numa barra para ver, logo abaixo, <b>quais contas</b> mais subiram e mais caíram naquele mês contra o anterior.
+                  {mesAnalise && (
+                    <button type="button" onClick={() => setMesAnalise(null)} className="ml-2 font-medium text-brand hover:text-brand-dark">
+                      voltar ao último mês fechado
+                    </button>
+                  )}
+                </p>
               </div>
             )}
           </Cartao>
@@ -355,7 +389,7 @@ export default function VisaoContrato({
             <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
               <Cartao
                 titulo={`O que mudou: ${mesCurto(mesesAsc[iPonte - 1])} → ${mesCurto(mesesAsc[iPonte])}`}
-                subtitulo={`Ponte do custo por tipo de custo${refParcial ? " · compara os dois últimos meses fechados" : ""} · vermelho = custo subiu, verde = custo caiu`}
+                subtitulo={`Ponte do custo por tipo de custo${!mesAnalise && refParcial ? " · compara os dois últimos meses fechados" : ""} · vermelho = custo subiu, verde = custo caiu`}
               >
                 <Cascata rotuloInicio={mesCurto(mesesAsc[iPonte - 1])} valorInicio={ponte.inicio} rotuloFim={mesCurto(mesesAsc[iPonte])} valorFim={ponte.fim} passos={ponte.passos} />
               </Cartao>

@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 import { formatData, mesLongo, moeda } from "@/lib/custos/formato";
 
-export type AlvoDetalhe = { codccu: string; contrato: string; conta: string; competencia: string; valor: number; reembolsavel?: boolean };
+export type AlvoDetalhe = { codccu: string; contrato: string; conta: string; competencia: string; valor: number; reembolsavel?: boolean; base?: "pagamento" | "competencia" };
 
 type OcRelacionada = { numOcp: string; situacao: string; situacaoLabel: string; parcela: boolean; motivo: string };
 type LinhaDetalhe = {
@@ -18,6 +18,10 @@ type LinhaDetalhe = {
   dataEntrada: string | null;
   dataVencimento: string | null;
   valorRateado: number;
+  baixa: string | null; // PAGAMENTO | ADIANTAMENTO
+  dataPagamento: string | null;
+  mesPagamento: string;
+  competenciaNota: string | null;
   ocRelacionada: OcRelacionada | null;
   motivoSemOC: string | null;
   descricao: string | null;
@@ -70,7 +74,7 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
     setDados("carregando");
     setBusca("");
     let cancelado = false;
-    const params = new URLSearchParams({ codccu: alvo.codccu, contaFinanceira: alvo.conta, competencia: alvo.competencia });
+    const params = new URLSearchParams({ codccu: alvo.codccu, contaFinanceira: alvo.conta, competencia: alvo.competencia, base: alvo.base ?? "pagamento" });
     fetch(`/api/custos-conta/detalhe?${params.toString()}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d) => !cancelado && setDados(d))
@@ -136,7 +140,9 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
         <aside role="dialog" aria-modal="true" aria-label="Lançamentos da conta" className="flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <header className="flex items-start justify-between gap-4 border-b border-gray-100 bg-gradient-to-r from-brand/10 to-transparent px-6 py-4">
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Lançamentos · {mesLongo(alvo.competencia.slice(0, 7))}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Lançamentos · {alvo.base === "competencia" ? "competência" : "pagos em"} {mesLongo(alvo.competencia.slice(0, 7))}
+              </p>
               <h2 className="mt-0.5 flex flex-wrap items-center gap-2 text-lg font-semibold text-gray-900">
                 {alvo.conta}
                 {alvo.reembolsavel && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">Reembolsável</span>}
@@ -191,7 +197,8 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
                       <th className="px-3 py-2">Título</th>
                       <th className="px-3 py-2">Lançado no Senior</th>
                       <th className="px-3 py-2">Fornecedor</th>
-                      <th className="px-3 py-2">Entrada</th>
+                      <th className="px-3 py-2">Pago em</th>
+                      <th className="px-3 py-2">Competência</th>
                       <th className="px-3 py-2 text-right">Valor</th>
                       <th className="px-3 py-2">OC</th>
                     </tr>
@@ -215,7 +222,15 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
                         <td className="max-w-[220px] truncate px-3 py-1.5" title={l.fornecedorNome}>
                           {l.fornecedorNome}
                         </td>
-                        <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(l.dataEntrada)}</td>
+                        <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-gray-600">
+                          {l.dataPagamento ? formatData(l.dataPagamento) : mesLongo(l.mesPagamento.slice(0, 7)).replace(" de ", " ")}
+                          {l.baixa === "ADIANTAMENTO" && (
+                            <span className="ml-1.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[11px] font-medium text-violet-800" title="Nota quitada com um adiantamento já dado ao fornecedor (transação 90558)">
+                              adiantamento
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">{l.competenciaNota ? mesLongo(l.competenciaNota.slice(0, 7)).replace(" de ", " ") : "—"}</td>
                         <td className="px-3 py-1.5 text-right font-medium tabular-nums">{moeda(l.valorRateado)}</td>
                         <td className="px-3 py-1.5">
                           {l.ocRelacionada ? (
@@ -232,7 +247,7 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
                     ))}
                     {itens.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
+                        <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
                           Nenhum lançamento encontrado.
                         </td>
                       </tr>

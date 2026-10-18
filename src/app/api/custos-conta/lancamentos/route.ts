@@ -16,6 +16,7 @@ export async function GET(req: Request) {
   const codccu = searchParams.get("codccu");
   const de = searchParams.get("de"); // aaaa-mm
   const ate = searchParams.get("ate"); // aaaa-mm
+  const porCompetencia = searchParams.get("base") === "competencia"; // periodo pelo mes da nota em vez do mes do pagamento
   if (!codccu || !de || !ate || !/^\d{4}-\d{2}$/.test(de) || !/^\d{4}-\d{2}$/.test(ate)) {
     return NextResponse.json({ error: "codccu, de e ate (aaaa-mm) são obrigatórios" }, { status: 422 });
   }
@@ -40,8 +41,12 @@ export async function GET(req: Request) {
     if (lista.some((c) => !permitidos.has(c))) return NextResponse.json({ error: "Sem permissão para algum destes centros de custo" }, { status: 403 });
   }
 
+  const faixa = { gte: new Date(`${de}-01T00:00:00.000Z`), lte: new Date(`${ate}-01T00:00:00.000Z`) };
   const linhas = await prisma.custoFinanceiroDetalhe.findMany({
-    where: { ...(lista ? { codccu: { in: lista } } : {}), competencia: { gte: new Date(`${de}-01T00:00:00.000Z`), lte: new Date(`${ate}-01T00:00:00.000Z`) } },
+    where: {
+      ...(lista ? { codccu: { in: lista } } : {}),
+      ...(porCompetencia ? { OR: [{ competenciaNota: faixa }, { competenciaNota: null, competencia: faixa }] } : { competencia: faixa }),
+    },
     orderBy: [{ codccu: "asc" }, { competencia: "asc" }, { contaFinanceira: "asc" }, { valorRateado: "desc" }],
   });
   const nomes = await prisma.custoContaFinanceira.findMany({ distinct: ["codccu"], select: { codccu: true, contrato: true } });
@@ -52,7 +57,11 @@ export async function GET(req: Request) {
     linhas: linhas.map((l) => ({
       codccu: l.codccu,
       centroDeCusto: nomePorCcu.get(l.codccu) ?? `CCU ${l.codccu}`,
-      competencia: l.competencia.toISOString().slice(0, 7),
+      competencia: (porCompetencia ? l.competenciaNota ?? l.competencia : l.competencia).toISOString().slice(0, 7), // mes pela base escolhida
+      mesPagamento: l.competencia.toISOString().slice(0, 7),
+      competenciaNota: l.competenciaNota?.toISOString().slice(0, 7) ?? null,
+      dataPagamento: l.dataPagamento?.toISOString().slice(0, 10) ?? null,
+      formaBaixa: l.baixa === "ADIANTAMENTO" ? "adiantamento" : l.baixa === "PAGAMENTO" ? "pagamento" : null,
       contaCodigo: codigoPeloNome(l.contaFinanceira),
       contaFinanceira: l.contaFinanceira,
       numTit: l.numTit,

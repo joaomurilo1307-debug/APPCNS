@@ -11,10 +11,10 @@ import DetalheConta, { type AlvoDetalhe } from "@/components/custos/DetalheConta
 import FiltrosCusto from "@/components/custos/FiltrosCusto";
 import VisaoContrato from "@/components/custos/VisaoContrato";
 import VisaoGeral from "@/components/custos/VisaoGeral";
-import { chaveMes, coresDosGrupos, type ContratoCusto, type Filtros, type TipoCusto } from "@/lib/custos/agregacao";
+import { chaveMes, contratosNaBase, coresDosGrupos, type BaseMes, type ContratoCusto, type Filtros, type TipoCusto } from "@/lib/custos/agregacao";
 import { mesLongo } from "@/lib/custos/formato";
 
-type Resposta = { contratos: ContratoCusto[]; meses: string[]; mesCorrente: string; atualizacao: EstadoAtualizacaoUI };
+type Resposta = { contratos: ContratoCusto[]; meses: string[]; mesesCompetencia?: string[]; temCompetencia?: boolean; mesCorrente: string; atualizacao: EstadoAtualizacaoUI };
 
 function CustoPorContrato() {
   const router = useRouter();
@@ -43,14 +43,19 @@ function CustoPorContrato() {
     void carregar();
   }, [carregar]);
 
-  const mesesAsc = useMemo(() => (dados ? dados.meses.map(chaveMes).sort() : []), [dados]);
+  // base do mes: data de pagamento (padrao, como as planilhas) ou competencia (a compra inteira no mes da nota)
+  const base: BaseMes = params.get("base") === "competencia" && dados?.temCompetencia ? "competencia" : "pagamento";
+  const contratosBase = useMemo(() => (dados ? contratosNaBase(dados.contratos, base) : []), [dados, base]);
+  const mesesAsc = useMemo(() => (dados ? (base === "competencia" && dados.mesesCompetencia ? dados.mesesCompetencia : dados.meses).map(chaveMes).sort() : []), [dados, base]);
   const mesCorrente = dados ? chaveMes(dados.mesCorrente) : "";
   const primeiro = mesesAsc[0] ?? "";
   const ultimo = mesesAsc[mesesAsc.length - 1] ?? "";
 
   // ---- estado dos filtros vive na URL (link compartilhavel: ?ccu=190&de=2026-01&ate=2026-09...)
   const valido = (m: string | null) => (m && mesesAsc.includes(m) ? m : null);
-  const de = valido(params.get("de")) ?? primeiro;
+  // na competencia a lista comeca em meses anteriores a 2026 (compras antigas pagas em 2026): o padrao e' de jan/26 em diante
+  const primeiroPadrao = base === "competencia" && mesesAsc.includes("2026-01") ? "2026-01" : primeiro;
+  const de = valido(params.get("de")) ?? primeiroPadrao;
   const ate = valido(params.get("ate")) ?? ultimo;
   const tipoParam = params.get("tipo");
   const tipo: TipoCusto = tipoParam === "proprio" || tipoParam === "reembolsavel" ? tipoParam : "todos";
@@ -74,7 +79,8 @@ function CustoPorContrato() {
     [params, pathname, router]
   );
 
-  const mudarFiltros = (p: Partial<Filtros>) => mudarUrl({ ...(p.de !== undefined ? { de: p.de === primeiro ? null : p.de } : {}), ...(p.ate !== undefined ? { ate: p.ate === ultimo ? null : p.ate } : {}), ...(p.tipo !== undefined ? { tipo: p.tipo } : {}), ...(p.grupo !== undefined ? { grupo: p.grupo } : {}) });
+  const mudarBase = (b: BaseMes) => mudarUrl({ base: b === "pagamento" ? null : b, de: null, ate: null });
+  const mudarFiltros = (p: Partial<Filtros>) => mudarUrl({ ...(p.de !== undefined ? { de: p.de === primeiroPadrao ? null : p.de } : {}), ...(p.ate !== undefined ? { ate: p.ate === ultimo ? null : p.ate } : {}), ...(p.tipo !== undefined ? { tipo: p.tipo } : {}), ...(p.grupo !== undefined ? { grupo: p.grupo } : {}) });
 
   const irParaTopo = () => document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
   const abrirContrato = (c: string) => {
@@ -86,10 +92,10 @@ function CustoPorContrato() {
     irParaTopo();
   };
 
-  const cores = useMemo(() => coresDosGrupos(dados?.contratos ?? []), [dados]);
+  const cores = useMemo(() => coresDosGrupos(contratosBase), [contratosBase]);
   const grupos = useMemo(() => {
     const total = new Map<string, { nome: string; total: number }>();
-    for (const c of dados?.contratos ?? []) for (const conta of c.contas) {
+    for (const c of contratosBase) for (const conta of c.contas) {
       const g = total.get(conta.grupoCodigo) ?? { nome: conta.grupoNome, total: 0 };
       g.total += conta.total;
       total.set(conta.grupoCodigo, g);
@@ -97,9 +103,9 @@ function CustoPorContrato() {
     return Array.from(total.entries())
       .sort((a, b) => b[1].total - a[1].total)
       .map(([codigo, g]) => ({ codigo, nome: g.nome }));
-  }, [dados]);
+  }, [contratosBase]);
 
-  const contratoAberto = ccu && dados ? dados.contratos.find((c) => c.codccu === ccu) ?? null : null;
+  const contratoAberto = ccu && dados ? contratosBase.find((c) => c.codccu === ccu) ?? null : null;
 
   if (erro && !dados) return <div className="p-6 text-sm text-red-600">{erro}</div>;
   if (!dados) {
@@ -146,6 +152,9 @@ function CustoPorContrato() {
             busca={busca}
             onBusca={(v) => mudarUrl({ q: v })}
             placeholderBusca={contratoAberto ? "Buscar conta…" : "Buscar centro de custo, CCU ou equipe…"}
+            base={base}
+            onBase={mudarBase}
+            temCompetencia={!!dados.temCompetencia}
           />
 
           {ccu && !contratoAberto ? (
@@ -156,17 +165,21 @@ function CustoPorContrato() {
               </button>
             </div>
           ) : contratoAberto ? (
-            <VisaoContrato contrato={contratoAberto} filtros={filtros} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onVoltar={unico ? undefined : voltar} onAbrirDetalhe={setDetalhe} />
+            <VisaoContrato contrato={contratoAberto} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onVoltar={unico ? undefined : voltar} onAbrirDetalhe={setDetalhe} />
           ) : (
-            <VisaoGeral contratos={dados.contratos} filtros={filtros} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onAbrirContrato={abrirContrato} />
+            <VisaoGeral contratos={contratosBase} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onAbrirContrato={abrirContrato} />
           )}
 
           <details className="mt-8 rounded-2xl border border-gray-100 bg-white/80 p-5 text-[15px] text-gray-600">
             <summary className="cursor-pointer text-sm font-medium text-gray-700">Como este custo é calculado</summary>
             <div className="mt-3 space-y-2 text-sm leading-relaxed">
               <p>
-                O valor de cada mês é a soma do <b>rateio dos títulos já pagos (baixados)</b> no Senior, por centro de custo, conta financeira e <b>mês de competência</b> — a mesma regra do relatório do Rito de Gestão (conferida
-                centro de custo a centro de custo, ao centavo). Por isso o mês em andamento mostra só o que já foi pago até agora e cresce a cada atualização.
+                O custo é a soma do <b>rateio das notas já quitadas</b> no Senior, por centro de custo e conta financeira: notas <b>pagas</b> e notas <b>quitadas com adiantamento</b> já dado ao fornecedor (mostradas com o selo
+                “adiantamento”). Nota lançada e ainda não paga <b>não entra</b>, por isso o mês em andamento mostra só o que já foi pago e cresce a cada atualização.
+              </p>
+              <p>
+                <b>Ver por data de pagamento</b> (padrão) coloca cada parcela no mês em que foi paga — é o mesmo critério da coluna “Data competência” das planilhas dos coordenadores.{" "}
+                <b>Ver por competência</b> coloca a compra inteira no mês da competência cadastrada no título pelo financeiro, mesmo que as parcelas sejam pagas depois.
               </p>
               <p>
                 Ficam de fora, porque já entram no Custo de Pessoal / Impostos (ou são distribuição de lucro): Salários, FGTS, INSS, IRRF de colaboradores, Rescisão, GRRF, Férias, 13º, PCC, IRRF retido, ISSQN e Antecipação de lucros — e as

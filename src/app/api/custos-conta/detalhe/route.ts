@@ -19,6 +19,8 @@ export async function GET(req: Request) {
   const codccu = searchParams.get("codccu");
   const contaFinanceira = searchParams.get("contaFinanceira");
   const competencia = searchParams.get("competencia");
+  // base do mes: "pagamento" (padrao: mes em que a parcela foi paga) ou "competencia" (mes da nota: a compra inteira)
+  const porCompetencia = searchParams.get("base") === "competencia";
   if (!codccu || !contaFinanceira || !competencia) {
     return NextResponse.json({ error: "codccu, contaFinanceira e competencia são obrigatórios" }, { status: 422 });
   }
@@ -38,7 +40,9 @@ export async function GET(req: Request) {
 
   const [linhas, ocs, usuariosSenior] = await Promise.all([
     prisma.custoFinanceiroDetalhe.findMany({
-      where: { codccu, contaFinanceira, competencia: new Date(competencia) },
+      where: porCompetencia
+        ? { codccu, contaFinanceira, OR: [{ competenciaNota: new Date(competencia) }, { competenciaNota: null, competencia: new Date(competencia) }] }
+        : { codccu, contaFinanceira, competencia: new Date(competencia) },
       orderBy: { valorRateado: "desc" },
     }),
     prisma.aprovacaoSenior.findMany({
@@ -132,6 +136,11 @@ export async function GET(req: Request) {
       dataEntrada: l.dataEntrada,
       dataVencimento: l.dataVencimento,
       valorRateado: l.valorRateado,
+      // como e quando a nota foi quitada, e a que mes ela pertence (regra v2); null em linhas antigas
+      baixa: l.baixa,
+      dataPagamento: l.dataPagamento,
+      mesPagamento: l.competencia,
+      competenciaNota: l.competenciaNota,
       ocRelacionada: vinculo.ocRelacionada,
       motivoSemOC: vinculo.motivoSemOC,
       descricao: real?.descricao ?? null,

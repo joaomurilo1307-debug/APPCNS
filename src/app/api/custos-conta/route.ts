@@ -62,6 +62,26 @@ export async function GET() {
     orderBy: [{ competencia: "desc" }],
   });
 
+  // Serie por COMPETENCIA (mes da nota): o mesmo custo pago, so' que no mes em que a compra foi lancada, e nao no mes em que cada
+  // parcela foi paga. Sai do detalhe titulo a titulo (CustoFinanceiroDetalhe.competenciaNota); linha sem competencia da nota
+  // (gravada antes da regra v2) usa o mes do pagamento. Mesma permissao: so' os CCUs que a pessoa ve.
+  const ccusVisiveis = teamIdsPermitidos ? Array.from(new Set(registros.map((r) => r.codccu))) : null;
+  const porCompetencia = new Map<string, Map<string, number>>(); // "ccu|conta" -> (mes -> valor)
+  let temCompetencia = false;
+  const grupos = await prisma.custoFinanceiroDetalhe.groupBy({
+    by: ["codccu", "contaFinanceira", "competencia", "competenciaNota"],
+    where: ccusVisiveis ? { codccu: { in: ccusVisiveis } } : undefined,
+    _sum: { valorRateado: true },
+  });
+  for (const g of grupos) {
+    if (g.competenciaNota) temCompetencia = true;
+    const mes = (g.competenciaNota ?? g.competencia).toISOString().slice(0, 7) + "-01T00:00:00.000Z";
+    const k = `${g.codccu}|${g.contaFinanceira}`;
+    const m = porCompetencia.get(k) ?? new Map<string, number>();
+    m.set(mes, Math.round(((m.get(mes) ?? 0) + (g._sum.valorRateado ?? 0)) * 100) / 100);
+    porCompetencia.set(k, m);
+  }
+
   // agrupa por CCU -> conta financeira, com serie mensal
   type Grupo = {
     codccu: string;
@@ -119,8 +139,10 @@ export async function GET() {
         .map((c) => {
           const codigo = codigoPeloNome(c.contaFinanceira);
           const grupo = codigo !== null ? grupoDaConta(codigo) : { codigo: "outros", nome: "Outras contas" };
+          const comp = porCompetencia.get(`${g.codccu}|${c.contaFinanceira}`);
           return {
             ...c,
+            mesesCompetencia: comp ? Array.from(comp.entries()).map(([competencia, valor]) => ({ competencia, valor })).sort((a, b) => a.competencia.localeCompare(b.competencia)) : undefined,
             codigo,
             grupoCodigo: grupo.codigo,
             grupoNome: grupo.nome,
@@ -135,6 +157,8 @@ export async function GET() {
   // meses disponiveis pro seletor: do piso ate o mes corrente (mesmo que ainda nao tenha custo), do mais novo ao mais antigo
   const comCusto = registros.map((r) => r.competencia.toISOString());
   const meses = Array.from(new Set([...mesesDoPeriodo, ...comCusto])).sort((a, b) => b.localeCompare(a));
+  // meses da visao por competencia: podem comecar antes do piso (nota de dez/25 paga em jan/26)
+  const mesesCompetencia = Array.from(new Set([...mesesDoPeriodo, ...Array.from(porCompetencia.values()).flatMap((m) => Array.from(m.keys()))])).sort((a, b) => b.localeCompare(a));
 
-  return NextResponse.json({ contratos, meses, mesCorrente, atualizacao });
+  return NextResponse.json({ contratos, meses, mesesCompetencia, temCompetencia, mesCorrente, atualizacao });
 }

@@ -87,8 +87,8 @@ test("gravarItens: base vazia cria tudo", async () => {
 test("gravarDetalhe: substitui tudo e preenche fornecedor/datas pelo titulo", async () => {
   const banco = bancoFalso([]);
   const linhas: LinhaDetalheCusto[] = [
-    { codccu: "190", contaCodigo: "1", contaFinanceira: "Internet", competencia: "2026-01-01", numTit: "T1", codFil: "1", codFor: "100", valorRateado: 10.5 },
-    { codccu: "190", contaCodigo: "1", contaFinanceira: "Internet", competencia: "2026-01-01", numTit: "T2", codFil: "1", codFor: "200", valorRateado: 3 },
+    { codccu: "190", contaCodigo: "1", contaFinanceira: "Internet", competencia: "2026-01-01", numTit: "T1", codFil: "1", codTpt: "NFS", codFor: "100", valorRateado: 10.5, baixa: "PAGAMENTO", dataPagamento: "2026-01-20", competenciaNota: "2025-12-01" },
+    { codccu: "190", contaCodigo: "1", contaFinanceira: "Internet", competencia: "2026-01-01", numTit: "T2", codFil: "1", codTpt: "ADT", codFor: "200", valorRateado: 3, baixa: "ADIANTAMENTO", dataPagamento: null, competenciaNota: null },
   ];
   await gravarDetalhe(banco.api, [{ ...linhas[0], numTit: "ANTIGO" }], new Map()); // conteudo anterior
   await gravarDetalhe(banco.api, linhas, new Map([["T1|100", { fornecedorNome: "FORN A", dataEntrada: "2026-01-05", dataVencimento: null }]]));
@@ -99,4 +99,10 @@ test("gravarDetalhe: substitui tudo e preenche fornecedor/datas pelo titulo", as
   assert.equal(gravado[0].dataVencimento, null);
   assert.equal(gravado[1].fornecedorNome, null);
   assert.equal(gravado[1].valorRateado, 3);
+  assert.equal(gravado[0].baixa, "PAGAMENTO");
+  assert.equal(gravado[0].dataPagamento.toISOString().slice(0, 10), "2026-01-20");
+  assert.equal(gravado[0].competenciaNota.toISOString().slice(0, 10), "2025-12-01");
+  assert.equal(gravado[0].codTpt, "NFS");
+  assert.equal(gravado[1].baixa, "ADIANTAMENTO");
+  assert.equal(gravado[1].dataPagamento, null);
 });

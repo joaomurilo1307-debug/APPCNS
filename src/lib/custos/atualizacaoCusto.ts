@@ -10,6 +10,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { consultarSenior } from "@/lib/senior/getDbInfo";
 import {
+  aplicarCompetenciasFiscais,
+  buscarCompetenciasFiscais,
   buscarDadosSenior,
   calcularCusto,
   enriquecerTitulos,
@@ -81,6 +83,18 @@ async function marcar(id: string, etapa: string, progresso: number) {
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const data = (s: string) => new Date(`${s}T00:00:00.000Z`);
 
+/** Copia unica, ANTES da primeira gravacao com a regra v2 (90550 + 90558): permite voltar ao custo da regra anterior. */
+async function criarBackupRegraV2() {
+  const existe = await prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema = 'backup' AND table_name = 'custo_conta_financeira_pre_regra_v2'`).catch(() => [{ n: 0 }]);
+  if ((existe[0]?.n ?? 0) > 0) return false;
+  const ja = await prisma.custoContaFinanceira.count();
+  if (ja === 0) return false;
+  await prisma.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS backup`);
+  await prisma.$executeRawUnsafe(`CREATE TABLE backup.custo_conta_financeira_pre_regra_v2 AS TABLE public."CustoContaFinanceira"`);
+  await prisma.$executeRawUnsafe(`CREATE TABLE backup.custo_financeiro_detalhe_pre_regra_v2 AS TABLE public."CustoFinanceiroDetalhe"`);
+  return true;
+}
+
 async function criarBackupSePrimeiraVez() {
   const jaTeveOk = await prisma.atualizacaoCusto.count({ where: { status: "OK" } });
   if (jaTeveOk > 0) return false;
@@ -97,6 +111,10 @@ async function executar(id: string) {
     const contasNovas = await resolverContasNovas(consultar, dados.rateios);
     await marcar(id, "Calculando o custo de cada contrato", 78);
     const { itens, detalhe, descartadas } = calcularCusto(dados.rateios, dados.baixas);
+
+    // ---- competencia fiscal cadastrada em cada titulo (visao "Competencia")
+    const fiscais = await buscarCompetenciasFiscais(consultar, detalhe.map((d) => d.codFor), (etapa, pct) => marcar(id, etapa, pct));
+    const competenciasFiscais = aplicarCompetenciasFiscais(detalhe, fiscais); // { aplicadas, rejeitadas } (competencia digitada fora da janela de sanidade)
 
     // ---- protecao: nunca trocar o que ja esta na tela por um resultado vazio ou muito menor
     const antes = await prisma.custoContaFinanceira.count();
@@ -127,6 +145,7 @@ async function executar(id: string) {
     // ---- grava
     await marcar(id, "Gravando", 90);
     const backupFeito = await criarBackupSePrimeiraVez();
+    const backupRegraV2 = await criarBackupRegraV2();
     const resultadoGravacao = await gravarItens(prisma, itens, nomeContrato);
     await gravarDetalhe(prisma, detalhe, info);
 
@@ -147,7 +166,12 @@ async function executar(id: string) {
       ccusNovos,
       contasNovas,
       descartadas,
+      adiantamentos: detalhe.filter((d) => d.baixa === "ADIANTAMENTO").length,
+      adiantamentosTotal: Math.round(detalhe.filter((d) => d.baixa === "ADIANTAMENTO").reduce((s, d) => s + d.valorRateado, 0) * 100) / 100,
+      regra: "v2: 90550 + 90558",
+      competenciasFiscais,
       backupFeito,
+      backupRegraV2,
       duracaoSegundos: Math.round((Date.now() - inicio) / 1000),
     };
     await prisma.atualizacaoCusto.update({ where: { id }, data: { status: "OK", etapa: "Concluído", progresso: 100, finalizadoEm: new Date(), resumo: resumo as Prisma.InputJsonValue } });
@@ -206,6 +230,10 @@ export async function gravarDetalhe(db: typeof prisma, detalhe: LinhaDetalheCust
       dataEntrada: i?.dataEntrada ? data(i.dataEntrada) : null,
       dataVencimento: i?.dataVencimento ? data(i.dataVencimento) : null,
       valorRateado: d.valorRateado,
+      baixa: d.baixa,
+      dataPagamento: d.dataPagamento ? data(d.dataPagamento) : null,
+      competenciaNota: d.competenciaNota ? data(d.competenciaNota) : null,
+      codTpt: d.codTpt || null,
     };
   });
   // substituicao total e atomica (mesma semantica do sync antigo: a fonte e' recalculada inteira)

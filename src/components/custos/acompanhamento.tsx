@@ -237,7 +237,23 @@ export function LegendaLinha({ modo, mostrarMedia, mostrarMediaMovel, temMeta }:
 
 // ------------------------------------------------------------------------------------------ variacao mensal
 
-export function BarrasVariacao({ meses, variacoes, altura = 170 }: { meses: string[]; variacoes: (number | null)[]; altura?: number }) {
+export function BarrasVariacao({
+  meses,
+  variacoes,
+  altura = 170,
+  selecionado,
+  onSelecionar,
+  dicas,
+}: {
+  meses: string[];
+  variacoes: (number | null)[];
+  altura?: number;
+  /** mes (aaaa-mm) em analise: fica destacado e o painel "O que mudou" mostra as contas que mais variaram */
+  selecionado?: string;
+  onSelecionar?: (mes: string) => void;
+  /** texto extra no balao de cada mes (as contas que mais variaram) */
+  dicas?: (string | null)[];
+}) {
   const [ref, largura] = useLargura<HTMLDivElement>();
   const m = { t: 22, r: 16, b: 30, l: 62 };
   const w = largura;
@@ -265,6 +281,21 @@ export function BarrasVariacao({ meses, variacoes, altura = 170 }: { meses: stri
         </text>
         {variacoes.map((v, i) => {
           const cx = m.l + banda * i + banda / 2;
+          const sel = selecionado === meses[i];
+          const clicavel = !!onSelecionar && v !== null;
+          const faixa = (
+            <rect
+              x={m.l + banda * i + 1}
+              y={m.t - 8}
+              width={Math.max(1, banda - 2)}
+              height={areaH + 12}
+              rx={6}
+              fill={sel ? "rgba(14,159,148,0.10)" : "transparent"}
+              stroke={sel ? "rgba(14,159,148,0.45)" : "none"}
+              style={clicavel ? { cursor: "pointer" } : undefined}
+              onClick={clicavel ? () => onSelecionar!(meses[i]) : undefined}
+            />
+          );
           if (v === null) {
             return (
               <g key={meses[i]}>
@@ -283,8 +314,9 @@ export function BarrasVariacao({ meses, variacoes, altura = 170 }: { meses: stri
           const sobe = v > 0;
           return (
             <g key={meses[i]}>
-              <title>{`${mesLongo(meses[i])}: ${variacaoTexto(v)} contra o mês anterior`}</title>
-              <rect x={cx - larg / 2} y={sobe ? zero - alt : zero} width={larg} height={alt} rx={3} fill={sobe ? COR_ALTA : COR_QUEDA} />
+              {faixa}
+              <title>{`${mesLongo(meses[i])}: ${variacaoTexto(v)} contra o mês anterior${dicas?.[i] ? "\n" + dicas[i] : ""}${clicavel ? "\n(clique para ver as contas que variaram)" : ""}`}</title>
+              <rect style={{ pointerEvents: "none" }} x={cx - larg / 2} y={sobe ? zero - alt : zero} width={larg} height={alt} rx={3} fill={sobe ? COR_ALTA : COR_QUEDA} />
               <text x={cx} y={sobe ? zero - alt - 5 : zero + alt + 14} textAnchor="middle" fontSize={12} fontWeight={600} fill={sobe ? "#b91c1c" : "#047857"}>
                 {sobe ? "+" : "−"}
                 {percentual(Math.abs(v), Math.abs(v) < 0.1 ? 1 : 0)}

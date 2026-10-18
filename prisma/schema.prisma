@@ -375,9 +375,17 @@ model CustoFinanceiroDetalhe {
   dataVencimento  DateTime?
   valorRateado    Float
   atualizadoEm    DateTime @updatedAt
+  // Regra v2 (18/10/2026): como a nota foi quitada, quando, de que tipo e qual a competencia DA NOTA. Todos opcionais:
+  // linhas gravadas antes da regra v2 (ou vindas do sync antigo do Rito) ficam com null.
+  baixa           String? // PAGAMENTO | ADIANTAMENTO
+  dataPagamento   DateTime?
+  competenciaNota DateTime? // dia 1 do mes de competencia da nota (rateio de entrada do mesmo titulo)
+  codTpt          String? // tipo do titulo no Senior (NFS, NFC, FAT, OUT...)
 
   @@index([codccu, contaFinanceira, competencia])
+  @@index([numTit, codFor])
 }
+
 
 // Execucoes da atualizacao do Custo por Contrato (/custos/plano-de-contas), que le o custo DIRETO do Senior
 // (regra validada contra o Rel114/Rito: src/lib/custos/motorCustoContrato.ts). Uma linha por execucao: serve de
@@ -397,6 +405,41 @@ model AtualizacaoCusto {
 
   @@index([iniciadoEm])
   @@index([status, finalizadoEm])
+}
+
+// PREVISTO (orcamento) do Controle de Custos, por centro de custo, conta financeira e mes: o que os coordenadores mantinham
+// na aba "DADOS PREVISTO" das planilhas "CONTROLE DE CUSTOS". O REALIZADO nao fica aqui -- vem do Senior (CustoContaFinanceira),
+// e a tela compara os dois (Previsto x Realizado, desvio, % e assertividade). Cada linha e' um lancamento de previsto (varias
+// por conta/mes, com descricao), como nas planilhas; a tela soma por conta e mes. `competencia` nula = previsto sem mes
+// definido (ex.: total de uma compra do contrato). Exclusao e' logica (excluidoEm) para nunca perder o historico.
+model CustoPrevisto {
+  id              String    @id @default(cuid())
+  codccu          String
+  conta           Int // CTAFIN do Senior (E091PLF)
+  competencia     DateTime? // dia 1 do mes
+  valor           Float
+  descricao       String?
+  fornecedor      String?
+  origem          String // PLANILHA (importado das planilhas dos coordenadores) | MANUAL (digitado no sistema)
+  arquivoOrigem   String?
+  criadoPorId     String?
+  atualizadoPorId String?
+  criadoEm        DateTime  @default(now())
+  atualizadoEm    DateTime  @updatedAt
+  excluidoEm      DateTime?
+
+  @@index([codccu, competencia])
+  @@index([codccu, conta])
+}
+
+// Ficha do centro de custo no Controle de Custos: responsavel (coordenador) e objeto do contrato, como no cabecalho das
+// planilhas ("RESPONSAVEL", "OBJETO"). Uma linha por CCU; so' texto informativo.
+model CustoCentroFicha {
+  codccu          String   @id
+  responsavel     String?
+  objeto          String?
+  atualizadoPorId String?
+  atualizadoEm    DateTime @updatedAt
 }
 
 // Ledger IMUTAVEL de qual centro de custo cada colaborador CLT tinha em

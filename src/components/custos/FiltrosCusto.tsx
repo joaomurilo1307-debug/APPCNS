@@ -3,7 +3,7 @@
 // Barra de filtros da tela Custo por Contrato: periodo (de/ate + atalhos), tipo (proprio x reembolsavel), grupo de
 // contas e busca. Os filtros valem para os graficos E para as tabelas ao mesmo tempo.
 
-import type { Filtros, TipoCusto } from "@/lib/custos/agregacao";
+import type { BaseMes, Filtros, TipoCusto } from "@/lib/custos/agregacao";
 import { mesLongo } from "@/lib/custos/formato";
 
 export default function FiltrosCusto({
@@ -15,6 +15,9 @@ export default function FiltrosCusto({
   busca,
   onBusca,
   placeholderBusca,
+  base,
+  onBase,
+  temCompetencia,
 }: {
   mesesAsc: string[]; // chaves aaaa-mm disponiveis
   mesCorrente: string;
@@ -24,6 +27,10 @@ export default function FiltrosCusto({
   busca: string;
   onBusca: (v: string) => void;
   placeholderBusca: string;
+  base: BaseMes;
+  onBase: (b: BaseMes) => void;
+  /** ja ha detalhe com competencia da nota (depois da primeira atualizacao com a regra v2) */
+  temCompetencia: boolean;
 }) {
   const ultimo = mesesAsc[mesesAsc.length - 1];
   const primeiro = mesesAsc[0];
@@ -32,7 +39,8 @@ export default function FiltrosCusto({
     { nome: "Mês atual", de: mesCorrente, ate: mesCorrente },
     { nome: "Últimos 3 meses", de: mesesAsc[Math.max(0, idxUltimo - 2)], ate: ultimo },
     { nome: "Últimos 6 meses", de: mesesAsc[Math.max(0, idxUltimo - 5)], ate: ultimo },
-    { nome: "Ano todo", de: primeiro, ate: ultimo },
+    ...(primeiro < "2026-01" && mesesAsc.includes("2026-01") ? [{ nome: "Desde jan/26", de: "2026-01", ate: ultimo }] : []),
+    { nome: primeiro < "2026-01" ? "Tudo (inclui compras antigas)" : "Ano todo", de: primeiro, ate: ultimo },
   ];
   const tipos: { valor: TipoCusto; nome: string }[] = [
     { valor: "todos", nome: "Todos" },
@@ -105,6 +113,27 @@ export default function FiltrosCusto({
       </div>
 
       <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-3 border-t border-gray-100 pt-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Ver por</label>
+          <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group" aria-label="Mês de referência">
+            {([
+              ["pagamento", "Data de pagamento", "Cada parcela entra no mês em que foi paga (como as planilhas)."],
+              ["competencia", "Competência", "A compra inteira entra no mês da nota, mesmo que as parcelas sejam pagas depois."],
+            ] as const).map(([valor, nome, dica]) => (
+              <button
+                key={valor}
+                type="button"
+                title={temCompetencia || valor === "pagamento" ? dica : "Disponível depois da próxima atualização do Senior."}
+                disabled={valor === "competencia" && !temCompetencia}
+                onClick={() => onBase(valor)}
+                className={`px-3.5 py-1.5 text-[13px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${base === valor ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              >
+                {nome}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Tipo de custo</label>
           <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group">
