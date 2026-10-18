@@ -56,7 +56,9 @@ function CustoPorContrato() {
   const tipo: TipoCusto = tipoParam === "proprio" || tipoParam === "reembolsavel" ? tipoParam : "todos";
   const grupo = params.get("grupo") ?? "todos";
   const busca = params.get("q") ?? "";
-  const ccu = params.get("ccu");
+  // quem acompanha UM so' centro de custo abre direto nele: nao ha lista, ranking nem "voltar"
+  const unico = dados && dados.contratos.length === 1 ? dados.contratos[0].codccu : null;
+  const ccu = unico ?? params.get("ccu");
   const filtros: Filtros = { de: de <= ate ? de : ate, ate, tipo, grupo };
 
   const mudarUrl = useCallback(
@@ -122,7 +124,7 @@ function CustoPorContrato() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Custo por centro de custo</h1>
           <p className="mt-1 max-w-3xl text-[15px] text-gray-500">
-            Quanto cada centro de custo custa por mês e em quê, direto do Senior. Você vê os centros de custo das equipes de que participa.
+            {unico ? "Quanto este centro de custo custa por mês e em quê, direto do Senior." : "Quanto cada centro de custo custa por mês e em quê, direto do Senior. Você vê os centros de custo das equipes de que participa."}
           </p>
         </div>
         <AtualizarCusto estadoInicial={dados.atualizacao} onConcluida={carregar} />
@@ -154,7 +156,7 @@ function CustoPorContrato() {
               </button>
             </div>
           ) : contratoAberto ? (
-            <VisaoContrato contrato={contratoAberto} filtros={filtros} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onVoltar={voltar} onAbrirDetalhe={setDetalhe} />
+            <VisaoContrato contrato={contratoAberto} filtros={filtros} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onVoltar={unico ? undefined : voltar} onAbrirDetalhe={setDetalhe} />
           ) : (
             <VisaoGeral contratos={dados.contratos} filtros={filtros} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onAbrirContrato={abrirContrato} />
           )}

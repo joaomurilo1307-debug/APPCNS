@@ -25,16 +25,23 @@ export async function GET(req: Request) {
     const eu = await prisma.user.findUnique({ where: { id: user.id }, select: { verTodosCustos: true } });
     vePodeTudo = !!eu?.verTodosCustos;
   }
-  if (codccu === "todos") {
+  // `codccu` pode ser um CCU, uma lista separada por virgula (os centros de custo que a pessoa esta vendo) ou "todos"
+  const lista = codccu === "todos" ? null : codccu.split(",").map((c) => c.trim()).filter(Boolean);
+  if (lista && (lista.length === 0 || lista.length > 300 || lista.some((c) => !/^\d+$/.test(c)))) {
+    return NextResponse.json({ error: "Lista de centros de custo inválida" }, { status: 422 });
+  }
+  if (!lista) {
     if (!vePodeTudo) return NextResponse.json({ error: "Sem permissão para exportar todos os centros de custo" }, { status: 403 });
   } else if (!vePodeTudo) {
-    const time = await prisma.team.findFirst({ where: { codccu }, select: { id: true } });
-    const souMembro = time && (await prisma.userTeam.findUnique({ where: { userId_teamId: { userId: user.id, teamId: time.id } } }));
-    if (!souMembro) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
+    const times = await prisma.team.findMany({ where: { codccu: { in: lista } }, select: { id: true, codccu: true } });
+    const meus = await prisma.userTeam.findMany({ where: { userId: user.id, teamId: { in: times.map((t) => t.id) } }, select: { teamId: true } });
+    const minhasEquipes = new Set(meus.map((m) => m.teamId));
+    const permitidos = new Set(times.filter((t) => minhasEquipes.has(t.id)).map((t) => t.codccu));
+    if (lista.some((c) => !permitidos.has(c))) return NextResponse.json({ error: "Sem permissão para algum destes centros de custo" }, { status: 403 });
   }
 
   const linhas = await prisma.custoFinanceiroDetalhe.findMany({
-    where: { ...(codccu === "todos" ? {} : { codccu }), competencia: { gte: new Date(`${de}-01T00:00:00.000Z`), lte: new Date(`${ate}-01T00:00:00.000Z`) } },
+    where: { ...(lista ? { codccu: { in: lista } } : {}), competencia: { gte: new Date(`${de}-01T00:00:00.000Z`), lte: new Date(`${ate}-01T00:00:00.000Z`) } },
     orderBy: [{ codccu: "asc" }, { competencia: "asc" }, { contaFinanceira: "asc" }, { valorRateado: "desc" }],
   });
   const nomes = await prisma.custoContaFinanceira.findMany({ distinct: ["codccu"], select: { codccu: true, contrato: true } });

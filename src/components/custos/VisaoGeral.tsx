@@ -157,7 +157,7 @@ export default function VisaoGeral({
   async function exportarLancamentos() {
     setBaixando(true);
     try {
-      const qs = new URLSearchParams({ codccu: "todos", de: filtros.de, ate: filtros.ate });
+      const qs = new URLSearchParams({ codccu: linhas.map((l) => l.contrato.codccu).join(","), de: filtros.de, ate: filtros.ate });
       const res = await fetch(`/api/custos-conta/lancamentos?${qs.toString()}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao buscar os lançamentos");
       const d = await res.json();
@@ -165,7 +165,7 @@ export default function VisaoGeral({
       const cab = ["Centro de Custo", "Descrição Centro de Custo", "Competência", "Conta Financeira", "Descrição Conta Financeira", "Número do Título", "Código do Fornecedor", "Descrição do Fornecedor", "Data de Entrada", "Data de Vencimento", "Valor Rateio"];
       const corpo = (d.linhas as any[]).map((l) => [l.codccu, l.centroDeCusto, l.competencia.split("-").reverse().join("/"), l.contaCodigo ?? "", l.contaFinanceira, l.numTit, l.codFor, l.fornecedor ?? "", br(l.dataEntrada), br(l.dataVencimento), l.valorRateado]);
       corpo.push(["", "TOTAL", "", "", "", "", "", "", "", "", d.total]);
-      baixarCsv(`lancamentos_todos_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
+      baixarCsv(`lancamentos_${linhas.length}_centros_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
     } catch (e: any) {
       alert(e?.message || "Não foi possível exportar os lançamentos.");
     } finally {
@@ -328,7 +328,7 @@ export default function VisaoGeral({
               type="button"
               onClick={exportarLancamentos}
               disabled={baixando}
-              title="Todos os lançamentos do período, título a título, no layout do Rel114 do Senior (disponível para quem vê todos os centros de custo)"
+              title="Lançamentos do período de todos os centros de custo desta lista, título a título, no layout do Rel114 do Senior"
               className="rounded-lg border border-brand px-3 py-1.5 text-[13px] font-medium text-brand transition hover:bg-brand-light disabled:opacity-60"
             >
               {baixando ? "Gerando…" : "Exportar lançamentos (Rel114)"}

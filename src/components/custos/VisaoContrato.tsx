@@ -41,7 +41,7 @@ export default function VisaoContrato({
   mesCorrente: string;
   busca: string;
   cores: Map<string, string>;
-  onVoltar: () => void;
+  onVoltar?: () => void;
   onAbrirDetalhe: (alvo: AlvoDetalhe) => void;
 }) {
   const [agrupar, setAgrupar] = useState(true);
@@ -213,9 +213,11 @@ export default function VisaoContrato({
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <button type="button" onClick={onVoltar} className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-brand hover:text-brand-dark">
-            ← Todos os centros de custo
-          </button>
+          {onVoltar && (
+            <button type="button" onClick={onVoltar} className="mb-1 inline-flex items-center gap-1 text-[13px] font-medium text-brand hover:text-brand-dark">
+              ← Todos os centros de custo
+            </button>
+          )}
           <h2 className="truncate text-3xl font-semibold tracking-tight text-gray-900">{contrato.nome}</h2>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
             <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">CCU {contrato.codccu}</span>
