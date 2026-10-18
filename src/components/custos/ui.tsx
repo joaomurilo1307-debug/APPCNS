@@ -43,8 +43,16 @@ export function Variacao({ v, sufixo }: { v: number | null; sufixo?: string }) {
 
 export function SeloReembolsavel({ curto = false }: { curto?: boolean }) {
   return (
-    <span className="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800" title="Conta reembolsável (plano “R - …” ou Despesas Reembolsáveis)">
+    <span className="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800" title="Conta reembolsável (conta antiga “Despesas Reembolsáveis” ou plano novo “R - …”)">
       {curto ? "R" : "Reembolsável"}
+    </span>
+  );
+}
+
+export function SeloInativa() {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Conta marcada como inativa no plano de contas do Senior (ainda tem lançamento no período)">
+      inativa no Senior
     </span>
   );
 }

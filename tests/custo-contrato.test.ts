@@ -12,7 +12,7 @@ import {
   type Consulta,
   type LinhaRateio,
 } from "../src/lib/custos/motorCustoContrato";
-import { CONTAS_EXCLUIDAS_BASE, CONTAS_FORA_DO_CUSTO, eReembolsavel, espelhoReembolsavel, grupoDaConta, nomeConta } from "../src/lib/custos/planoContas";
+import { CONTAS_EXCLUIDAS_BASE, CONTAS_FORA_DO_CUSTO, contaInativa, eReembolsavel, espelhoReembolsavel, grupoDaConta, nomeConta } from "../src/lib/custos/planoContas";
 
 const rat = (o: Partial<LinhaRateio>): LinhaRateio => ({ numTit: "001", codFil: "1", codFor: "100", seqMov: "2", ctaFin: "20", codCcu: "190", vlrRat: "100,50", mesAno: "01/04/2026", ...o });
 const baixas = (...linhas: Partial<LinhaRateio>[]) => new Set(linhas.map((l) => chaveBaixa(l.numTit ?? "001", l.codFil ?? "1", l.codFor ?? "100", l.seqMov ?? "2")));
@@ -78,7 +78,7 @@ test("contas fora do custo: as 12 do plano antigo + os espelhos R; reembolsavel 
   assert.equal(descartadas.foraDoCusto, 2);
 });
 
-test("plano: nomes, reembolsavel e grupo (a conta antiga e o espelho R caem no mesmo grupo)", () => {
+test("plano: nomes, reembolsavel e grupo (conta antiga e contas R em grupos SEPARADOS de reembolsaveis)", () => {
   assert.equal(nomeConta("44"), "Combustível");
   assert.equal(nomeConta("215"), "R - Combustivel");
   assert.equal(nomeConta("208"), "R - Manutencao de Elevador"); // sem o "R - R -" duplicado do Senior
@@ -87,8 +87,13 @@ test("plano: nomes, reembolsavel e grupo (a conta antiga e o espelho R caem no m
   assert.equal(eReembolsavel("67"), true);
   assert.equal(eReembolsavel("44"), false);
   assert.equal(grupoDaConta("44").nome, "Veículos");
-  assert.equal(grupoDaConta("215").nome, "Veículos");
-  assert.equal(grupoDaConta("67").nome, "Reembolsáveis (geral)");
+  assert.equal(grupoDaConta("215").nome, "Reembolsáveis · contas R");
+  assert.equal(grupoDaConta("215").codigo, "reembR");
+  assert.equal(grupoDaConta("67").nome, "Reembolsáveis · conta antiga");
+  assert.equal(grupoDaConta("179").codigo, "reemb");
+  assert.equal(contaInativa("179"), true, "179 BDI - INATIVA esta inativa no Senior");
+  assert.equal(contaInativa("67"), false);
+  assert.deepEqual([79, 146, 177, 179].map((c) => contaInativa(c)), [true, true, true, true]);
   assert.equal(grupoDaConta("999999").nome, "Outras contas");
 });
 
@@ -172,5 +177,5 @@ test("resolverContasNovas: conta fora da tabela estatica e' buscada ao vivo e pa
   assert.deepEqual(achadas, ["999"]);
   assert.equal(nomeConta("999"), "R - Conta Nova");
   assert.equal(eReembolsavel("999"), true);
-  assert.equal(grupoDaConta("999").nome, "Outras contas"); // familia desconhecida -> nao inventa grupo
+  assert.equal(grupoDaConta("999").codigo, "reembR"); // toda conta do plano R (clafin 217...) cai nas contas R
 });

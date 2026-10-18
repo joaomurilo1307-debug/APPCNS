@@ -1,7 +1,7 @@
 "use client";
 
-// Visao do portfolio: todos os contratos que o usuario pode ver. KPIs, custo mensal por grupo, ranking de contratos e a
-// tabela contrato x mes (clique abre o contrato).
+// Visao do portfolio: todos os centros de custo que o usuario pode ver. KPIs, custo mensal por grupo, ranking e a
+// tabela centro de custo x mes (clique abre o centro de custo).
 
 import { Fragment, useMemo, useState } from "react";
 import {
@@ -67,6 +67,7 @@ export default function VisaoGeral({
   // reembolsavel x proprio (ignora o filtro de tipo, respeita periodo/grupo/busca)
   const reparto = useMemo(() => {
     let reemb = 0;
+    let reembR = 0;
     let proprio = 0;
     const termo = busca.trim().toLowerCase();
     for (const c of contratos) {
@@ -75,10 +76,11 @@ export default function VisaoGeral({
         if (!contaPassa(conta, { tipo: "todos", grupo: filtros.grupo })) continue;
         const v = soma(serieDaConta(conta, mesesP));
         if (conta.reembolsavel) reemb += v;
+        if (conta.grupoCodigo === "reembR") reembR += v;
         else proprio += v;
       }
     }
-    return { reemb, proprio };
+    return { reemb, reembR, reembAntiga: reemb - reembR, proprio };
   }, [contratos, filtros.grupo, busca, mesesP]);
 
   // series do grafico: custo mensal por grupo (6 maiores com cor propria, resto em "Demais")
@@ -129,10 +131,10 @@ export default function VisaoGeral({
   }
 
   function exportar() {
-    const cab = ["CCU", "Contrato", "Equipe", ...mesesP.map(mesCurto), "Total do período", "Média mensal"];
+    const cab = ["CCU", "Centro de custo", "Equipe", ...mesesP.map(mesCurto), "Total do período", "Média mensal"];
     const corpo = ordenadas.map((l) => [l.contrato.codccu, l.contrato.nome, l.contrato.teamName ?? "", ...l.serieP, l.totalP, l.media]);
     corpo.push(["", "TOTAL", "", ...mesesP.map((_, i) => soma(ordenadas.map((l) => l.serieP[i]))), totalP, mesesP.length ? totalP / mesesP.length : 0]);
-    baixarCsv(`custo-por-contrato_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
+    baixarCsv(`custo-por-centro-de-custo_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
   }
 
   if (linhas.length === 0) return <VazioPeriodo />;
@@ -144,7 +146,7 @@ export default function VisaoGeral({
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi rotulo="Custo no período" valor={moedaCompacta(totalP)} detalhe={`${linhas.length} contratos · ${mesesP.length} ${mesesP.length === 1 ? "mês" : "meses"}`} destaque />
+        <Kpi rotulo="Custo no período" valor={moedaCompacta(totalP)} detalhe={`${linhas.length} centros de custo · ${mesesP.length} ${mesesP.length === 1 ? "mês" : "meses"}`} destaque />
         <Kpi
           rotulo={`Mês de referência · ${mesCurto(filtros.ate)}`}
           valor={moedaCompacta(totalRef)}
@@ -156,8 +158,8 @@ export default function VisaoGeral({
             )
           }
         />
-        <Kpi rotulo="Maior contrato" valor={<span className="text-lg">{maior.contrato.nome}</span>} detalhe={`${moedaCompacta(maior.totalP)} · ${percentual(maior.totalP / totalP)} do total`} />
-        <Kpi rotulo="Reembolsável" valor={moedaCompacta(reparto.reemb)} detalhe={`${percentual(pctReemb, pctReemb < 0.1 ? 1 : 0)} do custo no período`} />
+        <Kpi rotulo="Maior centro de custo" valor={<span className="text-lg">{maior.contrato.nome}</span>} detalhe={`${moedaCompacta(maior.totalP)} · ${percentual(maior.totalP / totalP)} do total`} />
+        <Kpi rotulo="Reembolsável" valor={moedaCompacta(reparto.reemb)} detalhe={`${percentual(pctReemb, pctReemb < 0.1 ? 1 : 0)} do custo · conta antiga ${moedaCompacta(reparto.reembAntiga)} · contas R ${moedaCompacta(reparto.reembR)}`} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
@@ -165,7 +167,7 @@ export default function VisaoGeral({
           titulo="Custo mensal por tipo de custo"
           subtitulo={
             <>
-              Soma de todos os contratos · clique na legenda para ocultar um grupo{refParcial && <> · <span className="font-medium">* mês em andamento</span></>}
+              Soma de todos os centros de custo · clique na legenda para ocultar um grupo{refParcial && <> · <span className="font-medium">* mês em andamento</span></>}
             </>
           }
         >
@@ -186,7 +188,7 @@ export default function VisaoGeral({
           <ColunasEmpilhadas meses={mesesP} series={seriesVisiveis} mesDestaque={filtros.ate} mesParcial={refParcial ? mesCorrente : undefined} altura={400} />
         </Cartao>
 
-        <Cartao titulo="Ranking de contratos" subtitulo={`Os ${topo.length} maiores no período · clique para abrir`}>
+        <Cartao titulo="Ranking de centros de custo" subtitulo={`Os ${topo.length} maiores no período · clique para abrir`}>
           <BarrasRanking
             itens={topo.map((l) => ({
               chave: l.contrato.codccu,
@@ -203,8 +205,8 @@ export default function VisaoGeral({
       </div>
 
       <Cartao
-        titulo="Contratos × meses"
-        subtitulo="A cor de cada linha mostra os meses mais pesados daquele contrato (escala própria por linha) · clique na linha para abrir o contrato"
+        titulo="Centros de custo × meses"
+        subtitulo="A cor de cada linha mostra os meses mais pesados daquele centro de custo (escala própria por linha) · clique na linha para abrir"
         acao={
           <button type="button" onClick={exportar} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50">
             Exportar CSV
@@ -217,7 +219,7 @@ export default function VisaoGeral({
               <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
                 <th className="sticky left-0 z-10 min-w-[15rem] border-b border-gray-200 bg-white py-2 pr-3">
                   <button type="button" onClick={() => ordenarPor("nome")} className="font-semibold uppercase hover:text-gray-800">
-                    Contrato <SetaOrdem o="nome" />
+                    Centro de custo <SetaOrdem o="nome" />
                   </button>
                 </th>
                 {mesesP.map((m) => (
@@ -273,7 +275,7 @@ export default function VisaoGeral({
             </tbody>
             <tfoot>
               <tr className="font-semibold">
-                <td className="sticky left-0 z-10 bg-gray-50 py-2.5 pr-3 text-gray-700">Total ({linhas.length} contratos)</td>
+                <td className="sticky left-0 z-10 bg-gray-50 py-2.5 pr-3 text-gray-700">Total ({linhas.length} centros de custo)</td>
                 {mesesP.map((m, i) => (
                   <td key={m} className="bg-gray-50 px-2 py-2.5 text-right text-xs tabular-nums text-gray-700">
                     {moedaCompacta(soma(ordenadas.map((l) => l.serieP[i]))).replace("R$ ", "")}

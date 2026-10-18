@@ -1,6 +1,6 @@
 "use client";
 
-// Visao de UM contrato: KPIs, evolucao mensal por grupo, composicao do periodo por conta e a tabela plano de contas x mes
+// Visao de UM centro de custo: KPIs, evolucao mensal por grupo, composicao do periodo por conta e a tabela plano de contas x mes
 // (mapa de calor, agrupada por tipo, com subtotais). Clicar numa celula abre os lancamentos (titulo a titulo, com OC).
 
 import { Fragment, useMemo, useState } from "react";
@@ -18,7 +18,7 @@ import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/cust
 import { baixarCsv } from "@/lib/custos/csv";
 import type { AlvoDetalhe } from "./DetalheConta";
 import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, estiloCelulaCalor, type SerieEmpilhada } from "./graficos";
-import { Cartao, Kpi, SeloReembolsavel, Variacao, VazioPeriodo } from "./ui";
+import { Cartao, Kpi, SeloInativa, SeloReembolsavel, Variacao, VazioPeriodo } from "./ui";
 
 export default function VisaoContrato({
   contrato,
@@ -74,6 +74,8 @@ export default function VisaoContrato({
   const totalAnt = soma(linhas.map((l) => l.ant));
   const totaisMes = mesesP.map((_, i) => soma(linhas.map((l) => l.serieP[i])));
   const reemb = soma(linhas.filter((l) => l.conta.reembolsavel).map((l) => l.totalP));
+  const reembAntiga = soma(linhas.filter((l) => l.conta.grupoCodigo === "reemb").map((l) => l.totalP));
+  const reembR = soma(linhas.filter((l) => l.conta.grupoCodigo === "reembR").map((l) => l.totalP));
   const maiorConta = linhas[0];
   const mesesComCusto = totaisMes.filter((t) => t !== 0).length;
 
@@ -93,7 +95,7 @@ export default function VisaoContrato({
   }, [grupos, cores, mesesP]);
 
   function exportar() {
-    const cab = ["Grupo", "Conta financeira", "Reembolsável", ...mesesP.map(mesCurto), "Total do período", "% do contrato"];
+    const cab = ["Grupo", "Conta financeira", "Reembolsável", ...mesesP.map(mesCurto), "Total do período", "% do centro de custo"];
     const corpo: (string | number)[][] = [];
     for (const g of grupos) for (const l of g.linhas) corpo.push([g.grupoNome, l.conta.contaFinanceira, l.conta.reembolsavel ? "sim" : "não", ...l.serie, l.total, totalP ? l.total / totalP : 0]);
     corpo.push(["", "TOTAL", "", ...totaisMes, totalP, 1]);
@@ -132,7 +134,7 @@ export default function VisaoContrato({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <button type="button" onClick={onVoltar} className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-brand hover:text-brand-dark">
-            ← Todos os contratos
+            ← Todos os centros de custo
           </button>
           <h2 className="truncate text-2xl font-semibold tracking-tight text-gray-900">{contrato.nome}</h2>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
@@ -155,8 +157,8 @@ export default function VisaoContrato({
               detalhe={refParcial ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">em andamento · só o já pago</span> : <Variacao v={variacao(totalRef, totalAnt)} sufixo="vs mês anterior" />}
             />
             <Kpi rotulo="Média mensal" valor={moedaCompacta(mesesP.length ? totalP / mesesP.length : 0)} detalhe={`em ${mesesP.length} ${mesesP.length === 1 ? "mês" : "meses"} do período`} />
-            <Kpi rotulo="Maior conta" valor={<span className="block truncate text-lg">{maiorConta.conta.contaFinanceira}</span>} detalhe={`${moedaCompacta(maiorConta.totalP)} · ${percentual(maiorConta.totalP / totalP)} do contrato`} />
-            <Kpi rotulo="Reembolsável" valor={moedaCompacta(reemb)} detalhe={`${percentual(totalP ? reemb / totalP : 0, totalP && reemb / totalP < 0.1 ? 1 : 0)} do custo no período`} />
+            <Kpi rotulo="Maior conta" valor={<span className="block truncate text-lg">{maiorConta.conta.contaFinanceira}</span>} detalhe={`${moedaCompacta(maiorConta.totalP)} · ${percentual(maiorConta.totalP / totalP)} do centro de custo`} />
+            <Kpi rotulo="Reembolsável" valor={moedaCompacta(reemb)} detalhe={reemb ? `conta antiga ${moedaCompacta(reembAntiga)} · contas R ${moedaCompacta(reembR)}` : "nenhum no período"} />
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
@@ -194,7 +196,7 @@ export default function VisaoContrato({
                   valor: l.totalP,
                   cor: cores.get(l.conta.grupoCodigo) ?? COR_DEMAIS,
                   serie: l.serieP,
-                  selo: l.conta.reembolsavel ? <SeloReembolsavel curto /> : undefined,
+                  selo: l.conta.inativa ? <SeloInativa /> : undefined,
                 }))}
                 total={totalP}
               />
@@ -271,7 +273,8 @@ export default function VisaoContrato({
                                         <span className="truncate" title={l.conta.contaFinanceira}>
                                           {l.conta.contaFinanceira}
                                         </span>
-                                        {l.conta.reembolsavel && <SeloReembolsavel curto />}
+                                        {l.conta.reembolsavel && !g.grupoCodigo.startsWith("reemb") && <SeloReembolsavel />}
+                                        {l.conta.inativa && <SeloInativa />}
                                       </span>
                                     </td>
                                     {l.serie.map((v, i) => (
@@ -296,7 +299,8 @@ export default function VisaoContrato({
                                 <span className="truncate" title={l.conta.contaFinanceira}>
                                   {l.conta.contaFinanceira}
                                 </span>
-                                {l.conta.reembolsavel && <SeloReembolsavel curto />}
+                                {l.conta.reembolsavel && <SeloReembolsavel />}
+                                {l.conta.inativa && <SeloInativa />}
                               </span>
                             </td>
                             {l.serieP.map((v, i) => (
@@ -312,7 +316,7 @@ export default function VisaoContrato({
                 </tbody>
                 <tfoot>
                   <tr className="font-semibold">
-                    <td className="sticky left-0 z-10 bg-gray-100 py-2.5 pr-3 text-gray-800">Total do contrato</td>
+                    <td className="sticky left-0 z-10 bg-gray-100 py-2.5 pr-3 text-gray-800">Total do centro de custo</td>
                     {totaisMes.map((v, i) => (
                       <td key={i} className="bg-gray-100 px-1.5 py-2.5 text-right text-xs tabular-nums text-gray-800">
                         {v ? moedaCompacta(v).replace("R$ ", "") : "–"}

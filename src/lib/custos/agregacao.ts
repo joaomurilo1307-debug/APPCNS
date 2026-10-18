@@ -8,6 +8,7 @@ export type ContaDoContrato = {
   grupoCodigo: string;
   grupoNome: string;
   reembolsavel: boolean;
+  inativa?: boolean;
   total: number;
   meses: MesValor[];
 };
@@ -118,6 +119,12 @@ export function coresDosGrupos(contratos: ReadonlyArray<ContratoCusto>): Map<str
   const total = new Map<string, number>();
   for (const c of contratos) for (const conta of c.contas) total.set(conta.grupoCodigo, (total.get(conta.grupoCodigo) ?? 0) + conta.total);
   const ordenados = Array.from(total.entries()).sort((a, b) => b[1] - a[1]);
+  // o grupo das contas R (plano novo de reembolsaveis) sempre ganha cor propria, mesmo com volume pequeno no inicio
+  const iR = ordenados.findIndex(([codigo]) => codigo === "reembR");
+  if (iR >= PALETA_GRUPOS.length) {
+    const [r] = ordenados.splice(iR, 1);
+    ordenados.splice(PALETA_GRUPOS.length - 1, 0, r);
+  }
   const cores = new Map<string, string>();
   ordenados.forEach(([codigo], i) => cores.set(codigo, i < PALETA_GRUPOS.length ? PALETA_GRUPOS[i] : COR_DEMAIS));
   return cores;

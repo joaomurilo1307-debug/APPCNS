@@ -10,9 +10,9 @@
 
 import { PLANO_SENIOR } from "./planoContasSenior";
 
-export type ContaPlano = { cod: number; nome: string; clafin: string; nivel: number };
+export type ContaPlano = { cod: number; nome: string; clafin: string; nivel: number; situacao: string };
 
-const CONTAS: ContaPlano[] = PLANO_SENIOR.map(([cod, nome, clafin, nivel]) => ({ cod, nome, clafin, nivel }));
+const CONTAS: ContaPlano[] = PLANO_SENIOR.map(([cod, nome, clafin, nivel, situacao]) => ({ cod, nome, clafin, nivel, situacao }));
 const porCodigo = new Map<number, ContaPlano>(CONTAS.map((c) => [c.cod, c]));
 const porClafin = new Map<string, ContaPlano>(CONTAS.map((c) => [c.clafin, c]));
 
@@ -52,12 +52,17 @@ export function contaConhecida(cod: string | number): boolean {
 }
 
 /** Registra uma conta nova lida ao vivo do Senior (ainda ausente da tabela estatica) para a sessao atual. */
-export function registrarConta(cod: number, nome: string, clafin: string, nivel: number) {
+export function registrarConta(cod: number, nome: string, clafin: string, nivel: number, situacao = "A") {
   if (porCodigo.has(cod)) return;
-  const c = { cod, nome, clafin, nivel };
+  const c = { cod, nome, clafin, nivel, situacao };
   CONTAS.push(c);
   porCodigo.set(cod, c);
   porClafin.set(clafin, c);
+}
+
+/** Conta marcada como INATIVA no plano do Senior (SITFIN = I) -- ex.: 179 "Despesas Reembolsaveis BDI - INATIVA". */
+export function contaInativa(cod: string | number): boolean {
+  return porCodigo.get(Number(cod))?.situacao === "I";
 }
 
 export function eReembolsavel(cod: string | number): boolean {
@@ -84,19 +89,24 @@ const GRUPOS: Record<string, string> = {
   "214": "Diretoria",
   "215": "Impostos s/ vendas",
   "216": "Imobilizado",
-  reemb: "Reembolsáveis (geral)",
+  reemb: "Reembolsáveis · conta antiga",
+  reembR: "Reembolsáveis · contas R",
   outros: "Outras contas",
 };
 
 export type GrupoConta = { codigo: string; nome: string };
 
-/** Grupo ("tipo de custo") da conta: a mesma familia para a conta antiga e o seu espelho R. */
+/**
+ * Grupo ("tipo de custo") da conta. Os reembolsaveis ficam SEPARADOS, em dois grupos proprios: a conta antiga (67, e a 179
+ * inativa) -- onde esta' todo o historico ate set/2026 -- e as contas "R - ..." do plano novo, cada uma na sua linha.
+ */
 export function grupoDaConta(cod: string | number): GrupoConta {
   const n = Number(cod);
   if (n === 67 || n === 179) return { codigo: "reemb", nome: GRUPOS.reemb };
   const c = porCodigo.get(n);
   if (!c) return { codigo: "outros", nome: GRUPOS.outros };
-  const familia = c.clafin.startsWith("217") ? "2" + c.clafin.slice(3, 5) : c.clafin.slice(0, 3);
+  if (c.clafin.startsWith("217")) return { codigo: "reembR", nome: GRUPOS.reembR };
+  const familia = c.clafin.slice(0, 3);
   return GRUPOS[familia] ? { codigo: familia, nome: GRUPOS[familia] } : { codigo: "outros", nome: GRUPOS.outros };
 }
 

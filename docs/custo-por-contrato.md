@@ -1,6 +1,6 @@
-# Custo por Contrato (`/custos/plano-de-contas`)
+# Custo por Centro de Custo (`/custos/plano-de-contas`)
 
-Tela dos gestores com o custo de cada contrato (centro de custo) por mês e por conta do plano financeiro, lido
+Tela dos gestores/coordenadores com o custo de cada centro de custo (CCU) por mês e por conta do plano financeiro, lido
 **direto do Senior**. Desde 17/10/2026 não depende mais da foto mensal do Rito de Gestão.
 
 ## Regra do número (validada)
@@ -54,3 +54,18 @@ Paleta categórica (cor segue o **grupo** de contas, nunca o ranking do momento)
 #6b4fd0, #e87ba4` + cinza `#9aa5b1` para "demais grupos". Validada com o validador do método (separação para daltonismo
 ≥ 12,8; piso em visão normal ≥ 26,9). Amarelo e rosa ficam abaixo de 3:1 sobre branco, por isso todo valor também aparece
 em rótulo, dica e tabela. Mapa de calor: um tom só (teal da marca).
+
+## Reembolsáveis (18/10/2026)
+
+Dois grupos próprios, nunca misturados com os tipos de custo normais:
+- **Reembolsáveis · conta antiga** — conta 67 "Despesas Reembolsáveis" (onde está todo o histórico até set/2026) e a 179
+  "Despesas Reembolsáveis BDI – INATIVA" (situação **I** no Senior, `E091PLF.SITFIN`; a tela avisa "inativa no Senior").
+- **Reembolsáveis · contas R** — o plano novo "R - …" (contas 180–350). Cada conta R aparece na **sua própria linha**.
+A classificação vem do plano do Senior; a conferência com Notas de Débito (jan–ago) confirmou o vínculo no CT 3687 e **não**
+confirmou nos 3686 (PLT02/PMRE/BAQ) — ver o relatório de conferência. Inativas no Senior: 79, 146, 177, 179.
+
+## Auditoria (somente leitura)
+
+`GET /api/senior/custos-conta/sync?auditoria=1` (header `x-sync-key`): confere que cada célula (CCU × conta × mês) é a soma
+exata dos lançamentos, totais por mês, lançamentos fora da Programação de Pagamento e centros de custo **sem equipe**
+(sem equipe vinculada só ADMIN/DIRETOR/`verTodosCustos` enxergam; coordenadores só veem os CCUs das equipes de que participam).

@@ -140,3 +140,12 @@ test("formatos: mes, moeda compacta, ha quanto tempo, CSV", () => {
   assert.ok(csv.includes('"Flora; ""norte"""'));
   assert.ok(csv.includes("1234,50"));
 });
+
+test("cores por grupo: o grupo das contas R (reembolsaveis novos) sempre ganha cor propria, mesmo pequeno", () => {
+  const contas = Array.from({ length: 8 }, (_, i) => conta("c" + i, "g" + i, false, { "2026-01": 1000 - i * 10 }));
+  contas.push(conta("R - X", "reembR", true, { "2026-10": 1 }));
+  const cores = coresDosGrupos([contrato("1", "X", contas)]);
+  assert.notEqual(cores.get("reembR"), COR_DEMAIS);
+  assert.ok(PALETA_GRUPOS.includes(cores.get("reembR") as any));
+  assert.equal(new Set([...cores.values()].filter((c) => c !== COR_DEMAIS)).size, PALETA_GRUPOS.length, "cada cor da paleta so' em um grupo");
+});

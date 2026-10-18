@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { estadoAtualizacao } from "@/lib/custos/atualizacaoCusto";
 import { COMPETENCIA_PISO } from "@/lib/custos/motorCustoContrato";
-import { codigoPeloNome, eReembolsavel, grupoDaConta } from "@/lib/custos/planoContas";
+import { codigoPeloNome, contaInativa, eReembolsavel, grupoDaConta } from "@/lib/custos/planoContas";
 
 // Custo por plano de contas (conta_financeira), por contrato/CCU e mes.
 // Visibilidade: ADMIN/DIRETOR veem todos os contratos; qualquer outro
@@ -125,6 +125,7 @@ export async function GET() {
             grupoCodigo: grupo.codigo,
             grupoNome: grupo.nome,
             reembolsavel: codigo !== null && eReembolsavel(codigo),
+            inativa: codigo !== null && contaInativa(codigo),
             meses: c.meses.sort((a, b) => a.competencia.localeCompare(b.competencia)),
           };
         }),

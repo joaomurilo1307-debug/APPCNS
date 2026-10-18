@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { seniorDiretoAssumiu } from "@/lib/custos/atualizacaoCusto";
+import { auditarCustos } from "@/lib/custos/auditoria";
 
 // Sincronizacao do custo por plano de contas (conta_financeira), agregado
 // por CCU/mes, a partir de rito_financeiro.composicao_custo_financeiro.
@@ -149,6 +150,7 @@ export async function GET(req: Request) {
   }
   // conferencia: ?resumo=1 devolve o total por mes de toda a tabela; ?codccu=190 o total por mes daquele CCU
   const url = new URL(req.url);
+  if (url.searchParams.get("auditoria")) return NextResponse.json(await auditarCustos(prisma));
   const codccu = url.searchParams.get("codccu");
   if (codccu || url.searchParams.get("resumo")) {
     const linhas = await prisma.custoContaFinanceira.findMany({ where: codccu ? { codccu } : undefined, select: { competencia: true, valor: true } });

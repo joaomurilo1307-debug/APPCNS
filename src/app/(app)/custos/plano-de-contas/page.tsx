@@ -120,9 +120,9 @@ function CustoPorContrato() {
     <div className="mx-auto max-w-[1400px]">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-gray-900">Custo por contrato</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900">Custo por centro de custo</h1>
           <p className="mt-0.5 max-w-2xl text-sm text-gray-500">
-            Quanto cada contrato custa por mês e em quê, direto do Senior. Você vê os contratos das equipes de que participa.
+            Quanto cada centro de custo custa por mês e em quê, direto do Senior. Você vê os centros de custo das equipes de que participa.
           </p>
         </div>
         <AtualizarCusto estadoInicial={dados.atualizacao} onConcluida={carregar} />
@@ -131,7 +131,7 @@ function CustoPorContrato() {
       {semAcesso ? (
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white/70 px-6 py-14 text-center">
           <p className="text-sm font-medium text-gray-700">Nenhum custo para mostrar ainda.</p>
-          <p className="mt-1 text-xs text-gray-400">Ou você não participa de nenhuma equipe com contrato, ou a primeira leitura do Senior ainda não terminou — use “Atualizar”.</p>
+          <p className="mt-1 text-xs text-gray-400">Ou você não participa de nenhuma equipe com centro de custo vinculado, ou a primeira leitura do Senior ainda não terminou — use “Atualizar”.</p>
         </div>
       ) : (
         <>
@@ -143,14 +143,14 @@ function CustoPorContrato() {
             grupos={grupos}
             busca={busca}
             onBusca={(v) => mudarUrl({ q: v })}
-            placeholderBusca={contratoAberto ? "Buscar conta…" : "Buscar contrato, CCU ou equipe…"}
+            placeholderBusca={contratoAberto ? "Buscar conta…" : "Buscar centro de custo, CCU ou equipe…"}
           />
 
           {ccu && !contratoAberto ? (
             <div className="rounded-2xl border border-dashed border-gray-200 bg-white/70 px-6 py-12 text-center">
-              <p className="text-sm font-medium text-gray-700">Contrato não encontrado (CCU {ccu}) ou sem acesso para você.</p>
+              <p className="text-sm font-medium text-gray-700">Centro de custo não encontrado (CCU {ccu}) ou sem acesso para você.</p>
               <button onClick={voltar} className="mt-2 text-sm font-medium text-brand hover:text-brand-dark">
-                ← Voltar para todos os contratos
+                ← Voltar para todos os centros de custo
               </button>
             </div>
           ) : contratoAberto ? (
@@ -164,7 +164,7 @@ function CustoPorContrato() {
             <div className="mt-3 space-y-2 text-[13px] leading-relaxed">
               <p>
                 O valor de cada mês é a soma do <b>rateio dos títulos já pagos (baixados)</b> no Senior, por centro de custo, conta financeira e <b>mês de competência</b> — a mesma regra do relatório do Rito de Gestão (conferida
-                contrato a contrato, ao centavo). Por isso o mês em andamento mostra só o que já foi pago até agora e cresce a cada atualização.
+                centro de custo a centro de custo, ao centavo). Por isso o mês em andamento mostra só o que já foi pago até agora e cresce a cada atualização.
               </p>
               <p>
                 Ficam de fora, porque já entram no Custo de Pessoal / Impostos (ou são distribuição de lucro): Salários, FGTS, INSS, IRRF de colaboradores, Rescisão, GRRF, Férias, 13º, PCC, IRRF retido, ISSQN e Antecipação de lucros — e as
