@@ -250,9 +250,11 @@ export default function VisaoContrato({
               ← Todos os centros de custo
             </button>
           )}
-          <h2 className="truncate text-3xl font-semibold tracking-tight text-gray-900">{contrato.nome}</h2>
+          <h2 className="truncate text-3xl font-semibold tracking-tight text-gray-900">
+            <span className="mr-3 inline-block rounded-lg bg-teal-50 px-2.5 py-0.5 align-middle text-2xl font-semibold tabular-nums text-teal-800">CCU {contrato.codccu}</span>
+            {contrato.nome}
+          </h2>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
-            <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">CCU {contrato.codccu}</span>
             {contrato.teamName ? <span>Equipe {contrato.teamName}</span> : <span className="text-amber-700">sem equipe vinculada</span>}
             {contrato.projectName && <span className="text-gray-400">· {contrato.projectName}</span>}
           </p>

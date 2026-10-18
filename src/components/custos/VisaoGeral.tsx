@@ -153,8 +153,8 @@ export default function VisaoGeral({
         let queda: { nome: string; d: number } | null = null;
         for (const l of linhas) {
           const d = (l.serie[g] ?? 0) - (l.serie[g - 1] ?? 0);
-          if (d > 0 && (!alta || d > alta.d)) alta = { nome: l.contrato.nome, d };
-          if (d < 0 && (!queda || d < queda.d)) queda = { nome: l.contrato.nome, d };
+          if (d > 0 && (!alta || d > alta.d)) alta = { nome: `${l.contrato.codccu} · ${l.contrato.nome}`, d };
+          if (d < 0 && (!queda || d < queda.d)) queda = { nome: `${l.contrato.codccu} · ${l.contrato.nome}`, d };
         }
         const partes = [alta ? `▲ ${alta.nome}: +${moedaCompacta(alta.d)}` : null, queda ? `▼ ${queda.nome}: ${moedaCompacta(queda.d)}` : null].filter(Boolean);
         return partes.length ? partes.join("\n") : null;
@@ -175,7 +175,7 @@ export default function VisaoGeral({
       }
     }
     const grupos2 = Array.from(porGrupo.values());
-    const centros = linhas.map((l) => ({ nome: l.contrato.nome, anterior: l.serie[iPonte - 1] ?? 0, atual: l.serie[iPonte] ?? 0 }));
+    const centros = linhas.map((l) => ({ nome: `${l.contrato.codccu} · ${l.contrato.nome}`, anterior: l.serie[iPonte - 1] ?? 0, atual: l.serie[iPonte] ?? 0 }));
     return { inicio: soma(grupos2.map((g) => g.anterior)), fim: soma(grupos2.map((g) => g.atual)), passos: passosDaPonte(grupos2, 5), movimentos: maioresMovimentos(centros, 6) };
   }, [linhas, filtros, mesesAsc, iPonte]);
 
@@ -234,7 +234,7 @@ export default function VisaoGeral({
             )
           }
         />
-        <Kpi rotulo="Maior centro de custo" valor={<span className="text-lg">{maior.contrato.nome}</span>} detalhe={`${moedaCompacta(maior.totalP)} · ${percentual(maior.totalP / totalP)} do total`} />
+        <Kpi rotulo="Maior centro de custo" valor={<span className="text-lg">{maior.contrato.codccu} · {maior.contrato.nome}</span>} detalhe={`${moedaCompacta(maior.totalP)} · ${percentual(maior.totalP / totalP)} do total`} />
         <Kpi rotulo="Reembolsável" valor={moedaCompacta(reparto.reemb)} detalhe={`${percentual(pctReemb, pctReemb < 0.1 ? 1 : 0)} do custo · conta antiga ${moedaCompacta(reparto.reembAntiga)} · contas R ${moedaCompacta(reparto.reembR)}`} />
       </div>
 
@@ -320,8 +320,8 @@ export default function VisaoGeral({
           <BarrasRanking
             itens={topo.map((l) => ({
               chave: l.contrato.codccu,
-              rotulo: l.contrato.nome,
-              subrotulo: `CCU ${l.contrato.codccu}${l.contrato.teamName ? ` · ${l.contrato.teamName}` : ""}`,
+              rotulo: `${l.contrato.codccu} · ${l.contrato.nome}`,
+              subrotulo: l.contrato.teamName ? `Equipe ${l.contrato.teamName}` : "sem equipe vinculada",
               valor: l.totalP,
               cor: PALETA_GRUPOS[0],
               serie: l.serieP,
@@ -404,13 +404,11 @@ export default function VisaoGeral({
                 return (
                   <tr key={l.contrato.codccu} onClick={() => onAbrirContrato(l.contrato.codccu)} className="group cursor-pointer">
                     <td className="sticky left-0 z-10 border-b border-gray-100 bg-white py-2 pr-3 group-hover:bg-gray-50">
-                      <p className="truncate font-medium text-gray-900" title={l.contrato.nome}>
+                      <p className="truncate font-medium text-gray-900" title={`CCU ${l.contrato.codccu} · ${l.contrato.nome}`}>
+                        <span className="mr-2 rounded-md bg-teal-50 px-1.5 py-0.5 text-[13px] font-semibold tabular-nums text-teal-800">{l.contrato.codccu}</span>
                         {l.contrato.nome}
                       </p>
-                      <p className="text-[13px] text-gray-500">
-                        CCU {l.contrato.codccu}
-                        {l.contrato.teamName ? ` · ${l.contrato.teamName}` : " · sem equipe vinculada"}
-                      </p>
+                      <p className="text-[13px] text-gray-500">{l.contrato.teamName ? `Equipe ${l.contrato.teamName}` : "sem equipe vinculada"}</p>
                     </td>
                     {l.serieP.map((v, i) => (
                       <td key={i} className="border-b border-gray-100 p-0.5 text-right tabular-nums">
