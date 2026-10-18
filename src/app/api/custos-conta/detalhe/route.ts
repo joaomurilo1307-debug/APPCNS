@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { COMPETENCIA_FISCAL_ATIVA } from "@/lib/custos/competenciaDaPlanilha";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 import { escolherTituloReal, type CandidatoTitulo } from "@/lib/escolherTituloReal";
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
   const contaFinanceira = searchParams.get("contaFinanceira");
   const competencia = searchParams.get("competencia");
   // base do mes: "pagamento" (padrao: mes em que a parcela foi paga) ou "competencia" (mes da nota: a compra inteira)
-  const porCompetencia = searchParams.get("base") === "competencia";
+  const porCompetencia = COMPETENCIA_FISCAL_ATIVA && searchParams.get("base") === "competencia";
   if (!codccu || !contaFinanceira || !competencia) {
     return NextResponse.json({ error: "codccu, contaFinanceira e competencia são obrigatórios" }, { status: 422 });
   }

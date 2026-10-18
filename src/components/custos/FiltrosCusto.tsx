@@ -113,6 +113,7 @@ export default function FiltrosCusto({
       </div>
 
       <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-3 border-t border-gray-100 pt-3">
+        {temCompetencia && (
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Ver por</label>
           <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group" aria-label="Mês de referência">
@@ -133,6 +134,7 @@ export default function FiltrosCusto({
             ))}
           </div>
         </div>
+        )}
 
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Tipo de custo</label>

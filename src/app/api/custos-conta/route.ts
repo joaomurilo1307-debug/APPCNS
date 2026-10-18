@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { COMPETENCIA_FISCAL_ATIVA } from "@/lib/custos/competenciaDaPlanilha";
 import { escopoDeCustos } from "@/lib/custos/acesso";
 import { estadoAtualizacao } from "@/lib/custos/atualizacaoCusto";
 import { COMPETENCIA_PISO } from "@/lib/custos/motorCustoContrato";
@@ -68,8 +69,8 @@ export async function GET() {
     _sum: { valorRateado: true },
   });
   for (const g of grupos) {
-    if (g.competenciaNota) temCompetencia = true;
-    const mes = (g.competenciaNota ?? g.competencia).toISOString().slice(0, 7) + "-01T00:00:00.000Z";
+    if (COMPETENCIA_FISCAL_ATIVA && g.competenciaNota) temCompetencia = true;
+    const mes = (COMPETENCIA_FISCAL_ATIVA ? g.competenciaNota ?? g.competencia : g.competencia).toISOString().slice(0, 7) + "-01T00:00:00.000Z";
     const k = `${g.codccu}|${g.contaFinanceira}`;
     const m = porCompetencia.get(k) ?? new Map<string, number>();
     m.set(mes, Math.round(((m.get(mes) ?? 0) + (g._sum.valorRateado ?? 0)) * 100) / 100);

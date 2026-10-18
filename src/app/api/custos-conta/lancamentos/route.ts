@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { COMPETENCIA_FISCAL_ATIVA } from "@/lib/custos/competenciaDaPlanilha";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { codigoPeloNome } from "@/lib/custos/planoContas";
 
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
   const codccu = searchParams.get("codccu");
   const de = searchParams.get("de"); // aaaa-mm
   const ate = searchParams.get("ate"); // aaaa-mm
-  const porCompetencia = searchParams.get("base") === "competencia"; // periodo pelo mes da nota em vez do mes do pagamento
+  const porCompetencia = COMPETENCIA_FISCAL_ATIVA && searchParams.get("base") === "competencia"; // periodo pelo mes da nota em vez do mes do pagamento
   if (!codccu || !de || !ate || !/^\d{4}-\d{2}$/.test(de) || !/^\d{4}-\d{2}$/.test(ate)) {
     return NextResponse.json({ error: "codccu, de e ate (aaaa-mm) são obrigatórios" }, { status: 422 });
   }
