@@ -25,6 +25,7 @@ import type { AlvoDetalhe } from "./DetalheConta";
 import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, estiloCelulaCalor, type SerieEmpilhada } from "./graficos";
 import { BarrasVariacao, Cascata, LegendaLinha, LinhaAcompanhamento, TabelaMovimentos } from "./acompanhamento";
 import { Cartao, Kpi, SeloInativa, SeloReembolsavel, Variacao, VazioPeriodo } from "./ui";
+import ParetoFornecedores from "./ParetoFornecedores";
 
 export default function VisaoContrato({
   contrato,
@@ -401,6 +402,8 @@ export default function VisaoContrato({
               </Cartao>
             </div>
           )}
+
+          <ParetoFornecedores codccu={contrato.codccu} filtros={filtros} base={base} busca={busca} />
 
           <Cartao
             titulo="Plano de contas × mês"
