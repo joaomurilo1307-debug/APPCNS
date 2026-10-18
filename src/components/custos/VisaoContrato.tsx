@@ -25,7 +25,6 @@ import type { AlvoDetalhe } from "./DetalheConta";
 import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, estiloCelulaCalor, type SerieEmpilhada } from "./graficos";
 import { BarrasVariacao, Cascata, LegendaLinha, LinhaAcompanhamento, TabelaMovimentos } from "./acompanhamento";
 import { Cartao, Kpi, SeloInativa, SeloReembolsavel, Variacao, VazioPeriodo } from "./ui";
-import PrevistoRealizado from "./PrevistoRealizado";
 
 export default function VisaoContrato({
   contrato,
@@ -58,8 +57,6 @@ export default function VisaoContrato({
   const [baixando, setBaixando] = useState(false);
   // mes em analise no painel "O que mudou": clicar numa barra de variacao muda o mes (padrao: o ultimo mes fechado do periodo)
   const [mesAnalise, setMesAnalise] = useState<string | null>(null);
-  // "Custo" (o realizado do Senior) ou "Previsto x realizado" (o relatorio das planilhas dos coordenadores)
-  const [aba, setAba] = useState<"custo" | "previsto">("custo");
 
   // meta mensal do coordenador: fica guardada neste navegador, por centro de custo
   useEffect(() => {
@@ -256,20 +253,7 @@ export default function VisaoContrato({
         </div>
       </div>
 
-      <div className="inline-flex overflow-hidden rounded-xl border border-gray-200 bg-white" role="tablist" aria-label="Visão do centro de custo">
-        {([
-          ["custo", "Custo (realizado)"],
-          ["previsto", "Previsto × realizado"],
-        ] as const).map(([k, nome]) => (
-          <button key={k} type="button" role="tab" aria-selected={aba === k} onClick={() => setAba(k)} className={`px-4 py-2 text-[14px] font-medium transition ${aba === k ? "bg-brand text-white" : "text-gray-600 hover:bg-gray-50"}`}>
-            {nome}
-          </button>
-        ))}
-      </div>
-
-      {aba === "previsto" ? (
-        <PrevistoRealizado contrato={contrato} filtros={filtros} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} />
-      ) : linhas.length === 0 ? (
+      {linhas.length === 0 ? (
         <VazioPeriodo />
       ) : (
         <>
