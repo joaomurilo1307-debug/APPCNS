@@ -118,8 +118,8 @@ export default function FiltrosCusto({
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Ver por</label>
           <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group" aria-label="Mês de referência">
             {([
-              ["pagamento", "Data de pagamento", "Cada parcela entra no mês em que foi paga (como as planilhas)."],
-              ["competencia", "Competência", "A compra inteira entra no mês da nota, mesmo que as parcelas sejam pagas depois."],
+              ["pagamento", "Pago no mês", "Cada parcela entra no mês em que foi paga (igual às planilhas dos coordenadores)."],
+              ["competencia", "Competência da compra", "Cada parcela paga entra no mês da nota fiscal no Senior: a compra aparece no mês dela."],
             ] as const).map(([valor, nome, dica]) => (
               <button
                 key={valor}
@@ -133,6 +133,9 @@ export default function FiltrosCusto({
               </button>
             ))}
           </div>
+          <p className="mt-1 max-w-sm text-xs text-gray-500">
+            {base === "pagamento" ? "Cada parcela entra no mês em que foi paga — igual às planilhas." : "Cada parcela paga entra no mês da nota fiscal (compra no mês dela). Parcelas a pagar não entram."}
+          </p>
         </div>
         )}
 
