@@ -4,6 +4,7 @@
 // graficos, tabelas e os lancamentos por tras de cada numero. Os numeros sao lidos DIRETO do Senior (botao Atualizar e
 // atualizacao automatica ao abrir quando estao velhos) pela mesma regra do relatorio do Rito de Gestao.
 
+import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AtualizarCusto, { type EstadoAtualizacaoUI } from "@/components/custos/AtualizarCusto";
@@ -15,7 +16,8 @@ import VisaoGeral from "@/components/custos/VisaoGeral";
 import { chaveMes, contratosNaBase, coresDosGrupos, type BaseMes, type ContratoCusto, type Filtros, type TipoCusto } from "@/lib/custos/agregacao";
 import { mesLongo } from "@/lib/custos/formato";
 
-type Resposta = { contratos: ContratoCusto[]; meses: string[]; mesesCompetencia?: string[]; temCompetencia?: boolean; mesCorrente: string; atualizacao: EstadoAtualizacaoUI };
+type Escopo = { tipo: "todos" | "varios" | "um" | "nenhum"; quantidade: number | null; podeGerenciarAcessos: boolean };
+type Resposta = { contratos: ContratoCusto[]; meses: string[]; mesesCompetencia?: string[]; temCompetencia?: boolean; mesCorrente: string; atualizacao: EstadoAtualizacaoUI; escopo?: Escopo };
 
 function CustoPorContrato() {
   const router = useRouter();
@@ -124,6 +126,15 @@ function CustoPorContrato() {
   }
 
   const semAcesso = dados.contratos.length === 0;
+  const escopo = dados.escopo;
+  const escopoTexto =
+    escopo?.tipo === "todos"
+      ? "Visão completa: você acompanha todos os centros de custo."
+      : escopo?.tipo === "um"
+        ? "Você acompanha 1 centro de custo."
+        : escopo?.tipo === "varios"
+          ? `Você acompanha ${escopo.quantidade} centros de custo.`
+          : "";
 
   return (
     <div className="mx-auto max-w-[1400px]">
@@ -131,17 +142,34 @@ function CustoPorContrato() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Custo por centro de custo</h1>
           <p className="mt-1 max-w-3xl text-[15px] text-gray-500">
-            {unico ? "Quanto este centro de custo custa por mês e em quê, direto do Senior." : "Quanto cada centro de custo custa por mês e em quê, direto do Senior. Você vê os centros de custo das equipes de que participa."}
+            {unico ? "Quanto este centro de custo custa por mês e em quê, direto do Senior." : "Quanto cada centro de custo custa por mês e em quê, direto do Senior."}
           </p>
           <SeloSenior />
         </div>
-        <AtualizarCusto estadoInicial={dados.atualizacao} onConcluida={carregar} />
+        <div className="flex flex-col items-end gap-2">
+          <AtualizarCusto estadoInicial={dados.atualizacao} onConcluida={carregar} />
+          {escopo?.podeGerenciarAcessos && (
+            <Link href="/custos/acessos" className="text-[13px] font-medium text-brand hover:text-brand-dark">
+              Escolher quem vê cada centro de custo →
+            </Link>
+          )}
+        </div>
       </header>
+      {escopoTexto && <p className="-mt-2 mb-4 text-[13px] text-gray-500">{escopoTexto}</p>}
 
       {semAcesso ? (
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white/70 px-6 py-14 text-center">
-          <p className="text-sm font-medium text-gray-700">Nenhum custo para mostrar ainda.</p>
-          <p className="mt-1 text-xs text-gray-400">Ou você não participa de nenhuma equipe com centro de custo vinculado, ou a primeira leitura do Senior ainda não terminou — use “Atualizar”.</p>
+          {escopo?.tipo === "nenhum" ? (
+            <>
+              <p className="text-base font-medium text-gray-700">Você ainda não tem nenhum centro de custo liberado.</p>
+              <p className="mt-1 text-sm text-gray-500">Peça ao administrador para liberar os centros de custo que você acompanha.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-base font-medium text-gray-700">Nenhum custo para mostrar ainda.</p>
+              <p className="mt-1 text-sm text-gray-500">A primeira leitura do Senior ainda não terminou — use “Atualizar”.</p>
+            </>
+          )}
         </div>
       ) : (
         <>

@@ -265,6 +265,7 @@ export default function UsuariosPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Usuários e Governança</h1>
+          <a href="/custos/acessos" className="mt-1 inline-block text-[13px] font-medium text-brand hover:text-brand-dark">Escolher quais centros de custo cada pessoa vê nos custos →</a>
           <p className="text-sm text-gray-500">Cadastro de acesso e papéis. Restrito a Admin.</p>
         </div>
         <button

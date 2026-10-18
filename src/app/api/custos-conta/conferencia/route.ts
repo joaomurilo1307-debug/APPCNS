@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { escopoDeCustos } from "@/lib/custos/acesso";
 import { estadoAtualizacao } from "@/lib/custos/atualizacaoCusto";
 import { auditarCustos } from "@/lib/custos/auditoria";
 
@@ -12,11 +13,7 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  let vePodeTudo = ["ADMIN", "DIRETOR"].includes(user.role);
-  if (!vePodeTudo) {
-    const eu = await prisma.user.findUnique({ where: { id: user.id }, select: { verTodosCustos: true } });
-    vePodeTudo = !!eu?.verTodosCustos;
-  }
+  const vePodeTudo = (await escopoDeCustos(prisma, user)).todos;
 
   const [a, estado] = await Promise.all([auditarCustos(prisma), estadoAtualizacao()]);
   const ok = estado.ultimaOk;

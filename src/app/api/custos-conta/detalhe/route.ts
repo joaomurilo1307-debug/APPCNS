@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 import { escolherTituloReal, type CandidatoTitulo } from "@/lib/escolherTituloReal";
 
@@ -27,16 +28,8 @@ export async function GET(req: Request) {
 
   // mesma regra de visibilidade da tela principal (/api/custos-conta) --
   // sem isso, dava pra ler o detalhe de qualquer CCU so' sabendo o codigo.
-  let vePodeTudo = ["ADMIN", "DIRETOR"].includes(user.role);
-  if (!vePodeTudo) {
-    const eu = await prisma.user.findUnique({ where: { id: user.id }, select: { verTodosCustos: true } });
-    vePodeTudo = !!eu?.verTodosCustos;
-  }
-  if (!vePodeTudo) {
-    const time = await prisma.team.findFirst({ where: { codccu }, select: { id: true } });
-    const souMembro = time && (await prisma.userTeam.findUnique({ where: { userId_teamId: { userId: user.id, teamId: time.id } } }));
-    if (!souMembro) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
-  }
+  const escopo = await escopoDeCustos(prisma, user);
+  if (!podeVerCcu(escopo, codccu)) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
 
   const [linhas, ocs, usuariosSenior] = await Promise.all([
     prisma.custoFinanceiroDetalhe.findMany({

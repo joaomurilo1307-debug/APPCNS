@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { escopoDeCustos } from "@/lib/custos/acesso";
 import { estadoAtualizacao } from "@/lib/custos/atualizacaoCusto";
 import { COMPETENCIA_PISO } from "@/lib/custos/motorCustoContrato";
 import { codigoPeloNome, contaInativa, eReembolsavel, grupoDaConta } from "@/lib/custos/planoContas";
@@ -38,26 +39,19 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const user = session.user as any;
-  let vePodeTudo = ["ADMIN", "DIRETOR"].includes(user.role);
-  if (!vePodeTudo) {
-    const eu = await prisma.user.findUnique({ where: { id: user.id }, select: { verTodosCustos: true } });
-    vePodeTudo = !!eu?.verTodosCustos;
-  }
-
   const { meses: mesesDoPeriodo, mesCorrente } = mesesDoPisoAteHoje();
   const atualizacao = await estadoAtualizacao();
 
-  let teamIdsPermitidos: string[] | null = null; // null = sem restricao
-  if (!vePodeTudo) {
-    const minhasEquipes = await prisma.userTeam.findMany({ where: { userId: user.id }, select: { teamId: true } });
-    teamIdsPermitidos = minhasEquipes.map((e) => e.teamId);
-    if (teamIdsPermitidos.length === 0) {
-      return NextResponse.json({ contratos: [], meses: mesesDoPeriodo, mesCorrente, atualizacao });
-    }
+  // quem ve o que: ADMIN/DIRETOR/verTodosCustos veem todos; os demais, os centros de custo que o admin liberou + os das equipes deles
+  const escopo = await escopoDeCustos(prisma, user);
+  const ccusPermitidos: string[] | null = escopo.todos ? null : Array.from(escopo.ccus);
+  const infoEscopo = { tipo: escopo.tipo, quantidade: escopo.quantidade, podeGerenciarAcessos: user.role === "ADMIN" };
+  if (ccusPermitidos && ccusPermitidos.length === 0) {
+    return NextResponse.json({ contratos: [], meses: mesesDoPeriodo, mesesCompetencia: mesesDoPeriodo, temCompetencia: false, mesCorrente, atualizacao, escopo: infoEscopo });
   }
 
   const registros = await prisma.custoContaFinanceira.findMany({
-    where: teamIdsPermitidos ? { teamId: { in: teamIdsPermitidos } } : undefined,
+    where: ccusPermitidos ? { codccu: { in: ccusPermitidos } } : undefined,
     include: { team: { select: { id: true, name: true, projects: { select: { id: true, name: true }, take: 1 } } } },
     orderBy: [{ competencia: "desc" }],
   });
@@ -65,7 +59,7 @@ export async function GET() {
   // Serie por COMPETENCIA (mes da nota): o mesmo custo pago, so' que no mes em que a compra foi lancada, e nao no mes em que cada
   // parcela foi paga. Sai do detalhe titulo a titulo (CustoFinanceiroDetalhe.competenciaNota); linha sem competencia da nota
   // (gravada antes da regra v2) usa o mes do pagamento. Mesma permissao: so' os CCUs que a pessoa ve.
-  const ccusVisiveis = teamIdsPermitidos ? Array.from(new Set(registros.map((r) => r.codccu))) : null;
+  const ccusVisiveis = ccusPermitidos;
   const porCompetencia = new Map<string, Map<string, number>>(); // "ccu|conta" -> (mes -> valor)
   let temCompetencia = false;
   const grupos = await prisma.custoFinanceiroDetalhe.groupBy({
@@ -160,5 +154,5 @@ export async function GET() {
   // meses da visao por competencia: podem comecar antes do piso (nota de dez/25 paga em jan/26)
   const mesesCompetencia = Array.from(new Set([...mesesDoPeriodo, ...Array.from(porCompetencia.values()).flatMap((m) => Array.from(m.keys()))])).sort((a, b) => b.localeCompare(a));
 
-  return NextResponse.json({ contratos, meses, mesesCompetencia, temCompetencia, mesCorrente, atualizacao });
+  return NextResponse.json({ contratos, meses, mesesCompetencia, temCompetencia, mesCorrente, atualizacao, escopo: infoEscopo });
 }

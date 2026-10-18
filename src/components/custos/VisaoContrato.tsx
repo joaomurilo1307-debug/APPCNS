@@ -25,7 +25,9 @@ import type { AlvoDetalhe } from "./DetalheConta";
 import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, estiloCelulaCalor, type SerieEmpilhada } from "./graficos";
 import { BarrasVariacao, Cascata, LegendaLinha, LinhaAcompanhamento, TabelaMovimentos } from "./acompanhamento";
 import { Cartao, Kpi, SeloInativa, SeloReembolsavel, Variacao, VazioPeriodo } from "./ui";
+import MapaDoCusto from "./MapaDoCusto";
 import ParetoFornecedores from "./ParetoFornecedores";
+import QuandoSai from "./QuandoSai";
 
 export default function VisaoContrato({
   contrato,
@@ -403,7 +405,12 @@ export default function VisaoContrato({
             </div>
           )}
 
-          <ParetoFornecedores codccu={contrato.codccu} filtros={filtros} base={base} busca={busca} />
+          <MapaDoCusto itens={linhas.map((l) => ({ grupo: l.conta.grupoCodigo, grupoNome: l.conta.grupoNome, conta: l.conta.contaFinanceira, valor: l.totalP }))} cores={cores} />
+
+          <div className="grid items-start gap-5 xl:grid-cols-2">
+            <ParetoFornecedores codccu={contrato.codccu} filtros={filtros} base={base} busca={busca} />
+            <QuandoSai codccu={contrato.codccu} filtros={filtros} base={base} busca={busca} />
+          </div>
 
           <Cartao
             titulo="Plano de contas × mês"

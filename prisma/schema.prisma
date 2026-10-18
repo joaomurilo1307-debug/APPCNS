@@ -171,6 +171,8 @@ model User {
   // Custo por Plano de Contas sem virar DIRETOR (que traria outros
   // privilegios junto). So o ADMIN liga isso, pela tela de Usuarios.
   verTodosCustos Boolean @default(false)
+  // centros de custo que esta pessoa acompanha em Custo por Centro de Custo (alem dos das equipes dela)
+  acessosCentroCusto AcessoCentroCusto[]
   avatarColor  String    @default("#0f766e")
   avatarUrl    String?   @db.Text
   lastSeenAt   DateTime?
@@ -405,6 +407,21 @@ model AtualizacaoCusto {
 
   @@index([iniciadoEm])
   @@index([status, finalizadoEm])
+}
+
+// Quem acompanha qual centro de custo (CCU) na tela Custo por Centro de Custo. Cada pessoa pode ter 1, varios, todos
+// (User.verTodosCustos ou papel ADMIN/DIRETOR) ou nenhum. Soma-se ao acesso que ja' vinha das equipes (Team.codccu).
+model AcessoCentroCusto {
+  id           String   @id @default(cuid())
+  userId       String
+  codccu       String
+  concedidoPor String? // nome de quem concedeu
+  criadoEm     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, codccu])
+  @@index([codccu])
 }
 
 // Ledger IMUTAVEL de qual centro de custo cada colaborador CLT tinha em
