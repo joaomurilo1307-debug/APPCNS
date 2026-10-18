@@ -66,7 +66,15 @@ export async function auditarCustos(db: typeof prismaReal) {
   const naProgramacao = new Set((await db.tituloContasAPagar.findMany({ select: { numTit: true, codFor: true } })).map((t) => `${t.numTit}|${t.codFor}`));
   const faltandoNaProgramacao = titulosDoDetalhe.filter((t) => !naProgramacao.has(`${t.numTit}|${t.codFor}`));
 
+  // equipes do sistema e quais ja estao ligadas a um CCU (Team.codccu) -- e' essa ligacao que da' acesso ao coordenador
+  const equipes = await db.team.findMany({ select: { name: true, codccu: true, _count: { select: { members: true } } } });
+
   return {
+    equipes: {
+      total: equipes.length,
+      comCodccu: equipes.filter((e) => e.codccu).map((e) => ({ nome: e.name, codccu: e.codccu, membros: e._count.members })),
+      semCodccu: equipes.filter((e) => !e.codccu).length,
+    },
     celulas: itens.length,
     lancamentos: qtdDetalhe,
     totalCelulasPorMes: porMes(itens.map((i) => ({ competencia: i.competencia, v: i.valor }))),
