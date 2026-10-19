@@ -18,35 +18,41 @@ async function nucleoManagedUserIds(userId: string): Promise<string[]> {
 }
 
 /**
- * Regra de governança de visibilidade (independente do `role` de permissão):
- * - ADMIN/DIRETOR: veem tudo.
- * - Nível hierárquico GERENCIA: vê tudo (todos os setores/núcleos e projetos), igual DIRETOR.
- * - Gerente/visualizador de núcleo (Nucleo.gerentes): vê também as equipes/projetos que
- *   incluem pessoas dos núcleos que ele gerencia, além das equipes das quais participa.
- * - Demais (ex.: coordenador): só as equipes das quais participa (comportamento padrão).
- * Retorna um filtro Prisma pronto para o campo `teamId` de Project (usar direto em
- * `Project.findMany({ where })`) ou, para outros modelos, envolver em `{ project: <isto> }`.
+ * Regra de visibilidade de PROJETOS (decisao do Joao, 19/10/2026): cada pessoa -- inclusive Diretoria e Gerencia --
+ * so ve o projeto que CRIOU (ownerId) ou em que PARTICIPA: e' membro da equipe do projeto, foi convidada como
+ * diretor/coordenador do projeto, gerencia um nucleo vinculado ao projeto, tem tarefa atribuida ou e' o aprovador.
+ * So' o ADMIN (administrador do sistema) ve todos. Cliente tem regra propria (ProjectClient) nas rotas.
+ * Retorna um filtro Prisma pronto para `Project.findMany({ where })` ou, para outros modelos, `{ project: <isto> }`.
  */
 export async function visibleProjectWhere(userId: string, role: string): Promise<any> {
-  if (role === "ADMIN" || role === "DIRETOR") return {};
+  if (role === "ADMIN") return {};
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { nivelHierarquico: true } });
-  if (user?.nivelHierarquico === "GERENCIA") return {};
+  return filtroProjetosDaPessoa(userId, await getUserTeamIds(userId));
+}
 
-  const teamIds = await getUserTeamIds(userId);
-  const nucleoUserIds = await nucleoManagedUserIds(userId);
+/** PURA: o filtro "criei ou participo" (separada para teste). */
+export function filtroProjetosDaPessoa(userId: string, teamIds: string[]) {
+  return {
+    OR: [
+      { ownerId: userId },
+      { teamId: { in: teamIds } },
+      { diretores: { some: { id: userId } } },
+      { coordenadores: { some: { id: userId } } },
+      { nucleos: { some: { gerentes: { some: { id: userId } } } } },
+      { tasks: { some: { assigneeId: userId } } },
+      { approverId: userId },
+    ],
+  };
+}
 
-  const clauses: any[] = [
-    { teamId: { in: teamIds } },
-    { diretores: { some: { id: userId } } },
-    { coordenadores: { some: { id: userId } } },
-    { nucleos: { some: { gerentes: { some: { id: userId } } } } },
-  ];
-  if (nucleoUserIds.length > 0) {
-    clauses.push({ team: { members: { some: { userId: { in: nucleoUserIds } } } } });
+/** Pode ver este projeto? (mesma regra da lista, para as rotas que buscam por id) */
+export async function canViewProject(userId: string, role: string, projectId: string): Promise<boolean> {
+  if (role === "ADMIN") return true;
+  if (role === "CLIENTE") {
+    return (await prisma.project.count({ where: { id: projectId, clients: { some: { userId } } } })) > 0;
   }
-
-  return { OR: clauses };
+  const where = await visibleProjectWhere(userId, role);
+  return (await prisma.project.count({ where: { id: projectId, ...where } })) > 0;
 }
 
 /** Mesma regra de `visibleProjectWhere`, mas retorna um filtro para o modelo Team diretamente. */

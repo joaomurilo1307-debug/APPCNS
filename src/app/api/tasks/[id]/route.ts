@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canModifyTaskScoped, canDeleteTask } from "@/lib/permissions";
+import { canModifyTaskScoped, canDeleteTask, canViewProject } from "@/lib/permissions";
 import { reconcileTaskOutlook, removeTaskFromOutlook } from "@/lib/taskOutlookSync";
 import { rescheduleAndPersist } from "@/lib/reschedule";
 import { z } from "zod";
@@ -40,6 +40,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     },
   });
   if (!task) return NextResponse.json({ error: "Não encontrada" }, { status: 404 });
+  const uid = (session.user as any).id;
+  if (task.assigneeId !== uid && !(task.projectId && (await canViewProject(uid, (session.user as any).role, task.projectId)))) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   return NextResponse.json(task);
 }
 

@@ -19,7 +19,7 @@ const ATTENDEE_SELECT = {
 } as const;
 
 async function visibilityFilterFor(userId: string, role: string) {
-  if (role === "ADMIN" || role === "DIRETOR") return {};
+  if (role === "ADMIN") return {};
 
   if (role === "CLIENTE") {
     return {

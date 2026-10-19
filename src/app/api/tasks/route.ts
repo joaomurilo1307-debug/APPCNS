@@ -10,7 +10,7 @@ import crypto from "crypto";
 import { z } from "zod";
 
 async function visibilityFilterFor(userId: string, role: string) {
-  if (role === "ADMIN" || role === "DIRETOR") return {};
+  if (role === "ADMIN") return {};
 
   if (role === "CLIENTE") {
     return { OR: [{ project: { clients: { some: { userId } } } }, { assigneeId: userId }] };
