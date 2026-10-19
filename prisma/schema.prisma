@@ -1607,3 +1607,24 @@ model DemandaComentario {
 
   @@index([demandaId])
 }
+
+// Rateio de cada titulo no Senior (E501RAT): centro de custo + linha de custo (conta financeira) + valor, das linhas de ENTRADA do titulo
+// e das PREVISOES (transacao 90503). Lido junto com o custo (atualizacao automatica) e regravado inteiro a cada leitura. E' o que diz a que
+// centro de custo pertence um titulo cujo cabecalho (E501TCP.CODCCU) vem vazio -- caso de quase todas as previsoes (PRV). So' leitura do Senior.
+model TituloRateioSenior {
+  id           String   @id @default(cuid())
+  numTit       String
+  codFil       String
+  codTpt       String // tipo do titulo (NFS, NFC, PRV...)
+  codFor       String
+  seqMov       String
+  codTns       String // transacao do rateio (90500 entrada, 90503 previsao...)
+  ctaFin       String // conta financeira = linha de custo
+  codccu       String
+  valor        Float
+  mesAno       DateTime?
+  atualizadoEm DateTime @default(now())
+
+  @@index([codccu])
+  @@index([numTit, codFor])
+}

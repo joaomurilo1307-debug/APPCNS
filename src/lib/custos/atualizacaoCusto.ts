@@ -9,6 +9,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { consultarSenior } from "@/lib/senior/getDbInfo";
+import { gravarRateioDosTitulos } from "@/lib/contratos/rateioTitulos";
 import {
   aplicarCompetenciasFiscais,
   buscarCompetenciasFiscais,
@@ -149,6 +150,15 @@ async function executar(id: string) {
     const resultadoGravacao = await gravarItens(prisma, itens, nomeContrato);
     await gravarDetalhe(prisma, detalhe, info);
 
+    // ---- rateio de cada titulo (entrada + previsoes): alimenta Previsao e Ao vivo. Separado do custo: se falhar, o custo ja gravado vale e a atualizacao segue OK.
+    let rateioDosTitulos: unknown = null;
+    try {
+      await marcar(id, "Guardando o centro de custo de cada título", 96);
+      rateioDosTitulos = await gravarRateioDosTitulos(prisma, dados.rateios);
+    } catch (e) {
+      rateioDosTitulos = { erro: (e instanceof Error ? e.message : String(e)).slice(0, 300) };
+    }
+
     const totalPorMes: Record<string, number> = {};
     for (const i of itens) totalPorMes[i.competencia.slice(0, 7)] = Math.round(((totalPorMes[i.competencia.slice(0, 7)] ?? 0) + i.valor) * 100) / 100;
     const meses = Object.keys(totalPorMes).sort();
@@ -170,6 +180,7 @@ async function executar(id: string) {
       adiantamentosTotal: Math.round(detalhe.filter((d) => d.baixa === "ADIANTAMENTO").reduce((s, d) => s + d.valorRateado, 0) * 100) / 100,
       regra: "v2: 90550 + 90558",
       competenciasFiscais,
+      rateioDosTitulos,
       backupFeito,
       backupRegraV2,
       duracaoSegundos: Math.round((Date.now() - inicio) / 1000),

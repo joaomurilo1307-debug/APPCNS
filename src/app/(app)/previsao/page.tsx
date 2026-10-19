@@ -12,7 +12,7 @@ type Linha = { codccu: string; nome: string; total: number; quantidade: number; 
 type Resp = { hoje: string; categorias: { chave: string; rotulo: string }[]; linhas: Linha[]; semVencimento: number };
 
 const SEM_CC = "_sem_cc";
-const COR: Record<string, string> = { RECORRENTE: "bg-violet-500", VEICULO: "bg-sky-500", TI: "bg-teal-500", AQUISICAO: "bg-amber-500", DEMAIS: "bg-gray-400" };
+const COR: Record<string, string> = { RECORRENTE: "bg-violet-500", VEICULO: "bg-sky-500", TI: "bg-teal-500", AQUISICAO: "bg-amber-500", OC_PROGRAMADA: "bg-rose-500", DEMAIS: "bg-gray-400" };
 const celula = (v: number | undefined) => (v && v > 0.004 ? moedaCompacta(v).replace("R$ ", "") : "–");
 
 export default function PrevisaoPage() {
@@ -56,14 +56,14 @@ export default function PrevisaoPage() {
     <div className="mx-auto max-w-[1500px] space-y-5 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-gray-900">Previsão por centro de custo</h1>
-        <p className="mt-1 max-w-3xl text-[14px] text-gray-500">Tudo o que o Senior tem previsto (títulos em aberto): despesas recorrentes, parcelas de veículos, parcelas de computadores e TI e aquisições, separado por centro de custo. É só leitura e não é custo realizado: o que já foi pago está em Custo por Centro de Custo.</p>
+        <p className="mt-1 max-w-3xl text-[14px] text-gray-500">Tudo o que o Senior tem previsto, separado por centro de custo: despesas recorrentes (fixas e variáveis), parcelas de veículos e de computadores, aquisições e as OCs programadas que ainda vão virar título. É só leitura e não é custo realizado: o que já foi pago está em Custo por Centro de Custo.</p>
       </header>
 
       {dados.linhas.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 px-5 py-9 text-center text-sm text-gray-600">Nenhum título em aberto nos centros de custo que você acompanha.</div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
             <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">
               <p className="text-[13.5px] font-semibold text-gray-900">Total previsto</p>
               <p className="mt-2 text-xl font-semibold tabular-nums text-gray-900">{moedaCompacta(totais.geral)}</p>
@@ -88,7 +88,7 @@ export default function PrevisaoPage() {
                   <tr>
                     <th className="px-3 py-2 text-left">CCU</th>
                     <th className="px-3 py-2 text-left">Centro de custo</th>
-                    {dados.categorias.map((c) => <th key={c.chave} className="px-3 py-2 text-right"><span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${COR[c.chave]}`} />{c.rotulo.replace("Parcelas de ", "").replace("Despesas ", "").replace("Demais títulos em aberto", "Demais")}</th>)}
+                    {dados.categorias.map((c) => <th key={c.chave} className="px-3 py-2 text-right"><span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${COR[c.chave]}`} />{c.rotulo.replace("Parcelas de ", "").replace("Despesas ", "").replace("Demais títulos em aberto", "Demais").replace("OCs programadas", "OCs")}</th>)}
                     <th className="px-3 py-2 text-right">Vencido</th>
                     <th className="px-3 py-2 text-right">Total</th>
                   </tr>

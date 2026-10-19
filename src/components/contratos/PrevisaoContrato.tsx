@@ -6,14 +6,14 @@
 import { useEffect, useState } from "react";
 import { moeda, moedaCompacta, mesCurto } from "@/lib/custos/formato";
 
-type Titulo = { numTit: string; tipo: string; fornecedorNome: string | null; descricao: string | null; numOcp: string | null; numNfc: string | null; vencimento: string; valorAberto: number; origemCcu?: string | null; numOcpVinculada?: string | null };
-type Grupo = { chave: string; rotulo: string; descricao: string; total: number; quantidade: number; vencidos: number; depois: number; porMes: Record<string, number>; titulos: Titulo[]; titulosOcultos: number };
+type Titulo = { numTit: string; tipo: string; fornecedorNome: string | null; descricao: string | null; numOcp: string | null; numNfc: string | null; vencimento: string; valorAberto: number; origemCcu?: string | null; numOcpVinculada?: string | null; contaNome?: string | null; valorTipo?: "FIXO" | "VARIAVEL" | null };
+type Grupo = { chave: string; rotulo: string; descricao: string; total: number; quantidade: number; vencidos: number; depois: number; semData: number; porMes: Record<string, number>; porTipoValor: { FIXO: number; VARIAVEL: number; SEM_SERIE: number }; titulos: Titulo[]; titulosOcultos: number };
 type Resposta = { codccu: string; hoje: string; meses: string[]; grupos: Grupo[]; total: number; quantidade: number; semVencimento: number; semCentroDeCusto: { quantidade: number; valor: number; ocRateada: number } | null };
 
 // na matriz os valores vao sem "R$" (a legenda diz que e em reais) para caber os 12 meses sem rolagem
 const celula = (v: number) => (v > 0.004 ? moedaCompacta(v).replace("R$ ", "") : "–");
 const dataBr = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
-const COR: Record<string, string> = { RECORRENTE: "bg-violet-500", VEICULO: "bg-sky-500", TI: "bg-teal-500", AQUISICAO: "bg-amber-500", DEMAIS: "bg-gray-400" };
+const COR: Record<string, string> = { RECORRENTE: "bg-violet-500", VEICULO: "bg-sky-500", TI: "bg-teal-500", AQUISICAO: "bg-amber-500", OC_PROGRAMADA: "bg-rose-500", DEMAIS: "bg-gray-400" };
 
 export default function PrevisaoContrato({ codccu }: { codccu: string }) {
   const [dados, setDados] = useState<Resposta | null>(null);
@@ -40,7 +40,7 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-[13.5px] text-sky-900">
-        {semCc ? (<>Títulos <strong>em aberto</strong> que <strong>não têm centro de custo</strong> no Senior, nem no título nem em uma ordem de compra de um único centro. Por isso não entram em nenhum contrato. Para entrarem, o centro de custo precisa ser informado no Senior.</>) : (<>Previsão = títulos <strong>em aberto</strong> do Senior neste centro de custo (CCU {codccu}), por data de vencimento. O centro de custo é o do próprio título no Senior ou, quando o título não traz, o da ordem de compra vinculada. Não é custo realizado: o que já foi pago está na aba Custos. Nada aqui é digitado.</>)}
+        {semCc ? (<>Títulos <strong>em aberto</strong> que <strong>não têm centro de custo</strong> no Senior, nem no rateio, nem no título, nem em uma ordem de compra de um único centro. Por isso não entram em nenhum contrato. Para entrarem, o centro de custo precisa ser informado no Senior.</>) : (<>Previsão = o que o Senior já tem previsto para este centro de custo (CCU {codccu}): previsões e títulos <strong>em aberto</strong>, com as parcelas, e as <strong>ordens de compra</strong> em análise ou aprovadas que ainda vão virar título. O centro de custo e a linha de custo vêm do rateio do Senior. Não é custo realizado: o que já foi pago está na aba Custos. Nada aqui é digitado.</>)}
       </div>
 
       {dados.quantidade === 0 ? (
@@ -50,7 +50,7 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
             {dados.grupos.map((g) => (
               <button key={g.chave} type="button" onClick={() => g.quantidade > 0 && setAberto(aberto === g.chave ? null : g.chave)} disabled={g.quantidade === 0}
                 className={`rounded-2xl border bg-white p-4 text-left shadow-soft transition ${aberto === g.chave ? "border-brand" : "border-gray-100"} ${g.quantidade > 0 ? "hover:border-brand/40" : "opacity-60"}`}>
@@ -64,13 +64,14 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
           <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
             <header className="mb-3"><h2 className="text-base font-semibold text-gray-900">Previsão mês a mês</h2><p className="mt-0.5 text-[13px] text-gray-500">Valor em aberto por mês de vencimento, em reais (mil = milhares). “Vencido” é o que já passou da data e continua em aberto.</p></header>
             <div className="overflow-x-auto rounded-xl border border-gray-100">
-              <table className="w-full min-w-[1000px] text-[13px] tabular-nums">
+              <table className="w-full min-w-[1080px] text-[13px] tabular-nums">
                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                   <tr>
                     <th className="px-3 py-2 text-left">Categoria</th>
                     <th className="px-3 py-2 text-right">Vencido</th>
                     {dados.meses.map((m) => <th key={m} className="px-3 py-2 text-right">{mesCurto(m)}</th>)}
                     <th className="px-3 py-2 text-right">Depois</th>
+                    <th className="px-3 py-2 text-right">Sem data</th>
                     <th className="px-3 py-2 text-right">Total</th>
                   </tr>
                 </thead>
@@ -81,6 +82,7 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
                       <td className={`whitespace-nowrap px-3 py-2 text-right ${g.vencidos > 0 ? "text-red-700" : "text-gray-300"}`}>{celula(g.vencidos)}</td>
                       {dados.meses.map((m) => <td key={m} className={`whitespace-nowrap px-3 py-2 text-right ${g.porMes[m] > 0 ? "text-gray-800" : "text-gray-300"}`}>{celula(g.porMes[m])}</td>)}
                       <td className={`whitespace-nowrap px-3 py-2 text-right ${g.depois > 0 ? "text-gray-800" : "text-gray-300"}`}>{celula(g.depois)}</td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right ${g.semData > 0.004 ? "text-gray-800" : "text-gray-300"}`}>{celula(g.semData)}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-gray-900">{celula(g.total)}</td>
                     </tr>
                   ))}
@@ -89,6 +91,7 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
                     <td className="whitespace-nowrap px-3 py-2 text-right text-red-700">{celula(comDados.reduce((s, g) => s + g.vencidos, 0))}</td>
                     {dados.meses.map((m) => <td key={m} className="whitespace-nowrap px-3 py-2 text-right text-gray-900">{celula(comDados.reduce((s, g) => s + g.porMes[m], 0))}</td>)}
                     <td className="whitespace-nowrap px-3 py-2 text-right text-gray-900">{celula(comDados.reduce((s, g) => s + g.depois, 0))}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right text-gray-900">{celula(comDados.reduce((s, g) => s + g.semData, 0))}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right text-gray-900">{celula(dados.total)}</td>
                   </tr>
                 </tbody>
@@ -103,16 +106,18 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
                 <div><h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><span className={`h-2.5 w-2.5 rounded-full ${COR[g.chave]}`} />{g.rotulo}<span className="text-[13px] font-normal text-gray-500">· {g.quantidade} título{g.quantidade === 1 ? "" : "s"} · {moeda(g.total)}</span></h2><p className="mt-0.5 text-[13px] text-gray-500">{g.descricao}</p></div>
                 <span className="shrink-0 text-[13px] font-medium text-brand">{aberto === g.chave ? "recolher" : "ver títulos"}</span>
               </button>
+              {g.chave === "RECORRENTE" && g.quantidade > 0 && <p className="mt-2 text-[13px] text-gray-500">Valor fixo: <b className="text-gray-700">{moeda(g.porTipoValor.FIXO)}</b> · Valor variável: <b className="text-gray-700">{moeda(g.porTipoValor.VARIAVEL)}</b>{g.porTipoValor.SEM_SERIE > 0 ? <> · Previsão única, sem série para comparar: <b className="text-gray-700">{moeda(g.porTipoValor.SEM_SERIE)}</b></> : null}</p>}
               {aberto === g.chave && (
                 <div className="mt-3 overflow-x-auto rounded-xl border border-gray-100">
-                  <table className="w-full min-w-[760px] text-[13px]">
-                    <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500"><tr><th className="px-3 py-2">Vencimento</th><th className="px-3 py-2">Fornecedor</th><th className="px-3 py-2">Título</th><th className="px-3 py-2">Descrição no Senior</th><th className="px-3 py-2 text-right">Valor em aberto</th></tr></thead>
+                  <table className="w-full min-w-[900px] text-[13px]">
+                    <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500"><tr><th className="px-3 py-2">Vencimento</th><th className="px-3 py-2">Fornecedor</th><th className="px-3 py-2">Título</th><th className="px-3 py-2">Linha de custo</th><th className="px-3 py-2">Descrição no Senior</th><th className="px-3 py-2 text-right">Valor em aberto</th></tr></thead>
                     <tbody>
                       {g.titulos.map((t, i) => (
                         <tr key={`${t.numTit}-${i}`} className="border-t border-gray-100 align-top">
-                          <td className={`whitespace-nowrap px-3 py-2 tabular-nums ${t.vencimento < dados.hoje ? "text-red-700" : "text-gray-800"}`}>{dataBr(t.vencimento)}{t.vencimento < dados.hoje && <span className="ml-1 text-[11px]">vencido</span>}</td>
+                          <td className={`whitespace-nowrap px-3 py-2 tabular-nums ${t.vencimento && t.vencimento < dados.hoje ? "text-red-700" : "text-gray-800"}`}>{t.vencimento ? dataBr(t.vencimento) : <span className="text-gray-400">sem data</span>}{t.vencimento && t.vencimento < dados.hoje && <span className="ml-1 text-[11px]">vencido</span>}</td>
                           <td className="px-3 py-2 text-gray-800">{t.fornecedorNome ?? "—"}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-gray-600">{t.numTit}{t.numOcp ? <span className="ml-1 text-xs text-gray-400">OC {t.numOcp}</span> : null}{t.origemCcu === "oc" ? <span className="mt-0.5 block text-[11px] text-gray-400">CC pela OC {t.numOcpVinculada}</span> : null}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-gray-600">{t.numTit}{t.numOcp && t.tipo !== "OC" ? <span className="ml-1 text-xs text-gray-400">OC {t.numOcp}</span> : null}{t.origemCcu === "oc" && t.tipo !== "OC" ? <span className="mt-0.5 block text-[11px] text-gray-400">CC pela OC {t.numOcpVinculada}</span> : null}</td>
+                          <td className="px-3 py-2 text-gray-600">{t.contaNome ?? <span className="text-gray-300">não informada</span>}{g.chave === "RECORRENTE" && t.valorTipo ? <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${t.valorTipo === "FIXO" ? "bg-violet-100 text-violet-800" : "bg-amber-100 text-amber-800"}`}>{t.valorTipo === "FIXO" ? "valor fixo" : "valor variável"}</span> : null}</td>
                           <td className="max-w-[320px] px-3 py-2 text-gray-500">{t.descricao ?? ""}</td>
                           <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-gray-900">{moeda(t.valorAberto)}</td>
                         </tr>

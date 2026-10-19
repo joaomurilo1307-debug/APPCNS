@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AtualizarCusto, { type EstadoAtualizacaoUI } from "./AtualizarCusto";
 import DetalheConta, { type AlvoDetalhe } from "./DetalheConta";
+import AoVivo from "./AoVivo";
 import FiltrosCusto from "./FiltrosCusto";
 import SeloSenior from "./SeloSenior";
 import VisaoContrato from "./VisaoContrato";
@@ -198,9 +199,15 @@ export default function CustoPorContratoView({ ccuFixo }: { ccuFixo?: string }) 
               </button>
             </div>
           ) : contratoAberto ? (
-            <VisaoContrato contrato={contratoAberto} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onVoltar={unico || ccuFixo ? undefined : voltar} embutido={!!ccuFixo} onAbrirDetalhe={setDetalhe} />
+            <>
+              <VisaoContrato contrato={contratoAberto} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onVoltar={unico || ccuFixo ? undefined : voltar} embutido={!!ccuFixo} onAbrirDetalhe={setDetalhe} />
+              <AoVivo key={contratoAberto.codccu} codccu={contratoAberto.codccu} />
+            </>
           ) : (
-            <VisaoGeral contratos={contratosBase} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onAbrirContrato={abrirContrato} />
+            <>
+              <VisaoGeral contratos={contratosBase} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onAbrirContrato={abrirContrato} />
+              <AoVivo />
+            </>
           )}
 
           <details className="mt-8 rounded-2xl border border-gray-100 bg-white/80 p-5 text-[15px] text-gray-600">

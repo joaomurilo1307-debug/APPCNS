@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { hojeBR, vencimentoSentinela } from "@/lib/financeiro/alertas";
 import { montarPrevisao, type TituloPrevisao } from "@/lib/contratos/previsao";
-import { titulosAbertosComCcu } from "@/lib/contratos/titulosPrevistos";
+import { itensDePrevisao } from "@/lib/contratos/titulosPrevistos";
+import { nomeConta } from "@/lib/custos/planoContas";
 
 // Previsao do contrato (centro de custo), SOMENTE LEITURA: titulos em aberto que o Senior ja tem para este CCU (CC do proprio titulo ou da OC vinculada), agrupados por categoria.
 // Nao grava nada e nao mistura com o realizado (a aba Custos mostra so' o que foi pago). Mesmo controle de acesso das demais abas do contrato.
@@ -20,14 +21,15 @@ export async function GET(_req: Request, { params }: { params: { codccu: string 
   if (!podeVerCcu(escopo, params.codccu)) return NextResponse.json({ error: "Sem permissão para este contrato" }, { status: 403 });
 
   const hoje = hojeBR();
-  const todos = await titulosAbertosComCcu(prisma);
+  const todos = await itensDePrevisao(prisma);
 
   let semVencimento = 0;
   const titulos: TituloPrevisao[] = [];
   for (const t of todos) {
     if (params.codccu === SEM_CC ? !!t.ccu : t.ccu !== params.codccu) continue;
-    if (!t.vencimento || vencimentoSentinela(t.vencimento)) { semVencimento += 1; continue; }
-    titulos.push({ ...t, vencimento: t.vencimento });
+    const semData = !t.vencimento || vencimentoSentinela(t.vencimento);
+    if (semData && t.tipo !== "OC") { semVencimento += 1; continue; } // titulo sem data valida nao entra; OC sem previsao de pagamento entra como "sem data"
+    titulos.push({ ...t, vencimento: semData ? "" : (t.vencimento as string), contaNome: t.ctaFin ? nomeConta(t.ctaFin) ?? `Conta ${t.ctaFin}` : null });
   }
 
   // Aviso geral (so' para quem ve todos os centros de custo): titulos em aberto que nao puderam ser ligados a nenhum CC.

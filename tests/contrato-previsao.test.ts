@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { categoriaDoTitulo, montarPrevisao, somaMeses, type TituloPrevisao } from "../src/lib/contratos/previsao";
+import { categoriaDoTitulo, chaveDaSerie, montarPrevisao, somaMeses, tiposDeValorDasSeries, type TituloPrevisao } from "../src/lib/contratos/previsao";
 
 const base = { numTit: "1", tipo: "NF", fornecedorNome: "FORNECEDOR QUALQUER", descricao: null, numOcp: null, numNfc: null };
 const t = (o: Partial<TituloPrevisao> & { vencimento: string; valorAberto: number }): TituloPrevisao => ({ ...base, ...o });
@@ -62,4 +62,34 @@ test("montarPrevisao: vencidos, meses da janela, alem da janela, totais", () => 
 test("montarPrevisao: o total de cada grupo = vencidos + meses + depois (nada some)", () => {
   const r = montarPrevisao([t({ vencimento: "2026-01-01", valorAberto: 10 }), t({ vencimento: "2026-10-19", valorAberto: 20 }), t({ vencimento: "2030-05-05", valorAberto: 30 })], "2026-10-19");
   for (const g of r.grupos) assert.equal(Math.round((g.vencidos + g.depois + Object.values(g.porMes).reduce((a, b) => a + b, 0)) * 100), Math.round(g.total * 100));
+});
+
+test("serie recorrente: valor fixo x variavel, pela tolerancia de 2%", () => {
+  const prv = (num: string, valor: number, forn = "ALUGUEL EXEMPLO", cod = "5") => t({ tipo: "PRV", numTit: num, codFor: cod, fornecedorNome: forn, vencimento: "2026-11-10", valorAberto: valor });
+  assert.equal(chaveDaSerie(prv("COPASA_05", 1)), "5|COPASA");
+  assert.equal(chaveDaSerie(prv("COPASA_06", 1)), chaveDaSerie(prv("COPASA_05", 1)));
+  const tipos = tiposDeValorDasSeries([prv("ALUGUEL_01", 1000), prv("ALUGUEL_02", 1010), prv("COPASA_01", 800, "COPASA", "7"), prv("COPASA_02", 1200, "COPASA", "7"), prv("SOZINHA_01", 50, "SOZINHA", "8")]);
+  assert.equal(tipos.get("5|ALUGUEL"), "FIXO");
+  assert.equal(tipos.get("7|COPASA"), "VARIAVEL");
+  assert.equal(tipos.has("8|SOZINHA"), false); // uma previsao so': nao da para dizer se e' fixa
+});
+
+test("montarPrevisao: totais de recorrentes por tipo de valor somam o total do grupo", () => {
+  const prv = (num: string, valor: number, forn: string, cod: string) => t({ tipo: "PRV", numTit: num, codFor: cod, fornecedorNome: forn, vencimento: "2026-11-10", valorAberto: valor });
+  const r = montarPrevisao([prv("A_01", 100, "A", "1"), prv("A_02", 100, "A", "1"), prv("B_01", 10, "B", "2"), prv("B_02", 30, "B", "2"), prv("C_01", 7, "C", "3")], "2026-10-19");
+  const g = r.grupos.find((x) => x.chave === "RECORRENTE")!;
+  assert.deepEqual(g.porTipoValor, { FIXO: 200, VARIAVEL: 40, SEM_SERIE: 7 });
+  assert.equal(g.porTipoValor.FIXO + g.porTipoValor.VARIAVEL + g.porTipoValor.SEM_SERIE, g.total);
+  assert.equal(g.titulos.find((x) => x.numTit === "B_01")?.valorTipo, "VARIAVEL");
+});
+
+test("OC programada: categoria propria, e OC sem data de previsao cai em 'sem data' sem sumir do total", () => {
+  assert.equal(categoriaDoTitulo({ ...base, tipo: "OC", fornecedorNome: "LOCALIZA FROTAS" }), "OC_PROGRAMADA"); // a OC manda mesmo que o texto cite veiculo
+  const r = montarPrevisao([t({ tipo: "OC", vencimento: "2026-11-20", valorAberto: 500 }), t({ tipo: "OC", vencimento: "", valorAberto: 300 }), t({ tipo: "OC", vencimento: "2026-09-01", valorAberto: 100 })], "2026-10-19");
+  const g = r.grupos.find((x) => x.chave === "OC_PROGRAMADA")!;
+  assert.equal(g.total, 900);
+  assert.equal(g.semData, 300);
+  assert.equal(g.vencidos, 100);
+  assert.equal(g.porMes["2026-11"], 500);
+  assert.equal(Math.round((g.vencidos + g.depois + g.semData + Object.values(g.porMes).reduce((a, b) => a + b, 0)) * 100), 90000);
 });

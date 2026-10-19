@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { hojeBR, vencimentoSentinela } from "@/lib/financeiro/alertas";
 import { CATEGORIAS, montarPrevisao, type TituloPrevisao } from "@/lib/contratos/previsao";
-import { titulosAbertosComCcu } from "@/lib/contratos/titulosPrevistos";
+import { itensDePrevisao } from "@/lib/contratos/titulosPrevistos";
 
 // Previsao por centro de custo (Financeiro), SOMENTE LEITURA: titulos em aberto do Senior, um resumo por CC (so' os que a pessoa pode ver).
 // O detalhe de cada CC vem de /api/contratos/[codccu]/previsao. Quem ve todos os CCs tambem recebe o grupo "sem centro de custo".
@@ -19,16 +19,17 @@ export async function GET() {
   if (escopo.tipo === "nenhum") return NextResponse.json({ error: "Sem centros de custo liberados para você" }, { status: 403 });
 
   const hoje = hojeBR();
-  const todos = await titulosAbertosComCcu(prisma);
+  const todos = await itensDePrevisao(prisma);
 
   const porCcu = new Map<string, TituloPrevisao[]>();
   let semVencimento = 0;
   for (const t of todos) {
     const chave = t.ccu ?? SEM_CC;
     if (chave === SEM_CC ? !escopo.todos : !podeVerCcu(escopo, chave)) continue;
-    if (!t.vencimento || vencimentoSentinela(t.vencimento)) { semVencimento += 1; continue; }
+    const semData = !t.vencimento || vencimentoSentinela(t.vencimento);
+    if (semData && t.tipo !== "OC") { semVencimento += 1; continue; }
     if (!porCcu.has(chave)) porCcu.set(chave, []);
-    porCcu.get(chave)!.push({ ...t, vencimento: t.vencimento });
+    porCcu.get(chave)!.push({ ...t, vencimento: semData ? "" : (t.vencimento as string) });
   }
 
   const nomes = new Map<string, string>();
