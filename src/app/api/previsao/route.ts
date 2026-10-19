@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { hojeBR, vencimentoSentinela } from "@/lib/financeiro/alertas";
-import { CATEGORIAS, montarPrevisao, type TituloPrevisao } from "@/lib/contratos/previsao";
+import { CATEGORIAS, ehContaForaDoCusto, montarPrevisao, type TituloPrevisao } from "@/lib/contratos/previsao";
 import { itensDePrevisao } from "@/lib/contratos/titulosPrevistos";
 
 // Previsao por centro de custo (Financeiro), SOMENTE LEITURA: titulos em aberto do Senior, um resumo por CC (so' os que a pessoa pode ver).
@@ -23,9 +23,11 @@ export async function GET() {
 
   const porCcu = new Map<string, TituloPrevisao[]>();
   let semVencimento = 0;
+  const foraDoCusto = { n: 0, valor: 0 }; // pessoal e impostos: ficam no Custo de pessoal
   for (const t of todos) {
     const chave = t.ccu ?? SEM_CC;
     if (chave === SEM_CC ? !escopo.todos : !podeVerCcu(escopo, chave)) continue;
+    if (ehContaForaDoCusto(t.ctaFin)) { foraDoCusto.n += 1; foraDoCusto.valor += t.valorAberto; continue; }
     const semData = !t.vencimento || vencimentoSentinela(t.vencimento);
     if (semData && t.tipo !== "OC") { semVencimento += 1; continue; }
     if (!porCcu.has(chave)) porCcu.set(chave, []);
@@ -59,5 +61,6 @@ export async function GET() {
     categorias: CATEGORIAS.map((c) => ({ chave: c.chave, rotulo: c.rotulo })),
     linhas,
     semVencimento,
+    foraDoCusto: { n: foraDoCusto.n, valor: Math.round(foraDoCusto.valor * 100) / 100 },
   });
 }

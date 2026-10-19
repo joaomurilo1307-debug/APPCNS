@@ -9,7 +9,7 @@ import PrevisaoContrato from "@/components/contratos/PrevisaoContrato";
 import { moeda, moedaCompacta } from "@/lib/custos/formato";
 
 type Linha = { codccu: string; nome: string; total: number; quantidade: number; vencidos: number; porCategoria: Record<string, number> };
-type Resp = { hoje: string; categorias: { chave: string; rotulo: string }[]; linhas: Linha[]; semVencimento: number };
+type Resp = { hoje: string; categorias: { chave: string; rotulo: string }[]; linhas: Linha[]; semVencimento: number; foraDoCusto?: { n: number; valor: number } };
 
 const SEM_CC = "_sem_cc";
 const COR: Record<string, string> = { RECORRENTE: "bg-violet-500", VEICULO: "bg-sky-500", TI: "bg-teal-500", AQUISICAO: "bg-amber-500", OC_PROGRAMADA: "bg-rose-500", DEMAIS: "bg-gray-400" };
@@ -107,6 +107,7 @@ export default function PrevisaoPage() {
                 </tbody>
               </table>
             </div>
+            {dados.foraDoCusto && dados.foraDoCusto.n > 0 && <p className="mt-2 text-xs text-gray-500">{dados.foraDoCusto.n} lançamento(s) de contas de pessoal e impostos ({moeda(dados.foraDoCusto.valor)}) ficam de fora, como no custo: eles são do Custo de pessoal.</p>}
             {dados.semVencimento > 0 && <p className="mt-2 text-xs text-gray-500">{dados.semVencimento} título(s) em aberto sem data de vencimento válida no Senior não entram nesta tabela.</p>}
           </section>
 

@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { hojeBR, vencimentoSentinela } from "@/lib/financeiro/alertas";
-import { montarPrevisao, type TituloPrevisao } from "@/lib/contratos/previsao";
+import { ehContaForaDoCusto, montarPrevisao, type TituloPrevisao } from "@/lib/contratos/previsao";
 import { itensDePrevisao } from "@/lib/contratos/titulosPrevistos";
 import { nomeConta } from "@/lib/custos/planoContas";
 
@@ -24,9 +24,11 @@ export async function GET(_req: Request, { params }: { params: { codccu: string 
   const todos = await itensDePrevisao(prisma, hoje);
 
   let semVencimento = 0;
+  const foraDoCusto = { n: 0, valor: 0 }; // pessoal e impostos: ficam no Custo de pessoal
   const titulos: TituloPrevisao[] = [];
   for (const t of todos) {
     if (params.codccu === SEM_CC ? !!t.ccu : t.ccu !== params.codccu) continue;
+    if (ehContaForaDoCusto(t.ctaFin)) { foraDoCusto.n += 1; foraDoCusto.valor += t.valorAberto; continue; }
     const semData = !t.vencimento || vencimentoSentinela(t.vencimento);
     if (semData && t.tipo !== "OC") { semVencimento += 1; continue; } // titulo sem data valida nao entra; OC sem previsao de pagamento entra como "sem data"
     titulos.push({ ...t, vencimento: semData ? "" : (t.vencimento as string), contaNome: t.ctaFin ? nomeConta(t.ctaFin) ?? `Conta ${t.ctaFin}` : null });
@@ -41,5 +43,5 @@ export async function GET(_req: Request, { params }: { params: { codccu: string 
 
   const r = montarPrevisao(titulos, hoje);
   const grupos = r.grupos.map((g) => ({ ...g, titulos: g.titulos.slice(0, LIMITE_TITULOS_POR_GRUPO), titulosOcultos: Math.max(0, g.titulos.length - LIMITE_TITULOS_POR_GRUPO) }));
-  return NextResponse.json({ codccu: params.codccu, hoje, meses: r.meses, grupos, total: r.total, quantidade: r.quantidade, semVencimento, semCentroDeCusto });
+  return NextResponse.json({ codccu: params.codccu, hoje, meses: r.meses, grupos, total: r.total, quantidade: r.quantidade, semVencimento, semCentroDeCusto, foraDoCusto: { n: foraDoCusto.n, valor: Math.round(foraDoCusto.valor * 100) / 100 } });
 }

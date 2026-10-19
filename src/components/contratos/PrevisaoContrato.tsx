@@ -8,7 +8,7 @@ import { moeda, moedaCompacta, mesCurto } from "@/lib/custos/formato";
 
 type Titulo = { numTit: string; tipo: string; fornecedorNome: string | null; descricao: string | null; numOcp: string | null; numNfc: string | null; vencimento: string; valorAberto: number; origemCcu?: string | null; numOcpVinculada?: string | null; contaNome?: string | null; valorTipo?: "FIXO" | "VARIAVEL" | null };
 type Grupo = { chave: string; rotulo: string; descricao: string; total: number; quantidade: number; vencidos: number; depois: number; semData: number; porMes: Record<string, number>; porTipoValor: { FIXO: number; VARIAVEL: number; SEM_SERIE: number }; titulos: Titulo[]; titulosOcultos: number };
-type Resposta = { codccu: string; hoje: string; meses: string[]; grupos: Grupo[]; total: number; quantidade: number; semVencimento: number; semCentroDeCusto: { quantidade: number; valor: number; ocRateada: number } | null };
+type Resposta = { codccu: string; hoje: string; meses: string[]; grupos: Grupo[]; total: number; quantidade: number; semVencimento: number; foraDoCusto?: { n: number; valor: number }; semCentroDeCusto: { quantidade: number; valor: number; ocRateada: number } | null };
 
 // na matriz os valores vao sem "R$" (a legenda diz que e em reais) para caber os 12 meses sem rolagem
 const celula = (v: number) => (v > 0.004 ? moedaCompacta(v).replace("R$ ", "") : "–");
@@ -142,6 +142,7 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
             </div>
           )}
 
+          {dados.foraDoCusto && dados.foraDoCusto.n > 0 && <p className="text-xs text-gray-500">{dados.foraDoCusto.n} lançamento(s) de contas de pessoal e impostos ({moeda(dados.foraDoCusto.valor)}) ficam de fora desta previsão, como no custo: eles são do Custo de pessoal.</p>}
           <p className="text-xs text-gray-400">As categorias de veículos e computadores/TI são reconhecidas por palavras do nome do fornecedor ou da descrição lançada no Senior; o que não for reconhecido fica em “Demais títulos em aberto”, sem forçar classificação.</p>
         </>
       )}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { categoriaDoTitulo, chaveDaSerie, montarPrevisao, somaMeses, tiposDeValorDasSeries, type TituloPrevisao } from "../src/lib/contratos/previsao";
+import { categoriaDoTitulo, chaveDaSerie, ehContaForaDoCusto, montarPrevisao, somaMeses, tiposDeValorDasSeries, type TituloPrevisao } from "../src/lib/contratos/previsao";
 
 const base = { numTit: "1", tipo: "NF", fornecedorNome: "FORNECEDOR QUALQUER", descricao: null, numOcp: null, numNfc: null };
 const t = (o: Partial<TituloPrevisao> & { vencimento: string; valorAberto: number }): TituloPrevisao => ({ ...base, ...o });
@@ -97,4 +97,12 @@ test("OC programada: categoria propria, e OC sem data de previsao cai em 'sem da
 test("veiculo: modelo no numero do titulo (previsao de financiamento sem a palavra veiculo)", () => {
   assert.equal(categoriaDoTitulo({ ...base, tipo: "PRV", numTit: "6L200 3484_26", fornecedorNome: "BRADESCO FINANC." }), "VEICULO");
   assert.equal(categoriaDoTitulo({ ...base, tipo: "PRV", numTit: "ALUGUEL_01", fornecedorNome: "IMOBILIARIA" }), "RECORRENTE");
+});
+
+test("contas de pessoal e impostos ficam fora (mesma lista do custo)", () => {
+  assert.equal(ehContaForaDoCusto("81"), true); // Salarios
+  assert.equal(ehContaForaDoCusto("55"), true); // 13o
+  assert.equal(ehContaForaDoCusto("5"), false);
+  assert.equal(ehContaForaDoCusto(null), false);
+  assert.equal(ehContaForaDoCusto(""), false);
 });

@@ -24,6 +24,7 @@ export async function GET(req: Request) {
 
   const dados = await carregarAoVivo(prisma, hojeBR());
   const visiveis = dados.itens.filter((i) => podeVerCcu(escopo, i.ccu));
+  const fora = dados.foraDoCusto.filter((i) => podeVerCcu(escopo, i.ccu) && (!ccu || i.ccu === ccu));
   const r = montarAoVivo(visiveis, { ccu, conta: sp.get("conta"), situacao, q: sp.get("q") }, Number(sp.get("pagina")) || 1);
 
   // sem um centro de custo fixo, a tela deixa escolher entre os que a pessoa ve
@@ -45,5 +46,6 @@ export async function GET(req: Request) {
     atualizadoEm: dados.atualizadoEm,
     rateiosLidos: dados.atualizadoEm.rateios !== null,
     ocsSemRateioLegivel: dados.ocsSemRateioLegivel,
+    foraDoCusto: { n: fora.length, valor: Math.round(fora.reduce((s, i) => s + i.valor, 0) * 100) / 100 },
   });
 }

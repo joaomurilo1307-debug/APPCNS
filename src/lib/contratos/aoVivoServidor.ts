@@ -5,10 +5,11 @@ import type { prisma as prismaReal } from "@/lib/prisma";
 import { nomeConta } from "@/lib/custos/planoContas";
 import { itemDaOc, itemDoTitulo, type ItemAoVivo } from "./aoVivo";
 import { codigoDaContaDaOc, linhasDaOc, ocsAindaSemTitulo } from "./ocsDoCentro";
+import { ehContaForaDoCusto } from "./previsao";
 import { lancamentosDeTitulos } from "./titulosPrevistos";
 
 export type AtualizadoEm = { titulos: string | null; rateios: string | null; ocs: string | null };
-export type DadosAoVivo = { itens: ItemAoVivo[]; atualizadoEm: AtualizadoEm; ocsSemRateioLegivel: number };
+export type DadosAoVivo = { itens: ItemAoVivo[]; foraDoCusto: ItemAoVivo[]; atualizadoEm: AtualizadoEm; ocsSemRateioLegivel: number };
 
 const nomeLinha = (cod: string) => nomeConta(cod);
 
@@ -36,18 +37,20 @@ export async function carregarAoVivo(db: typeof prismaReal, hoje: string): Promi
 
   const { itens: titulos, ocsVinculadas } = await lancamentosDeTitulos(db, { somenteAbertos: false });
   const itens: ItemAoVivo[] = [];
-  for (const t of titulos) if (t.ccu) itens.push(itemDoTitulo(t, hoje, nomeLinha));
+  const foraDoCusto: ItemAoVivo[] = []; // contas de pessoal e impostos: ficam de fora (so' contadas)
+  const guardar = (i: ItemAoVivo) => (ehContaForaDoCusto(i.ctaFin) ? foraDoCusto : itens).push(i);
+  for (const t of titulos) if (t.ccu) guardar(itemDoTitulo(t, hoje, nomeLinha));
 
   // OCs que ainda nao viraram titulo (em analise, aprovadas aguardando titulo, reprovadas/canceladas recentes)
   const { itens: ocsSemTitulo, ilegiveis: ocsSemRateioLegivel } = await ocsAindaSemTitulo(db, ocsVinculadas, { soEmAndamento: false, hoje });
-  for (const o of ocsSemTitulo) itens.push(itemDaOc(o, nomeLinha));
+  for (const o of ocsSemTitulo) guardar(itemDaOc(o, nomeLinha));
 
   const [t, r, o] = await Promise.all([
     db.tituloContasAPagar.aggregate({ _max: { atualizadoEm: true } }),
     db.tituloRateioSenior.aggregate({ _max: { atualizadoEm: true } }),
     db.aprovacaoSenior.aggregate({ _max: { ultimaSincEm: true } }),
   ]);
-  const dados: DadosAoVivo = { itens, atualizadoEm: { titulos: t._max.atualizadoEm?.toISOString() ?? null, rateios: r._max.atualizadoEm?.toISOString() ?? null, ocs: o._max.ultimaSincEm?.toISOString() ?? null }, ocsSemRateioLegivel };
+  const dados: DadosAoVivo = { itens, foraDoCusto, atualizadoEm: { titulos: t._max.atualizadoEm?.toISOString() ?? null, rateios: r._max.atualizadoEm?.toISOString() ?? null, ocs: o._max.ultimaSincEm?.toISOString() ?? null }, ocsSemRateioLegivel };
   cache = { em: Date.now(), dados };
   return dados;
 }

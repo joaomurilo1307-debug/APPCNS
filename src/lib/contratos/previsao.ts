@@ -7,6 +7,11 @@
 //   5. o resto                                                    -> Demais titulos em aberto
 // Titulo que nao casa com nenhuma palavra NAO e' forcado numa categoria: cai em "Demais" e fica visivel.
 
+import { CONTAS_FORA_DO_CUSTO } from "@/lib/custos/planoContas";
+
+/** Contas de pessoal e impostos (e os espelhos R): ficam no Custo de pessoal, como na tela de custo; nao entram em Previsao nem em Ao vivo. */
+export const ehContaForaDoCusto = (ctaFin: string | null | undefined): boolean => !!ctaFin && CONTAS_FORA_DO_CUSTO.has(ctaFin);
+
 export type CategoriaPrevisao = "RECORRENTE" | "VEICULO" | "TI" | "AQUISICAO" | "OC_PROGRAMADA" | "DEMAIS";
 
 export const CATEGORIAS: { chave: CategoriaPrevisao; rotulo: string; descricao: string }[] = [

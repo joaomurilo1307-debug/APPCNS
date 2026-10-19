@@ -19,7 +19,7 @@ type Resposta = {
   centros: { codccu: string; nome: string; n: number }[];
   filtros: { chave: string; rotulo: string }[];
   atualizadoEm: { titulos: string | null; rateios: string | null; ocs: string | null };
-  rateiosLidos: boolean; ocsSemRateioLegivel: number;
+  rateiosLidos: boolean; ocsSemRateioLegivel: number; foraDoCusto?: { n: number; valor: number };
 };
 
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
@@ -174,7 +174,7 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
           </div>
 
           <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[13px] text-gray-500">
-            <span>{dados.total} lançamento{dados.total === 1 ? "" : "s"}{dados.ocsSemRateioLegivel > 0 ? ` · ${dados.ocsSemRateioLegivel} OC(s) com rateio ilegível ficaram de fora` : ""}</span>
+            <span>{dados.total} lançamento{dados.total === 1 ? "" : "s"}{dados.ocsSemRateioLegivel > 0 ? ` · ${dados.ocsSemRateioLegivel} OC(s) com rateio ilegível ficaram de fora` : ""}{dados.foraDoCusto && dados.foraDoCusto.n > 0 ? ` · ${dados.foraDoCusto.n} lançamento(s) de pessoal e impostos (${moeda(dados.foraDoCusto.valor)}) ficam de fora, como no custo` : ""}</span>
             <span className="flex items-center gap-3">
               <button type="button" disabled={dados.pagina <= 1} onClick={() => setPagina(dados.pagina - 1)} className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:opacity-40">Anterior</button>
               <span>Página {dados.pagina} de {dados.paginas}</span>
