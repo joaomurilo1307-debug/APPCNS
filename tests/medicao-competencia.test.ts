@@ -47,7 +47,7 @@ test("boletim incoerente (depois da emissao ou muito antigo) e' ignorado e sinal
   assert.equal(futuro.origem, "EMISSAO");
   assert.equal(futuro.inconsistente, true);
   assert.equal(futuro.competencia, "2026-01");
-  const antigo = competenciaDoPedido({ pedCli: "BM1 01.2020", dataEmissao: "10/02/2026", ccu: "230" })!;
+  const antigo = competenciaDoPedido({ pedCli: "BM1 01.2019", dataEmissao: "10/02/2026", ccu: "230" })!;
   assert.equal(antigo.origem, "EMISSAO");
   assert.equal(antigo.inconsistente, true);
 });
@@ -79,4 +79,10 @@ test("PEDCLI que nao e' um mes nao vira mes (acumulados, faixas, produtos, texto
 test("ano de 2 digitos fora da faixa e mes invalido nao passam", () => {
   assert.equal(lerBoletim("BM3 13.24").mes, null);
   assert.equal(lerBoletim("BM3 12.19").mes, null);
+});
+
+test("carga historica: boletim de 2021 em pedido emitido anos depois vale o mes do boletim", () => {
+  const c = competenciaDoPedido({ pedCli: "BM08 01.2021", dataEmissao: "15/03/2024", ccu: "102035" })!;
+  assert.equal(c.competencia, "2021-01");
+  assert.equal(c.origem, "BOLETIM");
 });

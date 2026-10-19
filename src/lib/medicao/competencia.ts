@@ -3,7 +3,8 @@
 //      19/10/2026 no contrato MRN CT 3687/2023: os 39 pedidos conferem com o faturamento e com a regra de emissao menos 1 mes).
 //   2. EMISSAO: quando o PEDCLI nao traz o mes, vale a regra ja validada no Rito de Gestao: emissao menos 1 mes, com o corte de dia por
 //      contrato (CORTE_DIA_POR_CCU) para os poucos clientes que fogem dela. Fica marcado como "emissao" para nao parecer certeza.
-//   Um mes de boletim fora do razoavel (depois da emissao, ou mais de 18 meses antes) e' ignorado e cai na regra da emissao.
+//   Um mes de boletim fora do razoavel (depois da emissao, ou mais de 72 meses antes) e' ignorado e cai na regra da emissao. A janela e' larga de proposito:
+//   contratos antigos tem boletins de 2021 carregados em pedidos emitidos anos depois, e o mes explicito do boletim vale mais que a regra da emissao.
 
 export type OrigemCompetencia = "BOLETIM" | "EMISSAO";
 export type Competencia = { competencia: string; origem: OrigemCompetencia; boletim: string | null; inconsistente: boolean };
@@ -63,7 +64,7 @@ export function competenciaDoPedido(a: { pedCli: string | null | undefined; data
   let inconsistente = false;
   if (mes) {
     const atras = indice(mesEmissao) - indice(mes);
-    if (atras >= 0 && atras <= 18) return { competencia: mes, origem: "BOLETIM", boletim, inconsistente: false };
+    if (atras >= 0 && atras <= 72) return { competencia: mes, origem: "BOLETIM", boletim, inconsistente: false };
     inconsistente = true; // mes do boletim depois da emissao ou muito antigo: nao confiar
   }
   const c = competenciaPorEmissao(a.dataEmissao, a.ccu);
