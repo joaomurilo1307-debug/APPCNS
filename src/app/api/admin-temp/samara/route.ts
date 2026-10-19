@@ -1,15 +1,48 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// ROTA TEMPORARIA (19/10/2026), protegida por x-sync-key. GET = busca usuarios por nome (somente leitura). Sera removida apos o uso.
-export async function GET(req: Request) {
+// ROTA TEMPORARIA (19/10/2026), protegida por x-sync-key. Sera removida apos o uso.
+// GET ?q=nome            -> busca usuarios por nome (somente leitura)
+// GET ?ambiental=1       -> lista os centros de custo considerados "da Ambiental" (somente leitura)
+// POST {confirmar, userId}  -> libera para essa pessoa TODOS os centros de custo da Ambiental (AcessoCentroCusto) e ativa o acesso aos contratos.
+const NUCLEO_AMBIENTAL = ["190", "210", "230", "280", "102065", "102225", "102245", "102295", "102335", "102345", "102385"]; // prisma/data/nucleo_assignments.json, nucleo "Engenharia Ambiental"
+const PADRAO_AMBIENTAL = /^(MRN|ALCOA|AMG)\b/i; // contratos que as planilhas guardam na pasta MRN_AMBIENTAL
+
+async function centrosAmbientais() {
+  const todos = await prisma.custoContaFinanceira.findMany({ distinct: ["codccu"], select: { codccu: true, contrato: true } });
+  const limpa = (c: { codccu: string; contrato: string }) => c.contrato.replace(new RegExp(`^${c.codccu}\\s*-\\s*`), "").trim();
+  const lista = todos.filter((c) => NUCLEO_AMBIENTAL.includes(c.codccu) || PADRAO_AMBIENTAL.test(limpa(c))).map((c) => ({ codccu: c.codccu, nome: limpa(c), viaNucleo: NUCLEO_AMBIENTAL.includes(c.codccu) }));
+  return lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
+
+const autorizado = (req: Request) => {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  const q = new URL(req.url).searchParams.get("q") ?? "";
+  return !!chave && chave === process.env.SENIOR_SYNC_KEY;
+};
+
+export async function GET(req: Request) {
+  if (!autorizado(req)) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  const sp = new URL(req.url).searchParams;
+  if (sp.get("ambiental")) return NextResponse.json({ centros: await centrosAmbientais() });
+  const q = sp.get("q") ?? "";
   const usuarios = await prisma.user.findMany({
     where: { name: { contains: q, mode: "insensitive" } },
-    select: { id: true, name: true, email: true, role: true, active: true, nivelHierarquico: true, cargo: true, verTodosCustos: true, nucleo: { select: { name: true } }, teams: { select: { role: true, team: { select: { name: true } } } }, acessosCentroCusto: { select: { codccu: true } }, passwordHash: false },
+    select: { id: true, name: true, email: true, role: true, active: true, nivelHierarquico: true, cargo: true, verTodosCustos: true, nucleo: { select: { name: true } }, teams: { select: { role: true, team: { select: { name: true } } } }, acessosCentroCusto: { select: { codccu: true } } },
     take: 15,
   });
   return NextResponse.json({ q, usuarios: usuarios.map((u) => ({ ...u, nucleo: u.nucleo?.name ?? null, teams: u.teams.map((t) => `${t.team.name} (${t.role})`), acessosCentroCusto: u.acessosCentroCusto.map((a) => a.codccu) })) });
+}
+
+export async function POST(req: Request) {
+  if (!autorizado(req)) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  const body = await req.json().catch(() => ({}));
+  if (body?.confirmar !== true || typeof body.userId !== "string") return NextResponse.json({ error: 'Envie {"confirmar": true, "userId": "..."}' }, { status: 400 });
+  const user = await prisma.user.findUnique({ where: { id: body.userId }, select: { id: true, name: true, email: true, active: true } });
+  if (!user) return NextResponse.json({ error: "Usuário não encontrado. Nada foi alterado." }, { status: 404 });
+  const centros = await centrosAmbientais();
+  const adm = await prisma.user.findUnique({ where: { email: "admin@consominas.com.br" }, select: { id: true } });
+  if (!user.active) await prisma.user.update({ where: { id: user.id }, data: { active: true } });
+  const r = await prisma.acessoCentroCusto.createMany({ data: centros.map((c) => ({ userId: user.id, codccu: c.codccu, concedidoPor: adm?.id ?? null })), skipDuplicates: true });
+  const total = await prisma.acessoCentroCusto.count({ where: { userId: user.id } });
+  return NextResponse.json({ ok: true, usuario: `${user.name} <${user.email}>`, centrosConsiderados: centros.length, novosAcessos: r.count, acessosTotais: total, centros });
 }
