@@ -2,7 +2,7 @@
 
 // "Ao vivo" no fim do Custo por Centro de Custo: tudo que o Senior tem ligado ao centro de custo, para o coordenador acompanhar -- cada titulo
 // (com OC ou sem, pago ou nao) e cada OC que ainda nao virou titulo (em analise, aprovada, reprovada). Filtra por linha de custo.
-// Somente leitura; atualiza sozinho a cada minuto com o que o sistema ja sincronizou do Senior.
+// Somente leitura; atualiza sozinho a cada 3 minutos com o que o sistema ja sincronizou do Senior (que roda a cada ~30 min).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { moeda, moedaCompacta } from "@/lib/custos/formato";
@@ -73,7 +73,7 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
   useEffect(() => { void carregar(); }, [carregar]);
   // a cada minuto, so' com a aba visivel
   useEffect(() => {
-    const t = setInterval(() => { if (document.visibilityState === "visible") void carregar(); }, 60_000);
+    const t = setInterval(() => { if (document.visibilityState === "visible") void carregar(); }, 180_000);
     return () => clearInterval(t);
   }, [carregar]);
   // busca com pequena espera para nao consultar a cada tecla
@@ -92,7 +92,7 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
             <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" /></span>
             Ao vivo
           </h2>
-          <p className="mt-0.5 max-w-3xl text-[13.5px] text-gray-500">Tudo que o Senior tem neste centro de custo: títulos com ou sem OC, pagos ou não, e as OCs que ainda não viraram título (em análise, aprovadas ou reprovadas). Atualiza sozinho a cada minuto.</p>
+          <p className="mt-0.5 max-w-3xl text-[13.5px] text-gray-500">Tudo que o Senior tem neste centro de custo: títulos com ou sem OC, pagos ou não, e as OCs que ainda não viraram título (em análise, aprovadas ou reprovadas). Atualiza sozinho a cada poucos minutos.</p>
         </div>
         {dados && <p className="text-xs text-gray-400">Senior sincronizado — títulos {hora(dados.atualizadoEm.titulos)} · OCs {hora(dados.atualizadoEm.ocs)} · centro de custo dos títulos {hora(dados.atualizadoEm.rateios)}</p>}
       </header>

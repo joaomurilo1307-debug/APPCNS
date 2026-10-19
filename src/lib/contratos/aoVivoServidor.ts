@@ -29,11 +29,18 @@ export async function nomesDosCentros(db: typeof prismaReal, ccus: string[]): Pr
   return nomes;
 }
 
-let cache: { em: number; dados: DadosAoVivo } | null = null;
-const CACHE_MS = 30_000; // varios coordenadores abrindo/atualizando a tela nao refazem a montagem a cada requisicao
+let cache: { em: number; promessa: Promise<DadosAoVivo> } | null = null;
+const CACHE_MS = 90_000; // o sincronismo com o Senior roda a cada ~30 min; varios coordenadores na tela nao refazem a montagem a cada requisicao
 
-export async function carregarAoVivo(db: typeof prismaReal, hoje: string): Promise<DadosAoVivo> {
-  if (cache && Date.now() - cache.em < CACHE_MS) return cache.dados;
+export function carregarAoVivo(db: typeof prismaReal, hoje: string): Promise<DadosAoVivo> {
+  if (cache && Date.now() - cache.em < CACHE_MS) return cache.promessa;
+  const promessa = montarDados(db, hoje);
+  cache = { em: Date.now(), promessa };
+  promessa.catch(() => { cache = null; });
+  return promessa;
+}
+
+async function montarDados(db: typeof prismaReal, hoje: string): Promise<DadosAoVivo> {
 
   const { itens: titulos, ocsVinculadas } = await lancamentosDeTitulos(db, { somenteAbertos: false });
   const itens: ItemAoVivo[] = [];
@@ -51,6 +58,5 @@ export async function carregarAoVivo(db: typeof prismaReal, hoje: string): Promi
     db.aprovacaoSenior.aggregate({ _max: { ultimaSincEm: true } }),
   ]);
   const dados: DadosAoVivo = { itens, foraDoCusto, atualizadoEm: { titulos: t._max.atualizadoEm?.toISOString() ?? null, rateios: r._max.atualizadoEm?.toISOString() ?? null, ocs: o._max.ultimaSincEm?.toISOString() ?? null }, ocsSemRateioLegivel };
-  cache = { em: Date.now(), dados };
   return dados;
 }

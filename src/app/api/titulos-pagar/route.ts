@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
+import { aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
+import { motorDeOcs } from "@/lib/cache/ocsMotor";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
 import { garantirFormasPagamentoAtualizadas, carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
 import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
@@ -24,27 +25,11 @@ export async function GET() {
   garantirFormasPagamentoAtualizadas(true);
   const catalogoFormas = await carregarCatalogoFormasPagamento();
 
-  const [titulos, ocs, usuariosSenior, dossies, adiamentos, vinculosManuais] = await Promise.all([
+  const [titulos, motorOcs, usuariosSenior, dossies, adiamentos, vinculosManuais] = await Promise.all([
     prisma.tituloContasAPagar.findMany({
       orderBy: [{ pago: "asc" }, { vencimentoProgramado: "asc" }],
     }),
-    prisma.aprovacaoSenior.findMany({
-      select: {
-        numOcp: true,
-        codFil: true,
-        fornecedorCodigo: true,
-        fornecedorNome: true,
-        valor: true,
-        dataEmissao: true,
-        situacaoAtual: true,
-        usuNumTit: true,
-        usuNumNfc: true,
-        codccu: true,
-        contratoNome: true,
-        temRateio: true,
-        previsaoPagamento: true,
-      },
-    }),
+    motorDeOcs(prisma),
     prisma.usuarioSenior.findMany({ include: { user: { select: { name: true } } } }),
     prisma.dossieOC.findMany({
       select: {
@@ -80,9 +65,8 @@ export async function GET() {
   const codToNome: Record<string, string> = {};
   for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
 
-  const motor = criarMotorVinculo(ocs);
+  const { motor, ocPorNumero } = motorOcs; // do cache (ver lib/cache/ocsMotor.ts)
   const indiceDossies = criarIndiceDossies(dossies);
-  const ocPorNumero = new Map(ocs.map((o) => [o.numOcp, o]));
 
   function dossieDe(titulo: { numTit: string; codFor: string }, numOcpVinculado: string | null | undefined) {
     const achado = indiceDossies.dossieDoTitulo({ numTit: titulo.numTit, codFor: titulo.codFor, numOcp: numOcpVinculado });

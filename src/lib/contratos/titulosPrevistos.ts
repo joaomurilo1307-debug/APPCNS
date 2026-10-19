@@ -3,7 +3,8 @@
 // rateio do Senior (E501RAT) > CC do proprio titulo > CC da OC vinculada (so' OC de um unico CC). Nada e' estimado.
 
 import type { prisma as prismaReal } from "@/lib/prisma";
-import { criarMotorVinculo, aplicarCorrecaoManual, type OcParaVinculo } from "@/lib/vinculoOcTitulo";
+import { aplicarCorrecaoManual, type OcParaVinculo } from "@/lib/vinculoOcTitulo";
+import { motorDeOcs } from "@/lib/cache/ocsMotor";
 import { centrosDoTitulo, repartirValor } from "./centrosDoTitulo";
 import { chaveDoTitulo } from "./rateioTitulos";
 import { ocsAindaSemTitulo } from "./ocsDoCentro";
@@ -34,21 +35,33 @@ const dia = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : 
 
 export type OcLeve = OcParaVinculo;
 
-export async function lancamentosDeTitulos(db: typeof prismaReal, opcoes: { somenteAbertos: boolean }): Promise<{ itens: TituloComCentro[]; ocs: OcLeve[]; ocsVinculadas: Set<string> }> {
-  const [titulos, ocs, manuais, rateios] = await Promise.all([
+type ResultadoLancamentos = { itens: TituloComCentro[]; ocs: OcLeve[]; ocsVinculadas: Set<string> };
+const VALIDADE_MS = 90_000; // o sincronismo com o Senior roda a cada ~30 min: 90 s de cache nao muda o que a pessoa ve, e evita recalcular 15 mil titulos a cada requisicao
+const guardados = new Map<string, { em: number; promessa: Promise<ResultadoLancamentos> }>();
+
+/** Igual a calcularLancamentos, com cache curto e uma unica execucao quando varias requisicoes chegam juntas. NAO altere o resultado devolvido (e' compartilhado). */
+export function lancamentosDeTitulos(db: typeof prismaReal, opcoes: { somenteAbertos: boolean }): Promise<ResultadoLancamentos> {
+  const chave = opcoes.somenteAbertos ? "abertos" : "todos";
+  const g = guardados.get(chave);
+  if (g && Date.now() - g.em < VALIDADE_MS) return g.promessa;
+  const promessa = calcularLancamentos(db, opcoes);
+  guardados.set(chave, { em: Date.now(), promessa });
+  promessa.catch(() => guardados.delete(chave)); // erro nao fica guardado
+  return promessa;
+}
+
+async function calcularLancamentos(db: typeof prismaReal, opcoes: { somenteAbertos: boolean }): Promise<ResultadoLancamentos> {
+  const [titulos, motorOcs, manuais, rateios] = await Promise.all([
     db.tituloContasAPagar.findMany({
       where: opcoes.somenteAbertos ? { pago: false, valorAberto: { gt: 0 } } : {},
       select: { id: true, numTit: true, codFil: true, codFor: true, fornecedorNome: true, tipo: true, numOcp: true, filOcp: true, numNfc: true, pago: true, dataEmissao: true, dataLancamento: true, dataPagamento: true, vencimentoProgramado: true, vencimentoOriginal: true, valorOriginal: true, valorAberto: true, codccu: true, descricao: true, numOcpCorrigido: true },
     }),
-    db.aprovacaoSenior.findMany({
-      select: { numOcp: true, codFil: true, fornecedorCodigo: true, fornecedorNome: true, valor: true, dataEmissao: true, situacaoAtual: true, usuNumTit: true, usuNumNfc: true, codccu: true, contratoNome: true, temRateio: true, previsaoPagamento: true },
-    }),
+    motorDeOcs(db),
     db.tituloOcVinculo.findMany(),
     db.tituloRateioSenior.findMany({ select: { numTit: true, codFil: true, codTpt: true, codFor: true, codccu: true, ctaFin: true, valor: true } }),
   ]);
   const manualDe = new Map(manuais.map((v) => [`${v.numTit}|${v.codFil}|${v.codFor}`, v.numOcp]));
-  const ocPorNumero = new Map(ocs.map((o) => [o.numOcp, o]));
-  const motor = criarMotorVinculo(ocs);
+  const { ocs, ocPorNumero, motor } = motorOcs;
   const rateioDe = new Map<string, { codccu: string; ctaFin: string; valor: number }[]>();
   for (const r of rateios) {
     const k = chaveDoTitulo(r);
@@ -97,8 +110,9 @@ export async function titulosAbertosComCcu(db: typeof prismaReal): Promise<Titul
  * titulo (programadas). Cada linha ja vem ligada ao centro de custo e a linha de custo.
  */
 export async function itensDePrevisao(db: typeof prismaReal, hoje: string): Promise<TituloAbertoComCcu[]> {
-  const { itens, ocsVinculadas } = await lancamentosDeTitulos(db, { somenteAbertos: true });
+  const { itens: base, ocsVinculadas } = await lancamentosDeTitulos(db, { somenteAbertos: true });
   const { itens: ocs } = await ocsAindaSemTitulo(db, ocsVinculadas, { soEmAndamento: true, hoje });
+  const itens = [...base]; // copia: o resultado em cache e' compartilhado
   for (const o of ocs) {
     itens.push({
       id: `oc-${o.numOcp}-${o.ccu}-${o.ctaFin ?? ""}`, numTit: `OC ${o.numOcp}`, codFil: "", codFor: "", tipo: "OC", fornecedorNome: o.fornecedor, descricao: o.descricao, numOcp: o.numOcp, numNfc: null,
