@@ -20,16 +20,23 @@ export const somaMes = (aaaamm: string, n: number): string => {
 };
 const indice = (aaaamm: string) => Number(aaaamm.slice(0, 4)) * 12 + Number(aaaamm.slice(5, 7));
 
-/** "BM35 01.2026" -> { boletim: "BM35", mes: "2026-01" }; sem mes reconhecivel -> null. */
+/**
+ * "BM35 01.2026" -> { boletim: "BM35", mes: "2026-01" }. Formatos reais encontrados no Senior (19/10/2026): "BM 21 12.24" (ano com 2 digitos),
+ * "BM08 01 2021" (espaco no lugar do ponto), "BM 15 MSG 02.25" (texto no meio). O numero do boletim e' retirado antes de procurar o mes, para
+ * "BM 21 12.24" nao confundir 21 com o mes. Sem mes reconhecivel -> mes null ("BM01/BM08", "ACUMULADOS", "PRODUTO 06" nao viram mes).
+ */
 export function lerBoletim(pedCli: string | null | undefined): { boletim: string | null; mes: string | null } {
   const t = (pedCli ?? "").toUpperCase().replace(/\s+/g, " ").trim();
   if (!t) return { boletim: null, mes: null };
-  const bm = /\b(?:BM|MED(?:I[CÇ][AÃ]O)?)\s*(?:N[O°º.]?\s*)?0*(\d{1,3})\b/.exec(t);
+  const reBm = /\b(?:BM|MED(?:I[CÇ][AÃ]O)?)\s*(?:N[O°º.]?\s*)?0*(\d{1,3})\b/;
+  const bm = reBm.exec(t);
   const boletim = bm ? `BM${Number(bm[1])}` : null;
-  // mes/ano com ponto, barra ou hifen: 01.2026, 1/2026, 01-2026
-  const ma = /(?:^|[^\d])(0?[1-9]|1[0-2])\s*[./-]\s*(20\d{2})(?!\d)/.exec(t);
-  if (ma) return { boletim, mes: `${ma[2]}-${pad(Number(ma[1]))}` };
-  return { boletim, mes: null };
+  const resto = t.replace(/\b(?:BM|MED(?:I[CÇ][AÃ]O)?)\s*(?:N[O°º.]?\s*)?0*\d{1,3}\b/g, " ");
+  // mes/ano: 01.2026, 1/2026, 01-2026, "01 2026" ou ano com 2 digitos (12.24). O ano de 2 digitos so' vale entre 2020 e 2039.
+  const ma = /(?:^|[^\d])(0?[1-9]|1[0-2])\s*[./\- ]\s*(20\d{2}|[23]\d)(?!\d)/.exec(resto);
+  if (!ma) return { boletim, mes: null };
+  const ano = ma[2].length === 2 ? 2000 + Number(ma[2]) : Number(ma[2]);
+  return { boletim, mes: `${ano}-${pad(Number(ma[1]))}` };
 }
 
 /** "dd/mm/aaaa" ou "aaaa-mm-dd" -> { y, m, d } */

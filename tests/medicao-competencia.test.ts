@@ -61,3 +61,22 @@ test("somaMes", () => {
   assert.equal(somaMes("2026-01", -1), "2025-12");
   assert.equal(somaMes("2026-11", 3), "2027-02");
 });
+
+test("formatos reais encontrados no Senior (ano com 2 digitos, espaco, texto no meio)", () => {
+  assert.deepEqual(lerBoletim("BM 21 12.24"), { boletim: "BM21", mes: "2024-12" });
+  assert.deepEqual(lerBoletim("BM 15 MSG 02.25"), { boletim: "BM15", mes: "2025-02" });
+  assert.deepEqual(lerBoletim("BM08 01 2021"), { boletim: "BM8", mes: "2021-01" });
+  assert.deepEqual(lerBoletim("BM02 09.2021"), { boletim: "BM2", mes: "2021-09" });
+});
+
+test("PEDCLI que nao e' um mes nao vira mes (acumulados, faixas, produtos, texto solto)", () => {
+  for (const v of ["3728 BM01/BM08", "BM01 A BM32", "BM ACUMULADO", "ACUMULADOS", "PRODUTO 06", "PRODUTO 05", "5", "c", "bm 01 teste"]) {
+    assert.equal(lerBoletim(v).mes, null, v);
+  }
+  assert.equal(lerBoletim("BM 21").boletim, "BM21");
+});
+
+test("ano de 2 digitos fora da faixa e mes invalido nao passam", () => {
+  assert.equal(lerBoletim("BM3 13.24").mes, null);
+  assert.equal(lerBoletim("BM3 12.19").mes, null);
+});

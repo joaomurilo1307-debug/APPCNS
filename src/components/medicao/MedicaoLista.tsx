@@ -1,7 +1,7 @@
 "use client";
 
-// Receita e Medicao: os contratos que tem linhas contratadas no Senior, com quanto ja foi medido, quanto falta (saldo) e os ultimos meses.
-// Clicar num contrato abre a medicao linha a linha. Tudo vem do Senior (somente leitura).
+// Receita e Medicao: os contratos que tem linhas contratadas no Senior e ja tem medicao, com o consumo por VALOR e por QUANTIDADE lado a lado, o saldo e
+// os ultimos meses. Clicar num contrato abre a medicao linha a linha. Tudo vem do Senior (somente leitura).
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,11 +9,11 @@ import { mesCurto, moeda, moedaCompacta, percentual } from "@/lib/custos/formato
 
 type Contrato = {
   numCtr: string; numOfi: string; codccu: string | null; ccuNome: string | null; maisDeUmCcu: boolean;
-  valorContratado: number; valorMedido: number; saldo: number; pct: number;
+  valorContratado: number; valorMedido: number; saldo: number; pct: number; pctFisico: number; nLinhas: number; linhasEsgotadas: number; linhasAcima80: number; temMedicao: boolean;
   ultimoMes: { mes: string; valor: number } | null; serie: { mes: string; valor: number }[];
 };
 type Resposta = {
-  hoje: string; mesAtual: string; contratos: Contrato[]; totais: { contratado: number; medido: number };
+  hoje: string; mesAtual: string; contratos: Contrato[]; semMedicao: number; incluiuSemMedicao: boolean; totais: { contratado: number; medido: number };
   atualizacao: { emCurso: { etapa: string | null; progresso: number } | null; ultimaOk: string | null; erro: string | null };
 };
 
@@ -32,24 +32,38 @@ function Barrinhas({ serie }: { serie: { mes: string; valor: number }[] }) {
   );
 }
 
+function Consumo({ valor, fisico }: { valor: number; fisico: number }) {
+  return (
+    <div className="w-44 space-y-1">
+      {([["Valor", valor, "bg-teal-600"], ["Qtd.", fisico, "bg-indigo-500"]] as const).map(([r, v, cor]) => (
+        <div key={r} className="flex items-center gap-2" title={r === "Valor" ? `Consumo por valor: ${percentual(v, 1)} do contratado` : `Consumo por quantidade: ${percentual(v, 1)} (ponderado pelo valor das linhas)`}>
+          <span className="w-9 text-[11px] text-gray-400">{r}</span>
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100"><div className={`h-1.5 ${v >= 0.95 ? "bg-amber-500" : cor}`} style={{ width: `${Math.min(100, v * 100)}%` }} /></div>
+          <span className="w-9 text-right text-[11px] tabular-nums text-gray-600">{Math.round(v * 100)}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function MedicaoLista() {
   const [dados, setDados] = useState<Resposta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
-  const [ordem, setOrdem] = useState<"saldo" | "pct" | "nome" | "ultimo">("saldo");
+  const [ordem, setOrdem] = useState<"saldo" | "valor" | "fisico" | "gap" | "ultimo" | "nome">("saldo");
   const [soComSaldo, setSoComSaldo] = useState(true);
+  const [incluirSem, setIncluirSem] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
 
   const carregar = useCallback(async () => {
-    const r = await fetch("/api/medicao", { cache: "no-store" });
+    const r = await fetch(`/api/medicao${incluirSem ? "?todos=1" : ""}`, { cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { setErro(j.error || "Não foi possível carregar a medição."); return; }
     setDados(j); setErro(null);
     return j as Resposta;
-  }, []);
+  }, [incluirSem]);
 
   useEffect(() => { void carregar(); }, [carregar]);
-  // enquanto a leitura do Senior roda, acompanha ate terminar
   useEffect(() => {
     if (!dados?.atualizacao.emCurso && !atualizando) return;
     const t = setInterval(async () => { const j = await carregar(); if (j && !j.atualizacao.emCurso) setAtualizando(false); }, 5000);
@@ -65,25 +79,32 @@ export default function MedicaoLista() {
   const lista = useMemo(() => {
     if (!dados) return [];
     const q = busca.trim().toLowerCase();
-    let l = dados.contratos.filter((c) => (!q || `${c.numOfi} ${c.ccuNome ?? ""} ${c.codccu ?? ""}`.toLowerCase().includes(q)) && (!soComSaldo || c.saldo > 0.5));
+    const l = dados.contratos.filter((c) => (!q || `${c.numOfi} ${c.ccuNome ?? ""} ${c.codccu ?? ""}`.toLowerCase().includes(q)) && (!soComSaldo || c.saldo > 0.5));
     const by: Record<string, (a: Contrato, b: Contrato) => number> = {
-      saldo: (a, b) => b.saldo - a.saldo, pct: (a, b) => b.pct - a.pct,
+      saldo: (a, b) => b.saldo - a.saldo, valor: (a, b) => b.pct - a.pct, fisico: (a, b) => b.pctFisico - a.pctFisico,
+      gap: (a, b) => Math.abs(b.pctFisico - b.pct) - Math.abs(a.pctFisico - a.pct),
       nome: (a, b) => (a.ccuNome ?? a.numOfi).localeCompare(b.ccuNome ?? b.numOfi, "pt-BR"), ultimo: (a, b) => (b.ultimoMes?.mes ?? "").localeCompare(a.ultimoMes?.mes ?? ""),
     };
     return [...l].sort(by[ordem]);
   }, [dados, busca, ordem, soComSaldo]);
 
   if (erro && !dados) return <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro}</div>;
-  if (!dados) return <div className="py-10 text-center text-sm text-gray-500">Lendo a medição dos contratos…</div>;
+  if (!dados) return (
+    <div className="space-y-4" aria-busy>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-gray-200/70" />)}</div>
+      <div className="h-72 animate-pulse rounded-2xl bg-gray-200/70" />
+    </div>
+  );
 
   const em = dados.atualizacao.emCurso;
   const saldoTotal = dados.totais.contratado - dados.totais.medido;
+  const pctTotal = dados.totais.contratado > 0 ? dados.totais.medido / dados.totais.contratado : 0;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 text-[13px] text-gray-600 shadow-soft">
         <span>
-          {em ? <>Lendo o Senior: <b>{em.etapa}</b> ({em.progresso}%)</> : <>Dados do Senior de <b>{hora(dados.atualizacao.ultimaOk)}</b>. A medição de cada contrato vem dos pedidos de venda; o saldo, do contrato.</>}
+          {em ? <>Lendo o Senior: <b>{em.etapa}</b> ({em.progresso}%)</> : <>Dados do Senior de <b>{hora(dados.atualizacao.ultimaOk)}</b>. O contratado e o saldo vêm do contrato; o medido de cada mês, dos pedidos de venda.</>}
           {dados.atualizacao.erro && !em && <span className="ml-2 text-red-700">A última atualização falhou: {dados.atualizacao.erro}</span>}
         </span>
         <button type="button" onClick={atualizar} disabled={!!em || atualizando} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{em || atualizando ? "Atualizando…" : "Atualizar do Senior"}</button>
@@ -95,9 +116,9 @@ export default function MedicaoLista() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              { t: "Contratos com medição", v: String(dados.contratos.length), s: "com linhas contratadas no Senior" },
+              { t: "Contratos com medição", v: String(dados.contratos.length), s: dados.semMedicao > 0 ? `mais ${dados.semMedicao} com linhas, ainda sem medição` : "com linhas contratadas no Senior" },
               { t: "Contratado", v: moedaCompacta(dados.totais.contratado), s: "soma das linhas dos contratos" },
-              { t: "Medido acumulado", v: moedaCompacta(dados.totais.medido), s: dados.totais.contratado > 0 ? `${percentual(dados.totais.medido / dados.totais.contratado)} do contratado` : "" },
+              { t: "Medido acumulado", v: moedaCompacta(dados.totais.medido), s: `${percentual(pctTotal, 1)} do contratado` },
               { t: "Saldo a medir", v: moedaCompacta(saldoTotal), s: "contratado menos medido" },
             ].map((k) => (
               <div key={k.t} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">
@@ -110,41 +131,44 @@ export default function MedicaoLista() {
 
           <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
             <header className="mb-3 flex flex-wrap items-center gap-2">
-              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar contrato, centro de custo ou número" className="min-w-[260px] flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" />
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar contrato, centro de custo ou número" className="min-w-[260px] flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" aria-label="Buscar contrato" />
               <select value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm" aria-label="Ordenar">
                 <option value="saldo">Maior saldo primeiro</option>
-                <option value="pct">Mais medido primeiro</option>
+                <option value="valor">Mais consumido (valor)</option>
+                <option value="fisico">Mais consumido (quantidade)</option>
+                <option value="gap">Maior diferença valor × quantidade</option>
                 <option value="ultimo">Medição mais recente</option>
                 <option value="nome">Nome</option>
               </select>
               <label className="flex items-center gap-2 text-[13px] text-gray-600"><input type="checkbox" checked={soComSaldo} onChange={(e) => setSoComSaldo(e.target.checked)} /> Só com saldo</label>
+              {dados.semMedicao > 0 && <label className="flex items-center gap-2 text-[13px] text-gray-600"><input type="checkbox" checked={incluirSem} onChange={(e) => setIncluirSem(e.target.checked)} /> Incluir os {dados.semMedicao} sem medição</label>}
             </header>
             <div className="overflow-x-auto rounded-xl border border-gray-100">
-              <table className="w-full min-w-[980px] text-[13.5px] tabular-nums">
-                <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-                  <tr><th className="px-3 py-2 text-left">Contrato</th><th className="px-3 py-2 text-right">Contratado</th><th className="px-3 py-2 text-right">Medido</th><th className="px-3 py-2 text-right">Saldo</th><th className="w-44 px-3 py-2 text-left">Consumido</th><th className="px-3 py-2 text-left">Último mês medido</th><th className="px-3 py-2 text-left">12 meses</th></tr>
+              <table className="w-full min-w-[1080px] text-[13.5px] tabular-nums">
+                <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">
+                  <tr><th className="px-3 py-2 text-left">Contrato</th><th className="px-3 py-2 text-right">Contratado</th><th className="px-3 py-2 text-right">Medido</th><th className="px-3 py-2 text-right">Saldo</th><th className="px-3 py-2 text-left">Consumo</th><th className="px-3 py-2 text-left">Linhas</th><th className="px-3 py-2 text-left">Última medição</th><th className="px-3 py-2 text-left">12 meses</th></tr>
                 </thead>
                 <tbody>
                   {lista.map((c) => (
-                    <tr key={c.numCtr} className="border-t border-gray-100 hover:bg-gray-50">
+                    <tr key={c.numCtr} className="border-t border-gray-100 hover:bg-gray-50/70">
                       <td className="px-3 py-2.5 text-left">
                         <Link href={`/medicao/${c.numCtr}`} className="font-medium text-gray-900 hover:text-brand">{c.ccuNome ?? c.numOfi}</Link>
-                        <div className="text-xs text-gray-400">{c.codccu ? `CCU ${c.codccu} · ` : "Sem centro de custo identificado · "}Senior: {c.numOfi}{c.maisDeUmCcu ? " · itens em mais de um CC" : ""}</div>
+                        <div className="text-xs text-gray-400">{c.codccu ? `CCU ${c.codccu}` : "Sem centro de custo identificado"} · Senior: {c.numOfi}{c.maisDeUmCcu ? " · itens em mais de um CC" : ""}</div>
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-right text-gray-700">{moedaCompacta(c.valorContratado)}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-right text-gray-700">{moedaCompacta(c.valorMedido)}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold text-gray-900">{moedaCompacta(c.saldo)}</td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2"><div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100"><div className={`h-2 ${c.pct >= 0.95 ? "bg-amber-500" : "bg-teal-600"}`} style={{ width: `${Math.min(100, c.pct * 100)}%` }} /></div><span className="w-10 text-right text-xs text-gray-500">{percentual(c.pct)}</span></div>
-                      </td>
+                      <td className="px-3 py-2.5"><Consumo valor={c.pct} fisico={c.pctFisico} /></td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-left text-xs text-gray-500">{c.nLinhas} linhas{c.linhasEsgotadas > 0 && <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800">{c.linhasEsgotadas} esgotadas</span>}{c.linhasAcima80 > 0 && <span className="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 font-semibold text-gray-600">{c.linhasAcima80} &gt; 80%</span>}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-left text-gray-600">{c.ultimoMes ? <>{mesCurto(c.ultimoMes.mes)} · {moedaCompacta(c.ultimoMes.valor)}</> : <span className="text-gray-300">sem medição</span>}</td>
                       <td className="px-3 py-2.5"><Barrinhas serie={c.serie} /></td>
                     </tr>
                   ))}
-                  {lista.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">Nenhum contrato com esses filtros.</td></tr>}
+                  {lista.length === 0 && <tr><td colSpan={8} className="px-3 py-10 text-center text-gray-400">Nenhum contrato com esses filtros.</td></tr>}
                 </tbody>
               </table>
             </div>
+            <p className="mt-2 flex flex-wrap gap-4 text-xs text-gray-400"><span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-teal-600" /> Valor: medido ÷ contratado</span><span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-indigo-500" /> Quantidade: média das linhas, ponderada pelo valor contratado</span></p>
           </section>
         </>
       )}

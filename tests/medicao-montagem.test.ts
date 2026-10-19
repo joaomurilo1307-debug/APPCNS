@@ -134,3 +134,49 @@ test("meses entre dois meses", () => {
   assert.deepEqual(mesesDe("2026-11", "2027-01"), ["2026-11", "2026-12", "2027-01"]);
   assert.equal(mesesDe("2020-01", "2030-01").length, 48);
 });
+
+// ---------------------------------------------------------------- consumo fisico x financeiro e conferencia com o Senior
+const LA = { seqCvs: 1, descricao: "A", unidade: "HH", qtdContratada: 100, precoUnit: 10, valorContratado: 1000, qtdFaturada: 50, valorFaturado: 500 };
+const LB = { seqCvs: 2, descricao: "B", unidade: "UN", qtdContratada: 10, precoUnit: 900, valorContratado: 9000, qtdFaturada: 10, valorFaturado: 4500 };
+const it2 = (seq: number, mes: string, qtd: number, valor: number, ped: string) => ({ seqCvs: seq, numPed: ped, seqIsp: 1, dataEmissao: `${mes}-10`, competencia: mes, origem: "BOLETIM", boletim: "BM1", pedCli: null, situacao: "1", qtd, valor, codccu: "230" });
+const ITS = [it2(1, "2026-01", 25, 250, "1"), it2(1, "2026-02", 25, 250, "2"), it2(2, "2026-02", 10, 4500, "3")];
+
+test("consumo: financeiro (valor) e fisico (quantidade ponderada pelo valor contratado)", () => {
+  const d = montarDetalhe([LA, LB], ITS, "2026-01", "2026-02", "2026-10");
+  assert.equal(d.consumo.financeiroPct, 0.5); // (500 + 4500) / 10000
+  assert.equal(d.consumo.fisicoPct, 0.95); // (50% x 1000 + 100% x 9000) / 10000
+  assert.equal(d.consumo.linhasEsgotadas, 1); // B consumiu toda a quantidade
+  assert.equal(d.consumo.linhasComDivergencia, 1); // B: 100% da quantidade, 50% do valor
+  const b = d.linhas.find((l) => l.seqCvs === 2)!;
+  assert.equal(b.pctQtd, 1);
+  assert.equal(b.pctValor, 0.5);
+  assert.equal(Math.round(b.divergenciaPp!), 50);
+  assert.equal(d.linhas.find((l) => l.seqCvs === 1)!.divergenciaPp, 0);
+});
+
+test("consumo: cada linha conta no maximo 100% no fisico (linha medida alem do contratado)", () => {
+  const acima = { ...LB, qtdFaturada: 30 }; // 300% da quantidade
+  const d = montarDetalhe([LA, acima], ITS, "2026-01", "2026-02", "2026-10");
+  assert.equal(d.consumo.fisicoPct, 0.95);
+  assert.equal(d.consumo.linhasAcima100, 1);
+});
+
+test("avanco acumulado mes a mes, fisico e financeiro", () => {
+  const d = montarDetalhe([LA, LB], ITS, "2026-01", "2026-02", "2026-10");
+  assert.equal(d.totais.porMes[0].acumuladoFisicoPct, 0.025); // janeiro: 25% da linha A (peso 1000/10000)
+  assert.equal(d.totais.porMes[0].acumuladoPct, 0.025); // 250 / 10000
+  assert.equal(d.totais.porMes[1].acumuladoFisicoPct, 0.95);
+  assert.equal(d.totais.porMes[1].acumuladoPct, 0.5);
+});
+
+test("conferencia: a soma dos pedidos fecha (ou nao) com o faturado do Senior, linha a linha", () => {
+  const ok = montarDetalhe([LA, LB], ITS, "2026-01", "2026-02", "2026-10");
+  assert.deepEqual(ok.conferencia, { linhas: 2, conferem: 2, naoConferem: 0, difValorAbsoluta: 0 });
+  const dif = montarDetalhe([{ ...LA, valorFaturado: 600 }, LB], ITS, "2026-01", "2026-02", "2026-10");
+  assert.equal(dif.conferencia.naoConferem, 1);
+  assert.equal(dif.conferencia.difValorAbsoluta, 100);
+  const a = dif.linhas.find((l) => l.seqCvs === 1)!;
+  assert.equal(a.confere, false);
+  assert.equal(a.difValor, 100); // Senior 600 - pedidos 500
+  assert.equal(a.saldoValor, 400); // o saldo segue o Senior
+});
