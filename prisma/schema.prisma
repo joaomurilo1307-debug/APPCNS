@@ -1511,3 +1511,23 @@ model AcessoProjeto {
   @@unique([userId, projectId])
   @@index([projectId])
 }
+
+// Contrato = centro de custo (CCU) do Senior acompanhado pelo financeiro/diretoria. NAO e' equipe nem projeto: equipes sao
+// multidisciplinares. A ficha (cliente, numero, vigencia, valor) e' preenchida pelo administrador; o custo vem do Senior.
+// Quem ve cada contrato segue o mesmo acesso dos centros de custo (tela Custos > Escolher quem ve cada centro de custo).
+model Contrato {
+  id             String    @id @default(cuid())
+  codccu         String    @unique
+  nome           String
+  tipo           String    @default("CONTRATO") // CONTRATO | ADMINISTRATIVO
+  status         String    @default("ATIVO") // ATIVO | ENCERRADO
+  cliente        String?
+  numero         String?
+  objeto         String?   @db.Text
+  vigenciaInicio DateTime?
+  vigenciaFim    DateTime?
+  valor          Float?
+  observacoes    String?   @db.Text
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}

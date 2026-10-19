@@ -40,6 +40,7 @@ export default function VisaoContrato({
   busca,
   cores,
   onVoltar,
+  embutido = false,
   onAbrirDetalhe,
 }: {
   contrato: ContratoCusto;
@@ -50,6 +51,8 @@ export default function VisaoContrato({
   busca: string;
   cores: Map<string, string>;
   onVoltar?: () => void;
+  /** dentro da pagina do contrato: o titulo (CCU + nome) ja esta no cabecalho da pagina */
+  embutido?: boolean;
   onAbrirDetalhe: (alvo: AlvoDetalhe) => void;
 }) {
   const [agrupar, setAgrupar] = useState(true);
@@ -243,6 +246,7 @@ export default function VisaoContrato({
 
   return (
     <div className="space-y-5">
+      {!embutido && (
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           {onVoltar && (
@@ -260,6 +264,7 @@ export default function VisaoContrato({
           </p>
         </div>
       </div>
+      )}
 
       {linhas.length === 0 ? (
         <VazioPeriodo />
