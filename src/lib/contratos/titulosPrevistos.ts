@@ -96,9 +96,9 @@ export async function titulosAbertosComCcu(db: typeof prismaReal): Promise<Titul
  * Tudo que o Senior tem PREVISTO: titulos em aberto (recorrentes/PRV, parcelas, compras) + OCs em analise ou aprovadas que ainda nao viraram
  * titulo (programadas). Cada linha ja vem ligada ao centro de custo e a linha de custo.
  */
-export async function itensDePrevisao(db: typeof prismaReal): Promise<TituloAbertoComCcu[]> {
+export async function itensDePrevisao(db: typeof prismaReal, hoje: string): Promise<TituloAbertoComCcu[]> {
   const { itens, ocsVinculadas } = await lancamentosDeTitulos(db, { somenteAbertos: true });
-  const { itens: ocs } = await ocsAindaSemTitulo(db, ocsVinculadas, { soEmAndamento: true });
+  const { itens: ocs } = await ocsAindaSemTitulo(db, ocsVinculadas, { soEmAndamento: true, hoje });
   for (const o of ocs) {
     itens.push({
       id: `oc-${o.numOcp}-${o.ccu}-${o.ctaFin ?? ""}`, numTit: `OC ${o.numOcp}`, codFil: "", codFor: "", tipo: "OC", fornecedorNome: o.fornecedor, descricao: o.descricao, numOcp: o.numOcp, numNfc: null,

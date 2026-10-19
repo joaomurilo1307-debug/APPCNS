@@ -21,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: { codccu: string 
   if (!podeVerCcu(escopo, params.codccu)) return NextResponse.json({ error: "Sem permissão para este contrato" }, { status: 403 });
 
   const hoje = hojeBR();
-  const todos = await itensDePrevisao(prisma);
+  const todos = await itensDePrevisao(prisma, hoje);
 
   let semVencimento = 0;
   const titulos: TituloPrevisao[] = [];

@@ -29,7 +29,7 @@ const PAGAMENTO: Record<Item["pagamento"], { rotulo: string; cor: string }> = {
   a_pagar: { rotulo: "A pagar", cor: "bg-sky-100 text-sky-800" },
   vencido: { rotulo: "Vencido", cor: "bg-red-100 text-red-700" },
   previsao: { rotulo: "Previsão", cor: "bg-violet-100 text-violet-800" },
-  sem_titulo: { rotulo: "Sem título ainda", cor: "bg-gray-100 text-gray-600" },
+  sem_titulo: { rotulo: "Sem título ligado", cor: "bg-gray-100 text-gray-600" },
 };
 const OC_COR: Record<string, string> = { ANA: "bg-amber-100 text-amber-800", PRE: "bg-amber-100 text-amber-800", APR: "bg-emerald-100 text-emerald-800", REP: "bg-red-100 text-red-700", CAN: "bg-gray-200 text-gray-700" };
 
@@ -152,7 +152,7 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
                       {!codccu && <td className="px-3 py-2 text-gray-600"><span className="text-gray-400">{i.ccu}</span> {i.ccuNome}</td>}
                       <td className="px-3 py-2">
                         <div className="font-medium text-gray-800">{i.fornecedor}</div>
-                        <div className="text-xs text-gray-500">{i.origem === "TITULO" ? `Título ${i.numTit}${i.tipoTitulo ? ` · ${i.tipoTitulo}` : ""}` : "Ordem de compra, ainda sem título"}</div>
+                        <div className="text-xs text-gray-500">{i.origem === "TITULO" ? `Título ${i.numTit}${i.tipoTitulo ? ` · ${i.tipoTitulo}` : ""}` : "Ordem de compra, sem título ligado no Senior"}</div>
                         {i.descricao && <div className="mt-0.5 line-clamp-2 max-w-[420px] text-xs text-gray-400" title={i.descricao}>{i.descricao}</div>}
                       </td>
                       <td className="px-3 py-2 text-gray-600">{i.linhaCusto ?? <span className="text-gray-300">não informada</span>}</td>

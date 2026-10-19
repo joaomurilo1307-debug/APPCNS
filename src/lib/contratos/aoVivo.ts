@@ -14,7 +14,7 @@ export const FILTROS_SITUACAO: { chave: FiltroSituacao; rotulo: string }[] = [
   { chave: "vencidos", rotulo: "Vencidos" },
   { chave: "previsoes", rotulo: "Previsões" },
   { chave: "oc_analise", rotulo: "OC em análise" },
-  { chave: "oc_aprovada", rotulo: "OC aprovada, sem título" },
+  { chave: "oc_aprovada", rotulo: "OC aprovada, sem título ligado" },
   { chave: "oc_reprovada", rotulo: "OC reprovada ou cancelada" },
 ];
 

@@ -39,12 +39,17 @@ export function linhasDaOc(oc: { codccu: string | null; temRateio: boolean; valo
 const PISO_OC = new Date("2026-01-01T00:00:00.000Z"); // OCs encerradas antes de 2026 nao entram; as em andamento entram sempre
 
 /**
- * OCs que ainda nao viraram titulo, uma por (OC x centro de custo). `soEmAndamento`: so' em analise/aprovadas e ainda nao pagas (Previsao);
- * senao inclui tambem as reprovadas/canceladas recentes e as ja marcadas como pagas (Ao vivo).
+ * OCs de 2026 que ainda nao viraram titulo, uma por (OC x centro de custo). `soEmAndamento`: so' as que ainda vao gerar titulo (Previsao);
+ * senao inclui tambem as aprovadas sem data, reprovadas/canceladas e as ja marcadas como pagas (Ao vivo).
  */
-export async function ocsAindaSemTitulo(db: typeof prismaReal, ocsVinculadas: ReadonlySet<string>, opcoes: { soEmAndamento: boolean }): Promise<{ itens: OcDoCentro[]; ilegiveis: number }> {
+export async function ocsAindaSemTitulo(db: typeof prismaReal, ocsVinculadas: ReadonlySet<string>, opcoes: { soEmAndamento: boolean; hoje: string }): Promise<{ itens: OcDoCentro[]; ilegiveis: number }> {
+  const hojeData = new Date(`${opcoes.hoje}T00:00:00.000Z`);
   const ocs = await db.aprovacaoSenior.findMany({
-    where: opcoes.soEmAndamento ? { situacaoAtual: { in: ["ANA", "PRE", "APR"] }, pago: false } : { OR: [{ situacaoAtual: { in: ["ANA", "PRE", "APR"] } }, { dataEmissao: { gte: PISO_OC } }] },
+    // Sempre de 2026 em diante: OCs antigas aprovadas sem titulo ligado quase sempre ja foram pagas e so' nao foram casadas, e inflariam a lista.
+    // Previsao: em analise/pre-aprovada, ou aprovada com data de pagamento prevista de hoje em diante (programada de fato).
+    where: opcoes.soEmAndamento
+      ? { dataEmissao: { gte: PISO_OC }, pago: false, OR: [{ situacaoAtual: { in: ["ANA", "PRE"] } }, { situacaoAtual: "APR", previsaoPagamento: { gte: hojeData } }] }
+      : { dataEmissao: { gte: PISO_OC } },
     select: { numOcp: true, valor: true, situacaoAtual: true, dataEmissao: true, fornecedorNome: true, fornecedorCodigo: true, descricao: true, codccu: true, temRateio: true, rateioDetalhe: true, previsaoPagamento: true, pago: true },
   });
   const itens: OcDoCentro[] = [];

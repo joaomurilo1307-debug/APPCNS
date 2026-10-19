@@ -56,7 +56,7 @@ export async function GET(req: Request) {
 
   if (sp.get("previsao")) {
     const ccu = sp.get("previsao") as string;
-    const itens = await itensDePrevisao(prisma);
+    const itens = await itensDePrevisao(prisma, hoje);
     const doCc = itens.filter((t) => t.ccu === ccu).map((t) => ({ ...t, vencimento: t.vencimento ?? "" }));
     const r = montarPrevisao(doCc, hoje);
     return NextResponse.json({ total: r.total, quantidade: r.quantidade, grupos: r.grupos.map((g) => ({ chave: g.chave, total: Math.round(g.total), n: g.quantidade, vencidos: Math.round(g.vencidos), porTipoValor: g.porTipoValor })) });

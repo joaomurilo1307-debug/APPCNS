@@ -19,7 +19,7 @@ export async function GET() {
   if (escopo.tipo === "nenhum") return NextResponse.json({ error: "Sem centros de custo liberados para você" }, { status: 403 });
 
   const hoje = hojeBR();
-  const todos = await itensDePrevisao(prisma);
+  const todos = await itensDePrevisao(prisma, hoje);
 
   const porCcu = new Map<string, TituloPrevisao[]>();
   let semVencimento = 0;

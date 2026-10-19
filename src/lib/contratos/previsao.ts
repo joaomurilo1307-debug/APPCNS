@@ -18,7 +18,9 @@ export const CATEGORIAS: { chave: CategoriaPrevisao; rotulo: string; descricao: 
   { chave: "DEMAIS", rotulo: "Demais títulos em aberto", descricao: "Títulos que não se encaixam nas categorias acima. Ficam aqui, sem forçar classificação." },
 ];
 
-const VEICULO = /\b(ve[ií]culos?|carros?|autom[oó]ve(l|is)|caminh(ã|a)o|caminhonete|pick-?up|frota|locadora|locac(ao|ão) de ve[ií]culos?|localiza|movida|unidas|ipva|seguro auto|toyota|hilux|fiat|strada|volkswagen|chevrolet|renault|nissan|mitsubishi|hyundai)\b/i;
+const VEICULO = /\b(ve[ií]culos?|carros?|autom[oó]ve(l|is)|caminh(ã|a)o|caminhonete|pick-?up|frota|locadora|locac(ao|ão) de ve[ií]culos?|localiza|movida|unidas|ipva|seguro auto|toyota|hilux|ranger|amarok|triton|saveiro|fiat|strada|volkswagen|chevrolet|renault|renegade|nissan|mitsubishi|hyundai)\b/i;
+// "L200" aparece colado em outros caracteres no numero do titulo (ex.: 6L200 3484_26), por isso sem fronteira de palavra
+const MODELO_COLADO = /l200/i;
 const TI = /\b(computador(es)?|notebooks?|laptops?|desktop|microcomputador(es)?|inform[aá]tica|workstation|dell|lenovo|acer|asus|macbook|equipamentos? de ti)\b/i;
 
 export type TituloPrevisao = {
@@ -38,10 +40,10 @@ export type TituloPrevisao = {
   valorTipo?: "FIXO" | "VARIAVEL" | null; // so' para previsoes recorrentes: o valor se repete igual na serie ou varia
 };
 
-export function categoriaDoTitulo(t: Pick<TituloPrevisao, "tipo" | "fornecedorNome" | "descricao" | "numOcp" | "numNfc"> & { numOcpVinculada?: string | null }): CategoriaPrevisao {
+export function categoriaDoTitulo(t: Pick<TituloPrevisao, "numTit" | "tipo" | "fornecedorNome" | "descricao" | "numOcp" | "numNfc"> & { numOcpVinculada?: string | null }): CategoriaPrevisao {
   if (t.tipo === "OC") return "OC_PROGRAMADA"; // ordem de compra que ainda nao virou titulo (linha criada a partir da OC)
-  const texto = `${t.fornecedorNome ?? ""} ${t.descricao ?? ""}`;
-  if (VEICULO.test(texto)) return "VEICULO";
+  const texto = `${t.fornecedorNome ?? ""} ${t.descricao ?? ""} ${t.numTit}`;
+  if (VEICULO.test(texto) || MODELO_COLADO.test(texto)) return "VEICULO";
   if (TI.test(texto)) return "TI";
   if (t.tipo === "PRV") return "RECORRENTE";
   if (t.numOcp || t.numNfc || t.numOcpVinculada) return "AQUISICAO";

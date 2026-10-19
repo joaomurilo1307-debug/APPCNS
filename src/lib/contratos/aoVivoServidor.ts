@@ -39,7 +39,7 @@ export async function carregarAoVivo(db: typeof prismaReal, hoje: string): Promi
   for (const t of titulos) if (t.ccu) itens.push(itemDoTitulo(t, hoje, nomeLinha));
 
   // OCs que ainda nao viraram titulo (em analise, aprovadas aguardando titulo, reprovadas/canceladas recentes)
-  const { itens: ocsSemTitulo, ilegiveis: ocsSemRateioLegivel } = await ocsAindaSemTitulo(db, ocsVinculadas, { soEmAndamento: false });
+  const { itens: ocsSemTitulo, ilegiveis: ocsSemRateioLegivel } = await ocsAindaSemTitulo(db, ocsVinculadas, { soEmAndamento: false, hoje });
   for (const o of ocsSemTitulo) itens.push(itemDaOc(o, nomeLinha));
 
   const [t, r, o] = await Promise.all([

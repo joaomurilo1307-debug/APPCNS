@@ -93,3 +93,8 @@ test("OC programada: categoria propria, e OC sem data de previsao cai em 'sem da
   assert.equal(g.porMes["2026-11"], 500);
   assert.equal(Math.round((g.vencidos + g.depois + g.semData + Object.values(g.porMes).reduce((a, b) => a + b, 0)) * 100), 90000);
 });
+
+test("veiculo: modelo no numero do titulo (previsao de financiamento sem a palavra veiculo)", () => {
+  assert.equal(categoriaDoTitulo({ ...base, tipo: "PRV", numTit: "6L200 3484_26", fornecedorNome: "BRADESCO FINANC." }), "VEICULO");
+  assert.equal(categoriaDoTitulo({ ...base, tipo: "PRV", numTit: "ALUGUEL_01", fornecedorNome: "IMOBILIARIA" }), "RECORRENTE");
+});
