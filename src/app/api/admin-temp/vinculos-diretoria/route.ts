@@ -8,8 +8,8 @@ import { prisma } from "@/lib/prisma";
 // POST {"confirmar": true} = aplica, guardando antes o estado de cada pessoa na tabela bkp_vinculos_20261019 (para desfazer).
 // Protegida pela chave de sincronizacao (x-sync-key), igual as rotas de automacao.
 
-const NOMES = ["CAROLINA SILVA PERES DE CARVALHO", "ANDRE SILVA PERES"];
-const ADMIN_EMAIL = "joao.oliveira@consominas.com.br";
+const NOMES = ["Carolina Péres", "André Péres"];
+const ADMIN_EMAIL = "admin@consominas.com.br";
 
 function autorizado(req: Request) {
   const chave = req.headers.get("x-sync-key");
@@ -28,7 +28,7 @@ async function situacao(userId: string) {
     where: { id: userId },
     select: {
       id: true, name: true, email: true, role: true, nivelHierarquico: true, nucleoId: true, nucleo: { select: { name: true } },
-      teams: { select: { teamId: true, role: true, team: { select: { name: true } } } },
+      teams: { select: { teamId: true, role: true, team: { select: { name: true, _count: { select: { members: true } }, projects: { select: { name: true } } } } } },
       ownedProjects: { select: { id: true, name: true } },
     },
   });
