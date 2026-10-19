@@ -106,7 +106,7 @@ export async function POST(req: Request) {
   // 3) um projeto exemplo (equipe propria so' para o exemplo)
   const nomeEquipe = "Exemplo de uso — Projetos";
   const equipe = (await prisma.team.findUnique({ where: { name: nomeEquipe } })) ?? (await prisma.team.create({ data: { name: nomeEquipe, description: "Equipe criada só para o projeto de exemplo." } }));
-  for (const id of ids) await prisma.userTeam.upsert({ where: { userId_teamId: { userId: id, teamId: equipe.id } }, update: {}, create: { userId: id, teamId: equipe.id, role: "MEMBRO" } });
+  for (const id of ids) await prisma.userTeam.upsert({ where: { userId_teamId: { userId: id, teamId: equipe.id } }, update: { role: "GESTOR" }, create: { userId: id, teamId: equipe.id, role: "GESTOR" } });
   let projeto = await prisma.project.findFirst({ where: { teamId: equipe.id, name: "Projeto exemplo: como usar a aba Projetos" } });
   if (!projeto) {
     projeto = await prisma.project.create({
