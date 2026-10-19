@@ -368,7 +368,7 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
                     <td className="whitespace-nowrap px-3 py-2 text-gray-600">{dataBr(i.dataEmissao)}</td>
                     {sel.seq === null && <td className="px-3 py-2 text-gray-700">{i.linha}</td>}
                     <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-gray-700">{qtdFmt(i.qtd)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-gray-900">{moeda(i.valor)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-gray-900">{moeda(i.valor)}{i.valor === 0 && i.qtd > 0 && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-800" title="O item do pedido tem quantidade mas o valor está zerado no Senior. É uma das causas de a soma dos pedidos diferir do faturado da linha.">sem valor</span>}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-500">{i.codccu ?? "—"}</td>
                   </tr>
                 ))}
@@ -393,7 +393,7 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
           <p><b>Contratado e saldo</b> vêm da linha do contrato no Senior (quantidade e valor). <b>Medido acumulado</b> é o faturado acumulado da linha no Senior; o <b>saldo</b> é o contratado menos o medido.</p>
           <p><b>Medido em cada mês</b> vem dos itens dos pedidos de venda. O mês é o do <b>boletim de medição</b> anotado no pedido (ex.: “BM35 01.2026”); quando o pedido não traz o mês, vale o mês da emissão menos 1 (regra do Rito), marcado como “emissão” no detalhe.</p>
           <p><b>Consumo financeiro</b> é o valor medido dividido pelo contratado. <b>Consumo físico</b> é a média do consumo de quantidade de cada linha, ponderada pelo valor contratado (cada linha conta no máximo 100%). Se os dois se afastam, o preço medido difere do contratado.</p>
-          <p><b>Confere</b> compara, linha a linha, a soma dos pedidos com o faturado do Senior. Onde “difere”, o saldo segue o Senior e a diferença está no balão da linha (costuma vir de ajuste feito no pedido depois do faturamento ou de preço do pedido diferente do contrato).</p>
+          <p><b>Confere</b> compara, linha a linha, a soma dos pedidos com o faturado do Senior. Onde “difere”, o saldo segue o Senior e a diferença está no balão da linha (costuma vir de ajuste feito no pedido depois do faturamento, de preço do pedido diferente do contrato ou de itens do pedido com quantidade e valor zerado, marcados como “sem valor” no detalhe).</p>
           <p>O <b>centro de custo</b> de cada item é o do rateio do pedido no Senior, nunca deduzido do nome do contrato. As colunas de <b>P0</b> ficam reservadas para quando o P0 do contrato for cadastrado.</p>
         </div>
       </details>
