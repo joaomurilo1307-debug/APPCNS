@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import GraficoMeses from "./GraficoMeses";
+import PlanilhaMeses, { type CelulaSel, type DadosPlanilha } from "./PlanilhaMeses";
 import SeletorPeriodo from "./SeletorPeriodo";
 import { useAbrirOC } from "@/components/custos/AbrirOC";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
@@ -24,6 +25,7 @@ type Resposta = {
   linhasDeCusto: { cod: string; nome: string; n: number; total: number }[];
   categorias: { chave: string; rotulo: string; n: number; total: number }[];
   drill: { mes: string; total: number; programado: number; previsto: number; qtd: number; pagina: number; paginas: number; itens: Item[]; porCategoria: { chave: string; rotulo: string; n: number; total: number }[] } | null;
+  planilha: DadosPlanilha; celula: { dim: string; grupo: string; filho: string | null } | null;
   foraDoCusto: { n: number; valor: number }; semVencimento: number; sincronizadoEm: string | null;
 };
 
@@ -31,6 +33,14 @@ const COR_CAT: Record<string, string> = { RECORRENTE: "bg-violet-500", VEICULO: 
 const dataBr = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "—");
 const SEM_CCU = "_sem_cc";
+
+// nome da linha (e da linha filha) escolhida na planilha, para o titulo do detalhe
+function rotuloDaCelula(d: Resposta): string {
+  if (!d.celula) return "";
+  const l = d.planilha.linhas.find((x) => x.chave === d.celula!.grupo);
+  const f = d.celula.filho ? l?.filhos?.find((x) => x.chave === d.celula!.filho) : null;
+  return [l?.rotulo ?? d.celula.grupo, f?.rotulo].filter(Boolean).join(" › ");
+}
 
 const nomeDaFaixa = (m: string, de: string, mesAtual: string) =>
   m === "antes" ? (de >= mesAtual ? "Em atraso (antes do período)" : "Antes do período") : m === "depois" ? "Depois do período" : m === "sem_data" ? "Sem data" : mesLongo(m);
@@ -59,7 +69,10 @@ export default function PrevisaoMensal({ ccuFixo }: { ccuFixo?: string }) {
   const [mes, setMes] = useState<string | null>(null);
   const [mesInicial, setMesInicial] = useState(true);
   const [pagina, setPagina] = useState(1);
+  const [dim, setDim] = useState("conta");
+  const [celula, setCelula] = useState<CelulaSel>(null);
   const [carregando, setCarregando] = useState(false);
+  const detalheRef = useRef<HTMLElement | null>(null);
   const ultima = useRef("");
   const { abrirOC, janelaOC } = useAbrirOC();
 
@@ -72,10 +85,12 @@ export default function PrevisaoMensal({ ccuFixo }: { ccuFixo?: string }) {
     if (categoria) p.set("categoria", categoria);
     if (natureza) p.set("natureza", natureza);
     if (buscaAplicada) p.set("q", buscaAplicada);
+    if (dim !== "conta") p.set("dim", dim);
     if (mes) p.set("mes", mes);
+    if (celula) { p.set("grupo", celula.grupo); if (celula.filho) p.set("filho", celula.filho); }
     if (pagina > 1) p.set("pagina", String(pagina));
     return p.toString();
-  }, [periodo, centro, conta, categoria, natureza, buscaAplicada, mes, pagina]);
+  }, [periodo, centro, conta, categoria, natureza, buscaAplicada, mes, pagina, dim, celula]);
 
   useEffect(() => {
     const qs = consulta();
@@ -102,7 +117,16 @@ export default function PrevisaoMensal({ ccuFixo }: { ccuFixo?: string }) {
   }, [busca]);
 
   const mudar = (fn: () => void) => { fn(); setPagina(1); };
-  const escolherMes = (m: string) => { setMes((atual) => (atual === m ? null : m)); setPagina(1); };
+  const escolherMes = (m: string) => { setCelula(null); setMes((atual) => (atual === m && !celula ? null : m)); setPagina(1); };
+  const abrirCelula = (grupo: string, filho: string | null, m: string) => { setCelula({ grupo, filho, mes: m }); setMes(m); setPagina(1); };
+  const chaveCelula = celula ? `${celula.grupo}|${celula.filho ?? ""}|${celula.mes}` : "";
+  const mudarDim = (v: string) => { setDim(v); setCelula(null); setPagina(1); };
+
+  // ao clicar numa celula da planilha, leva a tela ate o detalhe quando ele chega
+  useEffect(() => {
+    if (chaveCelula && dados?.drill && dados.drill.mes === mes) detalheRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveCelula, dados?.drill?.mes, dados?.drill?.total]);
 
   if (erro && !dados) return <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro}</div>;
   if (!dados) return <div className="rounded-xl border border-gray-100 bg-white px-5 py-10 text-center text-sm text-gray-500">Lendo a previsão do Senior…</div>;
@@ -128,7 +152,7 @@ export default function PrevisaoMensal({ ccuFixo }: { ccuFixo?: string }) {
       {/* ---------------- filtros */}
       <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <SeletorPeriodo de={per.de} ate={per.ate} mesAtual={d.mesAtual} modo="futuro" onMudar={(de, ate) => mudar(() => { setPeriodo({ de, ate }); setMes(null); })} />
+          <SeletorPeriodo de={per.de} ate={per.ate} mesAtual={d.mesAtual} modo="futuro" onMudar={(de, ate) => mudar(() => { setPeriodo({ de, ate }); setMes(null); setCelula(null); })} />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {!ccuFixo && (
@@ -210,17 +234,23 @@ export default function PrevisaoMensal({ ccuFixo }: { ccuFixo?: string }) {
         </div>
       </section>
 
+      {/* ---------------- planilha mes a mes (linhas que abrem) */}
+      <PlanilhaMeses dados={d.planilha} dim={dim} onDim={mudarDim} onCelula={abrirCelula} selecionada={celula} esconderCcu={!!ccuFixo} />
+
       {/* ---------------- detalhe do mes */}
       {mes && d.drill && d.drill.mes === mes && (
-        <section className="rounded-2xl border border-teal-200 bg-white p-5 shadow-soft">
+        <section ref={detalheRef} className="scroll-mt-4 rounded-2xl border border-teal-200 bg-white p-5 shadow-soft">
           <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">{nomeDaFaixa(mes, per.de, d.mesAtual)}</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{nomeDaFaixa(mes, per.de, d.mesAtual)}{d.celula && <span className="ml-2 text-base font-normal text-gray-500">· {rotuloDaCelula(d)}</span>}</h2>
               <p className="mt-0.5 text-[13.5px] text-gray-600">
                 <b className="tabular-nums text-gray-900">{moeda(d.drill.total)}</b> em {d.drill.qtd} lançamento(s) · já programado <b className="tabular-nums">{moeda(d.drill.programado)}</b> · previsto <b className="tabular-nums">{moeda(d.drill.previsto)}</b>
               </p>
             </div>
-            <button type="button" onClick={() => setMes(null)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">Fechar mês</button>
+            <div className="flex gap-2">
+              {celula && <button type="button" onClick={() => { setCelula(null); setPagina(1); }} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">Ver o mês inteiro</button>}
+              <button type="button" onClick={() => { setMes(null); setCelula(null); }} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">Fechar</button>
+            </div>
           </header>
           <div className="mb-3 flex flex-wrap gap-2">
             {d.drill.porCategoria.map((c) => (

@@ -50,6 +50,12 @@ function bate(i: ItemPrevisao, f: FiltrosMensal, ignorar: "ccu" | "conta" | "cat
   return true;
 }
 
+/** Itens que passam nos filtros (sem olhar o periodo): base da planilha mes a mes. */
+export function filtrarItens(todos: ReadonlyArray<ItemPrevisao>, f: FiltrosMensal): ItemPrevisao[] {
+  const q = normaliza((f.q ?? "").trim());
+  return todos.filter((i) => bate(i, f, null, q));
+}
+
 export type MesPrevisao = { mes: string; programado: number; previsto: number; total: number; qtd: number; porCategoria: Record<string, number>; variacao: { valor: number; pct: number | null } | null };
 export type FaixaPrevisao = { programado: number; previsto: number; total: number; qtd: number };
 
@@ -75,7 +81,7 @@ function somar(f: FaixaPrevisao, i: ItemPrevisao) {
 }
 const fecha = (f: FaixaPrevisao): FaixaPrevisao => ({ programado: arred(f.programado), previsto: arred(f.previsto), total: arred(f.total), qtd: f.qtd });
 
-export function montarMensal(todos: ReadonlyArray<ItemPrevisao>, f: FiltrosMensal, mesDetalhe?: string | null, pagina = 1, tamanho = 50): ResultadoMensal {
+export function montarMensal(todos: ReadonlyArray<ItemPrevisao>, f: FiltrosMensal, mesDetalhe?: string | null, pagina = 1, tamanho = 50, celula?: ((i: ItemPrevisao) => boolean) | null): ResultadoMensal {
   const q = normaliza((f.q ?? "").trim());
   const lista = mesesEntre(f.de, f.ate);
   const noPeriodo = (i: ItemPrevisao) => {
@@ -133,6 +139,7 @@ export function montarMensal(todos: ReadonlyArray<ItemPrevisao>, f: FiltrosMensa
   if (mesDetalhe) {
     const doMes = todos.filter((i) => {
       if (!bate(i, f, null, q)) return false;
+      if (celula && !celula(i)) return false; // detalhe de uma celula da planilha (linha x mes)
       const m = mesDoItem(i);
       if (mesDetalhe === SEM_DATA) return m === SEM_DATA;
       if (mesDetalhe === ANTES) return m !== SEM_DATA && m < f.de;

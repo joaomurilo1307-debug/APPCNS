@@ -7,6 +7,7 @@ import { nomeConta } from "@/lib/custos/planoContas";
 import { hojeBR, vencimentoSentinela } from "@/lib/financeiro/alertas";
 import { CATEGORIAS, ehContaForaDoCusto, somaMeses, type CategoriaPrevisao } from "@/lib/contratos/previsao";
 import { SEM_CCU, mesesEntre, montarMensal, prepararItens, type NaturezaPrevisao } from "@/lib/contratos/previsaoMensal";
+import { DIMENSOES, chaveDaDim, montarPlanilha, type DimPlanilha } from "@/lib/contratos/previsaoPlanilha";
 import { nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
 import { itensDePrevisao } from "@/lib/contratos/titulosPrevistos";
 
@@ -52,10 +53,20 @@ export async function GET(req: Request) {
     brutos.push({ ...t, vencimento: semData ? "" : (t.vencimento as string), contaNome: t.ctaFin ? nomeConta(t.ctaFin) ?? `Conta ${t.ctaFin}` : null });
   }
 
-  const r = montarMensal(prepararItens(brutos), { de, ate, ccu, conta: sp.get("conta"), categoria, natureza, q: sp.get("q") }, mes, Number(sp.get("pagina")) || 1);
+  const itens = prepararItens(brutos);
+  const filtros = { de, ate, ccu, conta: sp.get("conta"), categoria, natureza, q: sp.get("q") };
+  const dimParam = sp.get("dim");
+  const dim: DimPlanilha = DIMENSOES.includes(dimParam as DimPlanilha) ? (dimParam as DimPlanilha) : "conta";
+  const filhoDim: DimPlanilha = dim === "fornecedor" ? "conta" : "fornecedor";
+  // detalhe de uma celula da planilha: restringe a lista do mes a uma linha (e, opcionalmente, a uma linha filha)
+  const grupo = sp.get("grupo");
+  const filho = sp.get("filho");
+  const celula = grupo ? (i: (typeof itens)[number]) => chaveDaDim(i, dim) === grupo && (!filho || chaveDaDim(i, filhoDim) === filho) : null;
+  const r = montarMensal(itens, filtros, mes, Number(sp.get("pagina")) || 1, 50, celula);
 
-  const nomes = await nomesDosCentros(prisma, [...new Set([...r.centros.map((c) => c.ccu), ...(r.drill?.itens.map((i) => i.ccu) ?? [])])].filter((c) => c !== SEM_CCU));
+  const nomes = await nomesDosCentros(prisma, [...new Set(itens.map((i) => i.ccu))].filter((c) => c !== SEM_CCU));
   const nomeCcu = (c: string) => (c === SEM_CCU ? "Sem centro de custo no Senior" : nomes.get(c) ?? `CC ${c}`);
+  const planilha = montarPlanilha(itens, filtros, dim, { ccu: nomeCcu, conta: (cod) => nomeConta(cod) ?? `Conta ${cod}` });
   const rotuloCategoria = new Map<string, string>(CATEGORIAS.map((c) => [c.chave, c.rotulo]));
   const sincronizado = await prisma.tituloContasAPagar.aggregate({ _max: { atualizadoEm: true } });
 
@@ -65,6 +76,8 @@ export async function GET(req: Request) {
     centros: r.centros.map((c) => ({ ...c, nome: nomeCcu(c.ccu) })),
     linhasDeCusto: r.linhasDeCusto.map((l) => ({ ...l, nome: l.cod === "_sem_linha" ? "Sem linha de custo informada" : nomeConta(l.cod) ?? `Conta ${l.cod}` })),
     categorias: r.categorias,
+    planilha,
+    celula: grupo ? { dim, grupo, filho } : null,
     drill: r.drill && { ...r.drill, itens: r.drill.itens.map((i) => ({ ...i, ccuNome: nomeCcu(i.ccu), categoriaRotulo: rotuloCategoria.get(i.categoria) ?? i.categoria })) },
     foraDoCusto: { n: foraDoCusto.n, valor: Math.round(foraDoCusto.valor * 100) / 100 },
     semVencimento,
