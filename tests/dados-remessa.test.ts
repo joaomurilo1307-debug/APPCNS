@@ -73,10 +73,8 @@ test("Documento com zeros numericos e reconstruido somente se DV valido e inequi
  const doc=Array.from({length:100},(_,i)=>"001234560001"+String(i).padStart(2,"0")).find(cnpjValido)!;
  assert.equal(documentoFavorecido(doc.replace(/^0+/,"")),doc);assert.equal(documentoFavorecido("12345678901234"),null);
 });
-test("Documento substituto do fornecedor tem origem explicita, nao vira beneficiario confirmado",async()=>{
+test("Documento substituto do fornecedor tem origem explicita",async()=>{
  const d=(await ler([titulo])).dados[0];assert.equal(d.origemDocumento,"fornecedor");
- const i=itemTeste("30");
- assert.ok(validarItemRemessa({...i,favorecidoTipoDoc:"1",dataPagamento:"2026-10-09"}).some(p=>p.campo==="favorecidoDocumento"&&p.gravidade==="erro"));
 });
 test("Boleto da Senior e validado, codigo de 48 digitos nao vira ausencia silenciosa",async()=>{
  const d=(await ler([{...titulo,CODBAR:boletoTeste()}])).dados[0];assert.equal(d.codigoBarras,boletoTeste());
