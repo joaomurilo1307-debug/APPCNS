@@ -81,12 +81,26 @@ export function AbaPessoal() {
 }
 
 // ---------------------------------------------------------------- P0 (estrutura, sem cadastro por enquanto)
+const PARTES_P0 = [
+  { t: "Receita", d: "As linhas das medições do contrato: o que se espera faturar, mês a mês." },
+  { t: "Custos", d: "As previsões lineares de custo, mês a mês. Cada previsão vira uma linha no gráfico principal do contrato." },
+  { t: "Desvio", d: "A diferença entre o previsto (P0) e o realizado do Senior. É onde os coordenadores vão justificar o desvio." },
+];
+
+export function PartesDoP0() {
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {PARTES_P0.map((x) => (
+        <div key={x.t} className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+          <h3 className="text-[14px] font-semibold text-gray-900">{x.t}</h3>
+          <p className="mt-1 text-[13.5px] text-gray-600">{x.d}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AbaP0() {
-  const partes = [
-    { t: "Receita", d: "As linhas das medições do contrato: o que se espera faturar, mês a mês." },
-    { t: "Custos", d: "As previsões lineares de custo, mês a mês. Cada previsão vira uma linha no gráfico principal do contrato." },
-    { t: "Desvio", d: "A diferença entre o previsto (P0) e o realizado do Senior. É onde os coordenadores vão justificar o desvio." },
-  ];
   return (
     <div className="space-y-5">
       <Cartao titulo="P0 do contrato" sub="Aba preparada. O cadastro só começa depois que todos os contratos tiverem o seu P0 definido.">
@@ -96,14 +110,7 @@ export function AbaP0() {
         />
       </Cartao>
       <Cartao titulo="Como o P0 vai funcionar" sub="Para o gestor entender o que virá nesta aba">
-        <div className="grid gap-3 md:grid-cols-3">
-          {partes.map((x) => (
-            <div key={x.t} className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
-              <h3 className="text-[14px] font-semibold text-gray-900">{x.t}</h3>
-              <p className="mt-1 text-[13.5px] text-gray-600">{x.d}</p>
-            </div>
-          ))}
-        </div>
+        <PartesDoP0 />
       </Cartao>
     </div>
   );
