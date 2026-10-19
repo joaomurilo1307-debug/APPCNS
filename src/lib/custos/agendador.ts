@@ -1,12 +1,12 @@
 // Agendador interno da atualizacao do Custo por Contrato: o proprio servidor do app re-le o Senior de tempos em tempos,
 // para quem abre a tela de manha ja encontrar os numeros frescos (alem do botao Atualizar e da atualizacao ao abrir).
-// Janela: segunda a sabado, 06h-21h (horario de Sao Paulo), a cada ~2 h (so' dispara se a ultima leitura OK tem mais que
+// Janela: segunda a sabado, 06h-21h (horario de Sao Paulo), a cada ~30 min (so' dispara se a ultima leitura OK tem mais que
 // isso). Interruptor: variavel de ambiente CUSTOS_AUTO=0 desliga. Nunca roda em desenvolvimento/homologacao.
 
-import { dispararAtualizacao, estadoAtualizacao } from "./atualizacaoCusto";
+import { dispararAtualizacao, encerrarExecucoesOrfas, estadoAtualizacao } from "./atualizacaoCusto";
 
 export const INTERVALO_VERIFICACAO_MS = 10 * 60_000;
-export const IDADE_MAXIMA_PARA_REPETIR_MS = 110 * 60_000;
+export const IDADE_MAXIMA_PARA_REPETIR_MS = 28 * 60_000;
 const HORA_INICIAL = 6;
 const HORA_FINAL = 21; // ultima hora cheia em que ainda dispara (21:xx)
 
@@ -44,6 +44,8 @@ async function verificar() {
 export function iniciarAgendadorCustos() {
   const g = globalThis as unknown as { __agendadorCustos?: ReturnType<typeof setInterval> };
   if (g.__agendadorCustos) return; // um so' por processo (HMR/recarga)
+  // um reinicio do servidor (deploy) mata a leitura em curso: limpa o registro que ficou "EXECUTANDO" para a tela nao mostrar progresso travado
+  void encerrarExecucoesOrfas().catch(() => {});
   g.__agendadorCustos = setInterval(verificar, INTERVALO_VERIFICACAO_MS);
   g.__agendadorCustos.unref?.();
   setTimeout(verificar, 90_000).unref?.(); // 1a checagem logo depois do boot (ex.: apos um deploy)

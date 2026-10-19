@@ -20,10 +20,10 @@ test("agendador: janela segunda a sabado, 06h a 21h59", () => {
   assert.equal(devoAtualizarAgora(brt("2026-10-18T12:00:00"), null), false); // domingo
 });
 
-test("agendador: so' repete quando a ultima leitura OK tem mais de ~2 h", () => {
+test("agendador: so' repete quando a ultima leitura OK tem mais de ~28 min", () => {
   const agora = brt("2026-10-19T14:00:00");
-  assert.equal(devoAtualizarAgora(agora, new Date(agora.getTime() - 60 * 60_000)), false);
-  assert.equal(devoAtualizarAgora(agora, new Date(agora.getTime() - 109 * 60_000)), false);
-  assert.equal(devoAtualizarAgora(agora, new Date(agora.getTime() - 111 * 60_000)), true);
+  assert.equal(devoAtualizarAgora(agora, new Date(agora.getTime() - 10 * 60_000)), false);
+  assert.equal(devoAtualizarAgora(agora, new Date(agora.getTime() - 27 * 60_000)), false);
+  assert.equal(devoAtualizarAgora(agora, new Date(agora.getTime() - 29 * 60_000)), true);
   assert.equal(devoAtualizarAgora(agora, null), true);
 });

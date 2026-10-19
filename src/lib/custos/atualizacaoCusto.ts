@@ -24,7 +24,7 @@ import {
 
 export const TEMPO_MAXIMO_EXECUCAO_MS = 25 * 60_000; // execucao "EXECUTANDO" mais antiga que isso morreu (reinicio do container)
 export const INTERVALO_MINIMO_MS = 2 * 60_000; // nao refaz a leitura se acabou de terminar
-export const DADOS_VELHOS_APOS_MS = 45 * 60_000; // a tela dispara sozinha quando abre e os dados tem mais que isso
+export const DADOS_VELHOS_APOS_MS = 35 * 60_000; // a tela dispara sozinha quando abre e os dados tem mais que isso
 
 const consultar: Consulta = (sql, timeoutMs) => consultarSenior(sql, timeoutMs ? { timeoutMs } : undefined);
 
@@ -249,4 +249,9 @@ export async function gravarDetalhe(db: typeof prisma, detalhe: LinhaDetalheCust
 /** True quando o Senior direto ja assumiu: os syncs antigos vindos do Rito passam a ser ignorados. */
 export async function seniorDiretoAssumiu(): Promise<boolean> {
   return (await prisma.atualizacaoCusto.count({ where: { status: "OK" } })) > 0;
+}
+
+/** No boot nao existe leitura legitimamente em curso (processo unico): o que estiver EXECUTANDO foi morto por reinicio. */
+export async function encerrarExecucoesOrfas() {
+  await prisma.atualizacaoCusto.deleteMany({ where: { status: "EXECUTANDO" } });
 }
