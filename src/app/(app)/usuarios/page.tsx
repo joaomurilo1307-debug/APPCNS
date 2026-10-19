@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Avatar, { AVATAR_PALETTE } from "@/components/Avatar";
@@ -60,6 +60,12 @@ export default function UsuariosPage() {
   }, [status, currentRole, router]);
 
   const [users, setUsers] = useState<UserRow[]>([]);
+  // lista leve: busca, filtros e paginacao (renderizar centenas de linhas com ~15 controles cada deixava a tela travada)
+  const [busca, setBusca] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState<"ativos" | "inativos" | "todos">("ativos");
+  const [filtroPapel, setFiltroPapel] = useState("");
+  const [pagina, setPagina] = useState(0);
+  const POR_PAGINA = 25;
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -80,6 +86,19 @@ export default function UsuariosPage() {
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resetError, setResetError] = useState<string | null>(null);
+
+  const filtrados = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    return users.filter((u) => {
+      if (filtroStatus === "ativos" && !u.active) return false;
+      if (filtroStatus === "inativos" && u.active) return false;
+      if (filtroPapel && u.role !== filtroPapel) return false;
+      return !t || u.name.toLowerCase().includes(t) || u.email.toLowerCase().includes(t) || (u.cargo ?? "").toLowerCase().includes(t);
+    });
+  }, [users, busca, filtroStatus, filtroPapel]);
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA));
+  const paginaAtual = Math.min(pagina, totalPaginas - 1);
+  const visiveis = filtrados.slice(paginaAtual * POR_PAGINA, (paginaAtual + 1) * POR_PAGINA);
 
   async function load() {
     try {
@@ -265,7 +284,10 @@ export default function UsuariosPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Usuários e Governança</h1>
-          <a href="/custos/acessos" className="mt-1 inline-block text-[13px] font-medium text-brand hover:text-brand-dark">Escolher quais centros de custo cada pessoa vê nos custos →</a>
+          <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
+            <a href="/usuarios/projetos" className="text-[13px] font-medium text-brand hover:text-brand-dark">Escolher em quais projetos cada pessoa entra →</a>
+            <a href="/custos/acessos" className="text-[13px] font-medium text-brand hover:text-brand-dark">Escolher quais centros de custo cada pessoa vê nos custos →</a>
+          </div>
           <p className="text-sm text-gray-500">Cadastro de acesso e papéis. Restrito a Admin.</p>
         </div>
         <button
@@ -356,7 +378,32 @@ export default function UsuariosPage() {
         </form>
       )}
 
-      <div className="max-h-[calc(100vh-14rem)] overflow-auto rounded-xl border border-gray-200 bg-white">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          value={busca}
+          onChange={(e) => { setBusca(e.target.value); setPagina(0); }}
+          placeholder="Buscar por nome, e-mail ou cargo…"
+          className="w-72 rounded-md border border-gray-300 px-3 py-2 text-sm"
+        />
+        <select value={filtroStatus} onChange={(e) => { setFiltroStatus(e.target.value as any); setPagina(0); }} className="rounded-md border border-gray-300 px-2 py-2 text-sm">
+          <option value="ativos">Ativos</option>
+          <option value="inativos">Inativos</option>
+          <option value="todos">Todos</option>
+        </select>
+        <select value={filtroPapel} onChange={(e) => { setFiltroPapel(e.target.value); setPagina(0); }} className="rounded-md border border-gray-300 px-2 py-2 text-sm">
+          <option value="">Todos os papéis</option>
+          {Object.entries(roleLabel).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <span className="ml-auto text-sm text-gray-500">
+          {filtrados.length} {filtrados.length === 1 ? "pessoa" : "pessoas"} · página {paginaAtual + 1} de {totalPaginas}
+        </span>
+        <button disabled={paginaAtual === 0} onClick={() => setPagina(paginaAtual - 1)} className="rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-40">‹ Anterior</button>
+        <button disabled={paginaAtual >= totalPaginas - 1} onClick={() => setPagina(paginaAtual + 1)} className="rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-40">Próxima ›</button>
+      </div>
+
+      <div className="max-h-[calc(100vh-17rem)] overflow-auto rounded-xl border border-gray-200 bg-white">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 border-b bg-gray-50 text-left text-gray-500">
             <tr>
@@ -379,7 +426,7 @@ export default function UsuariosPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {visiveis.map((u) => (
               <tr key={u.id} className="border-b last:border-0">
                 <td className="px-4 py-3 font-medium">
                   <div className="flex items-center gap-2">

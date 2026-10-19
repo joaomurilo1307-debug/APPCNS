@@ -205,6 +205,7 @@ model User {
 
   teams           UserTeam[]
   ownedProjects   Project[]      @relation("ProjectOwner")
+  acessosProjeto  AcessoProjeto[] @relation("AcessosProjetoUser")
   approvingProjects Project[]    @relation("ProjectApprover")
   clientProjects  ProjectClient[]
   assignedTasks   Task[]         @relation("TaskAssignee")
@@ -628,6 +629,7 @@ model Project {
   resourceRates  ResourceRate[]
   nucleos       Nucleo[] @relation("ProjectNucleo")
   diretores     User[]   @relation("ProjectDiretor")
+  acessos       AcessoProjeto[] @relation("AcessosProjetoProject")
   coordenadores User[]   @relation("ProjectCoordenador")
   folders       Folder[]
   attachments   Attachment[]
@@ -1492,4 +1494,20 @@ model NfRecebidaPagamento {
   formasPag   String[] // codigos tPag (01, 15, 17...)
   indPag      String?  // 0 = a vista, 1 = a prazo
   lidoEm      DateTime @default(now())
+}
+
+// Convite individual a um projeto (tela Usuarios > Projetos de cada pessoa). Quem nao criou nem e' membro da equipe
+// so' enxerga o projeto se tiver um convite aqui (ou for diretor/coordenador do projeto).
+model AcessoProjeto {
+  id           String   @id @default(cuid())
+  userId       String
+  projectId    String
+  concedidoPor String?
+  createdAt    DateTime @default(now())
+
+  user    User    @relation("AcessosProjetoUser", fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation("AcessosProjetoProject", fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([projectId])
 }

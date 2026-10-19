@@ -20,7 +20,7 @@ async function nucleoManagedUserIds(userId: string): Promise<string[]> {
 /**
  * Regra de visibilidade de PROJETOS (decisao do Joao, 19/10/2026): cada pessoa -- inclusive Diretoria e Gerencia --
  * so ve o projeto que CRIOU (ownerId) ou em que PARTICIPA: e' membro da equipe do projeto, foi convidada como
- * diretor/coordenador do projeto, gerencia um nucleo vinculado ao projeto, tem tarefa atribuida ou e' o aprovador.
+ * diretor/coordenador do projeto ou recebeu convite individual (tela Usuarios > Projetos), gerencia um nucleo vinculado ao projeto, tem tarefa atribuida ou e' o aprovador.
  * So' o ADMIN (administrador do sistema) ve todos. Cliente tem regra propria (ProjectClient) nas rotas.
  * Retorna um filtro Prisma pronto para `Project.findMany({ where })` ou, para outros modelos, `{ project: <isto> }`.
  */
@@ -41,6 +41,7 @@ export function filtroProjetosDaPessoa(userId: string, teamIds: string[]) {
       { nucleos: { some: { gerentes: { some: { id: userId } } } } },
       { tasks: { some: { assigneeId: userId } } },
       { approverId: userId },
+      { acessos: { some: { userId } } },
     ],
   };
 }

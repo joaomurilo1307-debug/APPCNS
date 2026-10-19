@@ -10,6 +10,7 @@ test("projetos: so aparece o que a pessoa criou ou em que participa (nunca filtr
   assert.ok(f.OR.some((c: any) => c.diretores?.some?.id === "u1"), "convidado como diretor do projeto");
   assert.ok(f.OR.some((c: any) => c.coordenadores?.some?.id === "u1"), "convidado como coordenador do projeto");
   assert.ok(f.OR.some((c: any) => c.tasks?.some?.assigneeId === "u1"), "tem tarefa atribuida");
+  assert.ok(f.OR.some((c: any) => c.acessos?.some?.userId === "u1"), "convite individual (tela Usuarios > Projetos)");
 });
 
 test("projetos: pessoa sem equipe so enxerga o que criou/foi convidada (equipe vazia nao libera nada)", () => {
