@@ -25,7 +25,10 @@ export async function GET(req: Request) {
   const dados = await carregarAoVivo(prisma, hojeBR());
   const visiveis = dados.itens.filter((i) => podeVerCcu(escopo, i.ccu));
   const fora = dados.foraDoCusto.filter((i) => podeVerCcu(escopo, i.ccu) && (!ccu || i.ccu === ccu));
-  const r = montarAoVivo(visiveis, { ccu, conta: sp.get("conta"), situacao, q: sp.get("q") }, Number(sp.get("pagina")) || 1);
+  const mesValido = (v: string | null) => (v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v) ? v : null);
+  const de = mesValido(sp.get("de"));
+  const ate = mesValido(sp.get("ate"));
+  const r = montarAoVivo(visiveis, { ccu, conta: sp.get("conta"), situacao, q: sp.get("q"), de, ate: de && ate && ate < de ? de : ate, mes: mesValido(sp.get("mes")) }, Number(sp.get("pagina")) || 1);
 
   // sem um centro de custo fixo, a tela deixa escolher entre os que a pessoa ve
   let centros: { codccu: string; nome: string; n: number }[] = [];
@@ -42,6 +45,7 @@ export async function GET(req: Request) {
     ...r,
     itens: r.itens.map((i) => ({ ...i, ccuNome: nomesDaPagina.get(i.ccu) ?? null })),
     centros,
+    periodo: { de, ate },
     filtros: FILTROS_SITUACAO,
     atualizadoEm: dados.atualizadoEm,
     rateiosLidos: dados.atualizadoEm.rateios !== null,

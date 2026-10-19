@@ -1,11 +1,14 @@
 "use client";
 
 // "Ao vivo" no fim do Custo por Centro de Custo: tudo que o Senior tem ligado ao centro de custo, para o coordenador acompanhar -- cada titulo
-// (com OC ou sem, pago ou nao) e cada OC que ainda nao virou titulo (em analise, aprovada, reprovada). Filtra por linha de custo.
-// Somente leitura; atualiza sozinho a cada 3 minutos com o que o sistema ja sincronizou do Senior (que roda a cada ~30 min).
+// (com OC ou sem, pago ou nao) e cada OC que ainda nao virou titulo (em analise, aprovada, reprovada). Escolhe o periodo, ve mes a mes (clicando
+// num mes a lista mostra so' aquele mes), filtra por linha de custo e abre a OC. Somente leitura; atualiza sozinho a cada 3 minutos com o que
+// o sistema ja sincronizou do Senior (que roda a cada ~30 min).
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { moeda, moedaCompacta } from "@/lib/custos/formato";
+import SeletorPeriodo from "@/components/contratos/SeletorPeriodo";
+import { useAbrirOC } from "./AbrirOC";
+import { mesCurto, mesLongo, moeda, moedaCompacta } from "@/lib/custos/formato";
 
 type Item = {
   chave: string; origem: "TITULO" | "OC"; ccu: string; ccuNome: string | null; ctaFin: string | null; linhaCusto: string | null; data: string;
@@ -15,6 +18,7 @@ type Item = {
 type Resposta = {
   total: number; pagina: number; paginas: number; itens: Item[];
   resumo: Record<string, { n: number; valor: number }>;
+  meses: { mes: string; n: number; valor: number; pagos: number; emAberto: number }[];
   linhasDeCusto: { cod: string; nome: string; n: number; valor: number }[];
   centros: { codccu: string; nome: string; n: number }[];
   filtros: { chave: string; rotulo: string }[];
@@ -24,6 +28,12 @@ type Resposta = {
 
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
 const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "—");
+const mesDeHoje = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+const menosMeses = (mes: string, n: number) => {
+  const [a, m] = mes.split("-").map(Number);
+  const d = new Date(Date.UTC(a, m - 1 - n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+};
 const PAGAMENTO: Record<Item["pagamento"], { rotulo: string; cor: string }> = {
   pago: { rotulo: "Pago", cor: "bg-emerald-100 text-emerald-800" },
   a_pagar: { rotulo: "A pagar", cor: "bg-sky-100 text-sky-800" },
@@ -34,8 +44,11 @@ const PAGAMENTO: Record<Item["pagamento"], { rotulo: string; cor: string }> = {
 const OC_COR: Record<string, string> = { ANA: "bg-amber-100 text-amber-800", PRE: "bg-amber-100 text-amber-800", APR: "bg-emerald-100 text-emerald-800", REP: "bg-red-100 text-red-700", CAN: "bg-gray-200 text-gray-700" };
 
 export default function AoVivo({ codccu }: { codccu?: string }) {
+  const mesAtual = mesDeHoje();
   const [dados, setDados] = useState<Resposta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [periodo, setPeriodo] = useState({ de: menosMeses(mesAtual, 2), ate: mesAtual });
+  const [mes, setMes] = useState<string | null>(null);
   const [situacao, setSituacao] = useState("todas");
   const [conta, setConta] = useState("");
   const [centro, setCentro] = useState("");
@@ -43,23 +56,27 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
   const [buscaAplicada, setBuscaAplicada] = useState("");
   const [pagina, setPagina] = useState(1);
   const filtrosRef = useRef("");
+  const { abrirOC, janelaOC } = useAbrirOC();
 
   const ccu = codccu ?? centro;
   const consulta = useCallback(() => {
     const p = new URLSearchParams();
+    p.set("de", periodo.de);
+    p.set("ate", periodo.ate);
+    if (mes) p.set("mes", mes);
     if (ccu) p.set("ccu", ccu);
     if (conta) p.set("conta", conta);
     if (situacao !== "todas") p.set("situacao", situacao);
     if (buscaAplicada) p.set("q", buscaAplicada);
     if (pagina > 1) p.set("pagina", String(pagina));
     return p.toString();
-  }, [ccu, conta, situacao, buscaAplicada, pagina]);
+  }, [periodo, mes, ccu, conta, situacao, buscaAplicada, pagina]);
 
   const carregar = useCallback(async () => {
     const qs = consulta();
     filtrosRef.current = qs;
     try {
-      const r = await fetch(`/api/custos-conta/ao-vivo${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+      const r = await fetch(`/api/custos-conta/ao-vivo?${qs}`, { cache: "no-store" });
       const j = await r.json().catch(() => ({}));
       if (filtrosRef.current !== qs) return; // chegou uma resposta velha: ignora
       if (!r.ok) throw new Error(j.error || "Não foi possível carregar o Ao vivo.");
@@ -71,18 +88,17 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
   }, [consulta]);
 
   useEffect(() => { void carregar(); }, [carregar]);
-  // a cada minuto, so' com a aba visivel
   useEffect(() => {
     const t = setInterval(() => { if (document.visibilityState === "visible") void carregar(); }, 180_000);
     return () => clearInterval(t);
   }, [carregar]);
-  // busca com pequena espera para nao consultar a cada tecla
   useEffect(() => {
     const t = setTimeout(() => { setBuscaAplicada(busca.trim()); setPagina(1); }, 350);
     return () => clearTimeout(t);
   }, [busca]);
 
   const mudar = (fn: () => void) => { fn(); setPagina(1); };
+  const maiorMes = Math.max(1, ...(dados?.meses.map((m) => m.valor) ?? [0]));
 
   return (
     <section className="mt-8 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
@@ -92,10 +108,14 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
             <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" /></span>
             Ao vivo
           </h2>
-          <p className="mt-0.5 max-w-3xl text-[13.5px] text-gray-500">Tudo que o Senior tem neste centro de custo: títulos com ou sem OC, pagos ou não, e as OCs que ainda não viraram título (em análise, aprovadas ou reprovadas). Atualiza sozinho a cada poucos minutos.</p>
+          <p className="mt-0.5 max-w-3xl text-[13.5px] text-gray-500">Tudo que o Senior tem {codccu ? "neste centro de custo" : "nos centros de custo que você acompanha"}: títulos com ou sem OC, pagos ou não, e as OCs que ainda não viraram título (em análise, aprovadas ou reprovadas). Escolha o período, veja mês a mês e clique numa OC para abri-la.</p>
         </div>
         {dados && <p className="text-xs text-gray-400">Senior sincronizado — títulos {hora(dados.atualizadoEm.titulos)} · OCs {hora(dados.atualizadoEm.ocs)} · centro de custo dos títulos {hora(dados.atualizadoEm.rateios)}</p>}
       </header>
+
+      <div className="mb-4">
+        <SeletorPeriodo de={periodo.de} ate={periodo.ate} mesAtual={mesAtual} modo="passado" onMudar={(de, ate) => mudar(() => { setPeriodo({ de, ate }); setMes(null); })} />
+      </div>
 
       {erro && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro}</div>}
       {!dados && !erro && <div className="py-10 text-center text-sm text-gray-500">Lendo os lançamentos do Senior…</div>}
@@ -108,15 +128,40 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
             </div>
           )}
 
+          {/* ---------------- mes a mes */}
+          <div className="mb-4">
+            <p className="mb-1.5 text-[13px] font-medium text-gray-600">Mês a mês <span className="font-normal text-gray-400">(mês do pagamento, do lançamento ou da OC) · clique num mês para ver só ele</span></p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {dados.meses.map((m, k) => {
+                const ativo = mes === m.mes;
+                const ant = k > 0 ? dados.meses[k - 1].valor : null;
+                const v = ant !== null && ant > 0 ? (m.valor - ant) / ant : null;
+                return (
+                  <button key={m.mes} type="button" onClick={() => mudar(() => setMes(ativo ? null : m.mes))}
+                    className={`min-w-[132px] shrink-0 rounded-xl border px-3 py-2 text-left transition ${ativo ? "border-brand bg-brand/5" : "border-gray-200 hover:border-gray-300"}`} aria-pressed={ativo} title={mesLongo(m.mes)}>
+                    <span className="flex items-center justify-between text-[13px] font-semibold text-gray-800">{mesCurto(m.mes)}{v !== null && Math.abs(v) >= 0.005 && <span className={`text-[11px] font-medium ${v > 0 ? "text-red-700" : "text-emerald-700"}`}>{v > 0 ? "▲" : "▼"} {Math.round(Math.abs(v) * 100)}%</span>}</span>
+                    <span className="block text-[13px] tabular-nums text-gray-700">{m.n > 0 ? moedaCompacta(m.valor) : "–"}</span>
+                    <span className="block text-[11px] text-gray-400">{m.n} lançamento{m.n === 1 ? "" : "s"}</span>
+                    <span className="mt-1 flex h-1.5 overflow-hidden rounded-full bg-gray-100" aria-hidden>
+                      <span className="bg-emerald-500" style={{ width: `${(m.pagos / maiorMes) * 100}%` }} />
+                      <span className="bg-sky-400" style={{ width: `${(m.emAberto / maiorMes) * 100}%` }} />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 flex gap-4 text-[11px] text-gray-400"><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-500" />pago</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-sky-400" />ainda em aberto</span></p>
+          </div>
+
           <div className="mb-4 flex flex-wrap gap-2">
             {dados.filtros.map((f) => {
-              const r = f.chave === "todas" ? null : dados.resumo[f.chave];
+              const r = dados.resumo[f.chave];
               const ativo = situacao === f.chave;
               return (
                 <button key={f.chave} type="button" onClick={() => mudar(() => setSituacao(f.chave))}
                   className={`rounded-xl border px-3 py-2 text-left text-[13px] transition ${ativo ? "border-brand bg-brand/5" : "border-gray-200 hover:border-gray-300"}`}>
                   <span className="block font-medium text-gray-800">{f.rotulo}</span>
-                  <span className="block text-xs tabular-nums text-gray-500">{r ? `${r.n} · ${moedaCompacta(r.valor)}` : `${dados.total} lançamentos`}</span>
+                  <span className="block text-xs tabular-nums text-gray-500">{r ? `${r.n} · ${moedaCompacta(r.valor)}` : ""}</span>
                 </button>
               );
             })}
@@ -135,8 +180,10 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
               {conta && !dados.linhasDeCusto.some((l) => l.cod === conta) && <option value={conta}>{conta}</option>}
             </select>
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar fornecedor, descrição, título ou OC" className="min-w-[240px] flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" />
-            {(conta || situacao !== "todas" || busca) && <button type="button" onClick={() => { setConta(""); setSituacao("todas"); setBusca(""); setPagina(1); }} className="text-[13px] font-medium text-brand hover:text-brand-dark">Limpar filtros</button>}
+            {(conta || situacao !== "todas" || busca || mes) && <button type="button" onClick={() => { setConta(""); setSituacao("todas"); setBusca(""); setMes(null); setPagina(1); }} className="text-[13px] font-medium text-brand hover:text-brand-dark">Limpar filtros</button>}
           </div>
+
+          {mes && <p className="mb-2 text-[13px] text-gray-600">Mostrando só <b>{mesLongo(mes)}</b>.</p>}
 
           <div className="overflow-x-auto rounded-xl border border-gray-100">
             <table className="w-full min-w-[980px] text-[13px]">
@@ -157,7 +204,7 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
                       </td>
                       <td className="px-3 py-2 text-gray-600">{i.linhaCusto ?? <span className="text-gray-300">não informada</span>}</td>
                       <td className="whitespace-nowrap px-3 py-2">
-                        {i.numOcp ? <span className="mr-1.5 text-gray-600">OC {i.numOcp}</span> : null}
+                        {i.numOcp ? <button type="button" onClick={() => abrirOC(i.numOcp as string)} className="mr-1.5 rounded-md border border-brand/40 px-1.5 py-0.5 text-xs font-medium text-brand hover:bg-brand/10" title="Abrir a OC">OC {i.numOcp}</button> : null}
                         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${i.ocSituacao ? OC_COR[i.ocSituacao] ?? "bg-gray-100 text-gray-600" : "bg-gray-100 text-gray-500"}`}>{i.ocRotulo}</span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-2">
@@ -168,7 +215,7 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
                     </tr>
                   );
                 })}
-                {dados.itens.length === 0 && <tr><td colSpan={codccu ? 6 : 7} className="px-3 py-8 text-center text-gray-400">Nenhum lançamento com esses filtros.</td></tr>}
+                {dados.itens.length === 0 && <tr><td colSpan={codccu ? 6 : 7} className="px-3 py-8 text-center text-gray-400">Nenhum lançamento com esses filtros neste período.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -183,6 +230,7 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
           </footer>
         </>
       )}
+      {janelaOC}
     </section>
   );
 }

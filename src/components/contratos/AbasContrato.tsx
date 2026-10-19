@@ -5,7 +5,7 @@
 // Previsao ja le o Senior (titulos em aberto por centro de custo), somente leitura. Visao geral mostra so' a ficha cadastral e a situacao do acompanhamento.
 
 import ClientesDoContrato from "./ClientesDoContrato";
-import PrevisaoContrato from "./PrevisaoContrato";
+import PrevisaoMensal from "./PrevisaoMensal";
 import { moeda } from "@/lib/custos/formato";
 import type { FichaContrato } from "./FichaEditor";
 
@@ -118,5 +118,5 @@ export function AbaP0() {
 
 // ---------------------------------------------------------------- Previsao (titulos em aberto do Senior por centro de custo)
 export function AbaPrevisao({ codccu }: { codccu: string }) {
-  return <PrevisaoContrato codccu={codccu} />;
+  return <PrevisaoMensal ccuFixo={codccu} />;
 }

@@ -110,7 +110,7 @@ export function itemDaOc(o: OcDoCentro, nomeLinha: (cod: string) => string | nul
 /** Valor do filtro de linha de custo para os lancamentos em que o Senior nao informa a linha. */
 export const SEM_LINHA = "_sem_linha";
 
-export type FiltrosAoVivo = { ccu?: string | null; conta?: string | null; situacao?: FiltroSituacao; q?: string | null };
+export type FiltrosAoVivo = { ccu?: string | null; conta?: string | null; situacao?: FiltroSituacao; q?: string | null; de?: string | null; ate?: string | null; mes?: string | null };
 
 function bateSituacao(i: ItemAoVivo, s: FiltroSituacao): boolean {
   switch (s) {
@@ -125,7 +125,7 @@ function bateSituacao(i: ItemAoVivo, s: FiltroSituacao): boolean {
   }
 }
 
-const normaliza = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const normaliza = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 function bateBusca(i: ItemAoVivo, q: string): boolean {
   if (!q) return true;
@@ -133,31 +133,60 @@ function bateBusca(i: ItemAoVivo, q: string): boolean {
   return q.split(/\s+/).filter(Boolean).every((p) => alvo.includes(p));
 }
 
+export type MesAoVivo = { mes: string; n: number; valor: number; pagos: number; emAberto: number };
+
 export type RespostaAoVivo = {
   total: number;
   pagina: number;
   paginas: number;
   itens: ItemAoVivo[];
-  resumo: Record<Exclude<FiltroSituacao, "todas">, { n: number; valor: number }>;
+  resumo: Record<FiltroSituacao, { n: number; valor: number }>;
+  meses: MesAoVivo[]; // um por mes do periodo (mes do lancamento: pagamento, lancamento no Senior ou emissao da OC), com os demais filtros aplicados
   linhasDeCusto: { cod: string; nome: string; n: number; valor: number }[]; // com os demais filtros aplicados (menos o da propria linha)
 };
 
+const mesDe = (i: ItemAoVivo) => i.data.slice(0, 7);
+function listaDeMeses(de: string, ate: string, maximo = 36): string[] {
+  const l: string[] = [];
+  let [a, m] = de.split("-").map(Number);
+  while (`${a}-${String(m).padStart(2, "0")}` <= ate && l.length < maximo) {
+    l.push(`${a}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) { m = 1; a += 1; }
+  }
+  return l;
+}
+
 export function montarAoVivo(todos: ReadonlyArray<ItemAoVivo>, f: FiltrosAoVivo, pagina = 1, tamanho = 60): RespostaAoVivo {
   const q = normaliza((f.q ?? "").trim());
-  const bateConta = (i: ItemAoVivo) => !f.conta || (f.conta === SEM_LINHA ? i.ctaFin === null : i.ctaFin === f.conta);
   const situacao = f.situacao ?? "todas";
-  const doCentro = todos.filter((i) => !f.ccu || i.ccu === f.ccu);
-  const aBusca = doCentro.filter((i) => bateBusca(i, q));
+  const bateConta = (i: ItemAoVivo) => !f.conta || (f.conta === SEM_LINHA ? i.ctaFin === null : i.ctaFin === f.conta);
+  const noPeriodo = (i: ItemAoVivo) => (!f.de || mesDe(i) >= f.de) && (!f.ate || mesDe(i) <= f.ate);
+  const bateMes = (i: ItemAoVivo) => !f.mes || mesDe(i) === f.mes;
+  const base = todos.filter((i) => (!f.ccu || i.ccu === f.ccu) && noPeriodo(i) && bateBusca(i, q));
 
-  // resumo e linhas de custo ignoram o proprio filtro (para mostrar quanto ha em cada opcao)
+  // mes a mes: ignora o proprio filtro de mes (mostra todos os meses do periodo), mas respeita linha de custo e situacao
+  const nosMeses = base.filter((i) => bateConta(i) && bateSituacao(i, situacao));
+  const porMes = new Map<string, MesAoVivo>();
+  if (f.de && f.ate) for (const m of listaDeMeses(f.de, f.ate)) porMes.set(m, { mes: m, n: 0, valor: 0, pagos: 0, emAberto: 0 });
+  for (const i of nosMeses) {
+    const m = mesDe(i);
+    const x = porMes.get(m) ?? { mes: m, n: 0, valor: 0, pagos: 0, emAberto: 0 };
+    x.n += 1; x.valor += i.valor;
+    if (i.pagamento === "pago") x.pagos += i.valor; else x.emAberto += i.valor;
+    porMes.set(m, x);
+  }
+  const meses = [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes)).map((m) => ({ ...m, valor: Math.round(m.valor * 100) / 100, pagos: Math.round(m.pagos * 100) / 100, emAberto: Math.round(m.emAberto * 100) / 100 }));
+
+  // resumo e linhas de custo: ignoram o proprio filtro (mostram quanto ha em cada opcao), mas respeitam o mes escolhido
+  const noMes = base.filter(bateMes);
   const resumo = {} as RespostaAoVivo["resumo"];
   for (const { chave } of FILTROS_SITUACAO) {
-    if (chave === "todas") continue;
-    const l = aBusca.filter((i) => bateConta(i) && bateSituacao(i, chave));
+    const l = noMes.filter((i) => bateConta(i) && bateSituacao(i, chave));
     resumo[chave] = { n: l.length, valor: Math.round(l.reduce((s, i) => s + i.valor, 0) * 100) / 100 };
   }
   const porConta = new Map<string, { cod: string; nome: string; n: number; valor: number }>();
-  for (const i of aBusca) {
+  for (const i of noMes) {
     if (!bateSituacao(i, situacao)) continue;
     const cod = i.ctaFin ?? SEM_LINHA;
     const atual = porConta.get(cod) ?? { cod, nome: i.linhaCusto ?? "Sem linha de custo informada", n: 0, valor: 0 };
@@ -166,7 +195,7 @@ export function montarAoVivo(todos: ReadonlyArray<ItemAoVivo>, f: FiltrosAoVivo,
     porConta.set(cod, atual);
   }
 
-  const filtrados = aBusca.filter((i) => bateConta(i) && bateSituacao(i, situacao));
+  const filtrados = noMes.filter((i) => bateConta(i) && bateSituacao(i, situacao));
   filtrados.sort((a, b) => b.data.localeCompare(a.data) || a.chave.localeCompare(b.chave));
   const paginas = Math.max(1, Math.ceil(filtrados.length / tamanho));
   const p = Math.min(Math.max(1, pagina), paginas);
@@ -176,6 +205,7 @@ export function montarAoVivo(todos: ReadonlyArray<ItemAoVivo>, f: FiltrosAoVivo,
     paginas,
     itens: filtrados.slice((p - 1) * tamanho, p * tamanho),
     resumo,
+    meses,
     linhasDeCusto: [...porConta.values()].map((c) => ({ ...c, valor: Math.round(c.valor * 100) / 100 })).sort((a, b) => b.valor - a.valor),
   };
 }

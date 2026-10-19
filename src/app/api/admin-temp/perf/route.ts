@@ -36,6 +36,19 @@ export async function GET(req: Request) {
   for (const x of titulos) if (frio.motor.ocRelacionadaDe(x).ocRelacionada) comOc++;
   out.vinculoTituloOc = { titulos: titulos.length, comOc, ms: ms(t) };
 
+  // custo da "assinatura" que decide se a lista de pagamento pode vir do cache (mesmas consultas de titulos-pagar)
+  t = performance.now();
+  await Promise.all([
+    prisma.tituloContasAPagar.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
+    motorDeOcs(prisma),
+    prisma.dossieOC.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
+    prisma.usuarioSenior.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
+    prisma.formaPagamentoSenior.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
+    prisma.tituloAdiamento.findMany({ where: { tituloId: { not: null } }, select: { id: true, marcadoEm: true, resolvidoEm: true, resolvidoComo: true, motivo: true } }),
+    prisma.tituloOcVinculo.findMany({ select: { id: true, numOcp: true, criadoEm: true } }),
+  ]);
+  out.assinaturaDaListaDePagamento = { ms: ms(t) };
+
   t = performance.now();
   const json = JSON.stringify(titulos);
   out.jsonDosTitulos = { bytes: json.length, ms: ms(t) };

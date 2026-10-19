@@ -23,6 +23,53 @@ export async function GET() {
 
   // Mantem o codigo/descricao da forma de pagamento atualizados em segundo plano (aparecem dentro da OC).
   garantirFormasPagamentoAtualizadas(true);
+
+  // DESEMPENHO (19/10/2026): a lista tem ~20 mil titulos (~20 MB) e montá-la custava ~4 s de CPU a cada abertura, num servidor de 1 CPU.
+  // A resposta e' a mesma para todo mundo que passou na checagem de papel acima; so' muda quando algum dado de origem muda. A "assinatura"
+  // abaixo olha, com consultas baratas, tudo que entra na lista; se nada mudou, devolve o JSON ja pronto.
+  const assinatura = await assinaturaDaLista();
+  if (guardada && guardada.assinatura === assinatura) return respostaJson(guardada.texto);
+  if (emCalculo && emCalculo.assinatura === assinatura) return respostaJson(await emCalculo.promessa);
+  const promessa = calcularTexto();
+  emCalculo = { assinatura, promessa };
+  try {
+    const texto = await promessa;
+    guardada = { assinatura, texto };
+    return respostaJson(texto);
+  } finally {
+    if (emCalculo && emCalculo.promessa === promessa) emCalculo = null;
+  }
+}
+
+const respostaJson = (texto: string) => new NextResponse(texto, { status: 200, headers: { "Content-Type": "application/json" } });
+let guardada: { assinatura: string; texto: string } | null = null;
+let emCalculo: { assinatura: string; promessa: Promise<string> } | null = null;
+
+/** Tudo que alimenta a lista, resumido numa chave curta. Se qualquer coisa mudar (titulo, OC, vinculo manual, adiamento, dossie...), a chave muda. */
+async function assinaturaDaLista(): Promise<string> {
+  const [t, oc, dossies, usuarios, formas, adiamentos, vinculos] = await Promise.all([
+    prisma.tituloContasAPagar.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
+    motorDeOcs(prisma),
+    prisma.dossieOC.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
+    prisma.usuarioSenior.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
+    prisma.formaPagamentoSenior.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
+    // poucos registros: lidos por inteiro para que qualquer alteracao (inclusive trocar a OC de um vinculo manual) mude a chave
+    prisma.tituloAdiamento.findMany({ where: { tituloId: { not: null } }, select: { id: true, marcadoEm: true, resolvidoEm: true, resolvidoComo: true, motivo: true } }),
+    prisma.tituloOcVinculo.findMany({ select: { id: true, numOcp: true, criadoEm: true } }),
+  ]);
+  const k = (d: Date | null | undefined) => d?.getTime() ?? 0;
+  return [
+    `t${t._count._all}:${k(t._max.atualizadoEm)}`,
+    `o${oc.versao}`,
+    `d${dossies._count._all}:${k(dossies._max.atualizadoEm)}`,
+    `u${usuarios._count._all}:${k(usuarios._max.atualizadoEm)}`,
+    `f${formas._count._all}:${k(formas._max.atualizadoEm)}`,
+    `a${adiamentos.map((a) => `${a.id}.${k(a.marcadoEm)}.${k(a.resolvidoEm)}.${a.resolvidoComo ?? ""}.${a.motivo ?? ""}`).join(",")}`,
+    `v${vinculos.map((v) => `${v.id}.${v.numOcp}.${k(v.criadoEm)}`).join(",")}`,
+  ].join("|");
+}
+
+async function calcularTexto(): Promise<string> {
   const catalogoFormas = await carregarCatalogoFormasPagamento();
 
   const [titulos, motorOcs, usuariosSenior, dossies, adiamentos, vinculosManuais] = await Promise.all([
@@ -94,7 +141,7 @@ export async function GET() {
   const qtdPagos = titulos.filter((t) => t.pago).length;
   const totalPago = titulos.filter((t) => t.pago).reduce((s, t) => s + t.valorOriginal, 0);
 
-  return NextResponse.json({
+  return JSON.stringify({
     titulos: titulos.map((t) => {
       const vinculoManual = vinculoManualDe.get(`${t.numTit}|${t.codFil}|${t.codFor}`);
       const vinculo = aplicarCorrecaoManual(

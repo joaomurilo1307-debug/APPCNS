@@ -153,3 +153,18 @@ test("ao vivo: paginacao", () => {
   assert.equal(montarAoVivo(muitos, { ccu: "10" }, 3, 60).itens.length, 10);
   assert.equal(montarAoVivo(muitos, { ccu: "10" }, 99, 60).pagina, 3);
 });
+
+test("ao vivo: periodo, mes a mes e escolher um mes", () => {
+  const dia = (id: string, data: string, valor: number, pago = false) => itemDoTitulo(tit({ id, dataLancamento: data, dataEmissao: data, pago, dataPagamento: pago ? data : null, valorOriginal: valor, valorAberto: pago ? 0 : valor }), hoje, nome);
+  const l = [dia("a", "2026-08-10", 100, true), dia("b", "2026-09-05", 200), dia("c", "2026-09-20", 300, true), dia("d", "2026-10-02", 50), dia("e", "2026-04-01", 999)];
+  const r = montarAoVivo(l, { ccu: "10", de: "2026-08", ate: "2026-10" });
+  assert.deepEqual(r.meses.map((m) => [m.mes, m.n, m.valor, m.pagos, m.emAberto]), [["2026-08", 1, 100, 100, 0], ["2026-09", 2, 500, 300, 200], ["2026-10", 1, 50, 0, 50]]);
+  assert.equal(r.total, 4); // abril fica fora do periodo
+  assert.equal(r.resumo.todas.n, 4);
+  const set = montarAoVivo(l, { ccu: "10", de: "2026-08", ate: "2026-10", mes: "2026-09" });
+  assert.equal(set.total, 2);
+  assert.equal(set.resumo.todas.valor, 500);
+  assert.equal(set.meses.length, 3); // a tira de meses continua mostrando todos os meses do periodo
+  assert.equal(montarAoVivo(l, { ccu: "10", de: "2026-08", ate: "2026-10", situacao: "pagos" }).meses.find((m) => m.mes === "2026-09")!.n, 1);
+  assert.equal(montarAoVivo(l, { ccu: "10" }).total, 5); // sem periodo: tudo
+});
