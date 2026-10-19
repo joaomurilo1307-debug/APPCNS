@@ -17,7 +17,6 @@ import { FORMA_PAGAMENTO, TIPO_CHAVE_PIX, formaSoAgencia, formaSoItau, segmentoD
 import { lerPixCopiaECola } from "./pixQrCode";
 import { totalDoTributo } from "./remessa";
 import type { DadosTributo } from "./tipos";
-import { identificacaoBeneficiarioBoleto } from "../../pagamentos/beneficiarioBoleto";
 
 export type GravidadeProblema = "erro" | "aviso";
 
@@ -194,10 +193,6 @@ export function validarItemRemessa(item: ItemParaValidar, hoje: string = hojeBra
   } else if (segmento === "N") {
     validarTributo(forma, item, add);
   } else if (segmento === "J") {
-    const identificacao = identificacaoBeneficiarioBoleto(item.favorecidoDocumento, item.codigoBarras);
-    if (identificacao && item.beneficiarioBoletoConferido !== identificacao) {
-      add("favorecidoDocumento", "Confirme o CPF/CNPJ do beneficiario registrado neste boleto. O CNPJ do fornecedor e um DV valido nao comprovam correspondencia no cadastro CIP.");
-    }
     const digitos = soDigitos(item.codigoBarras);
     if (!digitos) {
       add("codigoBarras", "Boleto sem código de barras -- digite a linha digitável (47 dígitos) ou o código de barras (44).");

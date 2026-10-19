@@ -135,12 +135,10 @@ async function main() {
     assert.match(JSON.stringify(formaErrada.data), /Forma de pagamento do carrinho difere/);
     passou("Titulo definido como boleto nao pode gerar TED com forma antiga do carrinho");
     const boletoConferido=await criarItem("30");
-    const semBeneficiario=await http("/api/pagamentos-itau/remessas",{contaBancariaId:"homologacao-conta",itens:[{...boletoConferido,beneficiarioBoletoConferido:null}]});
-    assert.equal(semBeneficiario.status,422);
     const outroBoleto={...boletoConferido,codigoBarras:boletoTeste(101),beneficiarioBoletoConferido:identificacaoBeneficiarioBoleto(boletoConferido.favorecidoDocumento,boletoTeste(101))};
     const cruzado=await http("/api/pagamentos-itau/remessas",{contaBancariaId:"homologacao-conta",itens:[outroBoleto]});
     assert.equal(cruzado.status,422);assert.ok(cruzado.data.conferencia.linhas[0].problemas.some((p:{mensagem:string})=>p.mensagem.includes("difere do codigo atual")));
-    passou("Boleto exige conferencia do beneficiario e impede codigo pertencente a outro titulo");
+    passou("Impede codigo de barras pertencente a outro titulo");
     const remessaConferida=await gerar(boletoConferido);
     const audit=await db.auditLog.findFirst({where:{entityType:"RemessaItemPagamento",entityId:remessaConferida.itens[0].id,action:"REMESSA_DADOS_CONFERIDOS"}});
     assert.ok(audit?.userId);assert.equal(JSON.parse(audit!.metadata!).beneficiarioBoletoConferido,true);

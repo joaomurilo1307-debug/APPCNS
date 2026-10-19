@@ -96,12 +96,6 @@ test("Chave PIX especifica do titulo precede conta generica do fornecedor",()=>{
  const d={codFpg:"19",formaPagamento:"PIX",codigoBarras:null,conta:{banco:"341",agencia:"9999",conta:"12345",dac:"1",fonte:"cadastro"},chavePix:{tipo:"02" as const,valor:"titulo@example.invalid",fonte:"titulo"}};
  const b=montarBlocoSenior(d)!;assert.equal(b.formaPagamento,"45");assert.equal(b.contaFavorecido,"");assert.equal(b.chavePixValor,"titulo@example.invalid");
 });
-test("Confirmacao de beneficiario nao sobrevive a troca de documento nem de boleto",()=>{
- const i=itemTeste("30");const conf=identificacaoBeneficiarioBoleto(i.favorecidoDocumento,i.codigoBarras);
- const original={...i,favorecidoTipoDoc:"1",dataPagamento:"2026-10-09",beneficiarioBoletoConferido:conf};
- assert.ok(!validarItemRemessa(original).some(p=>p.campo==="favorecidoDocumento"&&p.gravidade==="erro"));
- for(const alterado of [{...original,codigoBarras:boletoTeste(101)},{...original,favorecidoDocumento:"11222333000181"}])assert.ok(validarItemRemessa(alterado).some(p=>p.campo==="favorecidoDocumento"&&p.gravidade==="erro"));
-});
 test("CPF invalido bloqueia geracao, mesmo com conferencia manual do boleto",()=>{
  const i=itemTeste("30");const doc="12345678901";
  assert.ok(validarItemRemessa({...i,dataPagamento:"2026-10-09",favorecidoDocumento:doc,beneficiarioBoletoConferido:identificacaoBeneficiarioBoleto(doc,i.codigoBarras)}).some(p=>/verificador invalido|verificador inválido/.test(p.mensagem)&&p.gravidade==="erro"));

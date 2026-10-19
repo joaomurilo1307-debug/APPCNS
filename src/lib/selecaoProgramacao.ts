@@ -9,13 +9,18 @@
 // da seleção os títulos que viraram remessa, pra não ficarem selecionados pra
 // sempre).
 
-const CHAVE = "programacaoPagamento:selecionados:v1";
+const CHAVE = "programacaoPagamento:selecionados:v2";
 
+/** Dia de hoje no relógio do navegador (yyyy-mm-dd). A seleção e o carrinho só valem no dia em que foram feitos. */
+export const diaDeHoje = () => new Date().toLocaleDateString("sv-SE");
+
+// Guarda { dia, ids }. Seleção de ontem não volta hoje (19/10/2026, pedido da Renata): vira lista vazia.
 export function lerSelecaoSalva(): string[] {
   try {
     const bruto = localStorage.getItem(CHAVE);
-    const lista = bruto ? JSON.parse(bruto) : [];
-    return Array.isArray(lista) ? lista.filter((id): id is string => typeof id === "string") : [];
+    const salvo = bruto ? JSON.parse(bruto) : null;
+    if (!salvo || salvo.dia !== diaDeHoje() || !Array.isArray(salvo.ids)) return [];
+    return salvo.ids.filter((id: unknown): id is string => typeof id === "string");
   } catch {
     return [];
   }
@@ -23,7 +28,7 @@ export function lerSelecaoSalva(): string[] {
 
 export function salvarSelecao(ids: Iterable<string>) {
   try {
-    localStorage.setItem(CHAVE, JSON.stringify([...ids]));
+    localStorage.setItem(CHAVE, JSON.stringify({ dia: diaDeHoje(), ids: [...ids] }));
   } catch {
     // Modo privado/quota cheia -- perde só a conveniência de lembrar.
   }

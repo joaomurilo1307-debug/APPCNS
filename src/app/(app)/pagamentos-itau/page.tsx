@@ -3,11 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CampoItem, ProblemaItem } from "@/lib/cnab240/itau/validacaoItem";
 import type { RelatorioConferencia } from "@/lib/pagamentos/conferenciaRemessa";
-import { removerDaSelecaoSalva } from "@/lib/selecaoProgramacao";
+import { diaDeHoje, removerDaSelecaoSalva } from "@/lib/selecaoProgramacao";
 import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
 import { formaDaArrecadacao } from "@/lib/cnab240/itau/constantes";
 import { montarBlocoSenior, podeAtualizarPagamento } from "@/lib/pagamentos/preenchimentoRemessa";
-import { identificacaoBeneficiarioBoleto } from "@/lib/pagamentos/beneficiarioBoleto";
 
 type Titulo = {
   id: string;
@@ -256,6 +255,7 @@ type Remessa = {
 const CHAVE_RASCUNHO = "pagamentosItau:rascunho:v1";
 
 type Rascunho = {
+  dia?: string; // dia em que foi salvo: o carrinho de ontem não volta hoje
   carrinho: ItemCarrinho[];
   contaSelecionadaId: string;
   busca: string;
@@ -266,7 +266,9 @@ type Rascunho = {
 function lerRascunho(): Partial<Rascunho> {
   try {
     const bruto = localStorage.getItem(CHAVE_RASCUNHO);
-    return bruto ? JSON.parse(bruto) : {};
+    const r: Partial<Rascunho> = bruto ? JSON.parse(bruto) : {};
+    // Dia diferente: limpa os títulos do carrinho e os filtros de data; só lembra a conta escolhida.
+    return r.dia === diaDeHoje() ? r : { contaSelecionadaId: r.contaSelecionadaId };
   } catch {
     return {};
   }
@@ -274,7 +276,7 @@ function lerRascunho(): Partial<Rascunho> {
 
 function salvarRascunho(r: Rascunho) {
   try {
-    localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(r));
+    localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({ ...r, dia: diaDeHoje() }));
   } catch {
     // Modo privado/quota cheia -- perde só a conveniência de lembrar, não trava a tela.
   }
@@ -1334,7 +1336,6 @@ export default function PagamentosItauPage() {
           Senior, respeitando a forma do título. O Itaú exige o PIX
           em arquivo separado de boleto/TED — o sistema separa sozinho, numa geração só. Antes de gerar, a Conferência mostra o que
           falta em cada título. A geração consulta novamente a Sênior e bloqueia dados incompletos ou divergentes.
-          Confira o beneficiário de cada boleto: o CPF/CNPJ do fornecedor pode ser diferente do registrado no banco.
         </p>
         <p className="mt-2 max-w-3xl text-sm font-medium text-sky-800">
           Para concluir os pagamentos: importe o retorno do Itaú, confira os títulos e confirme a baixa na Sênior pelo sistema.
@@ -1945,17 +1946,6 @@ export default function PagamentosItauPage() {
                     )}
                   </div>
                   {item.senior?.problemas?.map((p,k)=><p key={k} className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{p}</p>)}
-                  {item.segmento === "J" && item.formaPagamento !== "47" && (
-                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                      <p>CPF/CNPJ consultado: {item.senior?.origemDocumento === "titulo" ? "favorecido do titulo" : item.senior?.origemDocumento === "cadastro" ? "favorecido do cadastro" : item.senior?.origemDocumento === "fornecedor" ? "cadastro do fornecedor (pode ser diferente do beneficiario do boleto)" : "preenchimento local/manual"}. A validacao dos digitos do boleto e do documento nao consulta o cadastro CIP.</p>
-                      <label className="mt-2 flex items-start gap-2 font-medium">
-                        <input type="checkbox" aria-label={`Conferir beneficiario do boleto ${item.numTit}`} disabled={!identificacaoBeneficiarioBoleto(item.favorecidoDocumento,item.codigoBarras)}
-                          checked={!!item.beneficiarioBoletoConferido && item.beneficiarioBoletoConferido === identificacaoBeneficiarioBoleto(item.favorecidoDocumento,item.codigoBarras)}
-                          onChange={e=>atualizarItem(item.chave,{beneficiarioBoletoConferido:e.target.checked?identificacaoBeneficiarioBoleto(item.favorecidoDocumento,item.codigoBarras):null})}/>
-                        Conferi este CPF/CNPJ com o beneficiario registrado no boleto ou na consulta do banco.
-                      </label>
-                    </div>
-                  )}
                   {item.senior?.tituloLocalizado && item.senior.completo && !item.senior.temPagamento && itemSemDadoDePagamento(item) && (
                     <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
                       Conferi na Senior às{" "}

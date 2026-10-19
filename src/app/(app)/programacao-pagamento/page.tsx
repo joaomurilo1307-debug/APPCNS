@@ -897,7 +897,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
 
   return (
-    <div className="p-6">
+    <div>
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Programação de Pagamento</h1>
@@ -929,7 +929,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {qtdAprovados > 0 && selecionados.size === 0 && (
+          {qtdAprovados > 0 && (
             <button
               onClick={selecionarAprovados}
               title="Seleciona todos os títulos marcados como Aprovado na coluna Revisão"
@@ -937,34 +937,6 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
             >
               Selecionar {qtdAprovados} aprovado(s)
             </button>
-          )}
-          {msgDossies && <span className="max-w-[320px] text-[11px] text-gray-600">{msgDossies}</span>}
-          {selecionados.size > 0 && (
-            <>
-              <span className="text-xs text-gray-500">
-                {selecionados.size} selecionado(s) · {formatMoeda(titulos.filter((t) => selecionados.has(t.id)).reduce((s, t) => s + t.valorAberto, 0))}
-              </span>
-              <button
-                onClick={limparSelecao}
-                className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50"
-              >
-                Limpar seleção
-              </button>
-              <button
-                onClick={gerarDossiesSelecionados}
-                title="Gera o dossiê (PDF) da OC de cada título selecionado que ainda não tem. Para baixar, use Exportar pacote."
-                className="rounded-lg border border-brand px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand-light"
-              >
-                📄 Gerar dossiês
-              </button>
-              <button
-                onClick={enviarParaRemessaItau}
-                title="Leva os títulos selecionados pro carrinho da tela de Pagamentos Itaú, sem precisar redigitar nada"
-                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-              >
-                → Enviar para remessa Itaú
-              </button>
-            </>
           )}
           <button
             onClick={exportarRelatorio}
@@ -974,9 +946,9 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                 ? "Baixa um .zip com o Excel dos selecionados (+ TOTAL) e o dossiê em PDF de cada um"
                 : "Exporta pra Excel exatamente os títulos que estão filtrados na tela agora"
             }
-            className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-w-[150px] rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {gerandoPacote ? "Gerando pacote…" : selecionados.size > 0 ? "⬇ Exportar pacote (.zip + dossiês)" : "⬇ Exportar relatório"}
+            {gerandoPacote ? "Gerando pacote…" : selecionados.size > 0 ? "⬇ Exportar pacote" : "⬇ Exportar relatório"}
           </button>
           <button
             onClick={() => setMostrarRegras((v) => !v)}
@@ -992,6 +964,39 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
             📋 OCs programadas
           </button>
         </div>
+      </div>
+
+      {/* Barra de seleção com altura fixa: selecionar/limpar não empurra a tabela. */}
+      <div className="mb-4 flex h-11 items-center gap-2 overflow-hidden rounded-xl border border-gray-100 bg-white px-3 shadow-sm">
+        <span className="min-w-[190px] text-xs tabular-nums text-gray-500">
+          {selecionados.size > 0
+            ? `${selecionados.size} selecionado(s) · ${formatMoeda(titulos.filter((t) => selecionados.has(t.id)).reduce((s, t) => s + t.valorAberto, 0))}`
+            : "Nenhum título selecionado"}
+        </span>
+        <button
+          onClick={limparSelecao}
+          disabled={selecionados.size === 0}
+          className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Limpar seleção
+        </button>
+        <button
+          onClick={gerarDossiesSelecionados}
+          disabled={selecionados.size === 0}
+          title="Gera o dossiê (PDF) da OC de cada título selecionado que ainda não tem. Para baixar, use Exportar pacote."
+          className="rounded-lg border border-brand px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          📄 Gerar dossiês
+        </button>
+        <button
+          onClick={enviarParaRemessaItau}
+          disabled={selecionados.size === 0}
+          title="Leva os títulos selecionados pro carrinho da tela de Pagamentos Itaú, sem precisar redigitar nada"
+          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          → Enviar para remessa Itaú
+        </button>
+        {msgDossies && <span className="min-w-0 flex-1 truncate text-[11px] text-gray-600" title={msgDossies}>{msgDossies}</span>}
       </div>
 
       {mostrarRegras && (
@@ -1187,11 +1192,11 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
-        <table className="w-full text-[13px]">
+      <div className="-mx-3 overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm lg:-mx-4">
+        <table className="w-full text-[12px]">
           <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
             <tr>
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2">
                 <button
                   onClick={selecionarTodosFiltrados}
                   title="Seleciona todos os títulos filtrados (não pagos, com OC) pra mandar pra remessa Itaú"
@@ -1200,38 +1205,38 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                   sel.
                 </button>
               </th>
-              <th className="px-3 py-2 font-medium">Título</th>
-              <th className="px-3 py-2 font-medium">OC</th>
-              <th className="px-3 py-2 font-medium">Tipo</th>
-              <th className="px-3 py-2 font-medium">Criação</th>
-              <th className="px-3 py-2 font-medium">Lançado no Senior</th>
-              <th className="px-3 py-2 font-medium">Fornecedor</th>
-              <th className="px-3 py-2 font-medium">Centro de custo</th>
-              <th className="px-3 py-2 font-medium">Vencto programado</th>
-              {mostrarColunaPagamento && <th className="px-3 py-2 font-medium">Pago em</th>}
-              <th className="px-3 py-2 text-right font-medium">Valor original</th>
-              <th className="px-3 py-2 text-right font-medium">Valor em aberto</th>
-              <th className="px-3 py-2 font-medium">Situação</th>
-              <th className="px-3 py-2 font-medium">Revisão</th>
+              <th className="px-1.5 py-2 font-medium">Título</th>
+              <th className="min-w-[112px] px-1.5 py-2 font-medium">OC</th>
+              <th className="px-1.5 py-2 font-medium">Tipo</th>
+              <th className="px-1.5 py-2 font-medium">Criação</th>
+              <th className="px-1.5 py-2 font-medium">Lançado no Senior</th>
+              <th className="px-1.5 py-2 font-medium">Fornecedor</th>
+              <th className="px-1.5 py-2 font-medium">Centro de custo</th>
+              <th className="px-1.5 py-2 font-medium">Vencto programado</th>
+              {mostrarColunaPagamento && <th className="px-1.5 py-2 font-medium">Pago em</th>}
+              <th className="px-1.5 py-2 text-right font-medium">Valor original</th>
+              <th className="px-1.5 py-2 text-right font-medium">Valor em aberto</th>
+              <th className="px-1.5 py-2 font-medium">Situação</th>
+              <th className="px-1.5 py-2 font-medium">Revisão</th>
             </tr>
             <tr className="border-t border-gray-200 bg-white align-top">
-              <th className="px-2 py-2" />
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2" />
+              <th className="px-1.5 py-2">
                 <input
                   aria-label="Filtrar título"
                   type="text"
                   placeholder="filtrar..."
                   value={filtrosColuna.titulo}
                   onChange={(e) => atualizarFiltroColuna("titulo", e.target.value)}
-                  className="w-full min-w-[90px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full rounded border border-gray-200 px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2">
                 <select
                   aria-label="Filtrar vínculo com OC"
                   value={filtrosColuna.oc}
                   onChange={(e) => atualizarFiltroColuna("oc", e.target.value as FiltrosColuna["oc"])}
-                  className="w-full min-w-[125px] rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 >
                   <option value="">todos</option>
                   <option value="com">com OC</option>
@@ -1242,105 +1247,105 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                   <option value="parcela">por parcela</option>
                 </select>
               </th>
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2">
                 <input
                   aria-label="Filtrar tipo"
                   type="text"
                   placeholder="tipo..."
                   value={filtrosColuna.tipo}
                   onChange={(e) => atualizarFiltroColuna("tipo", e.target.value)}
-                  className="w-full min-w-[65px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full rounded border border-gray-200 px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2">
                 <input
                   aria-label="Filtrar data de criação"
                   type="date"
                   value={filtrosColuna.criacao}
                   onChange={(e) => atualizarFiltroColuna("criacao", e.target.value)}
-                  className="w-full min-w-[125px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full max-w-[92px] px-1 rounded border border-gray-200 px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
-              <th className="px-2 py-2" />
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2" />
+              <th className="px-1.5 py-2">
                 <input
                   aria-label="Filtrar fornecedor"
                   type="text"
                   placeholder="fornecedor..."
                   value={filtrosColuna.fornecedor}
                   onChange={(e) => atualizarFiltroColuna("fornecedor", e.target.value)}
-                  className="w-full min-w-[150px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full rounded border border-gray-200 px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2">
                 <input
                   aria-label="Filtrar centro de custo"
                   type="text"
                   placeholder="centro..."
                   value={filtrosColuna.centroCusto}
                   onChange={(e) => atualizarFiltroColuna("centroCusto", e.target.value)}
-                  className="w-full min-w-[120px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full rounded border border-gray-200 px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2">
                 <input
                   aria-label="Filtrar vencimento programado"
                   type="date"
                   value={filtrosColuna.vencimento}
                   onChange={(e) => atualizarFiltroColuna("vencimento", e.target.value)}
-                  className="w-full min-w-[125px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full max-w-[92px] px-1 rounded border border-gray-200 px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
               {mostrarColunaPagamento && (
-                <th className="px-2 py-2">
+                <th className="px-1.5 py-2">
                   <input
                     aria-label="Filtrar data de pagamento"
                     type="date"
                     value={filtrosColuna.pagamento}
                     onChange={(e) => atualizarFiltroColuna("pagamento", e.target.value)}
-                    className="w-full min-w-[125px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                    className="w-full max-w-[92px] px-1 rounded border border-gray-200 px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                   />
                 </th>
               )}
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2">
                 <input
                   aria-label="Filtrar valor original"
                   type="text"
                   placeholder="valor..."
                   value={filtrosColuna.valorOriginal}
                   onChange={(e) => atualizarFiltroColuna("valorOriginal", e.target.value)}
-                  className="w-full min-w-[100px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full rounded border border-gray-200 px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2">
                 <input
                   aria-label="Filtrar valor em aberto"
                   type="text"
                   placeholder="valor..."
                   value={filtrosColuna.valorAberto}
                   onChange={(e) => atualizarFiltroColuna("valorAberto", e.target.value)}
-                  className="w-full min-w-[100px] rounded border border-gray-200 px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full rounded border border-gray-200 px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 />
               </th>
-              <th className="px-2 py-2">
+              <th className="px-1.5 py-2">
                 <select
                   aria-label="Filtrar situação"
                   value={filtrosColuna.situacao}
                   onChange={(e) => atualizarFiltroColuna("situacao", e.target.value as FiltrosColuna["situacao"])}
-                  className="w-full min-w-[100px] rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
+                  className="w-full rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] font-normal normal-case tracking-normal focus:border-brand focus:outline-none"
                 >
                   <option value="">todas</option>
                   <option value="aberto">Não pago</option>
                   <option value="pago">Pago</option>
                 </select>
               </th>
-              <th className="px-2 py-2" />
+              <th className="px-1.5 py-2" />
             </tr>
           </thead>
           <tbody>
             {filtradosMostrados.map((t, i) => (
               <tr key={t.id} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
-                <td className="px-2 py-1.5 text-center">
+                <td className="px-1.5 py-1.5 text-center">
                   <input
                     type="checkbox"
                     aria-label={`Selecionar título ${t.numTit}`}
@@ -1351,7 +1356,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                     className="h-3.5 w-3.5 rounded border-gray-300 text-brand focus:ring-brand"
                   />
                 </td>
-                <td className="px-3 py-1.5 font-medium text-gray-800">
+                <td className="px-1.5 py-1.5 font-medium text-gray-800">
                   {t.dossie?.temArquivo ? (
                     <a
                       href={`/api/dossies/${t.dossie.id}/arquivo`}
@@ -1375,7 +1380,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-1.5">
+                <td className="px-1.5 py-1.5">
                   {t.ocRelacionada ? (
                     <button
                       onClick={() => abrirOC(t.ocRelacionada!.numOcp)}
@@ -1383,7 +1388,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                       title={
                         `${t.ocRelacionada.motivo} Clique para ver o descritivo da OC.`
                       }
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium underline decoration-dotted underline-offset-2 hover:brightness-95 disabled:opacity-50 ${
+                      className={`inline-flex max-w-[140px] items-center gap-1 whitespace-normal rounded-lg px-1.5 py-0.5 text-left text-[11px] font-medium leading-snug underline decoration-dotted underline-offset-2 hover:brightness-95 disabled:opacity-50 ${
                         t.ocRelacionada.situacao === "APR"
                           ? "bg-emerald-100 text-emerald-800"
                           : t.ocRelacionada.situacao === "REP" || t.ocRelacionada.situacao === "CAN"
@@ -1397,7 +1402,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                     </button>
                   ) : (
                     <details className="max-w-[230px]">
-                      <summary className="cursor-help rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500 underline decoration-dotted underline-offset-2">
+                      <summary className="cursor-help rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500 underline decoration-dotted underline-offset-2">
                         Sem OC · por quê?
                       </summary>
                       <p className="mt-1 text-[10px] leading-tight text-gray-500">
@@ -1432,9 +1437,9 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                     )}
                   </div>
                 </td>
-                <td className="px-3 py-1.5 text-gray-500">{t.tipo}</td>
-                <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataEmissao)}</td>
-                <td className="max-w-[160px] px-3 py-1.5 text-gray-500">
+                <td className="px-1.5 py-1.5 text-gray-500">{t.tipo}</td>
+                <td className="px-1.5 py-1.5 tabular-nums text-gray-500">{formatData(t.dataEmissao)}</td>
+                <td className="max-w-[130px] px-1.5 py-1.5 text-gray-500">
                   <span
                     className="cursor-help underline decoration-dotted underline-offset-2"
                     title={[
@@ -1456,10 +1461,10 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                   </span>
                   {t.dataLancamento && <span className="block text-[10px] text-gray-400">em {formatData(t.dataLancamento)}</span>}
                 </td>
-                <td className="max-w-[200px] truncate px-3 py-1.5" title={t.fornecedorNome}>
+                <td className="max-w-[110px] truncate px-1.5 py-1.5" title={t.fornecedorNome}>
                   {t.fornecedorNome}
                 </td>
-                <td className="px-3 py-1.5 text-gray-500">
+                <td className="px-1.5 py-1.5 text-gray-500">
                   {t.ccuNome ? (
                     t.ccuNome
                   ) : (
@@ -1471,11 +1476,11 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                     <span className="mt-0.5 block text-[10px] text-gray-400">OC: {t.ocRelacionada.centroCusto}</span>
                   )}
                 </td>
-                <td className="px-3 py-1.5 tabular-nums text-gray-500">
+                <td className="px-1.5 py-1.5 tabular-nums text-gray-500">
                   {formatData(t.vencimentoProgramado)}
                   {diasDeAtraso(t) > 0 && (
                     <span
-                      className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                      className="mt-0.5 block w-fit rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
                       title="Venceu e ainda está em aberto. Continua na programação até ser pago, adiado ou baixado."
                     >
                       atrasado há {diasDeAtraso(t)} {diasDeAtraso(t) === 1 ? "dia" : "dias"}
@@ -1483,7 +1488,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                   )}
                   {vencimentoSentinela(t.vencimentoProgramado) && (
                     <span
-                      className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
+                      className="mt-0.5 block w-fit rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
                       title="Data de preenchimento do Senior, não um vencimento real — este título não vai aparecer em nenhuma semana até ser corrigido no ERP."
                     >
                       sem data real
@@ -1491,13 +1496,13 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                   )}
                 </td>
                 {mostrarColunaPagamento && (
-                  <td className="px-3 py-1.5 tabular-nums text-gray-500">{formatData(t.dataPagamento)}</td>
+                  <td className="px-1.5 py-1.5 tabular-nums text-gray-500">{formatData(t.dataPagamento)}</td>
                 )}
-                <td className="px-3 py-1.5 text-right tabular-nums">{formatMoeda(t.valorOriginal)}</td>
-                <td className="px-3 py-1.5 text-right font-medium tabular-nums">{formatMoeda(t.valorAberto)}</td>
-                <td className="px-3 py-1.5">
+                <td className="px-1.5 py-1.5 text-right tabular-nums">{formatMoeda(t.valorOriginal)}</td>
+                <td className="px-1.5 py-1.5 text-right font-medium tabular-nums">{formatMoeda(t.valorAberto)}</td>
+                <td className="px-1.5 py-1.5">
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${
                       t.pago ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
                     }`}
                   >
@@ -1505,15 +1510,15 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                   </span>
                   {situacaoEspecial(t) && (
                     <span
-                      className="ml-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700"
+                      className="ml-1 inline-block rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] font-medium text-red-700"
                       title="Status fora de Aberto/Pago no Senior -- pode já estar comprometido em outro fluxo de pagamento (ex.: remessa da própria Senior). Só mande pra remessa daqui se essa outra remessa foi rejeitada ou cancelada."
                     >
                       {labelSituacaoEspecial(t.situacao)}
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-1.5">
-                  {t.cartaoCredito ? <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-800" title="Identificado pela forma de pagamento da Sênior. Apenas conferência, sem envio para remessa.">Cartão de Crédito</span> : <select
+                <td className="px-1.5 py-1.5">
+                  {t.cartaoCredito ? <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[11px] font-medium text-indigo-800" title="Identificado pela forma de pagamento da Sênior. Apenas conferência, sem envio para remessa.">Cartão de Crédito</span> : <select
                     aria-label="Status de revisão"
                     value={t.revisadoStatus ?? ""}
                     disabled={salvandoRevisao === t.id}
@@ -1523,7 +1528,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                         ? `Revisado por ${t.revisadoPorNome} em ${formatDataHora(t.revisadoEm)}`
                         : "Ainda não revisado"
                     }
-                    className={`rounded-full border-0 px-2 py-0.5 text-[11px] font-medium focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 ${
+                    className={`max-w-[140px] rounded-full border-0 px-1.5 py-0.5 text-[11px] font-medium focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 ${
                       t.revisadoStatus ? REVISAO_COR[t.revisadoStatus] : "bg-gray-100 text-gray-400"
                     }`}
                   >
@@ -1541,7 +1546,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                         onClick={() => adiarParaProximaSemana(t)}
                         disabled={salvandoAdiamento === t.id}
                         title="Deixa o título pra próxima programação e, se você informar a data, altera o vencimento programado na Senior. Não muda o status nem tira o título desta lista."
-                        className="rounded-full border border-violet-200 px-2 py-0.5 text-[10px] font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50"
+                        className="max-w-[140px] whitespace-normal rounded-full border border-violet-200 px-1.5 py-0.5 text-left text-[10px] font-medium leading-tight text-violet-700 hover:bg-violet-50 disabled:opacity-50"
                       >
                         ↪ deixar pra próxima programação
                       </button>
@@ -1554,7 +1559,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                     </div>
                   )}
                   {naProximaProgramacao(t) && t.adiamento && (
-                    <div className="mt-1 max-w-[270px] rounded-md bg-violet-50 px-2 py-1.5 text-[10px] leading-snug text-violet-900">
+                    <div className="mt-1 max-w-[270px] rounded-md bg-violet-50 px-1.5 py-1.5 text-[10px] leading-snug text-violet-900">
                       <span className="font-semibold">↪ Deixado pra próxima programação</span> — saiu da programação de{" "}
                       {formatData(t.adiamento.programacaoOrigem)} · por {t.adiamento.marcadoPorNome} em {formatDataHora(t.adiamento.marcadoEm)}
                       {t.adiamento.programacaoOrigem &&
@@ -1609,7 +1614,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                     <div className="mt-1 flex items-center gap-1">
                       {t.numOcpCorrigido ? (
                         <span
-                          className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+                          className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"
                           title="Vinculada manualmente, sem precisar de NF/referência"
                         >
                           → OC {t.numOcpCorrigido}
