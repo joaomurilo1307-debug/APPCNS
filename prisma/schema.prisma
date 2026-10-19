@@ -1628,3 +1628,75 @@ model TituloRateioSenior {
   @@index([codccu])
   @@index([numTit, codFor])
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// MEDICAO / RECEITA (19/10/2026). Tudo vem do Senior, so' leitura, regravado inteiro a cada atualizacao:
+//   contrato de venda (E160CTR) -> linhas contratadas (E160CVS: quantidade, valor, faturado acumulado) -> itens dos pedidos (E120ISP)
+//   que medem cada linha mes a mes; o centro de custo de cada item vem do rateio do pedido (E120RAT), nunca de nome de contrato.
+// Saldo = contratado - medido. O medido acumulado (soma dos pedidos) bate com QTDFAT/VLRFAT da linha no Senior.
+// ---------------------------------------------------------------------------------------------------------------------------------
+model MedicaoContrato {
+  numCtr         String   @id // E160CTR.NUMCTR (contrato original; os aditivos/TACs sao contratos vazios no Senior)
+  numOfi         String // E160CTR.NUMOFI (nome/numero oficial digitado no Senior; pode ter erro de grafia)
+  codCli         String?
+  inicio         DateTime?
+  codccu         String? // centro de custo dominante (por valor) dos itens dos pedidos do contrato; null = ainda sem pedido
+  codccusItens   String? // todos os CCUs que aparecem nos itens (ex.: "230,240,280"), para avisar quando ha mais de um
+  valorContratado Float
+  valorMedido    Float // soma do VLRFAT das linhas (Senior)
+  atualizadoEm   DateTime @default(now())
+
+  linhas MedicaoLinha[]
+
+  @@index([codccu])
+}
+
+model MedicaoLinha {
+  id              String   @id @default(cuid())
+  numCtr          String
+  seqCvs          Int
+  codSer          String?
+  descricao       String
+  unidade         String?
+  qtdContratada   Float
+  precoUnit       Float
+  valorContratado Float
+  qtdFaturada     Float // E160CVS.QTDFAT (medido acumulado segundo o Senior)
+  valorFaturado   Float // E160CVS.VLRFAT
+
+  contrato MedicaoContrato @relation(fields: [numCtr], references: [numCtr], onDelete: Cascade)
+
+  @@unique([numCtr, seqCvs])
+}
+
+model MedicaoItem {
+  id          String   @id @default(cuid())
+  numCtr      String
+  seqCvs      Int
+  numPed      String
+  seqIsp      Int
+  dataEmissao DateTime
+  competencia String // aaaa-mm do mes medido
+  origem      String // BOLETIM (lido do PEDCLI, ex.: "BM35 01.2026") | EMISSAO (emissao do pedido, regra do Rito)
+  boletim     String? // numero do boletim de medicao quando o PEDCLI traz
+  pedCli      String?
+  situacao    String? // E120PED.SITPED
+  qtd         Float
+  valor       Float
+  codccu      String?
+
+  @@index([numCtr, seqCvs, competencia])
+  @@index([codccu])
+}
+
+model AtualizacaoMedicao {
+  id           String    @id @default(cuid())
+  status       String // EXECUTANDO | OK | ERRO
+  etapa        String?
+  progresso    Int       @default(0)
+  iniciadoEm   DateTime  @default(now())
+  finalizadoEm DateTime?
+  disparadoPor String?
+  erro         String?
+  resumo       Json?
+}

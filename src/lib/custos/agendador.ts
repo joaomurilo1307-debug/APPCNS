@@ -4,6 +4,7 @@
 // isso). Interruptor: variavel de ambiente CUSTOS_AUTO=0 desliga. Nunca roda em desenvolvimento/homologacao.
 
 import { dispararAtualizacao, encerrarExecucoesOrfas, estadoAtualizacao } from "./atualizacaoCusto";
+import { dispararMedicao, estadoMedicao } from "@/lib/medicao/sincronizar";
 
 export const INTERVALO_VERIFICACAO_MS = 10 * 60_000;
 export const IDADE_MAXIMA_PARA_REPETIR_MS = 28 * 60_000;
@@ -35,10 +36,25 @@ async function verificar() {
     // depois de uma falha espera ~30 min antes de tentar de novo (nao martela o Senior se ele estiver fora)
     const falhou = estado.ultimoErro?.finalizadoEm ? new Date(estado.ultimoErro.finalizadoEm) : null;
     if (falhou && Date.now() - falhou.getTime() < 30 * 60_000) return;
-    if (devoAtualizarAgora(new Date(), ultimaOk)) await dispararAtualizacao("automático (agendador do sistema)");
+    if (devoAtualizarAgora(new Date(), ultimaOk)) {
+      await dispararAtualizacao("automático (agendador do sistema)");
+      return;
+    }
+    await verificarMedicao(); // o custo nao esta na hora: aproveita para a Medicao (as duas leituras nunca rodam juntas: o Senior atende uma por vez)
   } catch {
     /* nunca derruba o servidor por causa do agendador */
   }
+}
+
+/** Medicao (contratos, linhas e pedidos): muda devagar, entao so' relê a cada ~6 h, na mesma janela do custo (seg-sab, 06h-21h). */
+async function verificarMedicao() {
+  const { diaSemana, hora } = relogioSaoPaulo(new Date());
+  if (diaSemana === 0 || hora < HORA_INICIAL || hora > HORA_FINAL) return;
+  const m = await estadoMedicao();
+  if (m.emCurso || !m.dadosVelhos) return;
+  const falhou = m.ultimoErro?.finalizadoEm ? new Date(m.ultimoErro.finalizadoEm) : null;
+  if (falhou && Date.now() - falhou.getTime() < 60 * 60_000) return; // depois de uma falha espera 1 h
+  await dispararMedicao("automático (agendador do sistema)");
 }
 
 export function iniciarAgendadorCustos() {

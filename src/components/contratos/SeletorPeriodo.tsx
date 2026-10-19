@@ -4,7 +4,7 @@
 
 import { somaMeses } from "@/lib/contratos/previsao";
 
-type Atalho = { rotulo: string; de: string; ate: string };
+export type Atalho = { rotulo: string; de: string; ate: string };
 
 export function atalhosDePeriodo(modo: "futuro" | "passado", mesAtual: string): Atalho[] {
   const ano = mesAtual.slice(0, 4);
@@ -25,8 +25,9 @@ export function atalhosDePeriodo(modo: "futuro" | "passado", mesAtual: string): 
   ];
 }
 
-export default function SeletorPeriodo({ de, ate, mesAtual, modo, onMudar }: { de: string; ate: string; mesAtual: string; modo: "futuro" | "passado"; onMudar: (de: string, ate: string) => void }) {
-  const atalhos = atalhosDePeriodo(modo, mesAtual);
+export default function SeletorPeriodo({ de, ate, mesAtual, modo, onMudar, atalhos: proprios }: { de: string; ate: string; mesAtual: string; modo: "futuro" | "passado"; onMudar: (de: string, ate: string) => void; atalhos?: Atalho[] }) {
+  // atalhos proprios (ex.: Medicao: "Tudo desde o inicio") substituem os padroes
+  const atalhos = proprios ?? atalhosDePeriodo(modo, mesAtual);
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Período">
       <div className="flex flex-wrap gap-1.5">
