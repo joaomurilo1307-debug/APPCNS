@@ -25,3 +25,28 @@ export async function GET(req: Request) {
   }
   return NextResponse.json({ q, usuarios: saida });
 }
+
+// POST {"confirmar": true}: tira a Claudia Moreira da equipe "Núcleo de Inovação" e leva os 2 projetos de inovação que estavam na equipe
+// "Gestores" para a equipe "Núcleo de Inovação" (pedido do Joao, 19/10/2026). Guarda o estado anterior em bkp_visibilidade_20261019.
+export async function POST(req: Request) {
+  const chave = req.headers.get("x-sync-key");
+  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  const body = await req.json().catch(() => ({}));
+  if (body?.confirmar !== true) return NextResponse.json({ error: 'Envie {"confirmar": true}' }, { status: 400 });
+
+  const claudia = await prisma.user.findUnique({ where: { email: "claudia.moreira@consominas.com.br" }, select: { id: true, name: true } });
+  const inovacao = await prisma.team.findUnique({ where: { name: "Núcleo de Inovação" }, select: { id: true } });
+  const gestores = await prisma.team.findUnique({ where: { name: "Gestores" }, select: { id: true } });
+  if (!claudia || !inovacao || !gestores) return NextResponse.json({ error: "Pessoa ou equipe não encontrada. Nada foi alterado." }, { status: 409 });
+  const NOMES = ["Retorno de OC pelo sistema de gestão APPCNS", "Avaliação 360 Consominas"];
+  const projetos = await prisma.project.findMany({ where: { name: { in: NOMES }, teamId: gestores.id }, select: { id: true, name: true, teamId: true } });
+  const vinculo = await prisma.userTeam.findUnique({ where: { userId_teamId: { userId: claudia.id, teamId: inovacao.id } } });
+
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS bkp_visibilidade_20261019 (id serial primary key, estado jsonb, criado timestamptz default now())`);
+  await prisma.$executeRawUnsafe(`INSERT INTO bkp_visibilidade_20261019 (estado) VALUES ($1::jsonb)`, JSON.stringify({ claudiaId: claudia.id, vinculoInovacao: vinculo, projetos, equipeOrigem: gestores.id, equipeDestino: inovacao.id }));
+
+  const removidos = await prisma.userTeam.deleteMany({ where: { userId: claudia.id, teamId: inovacao.id } });
+  const movidos = await prisma.project.updateMany({ where: { id: { in: projetos.map((p) => p.id) } }, data: { teamId: inovacao.id } });
+  const membros = await prisma.userTeam.findMany({ where: { teamId: inovacao.id }, select: { role: true, user: { select: { name: true } } } });
+  return NextResponse.json({ ok: true, vinculosRemovidos: removidos.count, projetosMovidos: movidos.count, projetos: projetos.map((p) => p.name), membrosAgoraNoNucleoDeInovacao: membros.map((m) => `${m.user.name} (${m.role})`) });
+}
