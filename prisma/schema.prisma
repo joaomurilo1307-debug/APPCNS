@@ -206,6 +206,9 @@ model User {
   teams           UserTeam[]
   ownedProjects   Project[]      @relation("ProjectOwner")
   acessosProjeto  AcessoProjeto[] @relation("AcessosProjetoUser")
+  demandasCriadas Demanda[]        @relation("DemandaSolicitante")
+  comentariosDemanda DemandaComentario[]
+  contratosAcompanhados ContratoUsuario[]
   approvingProjects Project[]    @relation("ProjectApprover")
   clientProjects  ProjectClient[]
   assignedTasks   Task[]         @relation("TaskAssignee")
@@ -630,6 +633,7 @@ model Project {
   nucleos       Nucleo[] @relation("ProjectNucleo")
   diretores     User[]   @relation("ProjectDiretor")
   acessos       AcessoProjeto[] @relation("AcessosProjetoProject")
+  demanda       Demanda?        @relation("DemandaProjeto")
   coordenadores User[]   @relation("ProjectCoordenador")
   folders       Folder[]
   attachments   Attachment[]
@@ -1530,4 +1534,76 @@ model Contrato {
   observacoes    String?   @db.Text
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+
+  demandas Demanda[]
+  clientes ContratoUsuario[]
+}
+
+// Contratante (usuario CLIENTE) que acompanha um contrato: pode registrar demandas para ele e ver o andamento do que for aberto.
+model ContratoUsuario {
+  id         String   @id @default(cuid())
+  contratoId String
+  userId     String
+  createdAt  DateTime @default(now())
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([contratoId, userId])
+  @@index([userId])
+}
+
+// Demanda de projeto: pedido (em forma de lista) para um contrato, feito por um gestor ou pelo contratante. O gestor analisa e, se fizer
+// sentido, ABRE UM PROJETO a partir dela: os itens da lista viram tarefas, ele delega e executa, e o contratante acompanha o andamento.
+model Demanda {
+  id            String    @id @default(cuid())
+  titulo        String
+  descricao     String?   @db.Text
+  contratoId    String
+  solicitanteId String
+  prioridade    String    @default("NORMAL") // BAIXA | NORMAL | ALTA | URGENTE
+  prazoDesejado DateTime?
+  status        String    @default("NOVA") // NOVA | EM_ANALISE | EM_PROJETO | CONCLUIDA | RECUSADA
+  motivoRecusa  String?   @db.Text
+  projectId     String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  contrato    Contrato            @relation(fields: [contratoId], references: [id])
+  solicitante User                @relation("DemandaSolicitante", fields: [solicitanteId], references: [id])
+  project     Project?            @relation("DemandaProjeto", fields: [projectId], references: [id], onDelete: SetNull)
+  itens       DemandaItem[]
+  comentarios DemandaComentario[]
+
+  @@index([contratoId])
+  @@index([solicitanteId])
+  @@index([status])
+}
+
+model DemandaItem {
+  id        String   @id @default(cuid())
+  demandaId String
+  texto     String
+  ordem     Int      @default(0)
+  concluido Boolean  @default(false)
+  taskId    String? // tarefa criada a partir deste item quando a demanda virou projeto
+  createdAt DateTime @default(now())
+
+  demanda Demanda @relation(fields: [demandaId], references: [id], onDelete: Cascade)
+
+  @@index([demandaId])
+}
+
+model DemandaComentario {
+  id        String   @id @default(cuid())
+  demandaId String
+  autorId   String
+  texto     String   @db.Text
+  interno   Boolean  @default(false) // nota so' da equipe: o contratante nao ve
+  createdAt DateTime @default(now())
+
+  demanda Demanda @relation(fields: [demandaId], references: [id], onDelete: Cascade)
+  autor   User    @relation(fields: [autorId], references: [id])
+
+  @@index([demandaId])
 }

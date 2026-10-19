@@ -78,12 +78,17 @@ export default function ProjetosPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Projetos</h1>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
-        >
-          + Novo projeto
-        </button>
+        <div className="flex items-center gap-2">
+          <a href="/projetos/demandas" className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Demandas de projetos
+          </a>
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
+          >
+            + Novo projeto
+          </button>
+        </div>
       </div>
 
       {showForm && (

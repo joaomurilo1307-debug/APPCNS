@@ -7,6 +7,10 @@ export default function PortalClienteLayout({ children }: { children: React.Reac
         <h1 className="text-lg font-semibold text-brand">Consominas · Portal do Cliente</h1>
         <SignOutButton />
       </header>
+      <nav className="flex gap-1 border-b border-gray-200 bg-white px-8" aria-label="Portal do cliente">
+        <a href="/portal-cliente" className="border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-brand">Seus projetos</a>
+        <a href="/portal-cliente/demandas" className="border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-brand">Suas demandas</a>
+      </nav>
       <main className="mx-auto max-w-5xl p-8">{children}</main>
     </div>
   );

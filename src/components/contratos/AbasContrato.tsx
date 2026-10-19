@@ -4,6 +4,7 @@
 // Por decisao do Joao (19/10/2026) estas abas sao ESTRUTURA/BASE: ainda nao recebem dados. Visao geral mostra so' a ficha cadastral e a situacao do acompanhamento.
 
 import Link from "next/link";
+import ClientesDoContrato from "./ClientesDoContrato";
 import { moeda } from "@/lib/custos/formato";
 import type { FichaContrato } from "./FichaEditor";
 
@@ -61,6 +62,7 @@ export function AbaVisaoGeral({ ficha, irParaAba }: { ficha: FichaContrato; irPa
           ))}
         </ul>
       </Cartao>
+      <ClientesDoContrato codccu={ficha.codccu} />
     </div>
   );
 }
