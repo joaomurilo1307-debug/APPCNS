@@ -15,6 +15,7 @@ test("categoria: veiculo, TI, aquisicao e demais", () => {
   assert.equal(categoriaDoTitulo({ ...base, descricao: "PARC 2/10 NOTEBOOK DELL" }), "TI");
   assert.equal(categoriaDoTitulo({ ...base, numOcp: "5521" }), "AQUISICAO");
   assert.equal(categoriaDoTitulo({ ...base, numNfc: "889" }), "AQUISICAO");
+  assert.equal(categoriaDoTitulo({ ...base, numOcpVinculada: "7001" }), "AQUISICAO");
   assert.equal(categoriaDoTitulo({ ...base }), "DEMAIS");
 });
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { categoriaDoTitulo } from "@/lib/contratos/previsao";
+import { titulosAbertosComCcu } from "@/lib/contratos/titulosPrevistos";
 
 // ROTA TEMPORARIA (19/10/2026), protegida por x-sync-key. Sera removida apos o uso.
 // GET ?q=nome            -> busca usuarios por nome (somente leitura)
@@ -25,6 +26,20 @@ export async function GET(req: Request) {
   if (!autorizado(req)) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   const sp = new URL(req.url).searchParams;
   if (sp.get("ambiental")) return NextResponse.json({ centros: await centrosAmbientais() });
+  if (sp.get("previsao2")) {
+    const todos = await titulosAbertosComCcu(prisma);
+    const agg = (l: typeof todos) => ({ n: l.length, v: Math.round(l.reduce((s, t) => s + t.valorAberto, 0)) });
+    const porOrigem: Record<string, ReturnType<typeof agg>> = {};
+    for (const o of ["titulo", "oc", "oc-rateada", "nenhuma"]) porOrigem[o] = agg(todos.filter((t) => (t.origemCcu ?? "nenhuma") === o));
+    const porTipoSemCc: Record<string, ReturnType<typeof agg>> = {};
+    for (const tipo of new Set(todos.filter((t) => !t.ccu).map((t) => t.tipo))) porTipoSemCc[tipo] = agg(todos.filter((t) => !t.ccu && t.tipo === tipo));
+    const porCcu: Record<string, ReturnType<typeof agg>> = {};
+    for (const c of new Set(todos.filter((t) => t.ccu).map((t) => t.ccu as string))) porCcu[c] = agg(todos.filter((t) => t.ccu === c));
+    const porCat: Record<string, ReturnType<typeof agg>> = {};
+    for (const c of ["RECORRENTE", "VEICULO", "TI", "AQUISICAO", "DEMAIS"]) porCat[c] = agg(todos.filter((t) => t.ccu && categoriaDoTitulo(t) === c));
+    const semCcuPrv = todos.filter((t) => !t.ccu && t.tipo === "PRV").slice(0, 12).map((t) => `${t.numTit} | ${t.fornecedorNome} | ${t.vencimento} | ${t.valorAberto} | ${(t.descricao ?? "").slice(0, 90)}`);
+    return NextResponse.json({ total: agg(todos), porOrigem, porTipoSemCc, comCcuPorCategoria: porCat, porCcu: Object.entries(porCcu).sort((a, b) => b[1].v - a[1].v).slice(0, 25), semCcuPrv });
+  }
   if (sp.get("previsao")) {
     // diagnostico SOMENTE LEITURA do que existe em titulos em aberto (para desenhar a aba Previsao por contrato)
     const ab = await prisma.tituloContasAPagar.findMany({ where: { pago: false }, select: { numTit: true, tipo: true, codccu: true, vencimentoProgramado: true, vencimentoOriginal: true, valorAberto: true, dataEmissao: true, fornecedorNome: true, descricao: true, numOcp: true, numNfc: true } });

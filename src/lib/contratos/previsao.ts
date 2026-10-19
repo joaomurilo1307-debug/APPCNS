@@ -3,7 +3,7 @@
 //   1. tipo PRV (previsao lancada no Senior)                      -> Despesas recorrentes
 //   2. fornecedor/descricao com palavra de veiculo (locadora, ...) -> Parcelas de veiculos
 //   3. fornecedor/descricao com palavra de TI (notebook, Dell, ...) -> Parcelas de computadores e TI
-//   4. tem OC ou NF de compra vinculada                           -> Aquisicoes
+//   4. tem OC (no titulo ou vinculada) ou NF de compra            -> Aquisicoes
 //   5. o resto                                                    -> Demais titulos em aberto
 // Titulo que nao casa com nenhuma palavra NAO e' forcado numa categoria: cai em "Demais" e fica visivel.
 
@@ -29,14 +29,16 @@ export type TituloPrevisao = {
   numNfc: string | null;
   vencimento: string; // yyyy-mm-dd (programado, ou o original)
   valorAberto: number;
+  origemCcu?: "titulo" | "oc" | "oc-rateada" | null; // de onde veio o CC: do proprio titulo ou da OC vinculada
+  numOcpVinculada?: string | null;
 };
 
-export function categoriaDoTitulo(t: Pick<TituloPrevisao, "tipo" | "fornecedorNome" | "descricao" | "numOcp" | "numNfc">): CategoriaPrevisao {
+export function categoriaDoTitulo(t: Pick<TituloPrevisao, "tipo" | "fornecedorNome" | "descricao" | "numOcp" | "numNfc"> & { numOcpVinculada?: string | null }): CategoriaPrevisao {
   if (t.tipo === "PRV") return "RECORRENTE";
   const texto = `${t.fornecedorNome ?? ""} ${t.descricao ?? ""}`;
   if (VEICULO.test(texto)) return "VEICULO";
   if (TI.test(texto)) return "TI";
-  if (t.numOcp || t.numNfc) return "AQUISICAO";
+  if (t.numOcp || t.numNfc || t.numOcpVinculada) return "AQUISICAO";
   return "DEMAIS";
 }
 

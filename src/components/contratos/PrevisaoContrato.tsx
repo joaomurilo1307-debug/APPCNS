@@ -6,9 +6,9 @@
 import { useEffect, useState } from "react";
 import { moeda, moedaCompacta, mesCurto } from "@/lib/custos/formato";
 
-type Titulo = { numTit: string; tipo: string; fornecedorNome: string | null; descricao: string | null; numOcp: string | null; numNfc: string | null; vencimento: string; valorAberto: number };
+type Titulo = { numTit: string; tipo: string; fornecedorNome: string | null; descricao: string | null; numOcp: string | null; numNfc: string | null; vencimento: string; valorAberto: number; origemCcu?: string | null; numOcpVinculada?: string | null };
 type Grupo = { chave: string; rotulo: string; descricao: string; total: number; quantidade: number; vencidos: number; depois: number; porMes: Record<string, number>; titulos: Titulo[]; titulosOcultos: number };
-type Resposta = { codccu: string; hoje: string; meses: string[]; grupos: Grupo[]; total: number; quantidade: number; semVencimento: number };
+type Resposta = { codccu: string; hoje: string; meses: string[]; grupos: Grupo[]; total: number; quantidade: number; semVencimento: number; semCentroDeCusto: { quantidade: number; valor: number; ocRateada: number } | null };
 
 // na matriz os valores vao sem "R$" (a legenda diz que e em reais) para caber os 12 meses sem rolagem
 const celula = (v: number) => (v > 0.004 ? moedaCompacta(v).replace("R$ ", "") : "–");
@@ -38,7 +38,7 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-[13.5px] text-sky-900">
-        Previsão = títulos <strong>em aberto</strong> do Senior neste centro de custo (CCU {codccu}), por data de vencimento. Não é custo realizado: o que já foi pago está na aba Custos. Nada aqui é digitado: tudo vem do Senior.
+        Previsão = títulos <strong>em aberto</strong> do Senior neste centro de custo (CCU {codccu}), por data de vencimento. O centro de custo é o do próprio título no Senior ou, quando o título não traz, o da ordem de compra vinculada. Não é custo realizado: o que já foi pago está na aba Custos. Nada aqui é digitado.
       </div>
 
       {dados.quantidade === 0 ? (
@@ -110,7 +110,7 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
                         <tr key={`${t.numTit}-${i}`} className="border-t border-gray-100 align-top">
                           <td className={`whitespace-nowrap px-3 py-2 tabular-nums ${t.vencimento < dados.hoje ? "text-red-700" : "text-gray-800"}`}>{dataBr(t.vencimento)}{t.vencimento < dados.hoje && <span className="ml-1 text-[11px]">vencido</span>}</td>
                           <td className="px-3 py-2 text-gray-800">{t.fornecedorNome ?? "—"}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-gray-600">{t.numTit}{t.numOcp ? <span className="ml-1 text-xs text-gray-400">OC {t.numOcp}</span> : null}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-gray-600">{t.numTit}{t.numOcp ? <span className="ml-1 text-xs text-gray-400">OC {t.numOcp}</span> : null}{t.origemCcu === "oc" ? <span className="mt-0.5 block text-[11px] text-gray-400">CC pela OC {t.numOcpVinculada}</span> : null}</td>
                           <td className="max-w-[320px] px-3 py-2 text-gray-500">{t.descricao ?? ""}</td>
                           <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-gray-900">{moeda(t.valorAberto)}</td>
                         </tr>
@@ -122,6 +122,12 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
               )}
             </section>
           ))}
+
+          {dados.semCentroDeCusto && dados.semCentroDeCusto.quantidade > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+              Atenção: {dados.semCentroDeCusto.quantidade} títulos em aberto ({moeda(dados.semCentroDeCusto.valor)}) não têm centro de custo no Senior nem em OC com um único centro de custo{dados.semCentroDeCusto.ocRateada > 0 ? `; ${dados.semCentroDeCusto.ocRateada} deles vêm de OC rateada entre vários centros` : ""}. Por isso não aparecem em nenhum contrato; eles estão na Programação de pagamento.
+            </div>
+          )}
 
           <p className="text-xs text-gray-400">As categorias de veículos e computadores/TI são reconhecidas por palavras do nome do fornecedor ou da descrição lançada no Senior; o que não for reconhecido fica em “Demais títulos em aberto”, sem forçar classificação.</p>
         </>
