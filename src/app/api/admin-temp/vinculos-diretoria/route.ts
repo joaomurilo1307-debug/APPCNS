@@ -45,6 +45,15 @@ async function situacao(userId: string) {
 
 export async function GET(req: Request) {
   if (!autorizado(req)) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  const q = new URL(req.url).searchParams.get("q");
+  if (q) {
+    const lista = await prisma.user.findMany({
+      where: { OR: q.split(",").map((t) => ({ name: { contains: t.trim(), mode: "insensitive" as const } })) },
+      select: { id: true, name: true, email: true, role: true, nivelHierarquico: true, nucleo: { select: { name: true } }, teams: { select: { team: { select: { name: true } } } } },
+      take: 60,
+    });
+    return NextResponse.json({ q, total: lista.length, usuarios: lista.map((u) => ({ ...u, nucleo: u.nucleo?.name ?? null, teams: u.teams.map((t) => t.team.name) })) });
+  }
   const achados = await Promise.all(NOMES.map(async (n) => ({ nome: n, usuarios: await achar(n) })));
   const pessoas = [];
   for (const a of achados) for (const u of a.usuarios) pessoas.push(await situacao(u.id));
