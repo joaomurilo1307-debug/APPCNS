@@ -1,10 +1,11 @@
 "use client";
 
 // Abas do contrato alem de Custos (que e' a propria tela de custos por centro de custo, sem alteracao): Visao geral, Custo de pessoal, P0 e Previsao.
-// Por decisao do Joao (19/10/2026) estas abas sao ESTRUTURA/BASE: ainda nao recebem dados. Visao geral mostra so' a ficha cadastral e a situacao do acompanhamento.
+// Por decisao do Joao (19/10/2026): Custo de pessoal e P0 sao ESTRUTURA/BASE (ainda sem dados; o P0 so' sera feito depois que todos os contratos tiverem o seu).
+// Previsao ja le o Senior (titulos em aberto por centro de custo), somente leitura. Visao geral mostra so' a ficha cadastral e a situacao do acompanhamento.
 
-import Link from "next/link";
 import ClientesDoContrato from "./ClientesDoContrato";
+import PrevisaoContrato from "./PrevisaoContrato";
 import { moeda } from "@/lib/custos/formato";
 import type { FichaContrato } from "./FichaEditor";
 
@@ -37,7 +38,7 @@ export function AbaVisaoGeral({ ficha, irParaAba }: { ficha: FichaContrato; irPa
     ["Ficha cadastral (cliente, número, vigência, valor)", fichaCompleta, null],
     ["Custo de pessoal", null, "pessoal"],
     ["Orçamento base (P0)", null, "p0"],
-    ["Previsão do Senior por contrato", null, "previsao"],
+    ["Previsão do Senior por contrato (títulos em aberto)", true, "previsao"],
   ];
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -79,46 +80,36 @@ export function AbaPessoal() {
   );
 }
 
-// ---------------------------------------------------------------- P0 (estrutura)
+// ---------------------------------------------------------------- P0 (estrutura, sem cadastro por enquanto)
 export function AbaP0() {
-  const colunas = ["Linha / conta", "Descrição", "Previsto (P0)", "Realizado (Senior)", "Consumo do saldo", "Saldo"];
+  const partes = [
+    { t: "Receita", d: "As linhas das medições do contrato: o que se espera faturar, mês a mês." },
+    { t: "Custos", d: "As previsões lineares de custo, mês a mês. Cada previsão vira uma linha no gráfico principal do contrato." },
+    { t: "Desvio", d: "A diferença entre o previsto (P0) e o realizado do Senior. É onde os coordenadores vão justificar o desvio." },
+  ];
   return (
     <div className="space-y-5">
-      <Cartao titulo="Orçamento base do contrato (P0)" sub="Previsto × realizado × quanto do saldo cada linha já consumiu">
+      <Cartao titulo="P0 do contrato" sub="Aba preparada. O cadastro só começa depois que todos os contratos tiverem o seu P0 definido.">
         <Vazio
           titulo="O P0 deste contrato ainda não foi cadastrado."
-          texto="Esta aba vai receber o orçamento base de cada contrato, linha a linha, a partir da planilha de P0. O P0 só muda quando há aditivo: cada mudança vira uma nova versão, sem apagar a anterior. O realizado de cada linha vem do Senior."
-          extra={<button disabled className="mt-4 cursor-not-allowed rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-400">Cadastrar / importar P0 (aguardando o modelo da planilha)</button>}
+          texto="Quando o P0 de cada contrato estiver pronto, ele será cadastrado aqui. Nada é estimado nem preenchido automaticamente: o previsto vem do P0 e o realizado vem do Senior."
         />
       </Cartao>
-      <Cartao titulo="Como a aba vai ficar" sub="Estrutura prevista, sem dados">
-        <div className="overflow-x-auto rounded-xl border border-gray-100"><table className="w-full text-[13.5px]"><thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500"><tr>{colunas.map((c, i) => <th key={c} className={`px-3 py-2 ${i >= 2 ? "text-right" : ""}`}>{c}</th>)}</tr></thead><tbody><tr><td colSpan={colunas.length} className="px-3 py-6 text-center text-gray-300">As linhas do P0 aparecerão aqui.</td></tr></tbody></table></div>
+      <Cartao titulo="Como o P0 vai funcionar" sub="Para o gestor entender o que virá nesta aba">
+        <div className="grid gap-3 md:grid-cols-3">
+          {partes.map((x) => (
+            <div key={x.t} className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+              <h3 className="text-[14px] font-semibold text-gray-900">{x.t}</h3>
+              <p className="mt-1 text-[13.5px] text-gray-600">{x.d}</p>
+            </div>
+          ))}
+        </div>
       </Cartao>
     </div>
   );
 }
 
-// ---------------------------------------------------------------- Previsao (estrutura + atalhos para as telas que ja existem)
+// ---------------------------------------------------------------- Previsao (titulos em aberto do Senior por centro de custo)
 export function AbaPrevisao({ codccu }: { codccu: string }) {
-  const itens = [
-    { t: "Despesas recorrentes", d: "Custos fixos e recorrentes, inclusive os de valor variável, lidos do Senior.", href: "/despesas-recorrentes" },
-    { t: "Programação de pagamento", d: "Títulos em aberto e parcelas a vencer, com a ordem de compra de origem.", href: "/programacao-pagamento" },
-    { t: "Alertas do financeiro", d: "Avisos de vencimento e títulos que merecem atenção.", href: "/alertas-financeiro" },
-  ];
-  return (
-    <div className="space-y-5">
-      <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-[13.5px] text-sky-900">
-        A previsão vem do Senior e já existe nas telas abaixo, para toda a empresa. A visão deste contrato (CCU {codccu}) ainda não está aqui. A previsão fica separada do realizado: a aba Custos mostra só o que já foi pago.
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        {itens.map((i) => (
-          <Link key={i.href} href={i.href} className="block rounded-2xl border border-gray-100 bg-white p-5 shadow-soft transition hover:border-brand/40 hover:shadow-md">
-            <h3 className="text-base font-semibold text-gray-900">{i.t}</h3>
-            <p className="mt-1 text-[13.5px] text-gray-500">{i.d}</p>
-            <span className="mt-3 inline-block text-[13px] font-medium text-brand">Abrir →</span>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
+  return <PrevisaoContrato codccu={codccu} />;
 }
