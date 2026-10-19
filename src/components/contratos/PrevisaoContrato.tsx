@@ -19,6 +19,8 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
   const [dados, setDados] = useState<Resposta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [verSemCc, setVerSemCc] = useState(false);
+  const semCc = codccu === "_sem_cc";
 
   useEffect(() => {
     let vivo = true;
@@ -38,12 +40,12 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-[13.5px] text-sky-900">
-        Previsão = títulos <strong>em aberto</strong> do Senior neste centro de custo (CCU {codccu}), por data de vencimento. O centro de custo é o do próprio título no Senior ou, quando o título não traz, o da ordem de compra vinculada. Não é custo realizado: o que já foi pago está na aba Custos. Nada aqui é digitado.
+        {semCc ? (<>Títulos <strong>em aberto</strong> que <strong>não têm centro de custo</strong> no Senior, nem no título nem em uma ordem de compra de um único centro. Por isso não entram em nenhum contrato. Para entrarem, o centro de custo precisa ser informado no Senior.</>) : (<>Previsão = títulos <strong>em aberto</strong> do Senior neste centro de custo (CCU {codccu}), por data de vencimento. O centro de custo é o do próprio título no Senior ou, quando o título não traz, o da ordem de compra vinculada. Não é custo realizado: o que já foi pago está na aba Custos. Nada aqui é digitado.</>)}
       </div>
 
       {dados.quantidade === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 px-5 py-9 text-center">
-          <p className="text-base font-medium text-gray-700">Nenhum título em aberto para este centro de custo.</p>
+          <p className="text-base font-medium text-gray-700">{semCc ? "Nenhum título em aberto sem centro de custo." : "Nenhum título em aberto para este centro de custo."}</p>
           <p className="mx-auto mt-1 max-w-2xl text-sm text-gray-500">{dados.semVencimento > 0 ? `${dados.semVencimento} título(s) em aberto estão sem data de vencimento válida no Senior e por isso não entram na previsão.` : "Quando o Senior tiver previsões ou títulos a vencer neste CCU, eles aparecem aqui, separados por categoria."}</p>
         </div>
       ) : (
@@ -125,7 +127,13 @@ export default function PrevisaoContrato({ codccu }: { codccu: string }) {
 
           {dados.semCentroDeCusto && dados.semCentroDeCusto.quantidade > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
-              Atenção: {dados.semCentroDeCusto.quantidade} títulos em aberto ({moeda(dados.semCentroDeCusto.valor)}) não têm centro de custo no Senior nem em OC com um único centro de custo{dados.semCentroDeCusto.ocRateada > 0 ? `; ${dados.semCentroDeCusto.ocRateada} deles vêm de OC rateada entre vários centros` : ""}. Por isso não aparecem em nenhum contrato; eles estão na Programação de pagamento.
+              Atenção: {dados.semCentroDeCusto.quantidade} títulos em aberto ({moeda(dados.semCentroDeCusto.valor)}) não têm centro de custo no Senior nem em OC com um único centro de custo{dados.semCentroDeCusto.ocRateada > 0 ? `; ${dados.semCentroDeCusto.ocRateada} deles vêm de OC rateada entre vários centros` : ""}. Por isso não aparecem em nenhum contrato.{" "}
+              <button type="button" onClick={() => setVerSemCc((v) => !v)} className="font-medium text-amber-900 underline underline-offset-2">{verSemCc ? "Esconder esses títulos" : "Ver esses títulos"}</button>
+            </div>
+          )}
+          {verSemCc && (
+            <div className="rounded-2xl border border-amber-200 p-4">
+              <PrevisaoContrato codccu="_sem_cc" />
             </div>
           )}
 

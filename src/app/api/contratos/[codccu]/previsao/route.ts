@@ -11,6 +11,7 @@ import { titulosAbertosComCcu } from "@/lib/contratos/titulosPrevistos";
 // Nao grava nada e nao mistura com o realizado (a aba Custos mostra so' o que foi pago). Mesmo controle de acesso das demais abas do contrato.
 
 const LIMITE_TITULOS_POR_GRUPO = 400;
+const SEM_CC = "_sem_cc"; // pseudo-centro de custo: titulos em aberto que nao tem CC no Senior (nem no titulo, nem em OC de um so' CC)
 
 export async function GET(_req: Request, { params }: { params: { codccu: string } }) {
   const session = await getServerSession(authOptions);
@@ -24,14 +25,14 @@ export async function GET(_req: Request, { params }: { params: { codccu: string 
   let semVencimento = 0;
   const titulos: TituloPrevisao[] = [];
   for (const t of todos) {
-    if (t.ccu !== params.codccu) continue;
+    if (params.codccu === SEM_CC ? !!t.ccu : t.ccu !== params.codccu) continue;
     if (!t.vencimento || vencimentoSentinela(t.vencimento)) { semVencimento += 1; continue; }
     titulos.push({ ...t, vencimento: t.vencimento });
   }
 
   // Aviso geral (so' para quem ve todos os centros de custo): titulos em aberto que nao puderam ser ligados a nenhum CC.
   let semCentroDeCusto: { quantidade: number; valor: number; ocRateada: number } | null = null;
-  if (escopo.todos) {
+  if (escopo.todos && params.codccu !== SEM_CC) {
     const sem = todos.filter((t) => !t.ccu);
     semCentroDeCusto = { quantidade: sem.length, valor: sem.reduce((s, t) => s + t.valorAberto, 0), ocRateada: sem.filter((t) => t.origemCcu === "oc-rateada").length };
   }

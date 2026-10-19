@@ -1,8 +1,8 @@
 // Previsao por centro de custo (somente leitura). Tudo vem dos titulos EM ABERTO que o Senior ja tem para o CCU: nada e' cadastrado nem
 // estimado aqui. A unica "inteligencia" e' agrupar cada titulo numa categoria; a regra e' simples e transparente:
-//   1. tipo PRV (previsao lancada no Senior)                      -> Despesas recorrentes
-//   2. fornecedor/descricao com palavra de veiculo (locadora, ...) -> Parcelas de veiculos
-//   3. fornecedor/descricao com palavra de TI (notebook, Dell, ...) -> Parcelas de computadores e TI
+//   1. fornecedor/descricao com palavra de veiculo (locadora, ...) -> Parcelas de veiculos
+//   2. fornecedor/descricao com palavra de TI (notebook, Dell, ...) -> Parcelas de computadores e TI
+//   3. tipo PRV (previsao lancada no Senior)                      -> Despesas recorrentes
 //   4. tem OC (no titulo ou vinculada) ou NF de compra            -> Aquisicoes
 //   5. o resto                                                    -> Demais titulos em aberto
 // Titulo que nao casa com nenhuma palavra NAO e' forcado numa categoria: cai em "Demais" e fica visivel.
@@ -10,7 +10,7 @@
 export type CategoriaPrevisao = "RECORRENTE" | "VEICULO" | "TI" | "AQUISICAO" | "DEMAIS";
 
 export const CATEGORIAS: { chave: CategoriaPrevisao; rotulo: string; descricao: string }[] = [
-  { chave: "RECORRENTE", rotulo: "Despesas recorrentes", descricao: "Previsões lançadas no Senior (tipo PRV): aluguel, contratos mensais, serviços fixos." },
+  { chave: "RECORRENTE", rotulo: "Despesas recorrentes", descricao: "Previsões lançadas no Senior (tipo PRV) que não são de veículo nem de TI: aluguel, contratos mensais, serviços fixos." },
   { chave: "VEICULO", rotulo: "Parcelas de veículos", descricao: "Títulos em aberto cujo fornecedor ou descrição indica veículo, locação, financiamento ou frota." },
   { chave: "TI", rotulo: "Parcelas de computadores e TI", descricao: "Títulos em aberto cujo fornecedor ou descrição indica computador, notebook ou equipamento de TI." },
   { chave: "AQUISICAO", rotulo: "Aquisições", descricao: "Títulos em aberto de compras, com ordem de compra ou nota fiscal de compra vinculada." },
@@ -34,10 +34,10 @@ export type TituloPrevisao = {
 };
 
 export function categoriaDoTitulo(t: Pick<TituloPrevisao, "tipo" | "fornecedorNome" | "descricao" | "numOcp" | "numNfc"> & { numOcpVinculada?: string | null }): CategoriaPrevisao {
-  if (t.tipo === "PRV") return "RECORRENTE";
   const texto = `${t.fornecedorNome ?? ""} ${t.descricao ?? ""}`;
   if (VEICULO.test(texto)) return "VEICULO";
   if (TI.test(texto)) return "TI";
+  if (t.tipo === "PRV") return "RECORRENTE";
   if (t.numOcp || t.numNfc || t.numOcpVinculada) return "AQUISICAO";
   return "DEMAIS";
 }

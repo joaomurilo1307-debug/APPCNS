@@ -5,8 +5,10 @@ import { categoriaDoTitulo, montarPrevisao, somaMeses, type TituloPrevisao } fro
 const base = { numTit: "1", tipo: "NF", fornecedorNome: "FORNECEDOR QUALQUER", descricao: null, numOcp: null, numNfc: null };
 const t = (o: Partial<TituloPrevisao> & { vencimento: string; valorAberto: number }): TituloPrevisao => ({ ...base, ...o });
 
-test("categoria: PRV e' sempre recorrente, mesmo que o texto cite veiculo", () => {
-  assert.equal(categoriaDoTitulo({ ...base, tipo: "PRV", fornecedorNome: "LOCALIZA FROTAS" }), "RECORRENTE");
+test("categoria: PRV e' recorrente, a nao ser que o texto indique veiculo ou TI", () => {
+  assert.equal(categoriaDoTitulo({ ...base, tipo: "PRV", fornecedorNome: "ALUGUEL EXEMPLO" }), "RECORRENTE");
+  assert.equal(categoriaDoTitulo({ ...base, tipo: "PRV", fornecedorNome: "LOCALIZA FROTAS" }), "VEICULO");
+  assert.equal(categoriaDoTitulo({ ...base, tipo: "PRV", fornecedorNome: "DELL COMPUTADORES" }), "TI");
 });
 
 test("categoria: veiculo, TI, aquisicao e demais", () => {
