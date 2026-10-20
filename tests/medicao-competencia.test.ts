@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { competenciaDoPedido, competenciaPorEmissao, lerBoletim, somaMes } from "../src/lib/medicao/competencia";
+import { competenciaDoPedido, competenciaPorEmissao, lerBoletim, ehCargaAcumulada, COMPETENCIA_ACUMULADO, somaMes } from "../src/lib/medicao/competencia";
 
 test("le o boletim e o mes do PEDCLI (formato real do Senior: BM35 01.2026)", () => {
   assert.deepEqual(lerBoletim("BM35 01.2026"), { boletim: "BM35", mes: "2026-01" });
@@ -85,4 +85,14 @@ test("carga historica: boletim de 2021 em pedido emitido anos depois vale o mes 
   const c = competenciaDoPedido({ pedCli: "BM08 01.2021", dataEmissao: "15/03/2024", ccu: "102035" })!;
   assert.equal(c.competencia, "2021-01");
   assert.equal(c.origem, "BOLETIM");
+});
+
+test("carga acumulada: ACUMULADOS, faixa de boletins e BM01/BM08 nao pertencem a um mes", () => {
+  for (const v of ["ACUMULADOS", "ACUMULADO", "BM ACUMULADO", "BM01 A BM32", "3728 BM01/BM08", "bm 01 a bm 08", "BM1 ATE BM9"]) assert.equal(ehCargaAcumulada(v), true, v);
+  for (const v of ["BM35 01.2026", "BM 21 12.24", "BM 15 MSG 02.25", "REAJ.01 04.2026", "PRODUTO 05", "bm 01 teste", "", null]) assert.equal(ehCargaAcumulada(v), false, String(v));
+  const c = competenciaDoPedido({ pedCli: "ACUMULADOS", dataEmissao: "22/08/2025", ccu: "140" })!;
+  assert.equal(c.origem, "ACUMULADO");
+  assert.equal(c.competencia, COMPETENCIA_ACUMULADO);
+  // se o texto traz o mes, o mes vale (BM ACUM 12.2024 e' dezembro/2024)
+  assert.equal(competenciaDoPedido({ pedCli: "BM ACUM 12.2024", dataEmissao: "10/01/2025", ccu: "140" })!.origem, "BOLETIM");
 });

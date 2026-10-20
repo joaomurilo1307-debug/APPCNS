@@ -61,7 +61,7 @@ export function montarDetalhe(linhas: LinhaDoContrato[], itens: ItemDoContrato[]
     if (!l) continue;
     l.medidoQtd += i.qtd;
     l.medidoValor += i.valor;
-    if (i.origem !== "BOLETIM") semConf += 1;
+    if (i.origem === "EMISSAO") semConf += 1;
     if (i.competencia < de) { l.antes.qtd += i.qtd; l.antes.valor += i.valor; antesTot += i.valor; continue; }
     if (i.competencia > ate) { l.depois.qtd += i.qtd; l.depois.valor += i.valor; depoisTot += i.valor; continue; }
     const c = l.porMes[i.competencia] ?? zero();

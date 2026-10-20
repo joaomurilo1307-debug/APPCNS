@@ -3,10 +3,14 @@
 //      19/10/2026 no contrato MRN CT 3687/2023: os 39 pedidos conferem com o faturamento e com a regra de emissao menos 1 mes).
 //   2. EMISSAO: quando o PEDCLI nao traz o mes, vale a regra ja validada no Rito de Gestao: emissao menos 1 mes, com o corte de dia por
 //      contrato (CORTE_DIA_POR_CCU) para os poucos clientes que fogem dela. Fica marcado como "emissao" para nao parecer certeza.
+//   3. ACUMULADO: pedido de carga/regularizacao que junta varios boletins ("ACUMULADOS", "BM01 A BM32", "3728 BM01/BM08") nao pertence a um mes: vai para o
+//      grupo "antes do periodo" (competencia 0000-00) em vez de inflar o mes da emissao. Nos dados de 19/10/2026 sao R$ 13,7 mi em 5 textos (MRN 3484, AGA 13287...).
 //   Um mes de boletim fora do razoavel (depois da emissao, ou mais de 72 meses antes) e' ignorado e cai na regra da emissao. A janela e' larga de proposito:
 //   contratos antigos tem boletins de 2021 carregados em pedidos emitidos anos depois, e o mes explicito do boletim vale mais que a regra da emissao.
 
-export type OrigemCompetencia = "BOLETIM" | "EMISSAO";
+export type OrigemCompetencia = "BOLETIM" | "EMISSAO" | "ACUMULADO";
+/** Competencia dos pedidos de carga acumulada: ordena antes de qualquer mes, entao cai sempre em "antes do periodo". */
+export const COMPETENCIA_ACUMULADO = "0000-00";
 export type Competencia = { competencia: string; origem: OrigemCompetencia; boletim: string | null; inconsistente: boolean };
 
 /** Corte de dia por centro de custo (calibrado no Rito contra a planilha do financeiro). Ausente = sempre "emissao menos 1 mes". */
@@ -40,6 +44,13 @@ export function lerBoletim(pedCli: string | null | undefined): { boletim: string
   return { boletim, mes: `${ano}-${pad(Number(ma[1]))}` };
 }
 
+/** Pedido de carga que junta varios boletins: "ACUMULADO(S)", "BM01 A BM32", "BM01/BM08". So' vale quando o texto nao traz um mes. */
+export function ehCargaAcumulada(pedCli: string | null | undefined): boolean {
+  const t = (pedCli ?? "").toUpperCase().replace(/\s+/g, " ").trim();
+  if (!t) return false;
+  return /\bACUM/.test(t) || /\bBM\s*0*\d{1,3}\s*(?:A|AT[EÉ]|\/|-|E)\s*(?:BM\s*)?0*\d{1,3}\b/.test(t);
+}
+
 /** "dd/mm/aaaa" ou "aaaa-mm-dd" -> { y, m, d } */
 function partes(data: string): { y: number; m: number; d: number } | null {
   let m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(data);
@@ -66,6 +77,8 @@ export function competenciaDoPedido(a: { pedCli: string | null | undefined; data
     const atras = indice(mesEmissao) - indice(mes);
     if (atras >= 0 && atras <= 72) return { competencia: mes, origem: "BOLETIM", boletim, inconsistente: false };
     inconsistente = true; // mes do boletim depois da emissao ou muito antigo: nao confiar
+  } else if (ehCargaAcumulada(a.pedCli)) {
+    return { competencia: COMPETENCIA_ACUMULADO, origem: "ACUMULADO", boletim, inconsistente: false };
   }
   const c = competenciaPorEmissao(a.dataEmissao, a.ccu);
   return c ? { competencia: c, origem: "EMISSAO", boletim, inconsistente } : null;

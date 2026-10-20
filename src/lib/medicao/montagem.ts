@@ -31,7 +31,7 @@ const dataIso = (br: string | undefined): string | null => {
 
 export type ContratoMedicao = { numCtr: string; numOfi: string; codCli: string | null; inicio: string | null; codccu: string | null; codccusItens: string | null; valorContratado: number; valorMedido: number };
 export type LinhaMedicao = { numCtr: string; seqCvs: number; codSer: string | null; descricao: string; unidade: string | null; qtdContratada: number; precoUnit: number; valorContratado: number; qtdFaturada: number; valorFaturado: number };
-export type ItemMedicao = { numCtr: string; seqCvs: number; numPed: string; seqIsp: number; dataEmissao: string; competencia: string; origem: "BOLETIM" | "EMISSAO"; boletim: string | null; pedCli: string | null; situacao: string | null; qtd: number; valor: number; codccu: string | null };
+export type ItemMedicao = { numCtr: string; seqCvs: number; numPed: string; seqIsp: number; dataEmissao: string; competencia: string; origem: "BOLETIM" | "EMISSAO" | "ACUMULADO"; boletim: string | null; pedCli: string | null; situacao: string | null; qtd: number; valor: number; codccu: string | null };
 
 export type ResultadoMedicao = {
   contratos: ContratoMedicao[];
@@ -39,7 +39,7 @@ export type ResultadoMedicao = {
   itens: ItemMedicao[];
   resumo: {
     contratosComLinhas: number; contratosSemPedido: number; contratosSemCentroDeCusto: number; linhas: number; itens: number;
-    itensPorBoletim: number; itensPorEmissao: number; itensBoletimInconsistente: number; itensSemLinhaNoCatalogo: number; itensSemData: number;
+    itensPorBoletim: number; itensPorEmissao: number; itensAcumulados: number; itensBoletimInconsistente: number; itensSemLinhaNoCatalogo: number; itensSemData: number;
     itensCancelados: number; itensComValorCalculado: number;
     contratosComMaisDeUmCcu: { numCtr: string; ccus: string }[];
     linhasQueNaoBatem: { numCtr: string; seqCvs: number; qtdSenior: number; qtdPedidos: number; valorSenior: number; valorPedidos: number }[];
@@ -133,7 +133,7 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
   const linhas: LinhaMedicao[] = [];
   const itens: ItemMedicao[] = [];
   const resumo: ResultadoMedicao["resumo"] = {
-    contratosComLinhas: numCtrs.length, contratosSemPedido: 0, contratosSemCentroDeCusto: 0, linhas: 0, itens: 0, itensPorBoletim: 0, itensPorEmissao: 0, itensBoletimInconsistente: 0, itensSemLinhaNoCatalogo: 0, itensSemData: 0,
+    contratosComLinhas: numCtrs.length, contratosSemPedido: 0, contratosSemCentroDeCusto: 0, linhas: 0, itens: 0, itensPorBoletim: 0, itensPorEmissao: 0, itensAcumulados: 0, itensBoletimInconsistente: 0, itensSemLinhaNoCatalogo: 0, itensSemData: 0,
     itensCancelados: 0, itensComValorCalculado: 0, contratosComMaisDeUmCcu: [], linhasQueNaoBatem: [], totalLinhasQueNaoBatem: 0, pedCliSemMes: [],
   };
 
@@ -161,7 +161,7 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
       if (!emissao) { resumo.itensSemData += 1; continue; }
       const comp = competenciaDoPedido({ pedCli: it.PEDCLI, dataEmissao: emissao, ccu: cc.principal });
       if (!comp) { resumo.itensSemData += 1; continue; }
-      if (comp.origem === "BOLETIM") resumo.itensPorBoletim += 1; else { resumo.itensPorEmissao += 1; if (texto(it.PEDCLI)) semMes.add(texto(it.PEDCLI)); }
+      if (comp.origem === "BOLETIM") resumo.itensPorBoletim += 1; else if (comp.origem === "ACUMULADO") resumo.itensAcumulados += 1; else { resumo.itensPorEmissao += 1; if (texto(it.PEDCLI)) semMes.add(texto(it.PEDCLI)); }
       if (comp.inconsistente) resumo.itensBoletimInconsistente += 1;
       temItem = true;
       itens.push({ numCtr: n, seqCvs: seq, numPed: texto(it.NUMPED), seqIsp: Number(texto(it.SEQISP)) || 0, dataEmissao: emissao, competencia: comp.competencia, origem: comp.origem, boletim: comp.boletim, pedCli: texto(it.PEDCLI) || null, situacao: v.situacao ?? (texto(ped?.SITPED) || null), qtd, valor: arred(valor), codccu: ccuDominante(`${chavePedido(it.CODFIL, it.NUMPED)}|${texto(it.SEQISP)}`) });

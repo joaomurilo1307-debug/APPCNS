@@ -39,7 +39,7 @@ export async function GET(req: Request, { params }: { params: { numCtr: string }
   const d = montarDetalhe(c.linhas.map((l) => ({ seqCvs: l.seqCvs, descricao: l.descricao, unidade: l.unidade, qtdContratada: l.qtdContratada, precoUnit: l.precoUnit, valorContratado: l.valorContratado, qtdFaturada: l.qtdFaturada, valorFaturado: l.valorFaturado })),
     itens.map((i) => ({ ...i, dataEmissao: i.dataEmissao.toISOString().slice(0, 10) })), de, ate, mesAtual, filtro);
 
-  const competencias = itens.map((i) => i.competencia).sort();
+  const competencias = itens.filter((i) => i.origem !== "ACUMULADO").map((i) => i.competencia).sort(); // carga acumulada nao e' mes
   const ccus = (c.codccusItens ?? "").split(",").filter(Boolean);
   const nomes = await nomesDosCentros(prisma, ccus);
   const ult = await prisma.atualizacaoMedicao.findFirst({ where: { status: "OK" }, orderBy: { finalizadoEm: "desc" }, select: { finalizadoEm: true } });
