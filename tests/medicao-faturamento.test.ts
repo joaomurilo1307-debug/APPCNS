@@ -344,3 +344,41 @@ test("valor aproximado: nota maior que o pedido conta a nota e o pedido fica com
   assert.equal(ago.notaAcima, 200);
   assert.equal(ago.receita, 50200);
 });
+
+test("titulo a receber da propria NF lancado como ND nao soma de novo (AGA MSG: NF 65 de R$ 80.724,35 e o titulo 65A1 de R$ 75.759,80 = liquido, retencao de 6,15%)", () => {
+  const e = {
+    notas: [{ CODFIL: "1", CODSNF: "A26", NUMNFV: "65", DATEMI: "02/06/2026", CODCLI: "40", VLRBSE: "80724,35", VLRLIQ: "75759,80", SITNFV: "2" }],
+    itensNota: [{ CODFIL: "1", CODSNF: "A26", NUMNFV: "65", NUMPED: "0", CODCCU: "170", VLRBRU: "80724,35" }],
+    titulos: [
+      { NUMTIT: "65A1", CODFIL: "1", CODTPT: "ND", CODCLI: "40", SITTIT: "LQ", DATEMI: "02/06/2026", VLRORI: "75759,80", CODCCU: "170", FILNFV: "0", CODSNF: "", NUMNFV: "0" },
+      { NUMTIT: "ND 044/2026", CODFIL: "1", CODTPT: "ND", CODCLI: "40", SITTIT: "AB", DATEMI: "02/06/2026", VLRORI: "1407,08", CODCCU: "170", FILNFV: "0", CODSNF: "", NUMNFV: "0" },
+    ],
+    rateios: [
+      { NUMTIT: "65A1", CODFIL: "1", CODCCU: "170", PERRAT: "100", VLRRAT: "75759,80" },
+      { NUMTIT: "ND 044/2026", CODFIL: "1", CODCCU: "170", PERRAT: "100", VLRRAT: "1407,08" },
+    ],
+  };
+  const docs = montarFaturamento(e, []);
+  const titulo = docs.find((d) => d.numero === "65A1")!;
+  assert.equal(titulo.duplicadaDe, "65"); // e' a NF 65 de novo: nao conta na receita
+  const real = docs.find((d) => d.numero === "ND 044/2026")!;
+  assert.equal(real.duplicadaDe ?? null, null); // nota de debito de verdade continua
+  assert.equal(docs.find((d) => d.tipo === "NF")!.duplicadaDe ?? null, null);
+  // a receita do mes: NF + a ND real, sem o titulo
+  const r = conciliar([item("441", "2026-05", 80724.35)], docs as unknown as DocConc[], [], "2026-05", "2026-05");
+  assert.equal(r.meses[0].nf, 80724.35);
+  assert.equal(Math.round(r.meses[0].receita * 100), 8213143); // R$ 82.131,43
+});
+
+test("titulo da propria NF: so' quando valor, centro de custo, data e numero batem (ND de outro valor ou de outro centro de custo fica)", () => {
+  const nf = { CODFIL: "1", CODSNF: "A26", NUMNFV: "65", DATEMI: "02/06/2026", CODCLI: "40", VLRBSE: "80724,35", VLRLIQ: "75759,80", SITNFV: "2" };
+  const base = { notas: [nf], itensNota: [{ CODFIL: "1", CODSNF: "A26", NUMNFV: "65", NUMPED: "0", CODCCU: "170", VLRBRU: "80724,35" }] };
+  const tit = (num: string, valor: string, cc: string, data = "02/06/2026") => ({ titulos: [{ NUMTIT: num, CODFIL: "1", CODTPT: "ND", CODCLI: "40", SITTIT: "LQ", DATEMI: data, VLRORI: valor, CODCCU: cc, FILNFV: "0", CODSNF: "", NUMNFV: "0" }], rateios: [{ NUMTIT: num, CODFIL: "1", CODCCU: cc, PERRAT: "100", VLRRAT: valor }] });
+  const marcada = (t: ReturnType<typeof tit>, numero: string) => montarFaturamento({ ...base, ...t }, []).find((d) => d.numero === numero)!.duplicadaDe ?? null;
+  assert.equal(marcada(tit("65A1", "75759,80", "170"), "65A1"), "65"); // o caso
+  assert.equal(marcada(tit("65A1", "70000,00", "170"), "65A1"), null); // valor diferente
+  assert.equal(marcada(tit("65A1", "75759,80", "190"), "65A1"), null); // outro centro de custo
+  assert.equal(marcada(tit("65A1", "75759,80", "170", "20/06/2026"), "65A1"), null); // outra data
+  assert.equal(marcada(tit("77A1", "75759,80", "170"), "77A1"), null); // numero nao comeca pelo da NF
+  assert.equal(marcada(tit("038/2025", "75759,80", "170"), "038/2025"), null); // numero de nota de debito
+});

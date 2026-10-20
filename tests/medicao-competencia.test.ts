@@ -96,3 +96,29 @@ test("carga acumulada: ACUMULADOS, faixa de boletins e BM01/BM08 nao pertencem a
   // se o texto traz o mes, o mes vale (BM ACUM 12.2024 e' dezembro/2024)
   assert.equal(competenciaDoPedido({ pedCli: "BM ACUM 12.2024", dataEmissao: "10/01/2025", ccu: "140" })!.origem, "BOLETIM");
 });
+
+test("mes de boletim corrigido so' onde a planilha de planejamento confirma (MRN 3581 BM47: Senior diz 07.2026, a Medicao 47 e' agosto)", () => {
+  const c = competenciaDoPedido({ pedCli: "BM47 07.2026 C", dataEmissao: "2026-09-11", ccu: "240", numCtr: "12" });
+  assert.equal(c?.competencia, "2026-08");
+  assert.equal(c?.corrigidoDe, "2026-07");
+  assert.equal(c?.origem, "BOLETIM");
+  // o BM46 do mesmo contrato continua em julho
+  assert.equal(competenciaDoPedido({ pedCli: "BM46 07.2026", dataEmissao: "2026-08-13", ccu: "240", numCtr: "12" })?.competencia, "2026-07");
+  // outro contrato com o mesmo numero de boletim nao e' tocado
+  assert.equal(competenciaDoPedido({ pedCli: "BM47 07.2026", dataEmissao: "2026-09-11", ccu: "240", numCtr: "99" })?.competencia, "2026-07");
+  // sem numero de contrato (chamada antiga) nada muda
+  assert.equal(competenciaDoPedido({ pedCli: "BM47 07.2026 C", dataEmissao: "2026-09-11", ccu: "240" })?.competencia, "2026-07");
+});
+
+test("mes de boletim corrigido: MRN 3728 BM20 ('BM20 01 06.2026', nota de 17/08) vai para agosto; o BM21 de setembro nao muda", () => {
+  assert.equal(competenciaDoPedido({ pedCli: "BM20 01 06.2026", dataEmissao: "2026-08-17", ccu: "310", numCtr: "9" })?.competencia, "2026-08");
+  assert.equal(competenciaDoPedido({ pedCli: "BM20 06.2026", dataEmissao: "2026-08-17", ccu: "310", numCtr: "9" })?.competencia, "2026-08");
+  assert.equal(competenciaDoPedido({ pedCli: "BM21 09.2026", dataEmissao: "2026-10-08", ccu: "310", numCtr: "9" })?.competencia, "2026-09");
+});
+
+test("correcao de mes nunca coloca o boletim depois da emissao do pedido", () => {
+  // se a emissao fosse antes do mes corrigido, vale o que o Senior diz
+  const c = competenciaDoPedido({ pedCli: "BM47 07.2026 C", dataEmissao: "2026-07-20", ccu: "240", numCtr: "12" });
+  assert.equal(c?.competencia, "2026-07");
+  assert.equal(c?.corrigidoDe, undefined);
+});

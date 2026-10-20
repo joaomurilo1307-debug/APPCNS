@@ -42,7 +42,7 @@ export type ResultadoMedicao = {
   itens: ItemMedicao[];
   resumo: {
     contratosComLinhas: number; contratosSemPedido: number; contratosSemCentroDeCusto: number; linhas: number; itens: number;
-    itensPorBoletim: number; itensPorEmissao: number; itensAcumulados: number; itensBoletimInconsistente: number; itensSemLinhaNoCatalogo: number; itensSemData: number;
+    itensPorBoletim: number; itensPorEmissao: number; itensAcumulados: number; itensBoletimInconsistente: number; itensComMesCorrigido: number; mesesCorrigidos: string[]; itensSemLinhaNoCatalogo: number; itensSemData: number;
     itensCancelados: number; itensComValorCalculado: number;
     contratosComMaisDeUmCcu: { numCtr: string; ccus: string }[];
     linhasQueNaoBatem: { numCtr: string; seqCvs: number; qtdSenior: number; qtdPedidos: number; valorSenior: number; valorPedidos: number }[];
@@ -138,7 +138,7 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
   const linhas: LinhaMedicao[] = [];
   const itens: ItemMedicao[] = [];
   const resumo: ResultadoMedicao["resumo"] = {
-    contratosComLinhas: numCtrs.length, contratosSemPedido: 0, contratosSemCentroDeCusto: 0, linhas: 0, itens: 0, itensPorBoletim: 0, itensPorEmissao: 0, itensAcumulados: 0, itensBoletimInconsistente: 0, itensSemLinhaNoCatalogo: 0, itensSemData: 0,
+    contratosComLinhas: numCtrs.length, contratosSemPedido: 0, contratosSemCentroDeCusto: 0, linhas: 0, itens: 0, itensPorBoletim: 0, itensPorEmissao: 0, itensAcumulados: 0, itensBoletimInconsistente: 0, itensComMesCorrigido: 0, mesesCorrigidos: [], itensSemLinhaNoCatalogo: 0, itensSemData: 0,
     itensCancelados: 0, itensComValorCalculado: 0, contratosComMaisDeUmCcu: [], linhasQueNaoBatem: [], totalLinhasQueNaoBatem: 0, pedCliSemMes: [],
   };
 
@@ -170,10 +170,15 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
       somaQtd.set(seq, (somaQtd.get(seq) ?? 0) + qtd);
       somaVal.set(seq, (somaVal.get(seq) ?? 0) + valor);
       if (!emissao) { resumo.itensSemData += 1; continue; }
-      const comp = competenciaDoPedido({ pedCli: it.PEDCLI, dataEmissao: emissao, ccu: cc.principal });
+      const comp = competenciaDoPedido({ pedCli: it.PEDCLI, dataEmissao: emissao, ccu: cc.principal, numCtr: n });
       if (!comp) { resumo.itensSemData += 1; continue; }
       if (comp.origem === "BOLETIM") resumo.itensPorBoletim += 1; else if (comp.origem === "ACUMULADO") resumo.itensAcumulados += 1; else { resumo.itensPorEmissao += 1; if (texto(it.PEDCLI)) semMes.add(texto(it.PEDCLI)); }
       if (comp.inconsistente) resumo.itensBoletimInconsistente += 1;
+      if (comp.corrigidoDe) {
+        resumo.itensComMesCorrigido += 1;
+        const txt = `contrato ${n} ${comp.boletim}: ${comp.corrigidoDe} -> ${comp.competencia}`;
+        if (!resumo.mesesCorrigidos.includes(txt)) resumo.mesesCorrigidos.push(txt);
+      }
       temItem = true;
       itens.push({ numCtr: n, seqCvs: seq, numPed: texto(it.NUMPED), seqIsp: Number(texto(it.SEQISP)) || 0, dataEmissao: emissao, competencia: comp.competencia, origem: comp.origem, boletim: comp.boletim, pedCli: texto(it.PEDCLI) || null, situacao: v.situacao ?? (texto(ped?.SITPED) || null), qtd, valor: arred(valor), codccu: ccuDominante(`${chavePedido(it.CODFIL, it.NUMPED)}|${texto(it.SEQISP)}`) });
     }

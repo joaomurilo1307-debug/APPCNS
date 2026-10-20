@@ -146,6 +146,7 @@ export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<Item
     }
   }
   marcarDuplicadas(docs, liquidadas);
+  marcarTituloDaPropriaNota(docs);
   return docs;
 }
 
@@ -168,5 +169,26 @@ function marcarDuplicadas(docs: DocFaturamento[], liquidadas: Map<string, boolea
     if (pagas.length > 0) { for (const d of abertas) d.duplicadaDe = pagas[0].numero; continue; } // paga vale; so' as pagas ficam
     const vale = [...lista].sort((a, b) => Number(a.numero) - Number(b.numero))[0]; // todas em aberto: vale a de menor numero
     for (const d of lista) if (d !== vale) d.duplicadaDe = vale.numero;
+  }
+}
+
+/**
+ * Titulo a receber da PROPRIA nota fiscal lancado como "ND" no financeiro: nao e' nota de debito, e' a NF de novo (pelo valor liquido) e somaria a mesma receita duas vezes.
+ * Reconhece por tres coisas juntas: numero que NAO e' de nota de debito e comeca pelo numero da NF (65A1, 88PL01, 131PL01), mesmo centro de custo e emissao com ate 3 dias de
+ * diferenca, e valor igual ao liquido (ou ao bruto) da NF. Casos reais: AGA MSG, titulo 65A1 de R$ 75.759,80 = liquido da NF 65 (bruto R$ 80.724,35, retencao de 6,15%);
+ * 88PL01 (R$ 160.776,47, CC 150, jul/2025) e 131PL01 (R$ 6.624,35, CC 340, set/2025). Fica na lista, marcado como duplicada da NF, e nao entra na receita.
+ * Nota de debito de verdade ("ND 044/2026", "038/2025", "NF 033/2026") nunca casa: o numero nao comeca pelo numero de uma NF do mesmo centro de custo com o mesmo valor.
+ */
+function marcarTituloDaPropriaNota(docs: DocFaturamento[]) {
+  const padraoND = /^(ND|NF)?\s*\d+\/\d{4}$/i; // "ND 044/2026", "038/2025", "NF 033/2026": numeros de nota de debito de verdade
+  const dias = (a: string, b: string) => Math.abs((Date.parse(a) - Date.parse(b)) / 86400000);
+  const nfs = docs.filter((d) => d.tipo === "NF" && !d.duplicadaDe);
+  for (const nd of docs) {
+    if (nd.tipo !== "ND" || nd.duplicadaDe) continue;
+    const num = String(nd.numero).trim();
+    if (padraoND.test(num)) continue;
+    const nf = nfs.find((x) => x.codccu === nd.codccu && dias(x.dataEmissao, nd.dataEmissao) <= 3 && num.startsWith(String(x.numero).trim())
+      && (Math.abs(x.valorLiquido - nd.valorDoc) <= 0.05 || Math.abs(x.valorDoc - nd.valorDoc) <= 0.05));
+    if (nf) nd.duplicadaDe = nf.numero;
   }
 }

@@ -11,7 +11,17 @@
 export type OrigemCompetencia = "BOLETIM" | "EMISSAO" | "ACUMULADO";
 /** Competencia dos pedidos de carga acumulada: ordena antes de qualquer mes, entao cai sempre em "antes do periodo". */
 export const COMPETENCIA_ACUMULADO = "0000-00";
-export type Competencia = { competencia: string; origem: OrigemCompetencia; boletim: string | null; inconsistente: boolean };
+export type Competencia = { competencia: string; origem: OrigemCompetencia; boletim: string | null; inconsistente: boolean; corrigidoDe?: string };
+
+/**
+ * Mes de boletim digitado errado no PEDCLI do Senior, CORRIGIDO so' onde duas fontes independentes concordam (e so' aqui, nunca por regra geral):
+ * a planilha de PLANEJAMENTO FINANCEIRO do contrato (mesmo valor ao centavo, em outro mes) e a data de emissao da nota. Chave: NUMCTR do contrato + boletim.
+ * O Senior nao e' alterado. Quando o PEDCLI for corrigido la, a linha pode sair daqui: o resultado e' o mesmo.
+ */
+export const CORRECAO_MES_DO_BOLETIM: Readonly<Record<string, { mes: string; motivo: string }>> = {
+  "12|BM47": { mes: "2026-08", motivo: "MRN CT 3581: PEDCLI 'BM47 07.2026 C' (o BM46 tambem e' 07.2026); a Medicao 47 da planilha de planejamento e' agosto/2026, R$ 199.789,78; a NF 277 saiu em 15/09" },
+  "9|BM20": { mes: "2026-08", motivo: "MRN CT 3728: PEDCLI 'BM20 01 06.2026'; a planilha de planejamento tem os R$ 168.521,32 em agosto/2026 (junho zerado) e a NF 273 saiu em 17/08" },
+};
 
 /** Corte de dia por centro de custo (calibrado no Rito contra a planilha do financeiro). Ausente = sempre "emissao menos 1 mes". */
 export const CORTE_DIA_POR_CCU: Readonly<Record<string, number>> = { "270": 1, "370": 22, "170": 24 };
@@ -67,7 +77,7 @@ export function competenciaPorEmissao(dataEmissao: string, ccu: string | null): 
   return p.d >= corte ? doMes : somaMes(doMes, -1);
 }
 
-export function competenciaDoPedido(a: { pedCli: string | null | undefined; dataEmissao: string; ccu: string | null }): Competencia | null {
+export function competenciaDoPedido(a: { pedCli: string | null | undefined; dataEmissao: string; ccu: string | null; numCtr?: string | null }): Competencia | null {
   const emissao = partes(a.dataEmissao);
   if (!emissao) return null;
   const mesEmissao = `${emissao.y}-${pad(emissao.m)}`;
@@ -75,7 +85,11 @@ export function competenciaDoPedido(a: { pedCli: string | null | undefined; data
   let inconsistente = false;
   if (mes) {
     const atras = indice(mesEmissao) - indice(mes);
-    if (atras >= 0 && atras <= 72) return { competencia: mes, origem: "BOLETIM", boletim, inconsistente: false };
+    if (atras >= 0 && atras <= 72) {
+      const fix = a.numCtr && boletim ? CORRECAO_MES_DO_BOLETIM[`${a.numCtr}|${boletim}`] : undefined;
+      if (fix && indice(mesEmissao) - indice(fix.mes) >= 0) return { competencia: fix.mes, origem: "BOLETIM", boletim, inconsistente: false, corrigidoDe: mes };
+      return { competencia: mes, origem: "BOLETIM", boletim, inconsistente: false };
+    }
     inconsistente = true; // mes do boletim depois da emissao ou muito antigo: nao confiar
   } else if (ehCargaAcumulada(a.pedCli)) {
     return { competencia: COMPETENCIA_ACUMULADO, origem: "ACUMULADO", boletim, inconsistente: false };
