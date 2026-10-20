@@ -16,14 +16,14 @@ type Resposta = {
 const vc = (v: number) => moedaCompacta(v).replace("R$ ", "");
 const dataBr = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 const rotuloDoc = (tipo: string, numero: string) => (tipo === "ND" && /^ND/i.test(numero) ? numero : `${tipo === "NF" ? "NF" : "ND"} ${numero}`);
-const COMO: Record<Vinculo, string> = { NOTA: "ligada pelo Senior", VALOR: "mesmo valor", SOMA: "soma de pedidos" };
+const COMO: Record<Vinculo, string> = { NOTA: "ligada pelo Senior", VALOR: "mesmo valor", SOMA: "soma de pedidos", APROX: "valor quase igual" };
 
 /** Barras empilhadas por mes: medicao faturada em NF (verde-azulado) e notas de debito (violeta). Um eixo, valores brutos. */
 function BarrasReceita({ meses, selecionado, onSelecionar }: { meses: MesConc[]; selecionado: string | null; onSelecionar: (m: string) => void }) {
   const n = Math.max(1, meses.length);
   const largura = Math.max(560, n * 58), alt = 210, topo = 24, base = 30;
   const passo = largura / n;
-  const max = Math.max(1e-9, ...meses.map((m) => m.faturado));
+  const max = Math.max(1e-9, ...meses.map((m) => m.receita));
   const barra = Math.min(36, passo * 0.62);
   const h = (v: number) => ((alt - topo - base) * v) / max;
   return (
@@ -32,14 +32,15 @@ function BarrasReceita({ meses, selecionado, onSelecionar }: { meses: MesConc[];
         {[0.5, 1].map((f) => <line key={f} x1={0} x2={largura} y1={alt - base - (alt - topo - base) * f} y2={alt - base - (alt - topo - base) * f} className="stroke-gray-100" strokeDasharray="3 4" />)}
         <line x1={0} x2={largura} y1={alt - base} y2={alt - base} className="stroke-gray-200" />
         {meses.map((m, i) => {
-          const cx = passo * i + passo / 2, hNf = h(m.nf), hNd = h(m.nd), ativo = selecionado === m.mes;
+          const cx = passo * i + passo / 2, hNf = h(m.nf), hNd = h(m.nd), hSn = h(m.semNota), ativo = selecionado === m.mes;
           return (
-            <g key={m.mes} className="cursor-pointer" role="button" tabIndex={0} aria-label={`${mesLongo(m.mes)}: receita bruta ${moeda(m.faturado)}`} onClick={() => onSelecionar(m.mes)} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onSelecionar(m.mes)}>
-              <title>{`${mesLongo(m.mes)}\nMedição (nota fiscal): ${moeda(m.nf)}\nNotas de débito: ${moeda(m.nd)}\nReceita bruta: ${moeda(m.faturado)}`}</title>
+            <g key={m.mes} className="cursor-pointer" role="button" tabIndex={0} aria-label={`${mesLongo(m.mes)}: receita bruta ${moeda(m.receita)}`} onClick={() => onSelecionar(m.mes)} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onSelecionar(m.mes)}>
+              <title>{`${mesLongo(m.mes)}\nMedição (nota fiscal): ${moeda(m.nf)}\nNotas de débito: ${moeda(m.nd)}\nMedido sem nota: ${moeda(m.semNota)}\nReceita bruta: ${moeda(m.receita)}`}</title>
               <rect x={cx - passo / 2 + 2} y={topo - 12} width={passo - 4} height={alt - topo - base + 12 + 24} rx={8} className={ativo ? "fill-teal-500/10" : "fill-transparent hover:fill-gray-100/70"} />
               {m.nf > 0 && <rect x={cx - barra / 2} y={alt - base - hNf} width={barra} height={Math.max(1.5, hNf)} rx={m.nd > 0 ? 0 : 3} className="fill-teal-600" />}
-              {m.nd > 0 && <rect x={cx - barra / 2} y={alt - base - hNf - hNd} width={barra} height={Math.max(1.5, hNd)} rx={3} className="fill-violet-500" />}
-              {m.faturado > 0 && <text x={cx} y={alt - base - hNf - hNd - 5} textAnchor="middle" fontSize={10.5} className="fill-gray-700 font-medium">{vc(m.faturado)}</text>}
+              {m.nd > 0 && <rect x={cx - barra / 2} y={alt - base - hNf - hNd} width={barra} height={Math.max(1.5, hNd)} rx={m.semNota > 0 ? 0 : 3} className="fill-violet-500" />}
+              {m.semNota > 0 && <rect x={cx - barra / 2} y={alt - base - hNf - hNd - hSn} width={barra} height={Math.max(1.5, hSn)} rx={3} className="fill-amber-400" />}
+              {m.receita > 0 && <text x={cx} y={alt - base - hNf - hNd - hSn - 5} textAnchor="middle" fontSize={10.5} className="fill-gray-700 font-medium">{vc(m.receita)}</text>}
               <text x={cx} y={alt - base + 15} textAnchor="middle" fontSize={11} className={ativo ? "fill-gray-900 font-semibold" : "fill-gray-500"}>{mesCurto(m.mes)}</text>
             </g>
           );
@@ -48,6 +49,7 @@ function BarrasReceita({ meses, selecionado, onSelecionar }: { meses: MesConc[];
       <div className="mt-1 flex flex-wrap items-center gap-4 text-xs text-gray-500">
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-teal-600" /> Medição (nota fiscal)</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-500" /> Notas de débito (reembolsáveis)</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" /> Medido ainda sem nota</span>
       </div>
     </div>
   );
@@ -81,7 +83,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
     if (!m.medido && !m.faturado) return <span className="text-gray-300">·</span>;
     if (Math.abs(m.dif) < 0.05) return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-800" title={m.ndAvulsa > 0 ? `Fecha: as linhas dos pedidos (${moeda(m.medido)}) mais a nota de débito sem pedido (${moeda(m.ndAvulsa)}) são a receita` : "A soma das linhas dos pedidos do mês é a receita"}>fecha</span>;
     return m.dif > 0
-      ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-semibold text-amber-800" title={`Linhas medidas em ${mesLongo(m.mes)}: ${moeda(m.receita)}. Notas emitidas: ${moeda(m.faturado)}. Faltam ${moeda(m.dif)} em nota.`}>a faturar {vc(m.dif)}</span>
+      ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-semibold text-amber-800" title={`Medido em ${mesLongo(m.mes)} e ainda sem nota: ${moeda(m.semNota)}. Esse valor conta na receita.`}>sem nota {vc(m.semNota)}</span>
       : <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10.5px] font-semibold text-rose-800" title={`Notas emitidas: ${moeda(m.faturado)}. Linhas medidas no Senior: ${moeda(m.receita)}. Faltam ${moeda(-m.dif)} de medição lançada nos pedidos.`}>falta lançar {vc(-m.dif)}</span>;
   };
 
@@ -90,7 +92,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
       <header>
         <h2 className="text-[15px] font-semibold text-gray-900">Composição da receita, mês a mês</h2>
         <p className="mt-0.5 max-w-3xl text-[13px] leading-relaxed text-gray-500">
-          Valores brutos, como estão na nota e nas linhas dos pedidos (as retenções ficam à parte, em cinza). Receita = medição faturada em nota fiscal + notas de débito (os reembolsáveis do contrato, que também são linhas da medição). O mês é o do trabalho: a medição é enviada até o dia 3 do mês seguinte, a nota sai depois e vence 30 dias após a emissão.
+          Valores brutos, como estão na nota e nas linhas dos pedidos (as retenções ficam à parte, em cinza). Receita = medição faturada em nota fiscal + notas de débito (os reembolsáveis do contrato, que também são linhas da medição) + o que foi medido e ainda está sem nota (conta na receita e aparece marcado). O mês é o do trabalho: a medição é enviada até o dia 3 do mês seguinte, a nota sai depois e vence 30 dias após a emissão.
         </p>
       </header>
 
@@ -100,16 +102,17 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
-          { t: "Receita bruta", v: moeda(t.faturado), s: `medição + notas de débito, no período (${c.meses.filter((m) => m.faturado > 0).length} meses com nota)` },
-          { t: "Medição (nota fiscal)", v: moeda(t.nf), s: t.faturado ? `${Math.round((t.nf / t.faturado) * 100)}% da receita` : "" },
-          { t: "Notas de débito (reembolsáveis)", v: moeda(t.nd), s: t.faturado ? `${Math.round((t.nd / t.faturado) * 100)}% da receita` : "" },
+          { t: "Receita bruta", v: moeda(t.receita), s: "medição em nota + notas de débito + medido sem nota, no período" },
+          { t: "Medição (nota fiscal)", v: moeda(t.nf), s: t.receita ? `${Math.round((t.nf / t.receita) * 100)}% da receita` : "" },
+          { t: "Notas de débito (reembolsáveis)", v: moeda(t.nd), s: t.receita ? `${Math.round((t.nd / t.receita) * 100)}% da receita` : "" },
+          { t: "Medido ainda sem nota", v: moeda(t.semNota), s: t.semNota > 0 ? "já conta na receita; falta emitir a nota" : "tudo que foi medido tem nota", aviso: t.semNota > 0 },
           { t: "Receita líquida (informativo)", v: moeda(t.liquido), s: `retenções das notas fiscais: ${moeda(t.retencoes)}` },
         ].map((k) => (
           <div key={k.t} className="rounded-xl border border-gray-100 bg-white p-3.5">
             <p className="text-[12.5px] font-medium text-gray-500">{k.t}</p>
-            <p className="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{k.v}</p>
+            <p className={`mt-0.5 text-lg font-semibold tabular-nums ${(k as { aviso?: boolean }).aviso ? "text-amber-700" : "text-gray-900"}`}>{k.v}</p>
             <p className="text-[11.5px] text-gray-400">{k.s}</p>
           </div>
         ))}
@@ -124,6 +127,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
               <th className={`${th} text-left`}>Mês</th>
               <th className={`${th} text-right`}>Medição (NF)</th>
               <th className={`${th} text-right`}>Notas de débito</th>
+              <th className={`${th} text-right`} title="Medido nos pedidos e ainda sem nota fiscal: conta na receita">Medido sem nota</th>
               <th className={`${th} text-right text-gray-900`}>Receita bruta</th>
               <th className={`${th} text-right`} title="Retenções da nota fiscal (PIS, COFINS, CSLL, IRRF, ISS…); a nota de débito não tem retenção">Retenções</th>
               <th className={`${th} text-right`}>Receita líquida</th>
@@ -137,7 +141,8 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
                 <td className={`${td} text-left font-medium text-gray-800`}>{mesCurto(m.mes)}</td>
                 <td className={`${td} text-right text-gray-700`}>{m.nf ? vc(m.nf) : <span className="text-gray-300">·</span>}</td>
                 <td className={`${td} text-right text-gray-700`}>{m.nd ? vc(m.nd) : <span className="text-gray-300">·</span>}</td>
-                <td className={`${td} text-right font-semibold text-gray-900`}>{m.faturado ? vc(m.faturado) : <span className="font-normal text-gray-300">·</span>}</td>
+                <td className={`${td} text-right ${m.semNota ? "font-semibold text-amber-700" : "text-gray-700"}`}>{m.semNota ? vc(m.semNota) : <span className="text-gray-300">·</span>}</td>
+                <td className={`${td} text-right font-semibold text-gray-900`}>{m.receita ? vc(m.receita) : <span className="font-normal text-gray-300">·</span>}</td>
                 <td className={`${td} text-right text-gray-500`}>{m.retencoes ? vc(m.retencoes) : <span className="text-gray-300">·</span>}</td>
                 <td className={`${td} text-right text-gray-500`}>{m.liquido ? vc(m.liquido) : <span className="text-gray-300">·</span>}</td>
                 <td className={`${td} text-right text-gray-700`}>{m.medido ? vc(m.medido) : <span className="text-gray-300">·</span>}</td>
@@ -148,7 +153,8 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
               <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Total do período</td>
               <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right">{vc(t.nf)}</td>
               <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right">{vc(t.nd)}</td>
-              <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right">{vc(t.faturado)}</td>
+              <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right text-amber-700">{vc(t.semNota)}</td>
+              <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right">{vc(t.receita)}</td>
               <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right text-gray-500">{vc(t.retencoes)}</td>
               <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right text-gray-500">{vc(t.liquido)}</td>
               <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right">{vc(t.medido)}</td>
@@ -161,7 +167,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
 
       {c.explicacoes.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-[13px] leading-relaxed text-amber-950">
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">Meses que não fecham, e por quê</p>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">Meses com aviso: medido sem nota ou nota sem pedido, e por quê</p>
           <ul className="space-y-1.5">
             {c.explicacoes.map((e) => <li key={e.mes}><b>{mesLongo(e.mes)}:</b> {e.texto}</li>)}
           </ul>

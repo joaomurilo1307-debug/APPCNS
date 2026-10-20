@@ -6,7 +6,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { consultarSenior } from "@/lib/senior/getDbInfo";
 import { montarMedicao, type EntradaMedicao, type Linha, type ResultadoMedicao } from "./montagem";
-import { montarFaturamento, type DocFaturamento, type EntradaFaturamento } from "./faturamento";
+import { ccuDosContratosSemPedido, montarFaturamento, type DocFaturamento, type EntradaFaturamento } from "./faturamento";
 import { reatribuirNotasPorValor } from "./reatribuicao";
 
 export type EntradaCompleta = EntradaMedicao & { faturamento: EntradaFaturamento | null; faturamentoErro: string | null };
@@ -134,11 +134,12 @@ async function executar(id: string) {
     await marcar(id, "Calculando a medição de cada contrato", 85);
     const r = montarMedicao(entrada);
     const base = entrada.faturamento ? montarFaturamento(entrada.faturamento, r.itens, r.contratos) : null;
+    const semPedido = base ? ccuDosContratosSemPedido(r.contratos, base) : []; // contrato sem pedido: centro de custo pelo codigo do cliente das notas
     const reat = base ? reatribuirNotasPorValor(base, r.itens, r.contratos) : null;
     const docs = reat ? reat.docs : null;
     await marcar(id, "Gravando", 92);
     await gravarMedicao(prisma, r, docs);
-    const faturamento = docs ? { documentos: docs.length, notas: docs.filter((x) => x.tipo === "NF").length, notasDebito: docs.filter((x) => x.tipo === "ND").length, semCentroDeCusto: docs.filter((x) => !x.codccu).length, mesDoPedido: docs.filter((x) => x.origem === "PEDIDO").length, mesPelaEmissao: docs.filter((x) => x.origem === "EMISSAO").length, acumulados: docs.filter((x) => x.origem === "ACUMULADO").length, notasLevadasParaOContratoDoPedido: reat ? reat.reatribuidas.length : 0, exemplosLevadas: reat ? reat.reatribuidas.slice(0, 12).map((x) => `${x.tipo} ${x.numero} R$ ${x.valor}: CC ${x.deCcu} -> ${x.paraCcu} (pedido ${x.pedido})`) : [] } : null;
+    const faturamento = docs ? { documentos: docs.length, notas: docs.filter((x) => x.tipo === "NF").length, notasDebito: docs.filter((x) => x.tipo === "ND").length, semCentroDeCusto: docs.filter((x) => !x.codccu).length, mesDoPedido: docs.filter((x) => x.origem === "PEDIDO").length, mesPelaEmissao: docs.filter((x) => x.origem === "EMISSAO").length, acumulados: docs.filter((x) => x.origem === "ACUMULADO").length, notasLevadasParaOContratoDoPedido: reat ? reat.reatribuidas.length : 0, contratosSemPedidoComCentroDeCusto: semPedido, exemplosLevadas: reat ? reat.reatribuidas.slice(0, 12).map((x) => `${x.tipo} ${x.numero} R$ ${x.valor}: CC ${x.deCcu} -> ${x.paraCcu} (pedido ${x.pedido})`) : [] } : null;
     const resumo = { ...r.resumo, contratos: r.contratos.length, faturamento, faturamentoErro: entrada.faturamentoErro, duracaoSegundos: Math.round((Date.now() - inicio) / 1000) };
     await prisma.atualizacaoMedicao.update({ where: { id }, data: { status: "OK", etapa: "Concluído", progresso: 100, finalizadoEm: new Date(), resumo: resumo as unknown as Prisma.InputJsonValue } });
   } catch (e) {

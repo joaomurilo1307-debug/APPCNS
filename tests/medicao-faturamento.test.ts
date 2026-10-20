@@ -286,3 +286,61 @@ test("explicacao dos meses que nao fecham: nota maior que o pedido (AGA QZ, R$ 1
   const c = conciliar([item("554", "2026-09", 3401.97)], [], [], "2026-09", "2026-09");
   assert.match(c.explicacoes[0].texto, /ainda sem nota fiscal/);
 });
+
+test("medido sem nota conta na receita, marcado como sem nota (SVPM outubro: pedido 559 de R$ 189.044,73 e nenhuma nota ainda)", () => {
+  const c = conciliar([item("559", "2026-10", 189044.73)], [], [], "2026-10", "2026-10");
+  const m = c.meses[0];
+  assert.equal(m.faturado, 0);
+  assert.equal(m.semNota, 189044.73);
+  assert.equal(m.receita, 189044.73); // conta
+  assert.equal(m.dif, 189044.73);
+  assert.match(c.explicacoes[0].texto, /contam na receita, marcados como sem nota/);
+});
+
+test("pedido maior que a nota: a nota conta e a sobra do pedido (medida, sem nota) tambem (MRN 3581: pedido 224 de R$ 336.009,24 e NF 212 de R$ 327.939,16)", () => {
+  const c = conciliar([item("224", "2025-07", 336009.24)], [doc("212", "2025-07", 327939.16)], [], "2025-07", "2025-07");
+  const m = c.meses[0];
+  assert.equal(m.nf, 327939.16);
+  assert.equal(m.semNota, 8070.08); // sobra medida e sem nota
+  assert.equal(m.notaAcima, 0);
+  assert.equal(m.receita, 336009.24); // = o medido
+  assert.match(c.explicacoes[0].texto, /está sem nota: conta na receita/);
+});
+
+test("nota maior que o pedido: a nota conta na receita e o pedido continua como esta (AGA QZ: NF 116 de R$ 109.410,83 e pedido 536 de R$ 91.410,83)", () => {
+  const c = conciliar([item("536", "2026-09", 91410.83)], [doc("116", "2026-09", 109410.83)], [], "2026-09", "2026-09");
+  const m = c.meses[0];
+  assert.equal(m.receita, 109410.83); // a nota; o pedido nao soma por cima
+  assert.equal(m.semNota, 0);
+  assert.equal(m.notaAcima, 18000);
+  assert.equal(m.medido, 91410.83); // o pedido normal
+});
+
+test("mesma medicao com nota de valor quase igual em outro mes: conta uma vez so (AMG 26063: pedido 507 de agosto R$ 170.773,59 e NF 113 emitida em outubro R$ 170.483,63)", () => {
+  const c = conciliar([item("507", "2026-08", 170773.59)], [doc("113", "2026-09", 170483.63, { codccu: "230" })], [], "2026-08", "2026-10");
+  const ago = c.meses.find((m) => m.mes === "2026-08")!;
+  const set = c.meses.find((m) => m.mes === "2026-09");
+  assert.equal(c.pedidos[0].documentos[0].como, "APROX");
+  assert.equal(ago.nf, 170483.63); // a nota passa para o mes do pedido
+  assert.equal(ago.semNota, 289.96); // so a sobra do pedido fica sem nota
+  assert.equal(ago.receita, 170773.59); // = o medido, sem contar duas vezes
+  assert.equal(set?.receita ?? 0, 0); // nada sobra em setembro
+});
+
+test("valor aproximado so liga quando e' claramente a mesma medicao: diferenca de mais de 1% ou pedido pequeno nao liga", () => {
+  const longe = conciliar([item("10", "2026-08", 100000)], [doc("50", "2026-09", 95000)], [], "2026-08", "2026-09");
+  assert.equal(longe.pedidos[0].documentos.length, 0);
+  assert.equal(longe.meses.find((m) => m.mes === "2026-08")!.semNota, 100000);
+  const pequeno = conciliar([item("11", "2026-08", 800)], [doc("51", "2026-09", 799)], [], "2026-08", "2026-09");
+  assert.equal(pequeno.pedidos[0].documentos.length, 0);
+});
+
+test("valor aproximado: nota maior que o pedido conta a nota e o pedido fica como esta", () => {
+  const c = conciliar([item("12", "2026-08", 50000)], [doc("52", "2026-09", 50200)], [], "2026-08", "2026-09");
+  const ago = c.meses.find((m) => m.mes === "2026-08")!;
+  assert.equal(ago.nf, 50200);
+  assert.equal(ago.medido, 50000);
+  assert.equal(ago.semNota, 0);
+  assert.equal(ago.notaAcima, 200);
+  assert.equal(ago.receita, 50200);
+});
