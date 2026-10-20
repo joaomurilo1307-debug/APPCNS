@@ -14,7 +14,6 @@ export function valorTotalOc(vlrLiq: number, totalItens: number | null, totalRat
 export type DadosPendencia = {
   sitApr: string;
   numTit: string | null;
-  nfs: string[];
   rateioTotal: number | null; // null = nao deu para conferir na Senior (nao acusa)
 };
 
@@ -24,7 +23,6 @@ export function pendenciasOc(o: DadosPendencia): string[] {
   const p: string[] = [];
   if (o.sitApr !== "APR") p.push("não aprovada");
   if (!o.numTit) p.push("sem título");
-  if (!o.nfs.length) p.push("sem NF");
   if (o.rateioTotal !== null && o.rateioTotal <= 0) p.push("rateio zerado");
   return p;
 }
