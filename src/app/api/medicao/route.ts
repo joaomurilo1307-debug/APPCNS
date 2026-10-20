@@ -25,8 +25,7 @@ export async function GET(req: Request) {
   const visiveis = (await prisma.medicaoContrato.findMany({ orderBy: { numOfi: "asc" } })).filter((c) => (c.codccu ? podeVerCcu(escopo, c.codccu) : escopo.todos));
   // "tem medicao" = ja houve pelo menos um item de pedido ou valor faturado; os demais so' aparecem se pedido (e so' para quem ve tudo)
   const comMedicao = new Set((await prisma.medicaoItem.groupBy({ by: ["numCtr"], where: { numCtr: { in: visiveis.map((c) => c.numCtr) } } })).map((x) => x.numCtr));
-  const ccusComNota = new Set((await prisma.faturamentoMedicao.findMany({ where: { codccu: { in: visiveis.map((c) => c.codccu).filter((x): x is string => !!x) } }, select: { codccu: true }, distinct: ["codccu"] })).map((x) => x.codccu));
-  const temMedicao = (c: { numCtr: string; valorMedido: number; codccu: string | null }) => comMedicao.has(c.numCtr) || c.valorMedido > 0 || (!!c.codccu && ccusComNota.has(c.codccu)); // contrato so' com nota (ex.: aluguel por ND) tambem aparece
+  const temMedicao = (c: { numCtr: string; valorMedido: number }) => comMedicao.has(c.numCtr) || c.valorMedido > 0;
   const incluirSem = escopo.todos && new URL(req.url).searchParams.get("todos") === "1";
   const semMedicao = visiveis.filter((c) => !temMedicao(c)).length;
   const contratos = visiveis.filter((c) => temMedicao(c) || incluirSem);

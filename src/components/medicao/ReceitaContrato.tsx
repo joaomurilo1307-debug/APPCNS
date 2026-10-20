@@ -165,15 +165,6 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
       </div>
       <p className="text-xs text-gray-400">Clique num mês (na tabela ou no gráfico) para ver os pedidos e as notas dele.{dados.contratos.length > 1 ? ` Inclui os contratos do mesmo centro de custo: ${dados.contratos.join(", ")}.` : ""}</p>
 
-      {c.explicacoes.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-[13px] leading-relaxed text-amber-950">
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">Meses com aviso: medido sem nota ou nota sem pedido, e por quê</p>
-          <ul className="space-y-1.5">
-            {c.explicacoes.map((e) => <li key={e.mes}><b>{mesLongo(e.mes)}:</b> {e.texto}</li>)}
-          </ul>
-        </div>
-      )}
-
       {/* ---------------- o mes escolhido: pedidos e notas */}
       {mes && (
         <div className="rounded-xl border border-teal-200 bg-teal-50/30 p-4">

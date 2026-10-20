@@ -170,24 +170,3 @@ function marcarDuplicadas(docs: DocFaturamento[], liquidadas: Map<string, boolea
     for (const d of lista) if (d !== vale) d.duplicadaDe = vale.numero;
   }
 }
-
-/**
- * Contrato com linhas e SEM pedido (nao tem como descobrir o centro de custo pelos itens) recebe o centro de custo pelas notas: o codigo do CLIENTE da nota (E301TCR/E140NFV.CODCLI)
- * igual ao do contrato (E160CTR.CODCLI), num centro de custo que nenhum outro contrato usa, e desde que seja um so' contrato e um so' centro de custo nessa condicao.
- * Nunca pelo nome. Exemplo: MACFROTAS CT 4336/2026 (cliente 711682): duas NDs de aluguel de veiculos (R$ 177.210) no CC 102325, sem nenhum pedido de medicao.
- */
-export function ccuDosContratosSemPedido<T extends { numCtr: string; codCli: string | null; codccu: string | null }>(contratos: T[], docs: DocFaturamento[]): { numCtr: string; codccu: string }[] {
-  const usados = new Set(contratos.map((c) => c.codccu).filter((x): x is string => !!x));
-  const atribuidos: { numCtr: string; codccu: string }[] = [];
-  const semCcu = contratos.filter((c) => !c.codccu && c.codCli);
-  for (const c of semCcu) {
-    if (semCcu.filter((o) => o.codCli === c.codCli).length !== 1) continue; // cliente com mais de um contrato sem centro de custo: ambiguo
-    const ccus = new Set(docs.filter((d) => d.codCli === c.codCli && d.codccu && !usados.has(d.codccu) && !d.duplicadaDe).map((d) => d.codccu!));
-    if (ccus.size !== 1) continue;
-    const codccu = [...ccus][0];
-    (c as { codccu: string | null }).codccu = codccu;
-    usados.add(codccu);
-    atribuidos.push({ numCtr: c.numCtr, codccu });
-  }
-  return atribuidos;
-}
