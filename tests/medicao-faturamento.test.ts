@@ -382,3 +382,80 @@ test("titulo da propria NF: so' quando valor, centro de custo, data e numero bat
   assert.equal(marcada(tit("77A1", "75759,80", "170"), "77A1"), null); // numero nao comeca pelo da NF
   assert.equal(marcada(tit("038/2025", "75759,80", "170"), "038/2025"), null); // numero de nota de debito
 });
+
+// ---------------------------------------------------------------- pagamento (titulo no Senior): so' informacao, nunca receita
+const nfPg = { CODFIL: "2", CODSNF: "A24", NUMNFV: "270", DATEMI: "14/08/2026", CODCLI: "54", VLRBSE: "308410,84", VLRLIQ: "273400,00", SITNFV: "2" };
+const itNfPg = [{ CODFIL: "2", CODSNF: "A24", NUMNFV: "270", NUMPED: "0", CODCCU: "240", VLRBRU: "308410,84" }];
+const tit270 = (extra: Record<string, string>, num = "270$01") => ({ NUMTIT: num, CODFIL: "2", CODTPT: "NFV", CODCLI: "54", SITTIT: "AB", DATEMI: "14/08/2026", VLRORI: "273400,00", CODCCU: "240", FILNFV: "2", CODSNF: "A24", NUMNFV: "270", VCTORI: "14/09/2026", VCTPRO: "30/09/2026", VLRABE: "273400,00", ULTPGT: "31/12/1900", ...extra });
+const rat270 = (num = "270$01", pct = "100", valor = "308410,84", cc = "240") => ({ NUMTIT: num, CODFIL: "2", CODCCU: cc, PERRAT: pct, VLRRAT: valor });
+
+test("pagamento: nota em aberto traz o liquido a receber e o vencimento prorrogado; nota paga traz a data do ultimo pagamento", () => {
+  const aberta = montarFaturamento({ notas: [nfPg], itensNota: itNfPg, titulos: [tit270({})], rateios: [rat270()] }, [])[0];
+  assert.equal(aberta.valorAberto, 273400); // liquido, depois das retencoes
+  assert.equal(aberta.vencimento, "2026-09-30"); // o prorrogado vale
+  assert.equal(aberta.dataPagamento, null); // 31/12/1900 = nunca pago
+  const paga = montarFaturamento({ notas: [nfPg], itensNota: itNfPg, titulos: [tit270({ SITTIT: "LQ", VLRABE: "0", ULTPGT: "27/09/2026" })], rateios: [rat270()] }, [])[0];
+  assert.equal(paga.valorAberto, 0);
+  assert.equal(paga.dataPagamento, "2026-09-27");
+});
+
+test("pagamento: nota em parcelas soma o que falta e usa o vencimento da parcela em aberto; titulo cancelado nao conta; sem a coluna do Senior fica desconhecido (nunca 'paga')", () => {
+  const parcelas = montarFaturamento({
+    notas: [nfPg], itensNota: itNfPg, rateios: [rat270("270$01", "50", "154205,42"), rat270("270$02", "50", "154205,42")],
+    titulos: [tit270({ SITTIT: "LQ", VLRABE: "0", VLRORI: "136700,00", ULTPGT: "20/09/2026" }, "270$01"), tit270({ VLRABE: "136700,00", VLRORI: "136700,00", VCTPRO: "20/10/2026" }, "270$02"), tit270({ SITTIT: "CA", VLRABE: "999,00" }, "270$03")],
+  }, [])[0];
+  assert.equal(parcelas.valorAberto, 136700); // a parcela cancelada nao entra
+  assert.equal(parcelas.vencimento, "2026-10-20"); // so' a em aberto
+  assert.equal(parcelas.dataPagamento, "2026-09-20");
+  const { VLRABE, VCTORI, VCTPRO, ULTPGT, ...antigo } = tit270({});
+  void VLRABE; void VCTORI; void VCTPRO; void ULTPGT;
+  assert.equal(montarFaturamento({ notas: [nfPg], itensNota: itNfPg, titulos: [antigo], rateios: [rat270()] }, [])[0].valorAberto ?? null, null);
+  assert.equal(montarFaturamento({ notas: [nfPg], itensNota: itNfPg, titulos: [], rateios: [] }, [])[0].valorAberto ?? null, null); // sem titulo
+});
+
+test("pagamento: nota dividida entre centros de custo reparte o que falta na mesma proporcao do valor", () => {
+  const docs = montarFaturamento({ notas: [nfPg], itensNota: itNfPg, titulos: [tit270({ VLRABE: "1000,00" })], rateios: [rat270("270$01", "60", "185046,50", "240"), rat270("270$01", "40", "123364,34", "250")] }, []);
+  assert.equal(docs.length, 2);
+  assert.equal(Math.round(docs.reduce((s, d) => s + (d.valorAberto ?? 0), 0) * 100), 100000);
+  assert.deepEqual(docs.map((d) => d.valorAberto).sort(), [400, 600]);
+});
+
+test("pagamento: o titulo lancado como ND (65A1) passa o pagamento para a NF 65, que nao tem titulo proprio; a ND duplicada nao conta", () => {
+  const e = {
+    notas: [{ CODFIL: "1", CODSNF: "A26", NUMNFV: "65", DATEMI: "02/06/2026", CODCLI: "40", VLRBSE: "80724,35", VLRLIQ: "75759,80", SITNFV: "2" }],
+    itensNota: [{ CODFIL: "1", CODSNF: "A26", NUMNFV: "65", NUMPED: "0", CODCCU: "170", VLRBRU: "80724,35" }],
+    titulos: [{ NUMTIT: "65A1", CODFIL: "1", CODTPT: "ND", CODCLI: "40", SITTIT: "AB", DATEMI: "02/06/2026", VLRORI: "75759,80", CODCCU: "170", FILNFV: "0", CODSNF: "", NUMNFV: "0", VCTORI: "02/07/2026", VCTPRO: "02/07/2026", VLRABE: "75759,80", ULTPGT: "31/12/1900" }],
+    rateios: [{ NUMTIT: "65A1", CODFIL: "1", CODCCU: "170", PERRAT: "100", VLRRAT: "75759,80" }],
+  };
+  const docs = montarFaturamento(e, []);
+  const nf = docs.find((d) => d.tipo === "NF")!;
+  assert.equal(nf.valorAberto, 75759.8);
+  assert.equal(nf.vencimento, "2026-07-02");
+  assert.equal(docs.find((d) => d.numero === "65A1")!.duplicadaDe, "65");
+});
+
+test("recebimento do mes: pagamento de um mes que cai em outro nao soma em lugar nenhum (nota de junho paga em julho fica so' em junho; a receita nao muda)", () => {
+  const nfJun = doc("1", "2026-06", 100000, { valorAberto: 0, dataPagamento: "2026-07-14", vencimento: "2026-07-10" });
+  const nfJul = doc("2", "2026-07", 50000, { valorAberto: 44000, vencimento: "2026-08-01", dataPagamento: null });
+  const sem = [doc("1", "2026-06", 100000), doc("2", "2026-07", 50000)];
+  const c = conciliar([item("a", "2026-06", 100000), item("b", "2026-07", 50000)], [nfJun, nfJul], [], "2026-06", "2026-07", "2026-08-10");
+  const jun = c.meses.find((m) => m.mes === "2026-06")!, jul = c.meses.find((m) => m.mes === "2026-07")!;
+  assert.equal(jun.recebimento.pagas, 1); // paga, e a data do pagamento (julho) nao muda o mes da nota
+  assert.equal(jun.recebimento.ultimoPagamento, "2026-07-14");
+  assert.equal(jun.nf, 100000);
+  assert.equal(jul.nf, 50000); // o pagamento de junho NAO entra em julho
+  assert.equal(jul.recebimento.abertas, 1);
+  assert.equal(jul.recebimento.atrasadas, 1); // venceu em 01/08 e hoje e' 10/08
+  assert.equal(jul.recebimento.valorAberto, 44000);
+  assert.equal(jul.recebimento.valorAtrasado, 44000);
+  // a receita e' a mesma com ou sem informacao de pagamento
+  const c2 = conciliar([item("a", "2026-06", 100000), item("b", "2026-07", 50000)], sem, [], "2026-06", "2026-07", "2026-08-10");
+  assert.deepEqual(c.meses.map((m) => m.receita), c2.meses.map((m) => m.receita));
+  assert.equal(c2.meses[0].recebimento.semTitulo, 1); // sem titulo no Senior: desconhecido
+});
+
+test("recebimento: em aberto dentro do prazo nao e' atraso; vencimento mais proximo vale", () => {
+  const c = conciliar([item("a", "2026-07", 30000)], [doc("1", "2026-07", 10000, { valorAberto: 9000, vencimento: "2026-09-30" }), doc("2", "2026-07", 20000, { valorAberto: 18000, vencimento: "2026-09-15" })], [], "2026-07", "2026-07", "2026-08-10");
+  const r = c.meses[0].recebimento;
+  assert.equal(r.abertas, 2); assert.equal(r.atrasadas, 0); assert.equal(r.valorAberto, 27000); assert.equal(r.vencimento, "2026-09-15");
+});

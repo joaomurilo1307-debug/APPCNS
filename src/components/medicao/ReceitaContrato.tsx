@@ -17,6 +17,23 @@ const vc = (v: number) => moedaCompacta(v).replace("R$ ", "");
 const dataBr = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 const rotuloDoc = (tipo: string, numero: string) => (tipo === "ND" && /^ND/i.test(numero) ? numero : `${tipo === "NF" ? "NF" : "ND"} ${numero}`);
 const COMO: Record<Vinculo, string> = { NOTA: "ligada pelo Senior", VALOR: "mesmo valor", SOMA: "soma de pedidos", APROX: "valor quase igual" };
+const hojeIso = () => new Date().toLocaleDateString("sv-SE");
+const chip = "rounded-full px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap";
+
+/**
+ * Recebimento de UMA nota (titulo a receber no Senior). Valor LIQUIDO (depois das retencoes). E' so' informacao: o pagamento nunca entra na receita; a nota conta no mes do
+ * trabalho mesmo que seja paga em outro mes.
+ */
+function ChipNota({ d, duplicada }: { d: { valorAberto?: number | null; vencimento?: string | null; dataPagamento?: string | null }; duplicada?: boolean }) {
+  if (duplicada) return <span className="text-gray-300">·</span>;
+  if (d.valorAberto == null) return <span className={`${chip} bg-gray-100 text-gray-600`} title="Esta nota não tem título a receber no Senior">sem título no Senior</span>;
+  if (d.valorAberto <= 0.05) return <span className={`${chip} bg-emerald-100 text-emerald-800`} title="Título liquidado no Senior">{d.dataPagamento ? `pago em ${dataBr(d.dataPagamento)}` : "pago"}</span>;
+  const atraso = !!d.vencimento && d.vencimento < hojeIso();
+  const venc = d.vencimento ? dataBr(d.vencimento) : "sem vencimento";
+  return atraso
+    ? <span className={`${chip} bg-rose-100 text-rose-800`} title={`Falta o pagamento da nota: ${moeda(d.valorAberto)} (líquido, depois das retenções). Venceu em ${venc}.`}>falta pagamento · venceu {venc} · {vc(d.valorAberto)}</span>
+    : <span className={`${chip} bg-amber-100 text-amber-800`} title={`Falta o pagamento da nota: ${moeda(d.valorAberto)} (líquido, depois das retenções). Vence em ${venc}.`}>falta pagamento · vence {venc} · {vc(d.valorAberto)}</span>;
+}
 
 /** Barras empilhadas por mes: medicao faturada em NF (verde-azulado) e notas de debito (violeta). Um eixo, valores brutos. */
 function BarrasReceita({ meses, selecionado, onSelecionar }: { meses: MesConc[]; selecionado: string | null; onSelecionar: (m: string) => void }) {
@@ -81,10 +98,20 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
   const t = c.totais;
   const conferencia = (m: MesConc) => {
     if (!m.medido && !m.faturado) return <span className="text-gray-300">·</span>;
-    if (Math.abs(m.dif) < 0.05) return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-800" title={m.ndAvulsa > 0 ? `Fecha: as linhas dos pedidos (${moeda(m.medido)}) mais a nota de débito sem pedido (${moeda(m.ndAvulsa)}) são a receita` : "A soma das linhas dos pedidos do mês é a receita"}>fecha</span>;
+    if (Math.abs(m.dif) < 0.05) return <span className={`${chip} bg-emerald-100 text-emerald-800`} title={m.ndAvulsa > 0 ? `As linhas dos pedidos (${moeda(m.medido)}) mais a nota de débito sem pedido (${moeda(m.ndAvulsa)}) estão todas em nota` : "Tudo que foi medido no mês está em nota"}>nota entrada</span>;
     return m.dif > 0
-      ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-semibold text-amber-800" title={`Medido em ${mesLongo(m.mes)} e ainda sem nota: ${moeda(m.semNota)}. Esse valor conta na receita.`}>sem nota {vc(m.semNota)}</span>
-      : <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10.5px] font-semibold text-rose-800" title={`Notas emitidas: ${moeda(m.faturado)}. Linhas medidas no Senior: ${moeda(m.receita)}. Faltam ${moeda(-m.dif)} de medição lançada nos pedidos.`}>falta lançar {vc(-m.dif)}</span>;
+      ? <span className={`${chip} bg-amber-100 text-amber-800`} title={`Pedido feito em ${mesLongo(m.mes)}: ${moeda(m.semNota)} ainda sem nota no Senior. Esse valor conta na receita.`}>pedido feito, nota não entrada {vc(m.semNota)}</span>
+      : <span className={`${chip} bg-slate-100 text-slate-700`} title={`Notas emitidas: ${moeda(m.faturado)}. Linhas medidas no Senior: ${moeda(m.receita)}. A nota conta na receita; o pedido segue como está no Senior.`}>nota entrada, pedido não lançado {vc(-m.dif)}</span>;
+  };
+  const recebimento = (m: MesConc) => {
+    const r = m.recebimento;
+    if (!r || r.notas === 0) return <span className="text-gray-300">·</span>;
+    if (r.abertas === 0 && r.semTitulo === 0) return <span className={`${chip} bg-emerald-100 text-emerald-800`} title={`Todas as notas do mês estão pagas${r.ultimoPagamento ? ` (último pagamento em ${dataBr(r.ultimoPagamento)})` : ""}. O pagamento não entra na receita.`}>recebido</span>;
+    if (r.abertas === 0) return <span className={`${chip} bg-gray-100 text-gray-600`} title="As notas do mês não têm título a receber no Senior">sem título no Senior</span>;
+    const parte = `${r.pagas} de ${r.notas} nota(s) paga(s). Falta ${moeda(r.valorAberto)} (líquido, depois das retenções).`;
+    return r.atrasadas > 0
+      ? <span className={`${chip} bg-rose-100 text-rose-800`} title={`${parte} ${moeda(r.valorAtrasado)} já venceu.`}>falta pagamento · em atraso {vc(r.valorAtrasado)}</span>
+      : <span className={`${chip} bg-amber-100 text-amber-800`} title={`${parte} Próximo vencimento: ${r.vencimento ? dataBr(r.vencimento) : "—"}.`}>falta pagamento · {vc(r.valorAberto)}{r.vencimento ? ` · vence ${dataBr(r.vencimento).slice(0, 5)}` : ""}</span>;
   };
 
   return (
@@ -132,7 +159,8 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
               <th className={`${th} text-right`} title="Retenções da nota fiscal (PIS, COFINS, CSLL, IRRF, ISS…); a nota de débito não tem retenção">Retenções</th>
               <th className={`${th} text-right`}>Receita líquida</th>
               <th className={`${th} text-right`} title="Soma das linhas dos pedidos de medição do mês">Soma das linhas medidas</th>
-              <th className={`${th} text-center`}>Conferência</th>
+              <th className={`${th} text-center`} title="Tudo que foi medido (pedido) tem nota? Pedido feito sem nota, ou nota sem pedido lançado, aparece aqui">Medição × nota</th>
+              <th className={`${th} text-center`} title="Situação do título da nota no Senior (valor líquido). É só informação: o pagamento nunca entra na receita">Recebimento</th>
             </tr>
           </thead>
           <tbody>
@@ -147,6 +175,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
                 <td className={`${td} text-right text-gray-500`}>{m.liquido ? vc(m.liquido) : <span className="text-gray-300">·</span>}</td>
                 <td className={`${td} text-right text-gray-700`}>{m.medido ? vc(m.medido) : <span className="text-gray-300">·</span>}</td>
                 <td className={`${td} text-center`}>{conferencia(m)}</td>
+                <td className={`${td} text-center`}>{recebimento(m)}</td>
               </tr>
             ))}
             <tr className="font-semibold">
@@ -159,11 +188,12 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
               <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right text-gray-500">{vc(t.liquido)}</td>
               <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-right">{vc(t.medido)}</td>
               <td className="border-t-2 border-gray-200 bg-gray-50" />
+              <td className="border-t-2 border-gray-200 bg-gray-50 px-2.5 py-2 text-center text-[11.5px] font-medium text-amber-700">{c.meses.reduce((a, m) => a + (m.recebimento?.valorAberto ?? 0), 0) > 0.05 ? `a receber ${vc(c.meses.reduce((a, m) => a + (m.recebimento?.valorAberto ?? 0), 0))}` : ""}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400">Clique num mês (na tabela ou no gráfico) para ver os pedidos e as notas dele.{dados.contratos.length > 1 ? ` Inclui os contratos do mesmo centro de custo: ${dados.contratos.join(", ")}.` : ""}</p>
+      <p className="text-xs text-gray-400">Clique num mês (na tabela ou no gráfico) para ver os pedidos e as notas dele. Recebimento é a situação do título no Senior (valor líquido, depois das retenções) e é só informação: a nota conta na receita do mês do trabalho, mesmo que o pagamento caia em outro mês, e o pagamento nunca soma na receita.{dados.contratos.length > 1 ? ` Inclui os contratos do mesmo centro de custo: ${dados.contratos.join(", ")}.` : ""}</p>
 
       {/* ---------------- o mes escolhido: pedidos e notas */}
       {mes && (
@@ -174,7 +204,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
           </div>
           <div className="overflow-x-auto rounded-lg border border-gray-100 bg-white">
             <table className="w-full min-w-[640px] border-separate border-spacing-0 text-[12.5px]">
-              <thead><tr><th className={`${th} text-left`}>Pedido</th><th className={`${th} text-left`}>Boletim</th><th className={`${th} text-right`}>Linhas</th><th className={`${th} text-right`}>Valor do pedido</th><th className={`${th} text-left`}>Nota</th><th className={`${th} text-right`}>Bruto</th><th className={`${th} text-right`}>Líquido</th></tr></thead>
+              <thead><tr><th className={`${th} text-left`}>Pedido</th><th className={`${th} text-left`}>Boletim</th><th className={`${th} text-right`}>Linhas</th><th className={`${th} text-right`}>Valor do pedido</th><th className={`${th} text-left`}>Nota</th><th className={`${th} text-right`}>Bruto</th><th className={`${th} text-right`}>Líquido</th><th className={`${th} text-left`}>Recebimento</th></tr></thead>
               <tbody>
                 {pedidosMes.map((p) => (p.documentos.length ? p.documentos : [null]).map((d, i) => {
                   const doc = d ? c.docs.find((x) => x.chave === d.chave) : null;
@@ -187,6 +217,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
                       <td className={`${td} text-gray-800`}>{d ? <>{rotuloDoc(d.tipo, d.numero)} <span className="text-[11px] text-gray-400">{COMO[d.como]}</span></> : <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-800">ainda sem nota</span>}</td>
                       <td className={`${td} text-right tabular-nums text-gray-700`}>{d ? moeda(d.valor) : ""}</td>
                       <td className={`${td} text-right tabular-nums text-gray-700`}>{doc ? moeda(doc.valorLiquido) : ""}</td>
+                      <td className={td}>{doc ? <ChipNota d={doc} duplicada={!!doc.duplicadaDe} /> : d ? "" : <span className={`${chip} bg-amber-100 text-amber-800`}>pedido feito, nota não entrada</span>}</td>
                     </tr>
                   );
                 }))}
@@ -196,9 +227,10 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
                     <td className={`${td} text-gray-800`}>{rotuloDoc(d.tipo, d.numero)}</td>
                     <td className={`${td} text-right tabular-nums text-gray-700`}>{moeda(d.valor)}</td>
                     <td className={`${td} text-right tabular-nums text-gray-700`}>{moeda(d.valorLiquido)}</td>
+                    <td className={td}><ChipNota d={d} /></td>
                   </tr>
                 ))}
-                {pedidosMes.length === 0 && docsMes.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">Nada neste mês.</td></tr>}
+                {pedidosMes.length === 0 && docsMes.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-400">Nada neste mês.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -234,7 +266,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
           </div>
           <div className="max-h-[360px] overflow-auto rounded-lg border border-gray-100 bg-white">
             <table className="w-full min-w-[760px] border-separate border-spacing-0 text-[12.5px]">
-              <thead className="sticky top-0 z-10"><tr><th className={`${th} text-left`}>Documento</th><th className={`${th} text-left`}>Emissão</th><th className={`${th} text-left`}>Mês do trabalho</th><th className={`${th} text-right`}>Bruto</th><th className={`${th} text-right`}>Líquido</th><th className={`${th} text-left`}>Pedidos</th></tr></thead>
+              <thead className="sticky top-0 z-10"><tr><th className={`${th} text-left`}>Documento</th><th className={`${th} text-left`}>Emissão</th><th className={`${th} text-left`}>Mês do trabalho</th><th className={`${th} text-right`}>Bruto</th><th className={`${th} text-right`}>Líquido</th><th className={`${th} text-left`}>Pedidos</th><th className={`${th} text-left`}>Recebimento</th></tr></thead>
               <tbody>
                 {c.docs.map((d) => (
                   <tr key={d.chave}>
@@ -244,6 +276,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
                     <td className={`${td} text-right tabular-nums text-gray-900`}>{moeda(d.valor)}</td>
                     <td className={`${td} text-right tabular-nums text-gray-700`}>{moeda(d.valorLiquido)}</td>
                     <td className={`${td} text-gray-700`}>{d.duplicadaDe ? <span className="text-gray-500">duplicada da NF {d.duplicadaDe}: não conta na receita</span> : d.vinculo ? `${d.pedidosLigados.join(", ")} (${COMO[d.vinculo]})` : d.competencia === "0000-00" ? "—" : d.tipo === "ND" ? <span className="text-violet-700">sem pedido (entra na receita)</span> : <span className="text-amber-700">sem pedido no Senior</span>}</td>
+                    <td className={td}><ChipNota d={d} duplicada={!!d.duplicadaDe} /></td>
                   </tr>
                 ))}
               </tbody>

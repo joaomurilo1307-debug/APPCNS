@@ -16,7 +16,7 @@ import { numero, type ItemMedicao, type Linha } from "./montagem";
 export type EntradaFaturamento = {
   notas: Linha[]; // E140NFV: CODFIL, CODSNF, NUMNFV, DATEMI, CODCLI, VLRBSE (bruto), VLRLIQ (liquido, depois das retencoes), SITNFV
   itensNota: Linha[]; // E140ISV: CODFIL, CODSNF, NUMNFV, NUMPED, SEQISP, CODCCU, VLRBRU
-  titulos: Linha[]; // E301TCR: NUMTIT, CODFIL, CODTPT, CODCLI, SITTIT, DATEMI, VLRORI, CODCCU, FILNFV, CODSNF, NUMNFV
+  titulos: Linha[]; // E301TCR: NUMTIT, CODFIL, CODTPT, CODCLI, SITTIT, DATEMI, VLRORI, CODCCU, FILNFV, CODSNF, NUMNFV + pagamento: VCTORI, VCTPRO (vencimento), VLRABE (liquido em aberto), ULTPGT (ultimo pagamento)
   rateios: Linha[]; // E301RAT: NUMTIT, CODFIL, CODCCU, PERRAT, VLRRAT
 };
 
@@ -28,6 +28,10 @@ export type DocFaturamento = {
   valorLiquido: number; // liquido da parte (NF: depois das retencoes, E140NFV.VLRLIQ; ND: sem retencao, igual ao bruto)
   valorDoc: number; // valor bruto total do documento
   codccu: string | null; competencia: string; origem: "PEDIDO" | "EMISSAO" | "ACUMULADO"; pedidos: string | null; situacao: string | null; codCli: string | null;
+  // Recebimento (titulo no Senior, E301TCR). E' so' INFORMACAO sobre a nota: o pagamento NUNCA entra na receita, que e' do mes do trabalho; uma nota de junho paga em julho continua so' em junho.
+  vencimento?: string | null; // aaaa-mm-dd: vencimento (prorrogado, senao o original) mais proximo entre os titulos ainda em aberto da nota
+  dataPagamento?: string | null; // aaaa-mm-dd do ultimo pagamento (E301TCR.ULTPGT)
+  valorAberto?: number | null; // LIQUIDO (depois das retencoes) que o cliente ainda nao pagou, a parte deste centro de custo (E301TCR.VLRABE). 0 = paga. null = sem titulo no Senior
 };
 
 const texto = (t: string | undefined | null) => String(t ?? "").trim();
@@ -67,6 +71,22 @@ export function competenciaPorPedido(itens: Pick<ItemMedicao, "numPed" | "compet
   }
   return r;
 }
+
+type Pagamento = { aberto: number; vencimento: string | null; pago: string | null };
+/**
+ * Pagamento dos titulos de uma nota no Senior: ignora os cancelados (CA); aberto = soma de VLRABE (liquido); vencimento = o mais proximo entre os que ainda estao em aberto
+ * (VCTPRO, ou VCTORI); pago = data do ultimo pagamento (ULTPGT, 31/12/1900 = nunca pago). Sem titulo valido, ou leitura antiga sem a coluna VLRABE: null (desconhecido, nunca "paga").
+ */
+function pagamentoDosTitulos(titulos: Linha[] | undefined): Pagamento | null {
+  const ts = (titulos ?? []).filter((t) => texto(t.SITTIT) !== "CA");
+  if (ts.length === 0 || ts.every((t) => t.VLRABE === undefined)) return null;
+  const venc = (t: Linha) => dataIso(t.VCTPRO) ?? dataIso(t.VCTORI);
+  const emAberto = ts.filter((t) => numero(t.VLRABE) > 0.005).map(venc).filter((v): v is string => !!v).sort();
+  const todos = ts.map(venc).filter((v): v is string => !!v).sort();
+  const pagos = ts.map((t) => dataIso(t.ULTPGT)).filter((v): v is string => !!v).sort();
+  return { aberto: arred(ts.reduce((s, t) => s + numero(t.VLRABE), 0)), vencimento: (emAberto.length ? emAberto : todos)[0] ?? null, pago: pagos.length ? pagos[pagos.length - 1] : null };
+}
+const parteDoPagamento = (pg: Pagamento | null, parte: number, doc: number) => ({ vencimento: pg?.vencimento ?? null, dataPagamento: pg?.pago ?? null, valorAberto: pg ? arred((pg.aberto * parte) / doc) : null });
 
 export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<ItemMedicao, "numPed" | "competencia" | "origem" | "valor" | "numCtr">[], contratos: { numCtr: string; codccu: string | null }[] = []): DocFaturamento[] {
   const compPed = competenciaPorPedido(itensMedicao);
@@ -125,12 +145,13 @@ export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<Item
     if (pesosDoPedido.size > 0) { pesos.clear(); for (const [ccu, v] of pesosDoPedido) pesos.set(ccu, v); }
     const doPedido = peds.map((p) => compPed.get(p)).find(Boolean);
     const liquidada = (titulosDaNota.get(k) ?? []).some((t) => texto(t.SITTIT) === "LQ");
+    const pg = pagamentoDosTitulos(titulosDaNota.get(k));
     for (const parte of repartir(valorDoc, pesos)) {
       let competencia: string, origem: DocFaturamento["origem"];
       if (doPedido) { competencia = doPedido.competencia; origem = doPedido.competencia === COMPETENCIA_ACUMULADO ? "ACUMULADO" : "PEDIDO"; }
       else { competencia = competenciaPorEmissao(emissao, parte.ccu) ?? emissao.slice(0, 7); origem = "EMISSAO"; }
       liquidadas.set(`NF|${k}|${parte.ccu ?? ""}`, liquidada);
-      docs.push({ chave: `NF|${k}|${parte.ccu ?? ""}`, tipo: "NF", numero: texto(n.NUMNFV), filial: texto(n.CODFIL), serie: texto(n.CODSNF) || null, dataEmissao: emissao, codccuOriginal: null, valor: parte.valor, valorLiquido: arred((liquidoDoc * parte.valor) / valorDoc), valorDoc, codccu: parte.ccu, competencia, origem, pedidos: peds.length ? peds.join(",") : null, situacao: sit === "2" ? "AUTORIZADA" : "EM ELABORACAO", codCli: texto(n.CODCLI) || null });
+      docs.push({ chave: `NF|${k}|${parte.ccu ?? ""}`, tipo: "NF", numero: texto(n.NUMNFV), filial: texto(n.CODFIL), serie: texto(n.CODSNF) || null, dataEmissao: emissao, codccuOriginal: null, valor: parte.valor, valorLiquido: arred((liquidoDoc * parte.valor) / valorDoc), valorDoc, codccu: parte.ccu, competencia, origem, pedidos: peds.length ? peds.join(",") : null, situacao: sit === "2" ? "AUTORIZADA" : "EM ELABORACAO", codCli: texto(n.CODCLI) || null, ...parteDoPagamento(pg, parte.valor, valorDoc) });
     }
   }
 
@@ -141,8 +162,9 @@ export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<Item
     if (valorDoc <= 0 || !emissao) continue;
     const pesos = new Map(rateioDoTitulo.get(`${texto(t.CODFIL)}|${texto(t.NUMTIT)}`) ?? []);
     if (pesos.size === 0 && texto(t.CODCCU)) pesos.set(texto(t.CODCCU), valorDoc);
+    const pgND = pagamentoDosTitulos([t]);
     for (const parte of repartir(valorDoc, pesos)) {
-      docs.push({ chave: `ND|${texto(t.CODFIL)}|${texto(t.NUMTIT)}|${parte.ccu ?? ""}`, tipo: "ND", numero: texto(t.NUMTIT), filial: texto(t.CODFIL), serie: null, dataEmissao: emissao, codccuOriginal: null, valor: parte.valor, valorLiquido: parte.valor, valorDoc, codccu: parte.ccu, competencia: competenciaPorEmissao(emissao, parte.ccu) ?? emissao.slice(0, 7), origem: "EMISSAO", pedidos: null, situacao: texto(t.SITTIT) === "LQ" ? "LIQUIDADA" : "EM ABERTO", codCli: texto(t.CODCLI) || null });
+      docs.push({ chave: `ND|${texto(t.CODFIL)}|${texto(t.NUMTIT)}|${parte.ccu ?? ""}`, tipo: "ND", numero: texto(t.NUMTIT), filial: texto(t.CODFIL), serie: null, dataEmissao: emissao, codccuOriginal: null, valor: parte.valor, valorLiquido: parte.valor, valorDoc, codccu: parte.ccu, competencia: competenciaPorEmissao(emissao, parte.ccu) ?? emissao.slice(0, 7), origem: "EMISSAO", pedidos: null, situacao: texto(t.SITTIT) === "LQ" ? "LIQUIDADA" : "EM ABERTO", codCli: texto(t.CODCLI) || null, ...parteDoPagamento(pgND, parte.valor, valorDoc) });
     }
   }
   marcarDuplicadas(docs, liquidadas);
@@ -183,12 +205,28 @@ function marcarTituloDaPropriaNota(docs: DocFaturamento[]) {
   const padraoND = /^(ND|NF)?\s*\d+\/\d{4}$/i; // "ND 044/2026", "038/2025", "NF 033/2026": numeros de nota de debito de verdade
   const dias = (a: string, b: string) => Math.abs((Date.parse(a) - Date.parse(b)) / 86400000);
   const nfs = docs.filter((d) => d.tipo === "NF" && !d.duplicadaDe);
+  // o pagamento da NF vive nesse titulo: passa para a nota (que fica sem titulo proprio no Senior)
+  const heranca = new Map<string, { aberto: number; vencimento: string | null; pago: string | null }>();
   for (const nd of docs) {
     if (nd.tipo !== "ND" || nd.duplicadaDe) continue;
     const num = String(nd.numero).trim();
     if (padraoND.test(num)) continue;
     const nf = nfs.find((x) => x.codccu === nd.codccu && dias(x.dataEmissao, nd.dataEmissao) <= 3 && num.startsWith(String(x.numero).trim())
       && (Math.abs(x.valorLiquido - nd.valorDoc) <= 0.05 || Math.abs(x.valorDoc - nd.valorDoc) <= 0.05));
-    if (nf) nd.duplicadaDe = nf.numero;
+    if (!nf) continue;
+    nd.duplicadaDe = nf.numero;
+    if (nd.valorAberto != null) {
+      const k = `${nf.filial}|${nf.serie}|${nf.numero}`;
+      const h = heranca.get(k) ?? { aberto: 0, vencimento: null, pago: null };
+      h.aberto = arred(h.aberto + nd.valorAberto);
+      if (nd.vencimento && (!h.vencimento || nd.vencimento < h.vencimento)) h.vencimento = nd.vencimento;
+      if (nd.dataPagamento && (!h.pago || nd.dataPagamento > h.pago)) h.pago = nd.dataPagamento;
+      heranca.set(k, h);
+    }
+  }
+  for (const d of docs) {
+    if (d.tipo !== "NF" || d.valorAberto != null) continue;
+    const h = heranca.get(`${d.filial}|${d.serie}|${d.numero}`);
+    if (h) { d.valorAberto = arred((h.aberto * d.valor) / d.valorDoc); d.vencimento = h.vencimento; d.dataPagamento = h.pago; }
   }
 }

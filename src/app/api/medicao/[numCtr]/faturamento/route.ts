@@ -43,12 +43,12 @@ export async function GET(req: Request, { params }: { params: { numCtr: string }
     prisma.faturamentoMedicao.findMany({ where: { codccu: { not: null } } }), // todos os centros de custo: o aviso de nota em outro CC precisa deles
     nomesDosCentros(prisma, [c.codccu]),
   ]);
-  const doc = (d: (typeof docs)[number]) => ({ chave: d.chave, tipo: d.tipo as "NF" | "ND", numero: d.numero, filial: d.filial, serie: d.serie, dataEmissao: d.dataEmissao.toISOString().slice(0, 10), valor: d.valor, valorLiquido: d.valorLiquido > 0 ? d.valorLiquido : d.valor, valorDoc: d.valorDoc, codccu: d.codccu, competencia: d.competencia, origem: d.origem as "PEDIDO" | "EMISSAO" | "ACUMULADO", pedidos: d.pedidos, situacao: d.situacao, duplicadaDe: d.duplicadaDe });
+  const doc = (d: (typeof docs)[number]) => ({ chave: d.chave, tipo: d.tipo as "NF" | "ND", numero: d.numero, filial: d.filial, serie: d.serie, dataEmissao: d.dataEmissao.toISOString().slice(0, 10), valor: d.valor, valorLiquido: d.valorLiquido > 0 ? d.valorLiquido : d.valor, valorDoc: d.valorDoc, codccu: d.codccu, competencia: d.competencia, origem: d.origem as "PEDIDO" | "EMISSAO" | "ACUMULADO", pedidos: d.pedidos, situacao: d.situacao, duplicadaDe: d.duplicadaDe, vencimento: d.vencimento, dataPagamento: d.dataPagamento, valorAberto: d.valorAberto });
   const conc = conciliar(
     itens.map((i) => ({ ...i, dataEmissao: i.dataEmissao.toISOString().slice(0, 10) })),
     docs.filter((d) => d.codccu === c.codccu).map(doc),
     docs.filter((d) => d.codccu !== c.codccu).map(doc),
-    de, ate,
+    de, ate, hojeBR(),
   );
   return NextResponse.json({
     ...base, ccu: c.codccu, ccuNome: nomes.get(c.codccu) ?? `CC ${c.codccu}`, de, ate, mesAtual, conciliacao: conc,

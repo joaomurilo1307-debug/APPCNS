@@ -67,7 +67,7 @@ export async function lerMedicaoDoSenior(progresso: (etapa: string, pct: number)
     await progresso("Lendo os itens das notas (E140ISV)", 84);
     const itensNota = await comRetentativa("itens das notas (E140ISV)", () => c("SELECT CODFIL, CODSNF, NUMNFV, NUMPED, CODCCU, VLRBRU FROM E140ISV", 5 * MINUTO));
     await progresso("Lendo os títulos das notas e as notas de débito (E301TCR)", 86);
-    const titulos = await comRetentativa("titulos a receber (E301TCR)", () => c("SELECT NUMTIT, CODFIL, CODTPT, CODCLI, SITTIT, DATEMI, VLRORI, CODCCU, FILNFV, CODSNF, NUMNFV FROM E301TCR WHERE NUMNFV<>0 OR CODTPT='ND'", 5 * MINUTO));
+    const titulos = await comRetentativa("titulos a receber (E301TCR)", () => c("SELECT NUMTIT, CODFIL, CODTPT, CODCLI, SITTIT, DATEMI, VLRORI, CODCCU, FILNFV, CODSNF, NUMNFV, VCTORI, VCTPRO, VLRABE, ULTPGT FROM E301TCR WHERE NUMNFV<>0 OR CODTPT='ND'", 5 * MINUTO));
     const nums = [...new Set(titulos.map((t) => t.NUMTIT.trim()).filter(Boolean))];
     const rateiosFat: Linha[] = [];
     const gt = lotes(nums, 250);

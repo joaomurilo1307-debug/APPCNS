@@ -24,7 +24,18 @@ import { COMPETENCIA_ACUMULADO, somaMes } from "./competencia";
 import type { DocFaturamento } from "./faturamento";
 
 export type ItemConc = { numPed: string; competencia: string; origem: string; boletim: string | null; situacao: string | null; qtd: number; valor: number; dataEmissao: string };
-export type DocConc = Pick<DocFaturamento, "chave" | "tipo" | "numero" | "filial" | "serie" | "dataEmissao" | "valor" | "valorLiquido" | "valorDoc" | "codccu" | "competencia" | "origem" | "pedidos" | "situacao" | "duplicadaDe">;
+export type DocConc = Pick<DocFaturamento, "chave" | "tipo" | "numero" | "filial" | "serie" | "dataEmissao" | "valor" | "valorLiquido" | "valorDoc" | "codccu" | "competencia" | "origem" | "pedidos" | "situacao" | "duplicadaDe" | "vencimento" | "dataPagamento" | "valorAberto">;
+
+/** Recebimento das notas de um mes (titulos no Senior). So' informacao: NAO entra na receita; cada nota conta uma vez, no mes do trabalho, mesmo que o pagamento caia em outro mes. */
+export type Recebimento = {
+  notas: number; // notas e notas de debito do mes (sem as duplicadas)
+  pagas: number; abertas: number; atrasadas: number; semTitulo: number;
+  valorAberto: number; // LIQUIDO que o cliente ainda nao pagou (soma dos titulos em aberto)
+  valorAtrasado: number; // parte do valorAberto com vencimento antes de hoje
+  vencimento: string | null; // o vencimento mais proximo entre as notas em aberto (aaaa-mm-dd)
+  ultimoPagamento: string | null; // data do ultimo pagamento das notas do mes (aaaa-mm-dd)
+};
+const recebimentoVazio = (): Recebimento => ({ notas: 0, pagas: 0, abertas: 0, atrasadas: 0, semTitulo: 0, valorAberto: 0, valorAtrasado: 0, vencimento: null, ultimoPagamento: null });
 
 export type Vinculo = "NOTA" | "VALOR" | "SOMA" | "APROX";
 export type MesConc = {
@@ -34,6 +45,7 @@ export type MesConc = {
   semNota: number; // medido nos pedidos e ainda sem nota (conta na receita, marcado)
   notaAcima: number; // nota sem pedido, ou acima do pedido do mes (ja esta em nf; o pedido fica como esta no Senior)
   receita: number; // receita bruta = nf + nd + semNota
+  recebimento: Recebimento; // situacao de pagamento das notas do mes (informativo, fora da receita)
   nf: number; nd: number; faturado: number; // bruto: medicao faturada em NF, notas de debito, soma das notas emitidas
   nfLiquido: number; liquido: number; retencoes: number; // liquido = NF liquida + ND ; retencoes = faturado - liquido
   dif: number; // semNota - notaAcima: positivo = medido sem nota; negativo = nota acima do medido
@@ -71,7 +83,22 @@ function combinacoes<T>(l: T[], k: number): T[][] {
 const vizinhos = (comps: string[]) => Math.max(...comps.map(indice)) - Math.min(...comps.map(indice)) <= 3;
 
 /** itens = itens dos pedidos do contrato; docsDoCc = NF e ND do centro de custo principal; docsOutrosCc = as dos demais centros de custo (so' para o aviso de rateio trocado). */
-export function conciliar(itens: ItemConc[], docsDoCc: DocConc[], docsOutrosCc: DocConc[], de: string, ate: string): Conciliacao {
+function acumulaRecebimento(m: Map<string, Recebimento>, d: DocConc, hoje: string) {
+  const r = m.get(d.competencia) ?? recebimentoVazio();
+  r.notas += 1;
+  if (d.valorAberto == null) r.semTitulo += 1;
+  else if (d.valorAberto <= TOL) r.pagas += 1;
+  else {
+    r.abertas += 1; r.valorAberto = arred(r.valorAberto + d.valorAberto);
+    if (d.vencimento && d.vencimento < hoje) { r.atrasadas += 1; r.valorAtrasado = arred(r.valorAtrasado + d.valorAberto); }
+    if (d.vencimento && (!r.vencimento || d.vencimento < r.vencimento)) r.vencimento = d.vencimento;
+  }
+  if (d.dataPagamento && (!r.ultimoPagamento || d.dataPagamento > r.ultimoPagamento)) r.ultimoPagamento = d.dataPagamento;
+  m.set(d.competencia, r);
+}
+
+/** hoje (aaaa-mm-dd) so' serve para marcar o titulo em aberto como vencido. */
+export function conciliar(itens: ItemConc[], docsDoCc: DocConc[], docsOutrosCc: DocConc[], de: string, ate: string, hoje: string = new Date().toISOString().slice(0, 10)): Conciliacao {
   const outrosCc = docsOutrosCc.filter((d) => d.codccu && !d.duplicadaDe && d.competencia !== COMPETENCIA_ACUMULADO);
 
   // ---- pedidos do contrato (um por numero de pedido)
@@ -152,12 +179,14 @@ export function conciliar(itens: ItemConc[], docsDoCc: DocConc[], docsOutrosCc: 
   }
   const acumMedido = itens.filter((i) => i.competencia === COMPETENCIA_ACUMULADO).reduce((s, i) => s + i.valor, 0);
   let acumFaturado = 0, antesInicioQtd = 0, antesInicioValor = 0;
+  const recPorMes = new Map<string, Recebimento>();
   for (const d of docs) {
     if (d.competencia === COMPETENCIA_ACUMULADO) { acumFaturado += d.valor; continue; }
     if (inicio && d.competencia < inicio) { antesInicioQtd += 1; antesInicioValor += d.valor; continue; }
     if (d.tipo === "NF") { mais(nfPorMes, d.competencia, d.valor); mais(nfLiqPorMes, d.competencia, d.valorLiquido); if (!d.vinculo) mais(nfSemPedidoPorMes, d.competencia, d.valor); }
     else { mais(ndPorMes, d.competencia, d.valor); if (!d.vinculo) mais(ndAvulsaPorMes, d.competencia, d.valor); } // ND que nao e' pedido soma na receita
     docsPorMes.set(d.competencia, (docsPorMes.get(d.competencia) ?? 0) + 1);
+    acumulaRecebimento(recPorMes, d, hoje);
   }
 
   const meses: MesConc[] = [];
@@ -176,7 +205,7 @@ export function conciliar(itens: ItemConc[], docsDoCc: DocConc[], docsOutrosCc: 
     const dif = arred(semNota - notaAcima);
     saldoPeriodo = arred(saldoPeriodo + dif);
     if (Math.abs(dif) >= TOL) comDif += 1;
-    meses.push({ mes: m, medido: med, ndAvulsa: avulsa, semNota, notaAcima, receita, nf, nd, faturado, nfLiquido: nfLiq, liquido: arred(nfLiq + nd), retencoes: arred(faturado - nfLiq - nd), dif, saldoAcum: saldoPeriodo, saldoDesdeInicio: saldo, pedidos: pedidosPorMes.get(m)?.size ?? 0, docs: docsPorMes.get(m) ?? 0 });
+    meses.push({ mes: m, medido: med, ndAvulsa: avulsa, semNota, notaAcima, receita, recebimento: recPorMes.get(m) ?? recebimentoVazio(), nf, nd, faturado, nfLiquido: nfLiq, liquido: arred(nfLiq + nd), retencoes: arred(faturado - nfLiq - nd), dif, saldoAcum: saldoPeriodo, saldoDesdeInicio: saldo, pedidos: pedidosPorMes.get(m)?.size ?? 0, docs: docsPorMes.get(m) ?? 0 });
   }
 
   const docsPeriodo = docs.filter((d) => (d.competencia >= de && d.competencia <= ate) || d.competencia === COMPETENCIA_ACUMULADO);

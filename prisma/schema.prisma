@@ -1709,6 +1709,9 @@ model FaturamentoMedicao {
   pedidos     String? // numeros dos pedidos de venda ligados a nota no Senior (itens da nota), separados por virgula
   situacao    String?
   codCli      String?
+  vencimento  String? // aaaa-mm-dd: vencimento do titulo da nota no Senior (o mais proximo entre os em aberto)
+  dataPagamento String? // aaaa-mm-dd do ultimo pagamento (E301TCR.ULTPGT)
+  valorAberto Float? // LIQUIDO ainda nao pago, a parte deste centro de custo (E301TCR.VLRABE); 0 = paga; null = sem titulo. Nunca entra na receita
 
   @@index([codccu, competencia])
 }
