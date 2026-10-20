@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { pendenciasOc } from "@/lib/senior/pendenciasOc";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 
 // Conferência de OC: todas as OCs da Senior com vencimento no período (com ou sem
@@ -23,6 +24,7 @@ type Oc = {
   dossieStatus: string | null;
   dossieMotivo: string | null;
   nfs: string[];
+  rateioTotal: number | null;
 };
 
 const SIT_LABEL: Record<string, string> = {
@@ -333,8 +335,10 @@ export default function ConferenciaOcPage() {
             </tr>
           </thead>
           <tbody>
-            {filtradas.map((o, i) => (
-              <tr key={`${o.codFil}-${o.numOcp}`} className={i % 2 === 1 ? "bg-gray-50/60" : undefined}>
+            {filtradas.map((o, i) => {
+              const pend = pendenciasOc(o);
+              return (
+              <tr key={`${o.codFil}-${o.numOcp}`} className={pend.length ? "bg-red-50" : i % 2 === 1 ? "bg-gray-50/60" : undefined}>
                 <td className="px-3 py-1.5">
                   <input type="checkbox" checked={selecionadas.has(chave(o))} onChange={() => alternar(o)} aria-label={`Selecionar OC ${o.numOcp}`} />
                 </td>
@@ -349,6 +353,11 @@ export default function ConferenciaOcPage() {
                     OC {o.numOcp}
                     {carregandoOC === o.numOcp && "…"}
                   </button>
+                  {pend.length > 0 && (
+                    <div className="mt-0.5 text-[11px] font-medium text-red-700" title="Pendências desta OC">
+                      ⚠ {pend.join(" · ")}
+                    </div>
+                  )}
                 </td>
                 <td className="max-w-[240px] truncate px-3 py-1.5" title={o.fornecedorNome ?? ""}>
                   {o.fornecedorNome || `Fornecedor ${o.codFor}`}
@@ -396,7 +405,8 @@ export default function ConferenciaOcPage() {
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {!filtradas.length && (
               <tr>
                 <td colSpan={9} className="px-4 py-6 text-center text-gray-400">
