@@ -22,7 +22,7 @@ export function reatribuirNotasPorValor(docs: DocFaturamento[], itens: ItemMedic
   });
   // nota que ficou sem pedido no proprio centro de custo (nem vinculo do Senior, nem mesmo valor, nem soma)
   const semPedido = new Set<string>();
-  for (const { r } of rodadas) for (const d of r.docs) if (!d.vinculo && d.competencia !== "0000-00") semPedido.add(d.chave);
+  for (const { r } of rodadas) for (const d of r.docs) if (!d.vinculo && !d.duplicadaDe && d.competencia !== "0000-00") semPedido.add(d.chave);
   for (const d of docs) if (d.codccu && !grupos.has(d.codccu) && d.competencia !== "0000-00") semPedido.add(d.chave); // centro de custo sem nenhum pedido: nenhuma nota dele casa com pedido
   const candidatos: { alvo: string; chave: string; pedido: string; valor: number; dist: number }[] = [];
   for (const { ccu, r } of rodadas) {

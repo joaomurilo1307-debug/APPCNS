@@ -20,7 +20,7 @@ import { COMPETENCIA_ACUMULADO, somaMes } from "./competencia";
 import type { DocFaturamento } from "./faturamento";
 
 export type ItemConc = { numPed: string; competencia: string; origem: string; boletim: string | null; situacao: string | null; qtd: number; valor: number; dataEmissao: string };
-export type DocConc = Pick<DocFaturamento, "chave" | "tipo" | "numero" | "filial" | "serie" | "dataEmissao" | "valor" | "valorLiquido" | "valorDoc" | "codccu" | "competencia" | "origem" | "pedidos" | "situacao">;
+export type DocConc = Pick<DocFaturamento, "chave" | "tipo" | "numero" | "filial" | "serie" | "dataEmissao" | "valor" | "valorLiquido" | "valorDoc" | "codccu" | "competencia" | "origem" | "pedidos" | "situacao" | "duplicadaDe">;
 
 export type Vinculo = "NOTA" | "VALOR" | "SOMA";
 export type MesConc = {
@@ -44,6 +44,7 @@ export type Conciliacao = {
   totais: { medido: number; ndAvulsa: number; receita: number; nf: number; nd: number; faturado: number; nfLiquido: number; liquido: number; retencoes: number; saldoAcum: number; saldoDesdeInicio: number; mesesComDiferenca: number; pedidosSemNota: number; notasSemPedido: number };
   pedidos: PedidoConc[];
   docs: DocResultado[];
+  explicacoes: { mes: string; dif: number; texto: string }[]; // por que cada mes que nao fecha nao fecha, em linguagem de negocio
 };
 
 const arred = (v: number) => Math.round(v * 100) / 100 || 0; // "|| 0" evita o -0
@@ -63,7 +64,7 @@ const vizinhos = (comps: string[]) => Math.max(...comps.map(indice)) - Math.min(
 
 /** itens = itens dos pedidos do contrato; docsDoCc = NF e ND do centro de custo principal; docsOutrosCc = as dos demais centros de custo (so' para o aviso de rateio trocado). */
 export function conciliar(itens: ItemConc[], docsDoCc: DocConc[], docsOutrosCc: DocConc[], de: string, ate: string): Conciliacao {
-  const outrosCc = docsOutrosCc.filter((d) => d.codccu && d.competencia !== COMPETENCIA_ACUMULADO);
+  const outrosCc = docsOutrosCc.filter((d) => d.codccu && !d.duplicadaDe && d.competencia !== COMPETENCIA_ACUMULADO);
 
   // ---- pedidos do contrato (um por numero de pedido)
   const porPedido = new Map<string, { comp: Map<string, number>; boletins: Set<string>; sit: Set<string>; itens: number; valor: number; emissao: string }>();
@@ -81,7 +82,8 @@ export function conciliar(itens: ItemConc[], docsDoCc: DocConc[], docsOutrosCc: 
   const pedidoPorNum = new Map(pedidos.map((p) => [p.numPed, p]));
 
   // ---- 1. vinculo do Senior
-  const docs: DocResultado[] = docsDoCc.map((d) => ({ ...d, competenciaOriginal: d.competencia, vinculo: null, pedidosLigados: [] }));
+  const todos: DocResultado[] = docsDoCc.map((d) => ({ ...d, competenciaOriginal: d.competencia, vinculo: null, pedidosLigados: [] }));
+  const docs = todos.filter((d) => !d.duplicadaDe); // nota duplicada nao entra em nenhuma conta (fica so' na lista, marcada)
   const ligar = (d: DocResultado, ps: PedidoConc[], como: Vinculo) => {
     d.vinculo = como; d.pedidosLigados = ps.map((p) => p.numPed);
     for (const p of ps) p.documentos.push({ chave: d.chave, tipo: d.tipo, numero: d.numero, valor: d.valor, competencia: d.competencia, como });
@@ -163,9 +165,40 @@ export function conciliar(itens: ItemConc[], docsDoCc: DocConc[], docsOutrosCc: 
     pedidosSemNota: pedidosPeriodo.filter((p) => p.documentos.length === 0 && p.valor > 0.05 && p.competencia !== COMPETENCIA_ACUMULADO).length,
     notasSemPedido: docsPeriodo.filter((d) => !d.vinculo && d.tipo === "NF" && d.competencia !== COMPETENCIA_ACUMULADO && (!inicio || d.competencia >= inicio)).length,
   };
+  // ---- por que cada mes que nao fecha nao fecha (sem mexer em nada: a nota fica na receita e o pedido como esta)
+  const moedaBr = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const rot = (d: { tipo: string; numero: string }) => (d.tipo === "ND" && /^ND/i.test(d.numero) ? d.numero : `${d.tipo} ${d.numero}`);
+  const explicacoes: Conciliacao["explicacoes"] = [];
+  for (const m of meses) {
+    if (Math.abs(m.dif) < TOL) continue;
+    const peds = pedidosPeriodo.filter((p) => p.competencia === m.mes && p.documentos.length === 0 && p.valor > 0.05);
+    const notas = docs.filter((d) => d.competencia === m.mes && !d.vinculo && d.tipo === "NF");
+    const somaP = arred(peds.reduce((x, p) => x + p.valor, 0)), somaN = arred(notas.reduce((x, d) => x + d.valor, 0));
+    const listaN = notas.map((d) => `${rot(d)} (${moedaBr(d.valor)})`).join(", ");
+    const listaP = peds.map((p) => `${p.numPed} (${moedaBr(p.valor)})`).join(", ");
+    let texto: string;
+    if (notas.length && peds.length) {
+      if (somaP < somaN * 0.05) {
+        texto = `A medição deste mês não está lançada nas linhas dos pedidos: as notas somam ${moedaBr(somaN)} e os pedidos só ${moedaBr(somaP)}. As notas contam na receita; falta lançar as linhas da medição no Senior.`;
+      } else if (m.dif < 0) {
+        const retencao = notas.length === 1 && notas[0].valorDoc > 0 ? Math.round((1 - notas[0].valorLiquido / notas[0].valorDoc) * 10000) / 100 : null;
+        texto = `${listaN} ${notas.length > 1 ? "somam" : "é"} ${moedaBr(-m.dif)} a mais que ${peds.length > 1 ? "os pedidos" : "o pedido"} ${listaP}. A nota conta na receita e o pedido continua como está no Senior. ${m.nd > 0 ? "Há nota de débito no mês, já somada à receita. " : "Não há nota de débito no mês. "}${retencao !== null ? `A retenção da nota é de ${retencao.toLocaleString("pt-BR")}%, então a diferença não é imposto. ` : ""}O Senior não mostra de onde vem a diferença: confirme com o financeiro se é item reembolsável ou ajuste que ficou fora do pedido.`;
+      } else {
+        texto = `${peds.length > 1 ? "Os pedidos" : "O pedido"} ${listaP} ${peds.length > 1 ? "somam" : "é"} ${moedaBr(m.dif)} a mais que as notas do mês: essa parte ainda não foi faturada.`;
+      }
+    } else if (notas.length) {
+      texto = `${listaN} ${notas.length > 1 ? "não têm" : "não tem"} pedido de medição no Senior. ${notas.length > 1 ? "As notas contam" : "A nota conta"} na receita; falta lançar as linhas da medição.`;
+    } else if (peds.length) {
+      texto = `${peds.length > 1 ? "Pedidos" : "Pedido"} ${listaP} lançado${peds.length > 1 ? "s" : ""} e ainda sem nota fiscal: ${moedaBr(somaP)} a faturar.`;
+    } else {
+      texto = `As linhas dos pedidos (${moedaBr(m.receita)}) e as notas (${moedaBr(m.faturado)}) diferem em ${moedaBr(Math.abs(m.dif))}.`;
+    }
+    explicacoes.push({ mes: m.mes, dif: m.dif, texto });
+  }
   return {
     inicio, meses, antes, acumulados: { medido: arred(acumMedido), faturado: arred(acumFaturado) }, notasAntesDoInicio: { qtd: antesInicioQtd, valor: arred(antesInicioValor) }, totais,
     pedidos: pedidosPeriodo.sort((a, b) => b.competencia.localeCompare(a.competencia) || Number(b.numPed) - Number(a.numPed)),
-    docs: docsPeriodo.sort((a, b) => b.competencia.localeCompare(a.competencia) || b.dataEmissao.localeCompare(a.dataEmissao)),
+    docs: [...docsPeriodo, ...todos.filter((d) => d.duplicadaDe)].sort((a, b) => b.competencia.localeCompare(a.competencia) || b.dataEmissao.localeCompare(a.dataEmissao)),
+    explicacoes,
   };
 }

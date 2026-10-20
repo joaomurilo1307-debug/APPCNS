@@ -109,6 +109,24 @@ test("nota que casa com pedido do proprio contrato nunca e' levada embora, e val
   assert.equal(r.reatribuidas.length, 0); // 216 casa com o pedido 249 do proprio contrato 8; 900 < R$ 1.000
 });
 
+
+const nfDup = (numero: string, liquidada: boolean) => ({ notas: [{ CODFIL: "1", CODSNF: "A25", NUMNFV: numero, DATEMI: "31/08/2025", CODCLI: "62", VLRBSE: "22745,88", VLRLIQ: "21347", SITNFV: "2" }], itensNota: [{ CODFIL: "1", CODSNF: "A25", NUMNFV: numero, NUMPED: "0", CODCCU: "270", VLRBRU: "22745,88" }], titulos: [{ NUMTIT: `${numero}PL01`, CODFIL: "1", CODTPT: "NF", CODCLI: "62", SITTIT: liquidada ? "LQ" : "AB", DATEMI: "31/08/2025", VLRORI: "21347", CODCCU: "270", FILNFV: "1", CODSNF: "A25", NUMNFV: numero }], rateios: [{ NUMTIT: `${numero}PL01`, CODFIL: "1", CODCCU: "270", PERRAT: "100", VLRRAT: "21347" }] });
+const juntar = (...e: ReturnType<typeof nfDup>[]) => ({ notas: e.flatMap((x) => x.notas), itensNota: e.flatMap((x) => x.itensNota), titulos: e.flatMap((x) => x.titulos), rateios: e.flatMap((x) => x.rateios) });
+
+test("nota duplicada conta uma vez: mesma data, valor, cliente e CC, uma paga e outra em aberto (PM Contagem, NF 149 paga e NF 132 em aberto)", () => {
+  const docs = montarFaturamento(juntar(nfDup("132", false), nfDup("149", true)), []);
+  assert.equal(docs.find((d) => d.numero === "149")!.duplicadaDe ?? null, null);
+  assert.equal(docs.find((d) => d.numero === "132")!.duplicadaDe, "149");
+});
+
+test("notas iguais mas todas pagas sao notas reais (SUDECAP NF 27 e 29); todas em aberto: vale a de menor numero", () => {
+  const pagas = montarFaturamento(juntar(nfDup("27", true), nfDup("29", true)), []);
+  assert.equal(pagas.filter((d) => d.duplicadaDe).length, 0);
+  const abertas = montarFaturamento(juntar(nfDup("40", false), nfDup("41", false)), []);
+  assert.equal(abertas.find((d) => d.numero === "41")!.duplicadaDe, "40");
+  assert.equal(abertas.find((d) => d.numero === "40")!.duplicadaDe ?? null, null);
+});
+
 // ---------------------------------------------------------------- conciliacao (o contrato vale pelos seus pedidos; as notas pelo CC principal)
 const item = (numPed: string, competencia: string, valor: number, extra: Partial<ItemConc> = {}): ItemConc => ({ numPed, competencia, origem: "BOLETIM", boletim: "BM41", situacao: "ABERTO", qtd: 1, valor, dataEmissao: "2026-07-10", ...extra });
 const doc = (numero: string, competencia: string, valor: number, extra: Partial<DocConc> = {}): DocConc => ({ chave: `NF|2|A24|${numero}|230`, tipo: "NF", numero, filial: "2", serie: "A24", dataEmissao: "2026-07-17", valor, valorLiquido: valor, valorDoc: valor, codccu: "230", competencia, origem: "EMISSAO", pedidos: null, situacao: "AUTORIZADA", ...extra });
@@ -241,4 +259,30 @@ test("ND que nao e' pedido (avulsa) soma por cima das linhas; a ND que e' pedido
   assert.equal(c.meses[1].faturado, 105000); // NF 100.000 + ND 5.000
   assert.equal(c.meses[1].dif, 0);
   assert.equal(c.totais.saldoAcum, 0);
+});
+
+test("nota duplicada nao entra na receita, mas fica na lista marcada", () => {
+  const itens = [item("259", "2025-08", 22745.88)];
+  const docs = [doc("149", "2025-08", 22745.88), doc("132", "2025-08", 22745.88, { chave: "NF|1|A25|132|230", duplicadaDe: "149" })];
+  const c = conciliar(itens, docs, [], "2025-08", "2025-08");
+  assert.equal(c.meses[0].nf, 22745.88);
+  assert.equal(c.meses[0].dif, 0);
+  assert.equal(c.docs.find((d) => d.numero === "132")!.duplicadaDe, "149");
+  assert.equal(c.explicacoes.length, 0);
+});
+
+test("explicacao dos meses que nao fecham: nota maior que o pedido (AGA QZ, R$ 18.000), nota sem pedido e pedido sem nota", () => {
+  // setembro: pedido 536 de R$ 91.410,83 e NF 116 de R$ 109.410,83
+  const a = conciliar([item("536", "2026-09", 91410.83)], [doc("116", "2026-09", 109410.83)], [], "2026-09", "2026-09");
+  assert.equal(a.explicacoes.length, 1);
+  assert.match(a.explicacoes[0].texto, /R\$\s?18\.000,00 a mais que o pedido/);
+  assert.match(a.explicacoes[0].texto, /confirme com o financeiro/);
+  assert.match(a.explicacoes[0].texto, /Não há nota de débito no mês/);
+  assert.match(a.explicacoes[0].texto, /a diferença não é imposto/);
+  // so' nota
+  const b = conciliar([item("1", "2026-08", 100)], [doc("289", "2026-09", 201452.96)], [], "2026-09", "2026-09");
+  assert.match(b.explicacoes[0].texto, /não tem pedido de medição/);
+  // so' pedido
+  const c = conciliar([item("554", "2026-09", 3401.97)], [], [], "2026-09", "2026-09");
+  assert.match(c.explicacoes[0].texto, /ainda sem nota fiscal/);
 });

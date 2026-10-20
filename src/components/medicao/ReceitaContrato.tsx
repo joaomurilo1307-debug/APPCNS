@@ -159,6 +159,15 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
       </div>
       <p className="text-xs text-gray-400">Clique num mês (na tabela ou no gráfico) para ver os pedidos e as notas dele.{dados.contratos.length > 1 ? ` Inclui os contratos do mesmo centro de custo: ${dados.contratos.join(", ")}.` : ""}</p>
 
+      {c.explicacoes.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-[13px] leading-relaxed text-amber-950">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">Meses que não fecham, e por quê</p>
+          <ul className="space-y-1.5">
+            {c.explicacoes.map((e) => <li key={e.mes}><b>{mesLongo(e.mes)}:</b> {e.texto}</li>)}
+          </ul>
+        </div>
+      )}
+
       {/* ---------------- o mes escolhido: pedidos e notas */}
       {mes && (
         <div className="rounded-xl border border-teal-200 bg-teal-50/30 p-4">
@@ -184,7 +193,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
                     </tr>
                   );
                 }))}
-                {docsMes.filter((d) => !d.vinculo).map((d) => (
+                {docsMes.filter((d) => !d.vinculo && !d.duplicadaDe).map((d) => (
                   <tr key={d.chave}>
                     <td className={`${td} text-gray-400`} colSpan={4}>{d.tipo === "ND" ? "Nota de débito sem pedido no Senior (entra na receita)" : "Nota fiscal sem pedido no Senior"}</td>
                     <td className={`${td} text-gray-800`}>{rotuloDoc(d.tipo, d.numero)}</td>
@@ -237,7 +246,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
                     <td className={`${td} whitespace-nowrap text-gray-700`}>{d.competencia === "0000-00" ? "carga acumulada" : mesCurto(d.competencia)}{d.competenciaOriginal !== d.competencia && d.competenciaOriginal !== "0000-00" ? <span className="ml-1 text-[11px] text-gray-400">(emitida p/ {mesCurto(d.competenciaOriginal)})</span> : null}</td>
                     <td className={`${td} text-right tabular-nums text-gray-900`}>{moeda(d.valor)}</td>
                     <td className={`${td} text-right tabular-nums text-gray-700`}>{moeda(d.valorLiquido)}</td>
-                    <td className={`${td} text-gray-700`}>{d.vinculo ? `${d.pedidosLigados.join(", ")} (${COMO[d.vinculo]})` : d.competencia === "0000-00" ? "—" : d.tipo === "ND" ? <span className="text-violet-700">sem pedido (entra na receita)</span> : <span className="text-amber-700">sem pedido no Senior</span>}</td>
+                    <td className={`${td} text-gray-700`}>{d.duplicadaDe ? <span className="text-gray-500">duplicada da NF {d.duplicadaDe}: não conta na receita</span> : d.vinculo ? `${d.pedidosLigados.join(", ")} (${COMO[d.vinculo]})` : d.competencia === "0000-00" ? "—" : d.tipo === "ND" ? <span className="text-violet-700">sem pedido (entra na receita)</span> : <span className="text-amber-700">sem pedido no Senior</span>}</td>
                   </tr>
                 ))}
               </tbody>

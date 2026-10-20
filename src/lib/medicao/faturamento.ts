@@ -22,6 +22,7 @@ export type EntradaFaturamento = {
 
 export type DocFaturamento = {
   chave: string; tipo: "NF" | "ND"; numero: string; filial: string; serie: string | null; dataEmissao: string; // aaaa-mm-dd
+  duplicadaDe?: string | null; // numero da nota que vale quando esta e' duplicada (mesmo cliente, data, valor e centro de custo; uma paga e outra em aberto): nao conta na receita
   codccuOriginal: string | null; // quando a nota foi levada para o contrato do pedido de mesmo valor (ver reatribuicao.ts): o centro de custo que o Senior tinha
   valor: number; // BRUTO, a parte deste centro de custo
   valorLiquido: number; // liquido da parte (NF: depois das retencoes, E140NFV.VLRLIQ; ND: sem retencao, igual ao bruto)
@@ -80,6 +81,7 @@ export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<Item
     ccuDoPedido.set(i.numPed, m);
   }
   const docs: DocFaturamento[] = [];
+  const liquidadas = new Map<string, boolean>(); // nota com titulo liquidado (paga)
 
   // rateio dos titulos: uma linha por (titulo, centro de custo) -- o Senior repete linhas quase identicas, ficamos com a ultima (mesmo criterio do Rito)
   const rateioDoTitulo = new Map<string, Map<string, number>>();
@@ -122,10 +124,12 @@ export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<Item
     for (const p of peds) for (const [ccu, v] of ccuDoPedido.get(p) ?? []) pesosDoPedido.set(ccu, (pesosDoPedido.get(ccu) ?? 0) + v);
     if (pesosDoPedido.size > 0) { pesos.clear(); for (const [ccu, v] of pesosDoPedido) pesos.set(ccu, v); }
     const doPedido = peds.map((p) => compPed.get(p)).find(Boolean);
+    const liquidada = (titulosDaNota.get(k) ?? []).some((t) => texto(t.SITTIT) === "LQ");
     for (const parte of repartir(valorDoc, pesos)) {
       let competencia: string, origem: DocFaturamento["origem"];
       if (doPedido) { competencia = doPedido.competencia; origem = doPedido.competencia === COMPETENCIA_ACUMULADO ? "ACUMULADO" : "PEDIDO"; }
       else { competencia = competenciaPorEmissao(emissao, parte.ccu) ?? emissao.slice(0, 7); origem = "EMISSAO"; }
+      liquidadas.set(`NF|${k}|${parte.ccu ?? ""}`, liquidada);
       docs.push({ chave: `NF|${k}|${parte.ccu ?? ""}`, tipo: "NF", numero: texto(n.NUMNFV), filial: texto(n.CODFIL), serie: texto(n.CODSNF) || null, dataEmissao: emissao, codccuOriginal: null, valor: parte.valor, valorLiquido: arred((liquidoDoc * parte.valor) / valorDoc), valorDoc, codccu: parte.ccu, competencia, origem, pedidos: peds.length ? peds.join(",") : null, situacao: sit === "2" ? "AUTORIZADA" : "EM ELABORACAO", codCli: texto(n.CODCLI) || null });
     }
   }
@@ -141,5 +145,28 @@ export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<Item
       docs.push({ chave: `ND|${texto(t.CODFIL)}|${texto(t.NUMTIT)}|${parte.ccu ?? ""}`, tipo: "ND", numero: texto(t.NUMTIT), filial: texto(t.CODFIL), serie: null, dataEmissao: emissao, codccuOriginal: null, valor: parte.valor, valorLiquido: parte.valor, valorDoc, codccu: parte.ccu, competencia: competenciaPorEmissao(emissao, parte.ccu) ?? emissao.slice(0, 7), origem: "EMISSAO", pedidos: null, situacao: texto(t.SITTIT) === "LQ" ? "LIQUIDADA" : "EM ABERTO", codCli: texto(t.CODCLI) || null });
     }
   }
+  marcarDuplicadas(docs, liquidadas);
   return docs;
+}
+
+/**
+ * Nota duplicada conta UMA vez. Duplicada = mesmo cliente, mesma data de emissao, mesmo valor e mesmo centro de custo, com uma nota paga e outra ainda em aberto
+ * (a paga vale; ex.: PM Contagem, NF 149 paga e NF 132 em aberto, R$ 22.745,88 em 31/08/2025), ou todas em aberto (vale a de menor numero). Notas iguais mas TODAS pagas
+ * sao notas reais (dois pagamentos recebidos: NF 27 e 29 da SUDECAP, R$ 75.745,52) e ficam. A duplicada fica na lista, marcada, e nao entra na receita.
+ */
+function marcarDuplicadas(docs: DocFaturamento[], liquidadas: Map<string, boolean>) {
+  const grupos = new Map<string, DocFaturamento[]>();
+  for (const d of docs) {
+    if (d.tipo !== "NF") continue;
+    const k = `${d.codCli}|${d.dataEmissao}|${d.valorDoc}|${d.codccu}`;
+    grupos.set(k, [...(grupos.get(k) ?? []), d]);
+  }
+  for (const lista of grupos.values()) {
+    if (lista.length < 2) continue;
+    const pagas = lista.filter((d) => liquidadas.get(d.chave));
+    const abertas = lista.filter((d) => !liquidadas.get(d.chave));
+    if (pagas.length > 0) { for (const d of abertas) d.duplicadaDe = pagas[0].numero; continue; } // paga vale; so' as pagas ficam
+    const vale = [...lista].sort((a, b) => Number(a.numero) - Number(b.numero))[0]; // todas em aberto: vale a de menor numero
+    for (const d of lista) if (d !== vale) d.duplicadaDe = vale.numero;
+  }
 }
