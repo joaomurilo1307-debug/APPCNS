@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
+import { escopoDeCustos, escopoDeVisao, podeVerCcu } from "@/lib/custos/acesso";
 import { hojeBR } from "@/lib/financeiro/alertas";
 import { FILTROS_SITUACAO, montarAoVivo, type FiltroSituacao } from "@/lib/contratos/aoVivo";
 import { carregarAoVivo, nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
@@ -15,6 +15,7 @@ export async function GET(req: Request) {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const escopo = await escopoDeCustos(prisma, session.user as any);
   if (escopo.tipo === "nenhum") return NextResponse.json({ error: "Sem centros de custo liberados para você" }, { status: 403 });
+  const visao = await escopoDeVisao(escopo); // filtro de area do topo das telas: so' estreita a lista
 
   const sp = new URL(req.url).searchParams;
   const ccu = sp.get("ccu");
@@ -23,8 +24,8 @@ export async function GET(req: Request) {
   const situacao: FiltroSituacao = FILTROS_SITUACAO.some((f) => f.chave === situacaoParam) ? (situacaoParam as FiltroSituacao) : "todas";
 
   const dados = await carregarAoVivo(prisma, hojeBR());
-  const visiveis = dados.itens.filter((i) => podeVerCcu(escopo, i.ccu));
-  const fora = dados.foraDoCusto.filter((i) => podeVerCcu(escopo, i.ccu) && (!ccu || i.ccu === ccu));
+  const visiveis = dados.itens.filter((i) => podeVerCcu(visao, i.ccu));
+  const fora = dados.foraDoCusto.filter((i) => podeVerCcu(visao, i.ccu) && (!ccu || i.ccu === ccu));
   const mesValido = (v: string | null) => (v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v) ? v : null);
   const de = mesValido(sp.get("de"));
   const ate = mesValido(sp.get("ate"));

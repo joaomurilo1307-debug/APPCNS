@@ -5,6 +5,7 @@
 //   - conjunto vazio = NENHUM.
 
 import type { prisma as prismaReal } from "@/lib/prisma";
+import { COOKIE_VISAO, lerSelecao } from "../areas";
 
 export type EscopoCustos = {
   todos: boolean;
@@ -72,4 +73,31 @@ export function lerListaDeAcessos(texto: string): { linhas: LinhaAcesso[]; erros
     linhas.push({ email: m[1].toLowerCase(), todos: false, ccus });
   });
   return { linhas, erros };
+}
+
+// ---------------------------------------------------------------- filtro de contratos / area (so' visao)
+
+/**
+ * Filtro "Contratos" ao lado do Buscar (a lista suspensa com os centros de custo, que tambem marca Engenharia, Ambiental e Administrativo de uma vez): estreita a VISAO de uma
+ * lista, sem tocar no acesso. Quem ve tudo passa a ver so' os centros de custo escolhidos; quem ve uma lista, a intersecao. Sem selecao = o mesmo escopo (o mesmo objeto).
+ * Permissao, detalhe, exportacao e demanda continuam usando o escopo de `escopoDeCustos`, que nao muda.
+ */
+export function aplicarSelecaoAoEscopo(escopo: EscopoCustos, selecao: readonly string[] | null): EscopoCustos {
+  if (!selecao || selecao.length === 0) return escopo;
+  return montarEscopo(false, escopo.todos ? selecao : selecao.filter((c) => escopo.ccus.has(c)));
+}
+
+/** Os centros de custo escolhidos na lista suspensa (cookie da sessao). Fora de uma requisicao (testes, rotinas de fundo) nao ha cookie: sem filtro. */
+export async function selecaoEscolhida(): Promise<string[] | null> {
+  try {
+    const { cookies } = await import("next/headers");
+    return lerSelecao(cookies().get(COOKIE_VISAO)?.value);
+  } catch {
+    return null;
+  }
+}
+
+/** O escopo de VISAO de uma lista: o acesso da pessoa estreitado pelos centros de custo escolhidos ao lado do Buscar. */
+export async function escopoDeVisao(escopo: EscopoCustos): Promise<EscopoCustos> {
+  return aplicarSelecaoAoEscopo(escopo, await selecaoEscolhida());
 }

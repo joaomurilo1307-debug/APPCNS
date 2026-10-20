@@ -4,6 +4,7 @@
 // e o custo lido do Senior. Clicar abre o contrato (visao geral, custos, custo de pessoal, P0 e previsao).
 
 import Link from "next/link";
+import FiltroContratos from "@/components/FiltroContratos";
 import { useEffect, useMemo, useState } from "react";
 import { chaveMes, contratosNaBase, linhasDoContrato, type ContratoCusto } from "@/lib/custos/agregacao";
 import { mesCurto, moedaCompacta, percentual } from "@/lib/custos/formato";
@@ -70,7 +71,10 @@ export default function ContratosPage() {
       <div className="mb-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">
         <div className="min-w-[16rem] flex-1">
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Buscar</label>
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, CCU, cliente ou número…" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-brand focus:outline-none" />
+          <div className="flex items-center gap-2">
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, CCU, cliente ou número…" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-brand focus:outline-none" />
+            <FiltroContratos />
+          </div>
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Tipo</label>

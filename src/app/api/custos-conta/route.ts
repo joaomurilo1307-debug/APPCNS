@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { COMPETENCIA_FISCAL_ATIVA } from "@/lib/custos/competenciaDaPlanilha";
-import { escopoDeCustos } from "@/lib/custos/acesso";
+import { escopoDeCustos, escopoDeVisao } from "@/lib/custos/acesso";
 import { estadoAtualizacao } from "@/lib/custos/atualizacaoCusto";
 import { COMPETENCIA_PISO } from "@/lib/custos/motorCustoContrato";
 import { codigoPeloNome, contaInativa, eReembolsavel, grupoDaConta } from "@/lib/custos/planoContas";
@@ -45,7 +45,8 @@ export async function GET() {
 
   // quem ve o que: ADMIN/DIRETOR/verTodosCustos veem todos; os demais, os centros de custo que o admin liberou + os das equipes deles
   const escopo = await escopoDeCustos(prisma, user);
-  const ccusPermitidos: string[] | null = escopo.todos ? null : Array.from(escopo.ccus);
+  const visao = await escopoDeVisao(escopo); // filtro de area do topo das telas: so' estreita o que a lista mostra; o acesso (escopo) e a mensagem de acesso nao mudam
+  const ccusPermitidos: string[] | null = visao.todos ? null : Array.from(visao.ccus);
   const infoEscopo = { tipo: escopo.tipo, quantidade: escopo.quantidade, podeGerenciarAcessos: user.role === "ADMIN" };
   if (ccusPermitidos && ccusPermitidos.length === 0) {
     return NextResponse.json({ contratos: [], meses: mesesDoPeriodo, mesesCompetencia: mesesDoPeriodo, temCompetencia: false, mesCorrente, atualizacao, escopo: infoEscopo });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
+import { escopoDeCustos, escopoDeVisao, podeVerCcu } from "@/lib/custos/acesso";
 
 // Lista de contratos (centros de custo do Senior) que a pessoa pode acompanhar. A ficha de cada um (cliente, numero, vigencia,
 // valor) e' do administrador; os centros de custo novos que aparecem nos custos do Senior viram contrato automaticamente.
@@ -24,7 +24,7 @@ export async function GET() {
     });
   if (novos.length) await prisma.contrato.createMany({ data: novos, skipDuplicates: true });
 
-  const escopo = await escopoDeCustos(prisma, user);
+  const escopo = await escopoDeVisao(await escopoDeCustos(prisma, user)); // o filtro de area do topo das telas so' estreita esta lista
   const todos = await prisma.contrato.findMany({ orderBy: { nome: "asc" } });
   const contratos = todos.filter((c) => podeVerCcu(escopo, c.codccu));
   return NextResponse.json({ contratos, podeEditar: user.role === "ADMIN" });

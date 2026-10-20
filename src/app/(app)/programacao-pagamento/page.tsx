@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 import { lerSelecaoSalva, salvarSelecao } from "@/lib/selecaoProgramacao";
+import { selecaoDoCookie, filtrarTitulosPorSelecao } from "@/lib/areas";
+import FiltroContratos from "@/components/FiltroContratos";
 
 const REVISAO_LABEL: Record<string, string> = {
   APROVADO: "Aprovado",
@@ -86,6 +88,7 @@ type Titulo = {
   valorAberto: number;
   dataPagamento: string | null;
   ccuNome: string | null;
+  codccu?: string | null;
   ocRelacionada: OcRelacionada | null;
   ocCodFil?: string | null;
   vinculoManual?: { numOcp: string; por: string; em: string } | null;
@@ -450,12 +453,15 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
         return res.json();
       })
       .then((data) => {
-        setTitulos(data.titulos);
+        // filtro "Contratos" ao lado do Buscar: aplicado aqui (a lista e' igual para todos); as somas sao refeitas so' quando ha filtro
+        const selecao = selecaoDoCookie();
+        const f = filtrarTitulosPorSelecao<(typeof data.titulos)[number]>(data.titulos, selecao);
+        setTitulos(f.titulos);
         setSincronizadoEm(data.sincronizadoEm ?? null);
-        setTotalAberto(data.totalAberto ?? 0);
-        setQtdAberto(data.qtdAberto ?? 0);
-        setQtdPagos(data.qtdPagos ?? 0);
-        setTotalPago(data.totalPago ?? 0);
+        setTotalAberto(selecao ? f.totalAberto : data.totalAberto ?? 0);
+        setQtdAberto(selecao ? f.qtdAberto : data.qtdAberto ?? 0);
+        setQtdPagos(selecao ? f.qtdPagos : data.qtdPagos ?? 0);
+        setTotalPago(selecao ? f.totalPago : data.totalPago ?? 0);
       });
   }
 
@@ -1087,6 +1093,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
             onChange={(e) => setBusca(e.target.value)}
             className="w-64 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
           />
+          <FiltroContratos />
           {(busca || dataDe || dataAte || somenteComOC || filtrosPorColunaAtivos) && (
             <button onClick={limparFiltros} className="text-xs text-gray-400 underline hover:text-gray-600">
               limpar todos os filtros

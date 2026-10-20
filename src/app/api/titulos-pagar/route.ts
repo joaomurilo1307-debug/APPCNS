@@ -166,6 +166,7 @@ async function calcularTexto(): Promise<string> {
         valorAberto: t.valorAberto,
         dataPagamento: t.dataPagamento,
         ccuNome: t.ccuNome ?? t.codccu,
+        codccu: t.codccu ?? null, // o filtro de area (topo das telas) e' aplicado no navegador por este codigo
         ocRelacionada: vinculo.ocRelacionada,
         ocCodFil,
         vinculoManual: vinculoManual ? { numOcp: vinculoManual.numOcp, por: vinculoManual.criadoPorNome, em: vinculoManual.criadoEm } : null,

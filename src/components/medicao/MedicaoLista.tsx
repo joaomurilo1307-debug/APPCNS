@@ -4,6 +4,7 @@
 // os ultimos meses. Clicar num contrato abre a medicao linha a linha. Tudo vem do Senior (somente leitura).
 
 import Link from "next/link";
+import FiltroContratos from "@/components/FiltroContratos";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { mesCurto, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 
@@ -132,6 +133,7 @@ export default function MedicaoLista() {
           <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
             <header className="mb-3 flex flex-wrap items-center gap-2">
               <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar contrato, centro de custo ou número" className="min-w-[260px] flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" aria-label="Buscar contrato" />
+              <FiltroContratos />
               <select value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm" aria-label="Ordenar">
                 <option value="saldo">Maior saldo primeiro</option>
                 <option value="valor">Mais consumido (valor)</option>

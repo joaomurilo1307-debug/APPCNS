@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
+import { escopoDeCustos, escopoDeVisao, podeVerCcu } from "@/lib/custos/acesso";
 import { nomeConta } from "@/lib/custos/planoContas";
 import { hojeBR, vencimentoSentinela } from "@/lib/financeiro/alertas";
 import { CATEGORIAS, ehContaForaDoCusto, somaMeses, type CategoriaPrevisao } from "@/lib/contratos/previsao";
@@ -22,6 +22,7 @@ export async function GET(req: Request) {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const escopo = await escopoDeCustos(prisma, session.user as any);
   if (escopo.tipo === "nenhum") return NextResponse.json({ error: "Sem centros de custo liberados para você" }, { status: 403 });
+  const visao = await escopoDeVisao(escopo); // filtro de area do topo das telas: so' estreita a lista; as checagens de acesso usam o escopo
 
   const sp = new URL(req.url).searchParams;
   const hoje = hojeBR();
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
   let semVencimento = 0;
   const brutos = [];
   for (const t of todos) {
-    if (t.ccu ? !podeVerCcu(escopo, t.ccu) : !escopo.todos) continue;
+    if (t.ccu ? !podeVerCcu(visao, t.ccu) : !visao.todos) continue;
     if (ehContaForaDoCusto(t.ctaFin)) { foraDoCusto.n += 1; foraDoCusto.valor += t.valorAberto; continue; }
     const semData = !t.vencimento || vencimentoSentinela(t.vencimento);
     if (semData && t.tipo !== "OC") { semVencimento += 1; continue; } // titulo sem data valida nao entra; OC sem previsao de pagamento entra em "sem data"

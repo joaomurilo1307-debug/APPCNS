@@ -4,6 +4,7 @@
 // contas e busca. Os filtros valem para os graficos E para as tabelas ao mesmo tempo.
 
 import type { BaseMes, Filtros, TipoCusto } from "@/lib/custos/agregacao";
+import FiltroContratos from "@/components/FiltroContratos";
 import { mesLongo } from "@/lib/custos/formato";
 
 export default function FiltrosCusto({
@@ -102,13 +103,16 @@ export default function FiltrosCusto({
 
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Buscar</label>
-          <input
-            type="search"
-            value={busca}
-            onChange={(e) => onBusca(e.target.value)}
-            placeholder={placeholderBusca}
-            className="w-72 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] focus:border-brand focus:outline-none"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="search"
+              value={busca}
+              onChange={(e) => onBusca(e.target.value)}
+              placeholder={placeholderBusca}
+              className="w-72 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] focus:border-brand focus:outline-none"
+            />
+            <FiltroContratos />
+          </div>
         </div>
       </div>
 

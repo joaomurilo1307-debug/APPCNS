@@ -5,6 +5,7 @@
 // Usada na tela Financeiro > Previsao (todos os centros de custo que a pessoa ve) e na aba Previsao de cada contrato (ccuFixo).
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import FiltroContratos from "@/components/FiltroContratos";
 import GraficoMeses from "./GraficoMeses";
 import PlanilhaMeses, { type CelulaSel, type DadosPlanilha } from "./PlanilhaMeses";
 import SeletorPeriodo from "./SeletorPeriodo";
@@ -173,6 +174,7 @@ export default function PrevisaoMensal({ ccuFixo }: { ccuFixo?: string }) {
             <option value="PREVISTO">Só o previsto</option>
           </select>
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar fornecedor, descrição, título ou OC" className="min-w-[220px] flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" />
+          <FiltroContratos />
           {comFiltro && <button type="button" onClick={() => { setCcu(""); setConta(""); setCategoria(""); setNatureza(""); setBusca(""); setPagina(1); }} className="text-[13px] font-medium text-brand hover:text-brand-dark">Limpar filtros</button>}
         </div>
         <div className="mt-3 flex flex-wrap gap-2">

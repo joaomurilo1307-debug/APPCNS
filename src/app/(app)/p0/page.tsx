@@ -4,6 +4,7 @@
 // Aqui ainda nao ha dados: lista os contratos que a pessoa acompanha e mostra que o P0 de cada um esta por cadastrar.
 
 import Link from "next/link";
+import FiltroContratos from "@/components/FiltroContratos";
 import { useEffect, useMemo, useState } from "react";
 import { PartesDoP0 } from "@/components/contratos/AbasContrato";
 
@@ -42,7 +43,7 @@ export default function P0Page() {
       <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
         <header className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div><h2 className="text-base font-semibold text-gray-900">Situação do P0 por contrato</h2><p className="mt-0.5 text-[13px] text-gray-500">Nenhum P0 foi cadastrado ainda.</p></div>
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar contrato, CCU ou cliente" className="w-72 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" />
+          <div className="flex items-center gap-2"><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar contrato, CCU ou cliente" className="w-72 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" /><FiltroContratos /></div>
         </header>
         {erro ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro}</div> : !contratos ? <p className="py-6 text-center text-sm text-gray-500">Carregando contratos…</p> : (
           <div className="overflow-x-auto rounded-xl border border-gray-100">
