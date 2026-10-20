@@ -56,7 +56,6 @@ export default function ConferenciaOcPage() {
 
   const [busca, setBusca] = useState("");
   const [sitSel, setSitSel] = useState<string[]>([]); // vazio = todas
-  const [tituloFiltro, setTituloFiltro] = useState<"todos" | "sem" | "com">("todos");
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [gerando, setGerando] = useState<string | null>(null);
   const [baixando, setBaixando] = useState(false);
@@ -233,9 +232,9 @@ export default function ConferenciaOcPage() {
     const t = busca.trim().toLowerCase();
     return ocs
       .filter((o) => !sitSel.length || sitSel.includes(o.sitApr))
-      .filter((o) => tituloFiltro === "todos" || (tituloFiltro === "com") === !!o.numTit)
+      .filter((o) => !o.numTit) // so' OCs sem titulo
       .filter((o) => !t || o.numOcp.includes(t) || (o.fornecedorNome ?? "").toLowerCase().includes(t) || (o.numTit ?? "").toLowerCase().includes(t));
-  }, [ocs, busca, sitSel, tituloFiltro]);
+  }, [ocs, busca, sitSel]);
 
   const total = useMemo(() => filtradas.reduce((s, o) => s + o.valor, 0), [filtradas]);
   const chave = (o: Oc) => o.numOcp;
@@ -254,7 +253,7 @@ export default function ConferenciaOcPage() {
       <div className="mb-5">
         <h1 className="text-xl font-semibold">Conferência de OC</h1>
         <p className="mt-0.5 text-sm text-gray-500">
-          Todas as ordens de compra da Senior com vencimento no período, com ou sem título. Confira a OC e a aprovação; estando
+          Todas as ordens de compra da Senior com vencimento no período que ainda não têm título. Confira a OC e a aprovação; estando
           aprovada, gere o título a partir dela.
         </p>
       </div>
@@ -268,11 +267,6 @@ export default function ConferenciaOcPage() {
           {loading ? "Consultando a Senior…" : "Buscar"}
         </button>
         <input type="text" placeholder="OC, fornecedor ou título…" value={busca} onChange={(e) => setBusca(e.target.value)} className="ml-2 w-56 rounded-lg border border-gray-200 px-3 py-1.5 text-sm" />
-        <select value={tituloFiltro} onChange={(e) => setTituloFiltro(e.target.value as any)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm">
-          <option value="todos">Com e sem título</option>
-          <option value="sem">Sem título</option>
-          <option value="com">Com título</option>
-        </select>
         <div className="flex flex-wrap items-center gap-1.5">
           {Object.keys(SIT_LABEL).map((s) => (
             <button
