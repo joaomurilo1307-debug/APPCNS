@@ -4,6 +4,7 @@
 // vencimento (USU_DATVECT) aqui no codigo.
 
 import { consultarSenior, type LinhaSenior } from "./getDbInfo";
+import { valorTotalOc } from "./pendenciasOc";
 
 export const COD_EMP = 1;
 export const JANELA_PADRAO = 1500;
@@ -21,6 +22,7 @@ export type OcConferencia = {
   numNfc: string | null;
   codFpg: string | null;
   descricao: string | null;
+  rateioTotal: number | null; // soma de E420RAT; null = nao conferido
 };
 
 /** "dd/mm/aaaa" da Senior -> "aaaa-mm-dd"; 31/12/1900 (vazio da Senior) -> null. */
@@ -55,6 +57,7 @@ export function paraOc(l: LinhaSenior): OcConferencia {
     numNfc: vazio(l.USU_NUMNFC),
     codFpg: vazio(l.CODFPG),
     descricao: vazio(l.OBSOCP),
+    rateioTotal: null,
   };
 }
 
@@ -68,9 +71,30 @@ export async function listarOcsPorVencimento(de: string, ate: string, janela = J
   );
   const doPeriodo = linhas.map(paraOc).filter((o) => o.vencimento && o.vencimento >= de && o.vencimento <= ate);
   const nomes = await nomesFornecedores([...new Set(doPeriodo.filter((o) => !o.fornecedorNome).map((o) => o.codFor))]);
+  const { itens, rateios } = await totaisPorOc(Math.max(0, max - janela), doPeriodo.length > 0);
   return doPeriodo
-    .map((o) => ({ ...o, fornecedorNome: o.fornecedorNome ?? nomes.get(o.codFor) ?? null }))
+    .map((o) => {
+      const k = `${o.numOcp}|${o.codFil}`;
+      const rateioTotal = rateios ? rateios.get(k) ?? 0 : null;
+      return { ...o, fornecedorNome: o.fornecedorNome ?? nomes.get(o.codFor) ?? null, rateioTotal, valor: valorTotalOc(o.valor, itens?.get(k) ?? null, rateioTotal) };
+    })
     .sort((a, b) => (a.vencimento! < b.vencimento! ? -1 : a.vencimento! > b.vencimento! ? 1 : Number(a.numOcp) - Number(b.numOcp)));
+}
+
+/** Soma dos itens (VLRORI) e do rateio por OC, em 2 consultas agrupadas. Falha = null (nao acusa rateio zerado). */
+async function totaisPorOc(apos: number, buscar: boolean) {
+  const soma = async (sql: string) => {
+    const m = new Map<string, number>();
+    for (const l of await consultarSenior(sql)) m.set(`${l.NUMOCP}|${l.CODFIL}`, numeroSenior(l.TOT));
+    return m;
+  };
+  if (!buscar) return { itens: null, rateios: null };
+  const filtro = `WHERE CODEMP = ${COD_EMP} AND NUMOCP > ${apos}`;
+  const [itens, rateios] = await Promise.all([
+    soma(`SELECT NUMOCP, CODFIL, SUM(VLRORI) AS TOT FROM E420IPO ${filtro} GROUP BY NUMOCP, CODFIL`).catch(() => null),
+    soma(`SELECT NUMOCP, CODFIL, SUM(VLRRAT) AS TOT FROM E420RAT ${filtro} GROUP BY NUMOCP, CODFIL`).catch(() => null),
+  ]);
+  return { itens, rateios };
 }
 
 /** Nome do fornecedor (E095FOR) quando a OC nao traz USU_NOMFOR. Em lotes pequenos (IN grande estoura o tempo na Senior); falha = sem nome, nao derruba a lista. */
