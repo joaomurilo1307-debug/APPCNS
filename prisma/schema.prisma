@@ -1689,6 +1689,27 @@ model MedicaoItem {
   @@index([codccu])
 }
 
+// Notas fiscais de servico e notas de debito do Senior (so' leitura), uma linha por documento e centro de custo, para conferir com a medicao dos pedidos.
+model FaturamentoMedicao {
+  id          String   @id @default(cuid())
+  chave       String   @unique // tipo|filial|serie|numero|centro de custo
+  tipo        String // NF | ND
+  numero      String
+  filial      String
+  serie       String?
+  dataEmissao DateTime
+  valor       Float // a parte deste centro de custo
+  valorDoc    Float // valor total do documento
+  codccu      String?
+  competencia String // aaaa-mm do mes da medicao (0000-00 = carga acumulada)
+  origem      String // PEDIDO (mes do pedido da nota) | EMISSAO (regra da emissao do Rito) | ACUMULADO
+  pedidos     String? // numeros dos pedidos de venda ligados a nota no Senior (itens da nota), separados por virgula
+  situacao    String?
+  codCli      String?
+
+  @@index([codccu, competencia])
+}
+
 model AtualizacaoMedicao {
   id           String    @id @default(cuid())
   status       String // EXECUTANDO | OK | ERRO

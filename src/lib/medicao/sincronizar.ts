@@ -1,11 +1,14 @@
 // Atualizacao da Medicao direto do Senior, em SEGUNDO PLANO (mesmo desenho da atualizacao do custo): le contratos de venda, linhas, itens de pedido,
-// cabecalho e rateio dos pedidos; monta tudo (montagem.ts) e regrava as tabelas inteiras. So' LE o Senior. Se a leitura falhar ou vier vazia/muito
+// cabecalho e rateio dos pedidos e, a parte, o faturamento (NF e ND, faturamento.ts); monta tudo (montagem.ts) e regrava as tabelas inteiras. So' LE o Senior. Se a leitura falhar ou vier vazia/muito
 // menor, NADA e' trocado. As consultas passam pela fila unica do app (consultarSenior): nunca em paralelo com a leitura do custo.
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { consultarSenior } from "@/lib/senior/getDbInfo";
 import { montarMedicao, type EntradaMedicao, type Linha, type ResultadoMedicao } from "./montagem";
+import { montarFaturamento, type DocFaturamento, type EntradaFaturamento } from "./faturamento";
+
+export type EntradaCompleta = EntradaMedicao & { faturamento: EntradaFaturamento | null; faturamentoErro: string | null };
 
 const MINUTO = 60_000;
 export const TEMPO_MAXIMO_MS = 25 * MINUTO; // execucao "EXECUTANDO" mais antiga que isso morreu (reinicio do container)
@@ -28,7 +31,7 @@ const lotes = <T,>(l: T[], n: number): T[][] => { const o: T[][] = []; for (let 
 const soNumeros = (l: string[]) => l.filter((x) => /^\d+$/.test(x));
 
 /** Le do Senior tudo que a Medicao precisa (somente SELECT). */
-export async function lerMedicaoDoSenior(progresso: (etapa: string, pct: number) => void | Promise<void> = () => {}, c: Consulta = consultar): Promise<EntradaMedicao> {
+export async function lerMedicaoDoSenior(progresso: (etapa: string, pct: number) => void | Promise<void> = () => {}, c: Consulta = consultar): Promise<EntradaCompleta> {
   await progresso("Lendo os contratos de venda ativos", 3);
   const contratos = await comRetentativa("contratos (E160CTR)", () => c("SELECT NUMCTR, NUMOFI, CODCLI, DATINI FROM E160CTR WHERE SITCTR='A'", 3 * MINUTO));
   if (contratos.length === 0) throw new Error("O Senior não devolveu nenhum contrato de venda ativo (E160CTR) — atualização abortada, nada foi alterado.");
@@ -54,19 +57,48 @@ export async function lerMedicaoDoSenior(progresso: (etapa: string, pct: number)
     pedidos.push(...(await comRetentativa("pedidos (E120PED)", () => c(`SELECT CODFIL, NUMPED, DATEMI, SITPED FROM E120PED WHERE NUMPED IN (${gp[i].join(",")})`, 3 * MINUTO))));
     rateios.push(...(await comRetentativa("rateio dos pedidos (E120RAT)", () => c(`SELECT CODFIL, NUMPED, SEQISP, CODCCU, VLRRAT FROM E120RAT WHERE NUMPED IN (${gp[i].join(",")})`, 3 * MINUTO))));
   }
-  return { contratos, linhas, itens, pedidos, rateios };
+
+  // ---- faturamento (NF e ND). Se esta parte falhar, a medicao segue e o faturamento ja gravado fica como estava (o erro vai no resumo).
+  let faturamento: EntradaFaturamento | null = null, faturamentoErro: string | null = null;
+  try {
+    await progresso("Lendo as notas fiscais de serviço (E140NFV)", 82);
+    const notas = await comRetentativa("notas fiscais (E140NFV)", () => c("SELECT CODFIL, CODSNF, NUMNFV, DATEMI, CODCLI, VLRBSE, SITNFV FROM E140NFV WHERE SITNFV IN ('1','2')", 5 * MINUTO));
+    await progresso("Lendo os itens das notas (E140ISV)", 84);
+    const itensNota = await comRetentativa("itens das notas (E140ISV)", () => c("SELECT CODFIL, CODSNF, NUMNFV, NUMPED, CODCCU, VLRBRU FROM E140ISV", 5 * MINUTO));
+    await progresso("Lendo os títulos das notas e as notas de débito (E301TCR)", 86);
+    const titulos = await comRetentativa("titulos a receber (E301TCR)", () => c("SELECT NUMTIT, CODFIL, CODTPT, CODCLI, SITTIT, DATEMI, VLRORI, CODCCU, FILNFV, CODSNF, NUMNFV FROM E301TCR WHERE NUMNFV<>0 OR CODTPT='ND'", 5 * MINUTO));
+    const nums = [...new Set(titulos.map((t) => t.NUMTIT.trim()).filter(Boolean))];
+    const rateiosFat: Linha[] = [];
+    const gt = lotes(nums, 250);
+    for (let i = 0; i < gt.length; i++) {
+      await progresso(`Lendo o centro de custo das notas (${i + 1}/${gt.length})`, 87 + Math.round(((i + 1) / gt.length) * 3));
+      rateiosFat.push(...(await comRetentativa("rateio dos titulos (E301RAT)", () => c(`SELECT NUMTIT, CODFIL, CODCCU, PERRAT, VLRRAT FROM E301RAT WHERE NUMTIT IN (${gt[i].map((t) => `'${t.replace(/'/g, "''")}'`).join(",")})`, 3 * MINUTO))));
+    }
+    if (notas.length === 0) throw new Error("O Senior não devolveu nenhuma nota fiscal de serviço");
+    faturamento = { notas, itensNota, titulos, rateios: rateiosFat };
+  } catch (e) {
+    faturamentoErro = e instanceof Error ? e.message : String(e);
+  }
+  return { contratos, linhas, itens, pedidos, rateios, faturamento, faturamentoErro };
 }
 
 /** Regrava as tres tabelas (substituicao total e atomica). Nao grava se o resultado vier vazio ou muito menor que o ja gravado. */
-export async function gravarMedicao(db: typeof prisma, r: ResultadoMedicao) {
+export async function gravarMedicao(db: typeof prisma, r: ResultadoMedicao, docs: DocFaturamento[] | null = null) {
   if (r.contratos.length === 0) throw new Error("A montagem não gerou nenhum contrato — nada foi alterado.");
   const antes = await db.medicaoContrato.count();
   if (antes > 5 && r.contratos.length < antes * 0.5) throw new Error(`A leitura gerou ${r.contratos.length} contratos contra ${antes} já gravados (menos da metade) — suspeita de leitura incompleta, nada foi alterado.`);
   const itensAntes = await db.medicaoItem.count();
   if (itensAntes > 200 && r.itens.length < itensAntes * 0.5) throw new Error(`A leitura gerou ${r.itens.length} itens contra ${itensAntes} já gravados (menos da metade) — nada foi alterado.`);
   const d = (s: string | null) => (s ? new Date(`${s}T00:00:00.000Z`) : null);
+  // o faturamento so' substitui o ja gravado se vier completo (nao vazio e nao menos da metade)
+  const docsAntes = docs ? await db.faturamentoMedicao.count() : 0;
+  const trocarDocs = !!docs && docs.length > 0 && (docsAntes <= 20 || docs.length >= docsAntes * 0.5);
   await db.$transaction(
     async (tx) => {
+      if (trocarDocs && docs) {
+        await tx.faturamentoMedicao.deleteMany({});
+        for (let i = 0; i < docs.length; i += 1000) await tx.faturamentoMedicao.createMany({ data: docs.slice(i, i + 1000).map((x) => ({ ...x, dataEmissao: new Date(`${x.dataEmissao}T00:00:00.000Z`) })), skipDuplicates: true });
+      }
       await tx.medicaoItem.deleteMany({});
       await tx.medicaoLinha.deleteMany({});
       await tx.medicaoContrato.deleteMany({});
@@ -100,9 +132,11 @@ async function executar(id: string) {
     const entrada = await lerMedicaoDoSenior((etapa, pct) => marcar(id, etapa, pct));
     await marcar(id, "Calculando a medição de cada contrato", 85);
     const r = montarMedicao(entrada);
+    const docs = entrada.faturamento ? montarFaturamento(entrada.faturamento, r.itens) : null;
     await marcar(id, "Gravando", 92);
-    await gravarMedicao(prisma, r);
-    const resumo = { ...r.resumo, contratos: r.contratos.length, duracaoSegundos: Math.round((Date.now() - inicio) / 1000) };
+    await gravarMedicao(prisma, r, docs);
+    const faturamento = docs ? { documentos: docs.length, notas: docs.filter((x) => x.tipo === "NF").length, notasDebito: docs.filter((x) => x.tipo === "ND").length, semCentroDeCusto: docs.filter((x) => !x.codccu).length, mesDoPedido: docs.filter((x) => x.origem === "PEDIDO").length, mesPelaEmissao: docs.filter((x) => x.origem === "EMISSAO").length, acumulados: docs.filter((x) => x.origem === "ACUMULADO").length } : null;
+    const resumo = { ...r.resumo, contratos: r.contratos.length, faturamento, faturamentoErro: entrada.faturamentoErro, duracaoSegundos: Math.round((Date.now() - inicio) / 1000) };
     await prisma.atualizacaoMedicao.update({ where: { id }, data: { status: "OK", etapa: "Concluído", progresso: 100, finalizadoEm: new Date(), resumo: resumo as unknown as Prisma.InputJsonValue } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SeletorPeriodo, { type Atalho } from "@/components/contratos/SeletorPeriodo";
 import { BarrasPorMes, ConsumoPorLinha, Gauge, LinhasAvanco } from "./GraficosMedicao";
+import FaturamentoMedicao from "./FaturamentoMedicao";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 
 type Cel = { qtd: number; valor: number };
@@ -131,8 +132,8 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
   const consumoLinhas = [...d.linhas].filter((l) => l.qtdContratada > 0 || l.valorContratado > 0).sort((a, b) => Math.max(b.pctQtd, b.pctValor) - Math.max(a.pctQtd, a.pctValor));
 
   function baixarCsv() {
-    const cab = ["Linha", "Unidade", "Contratado (qtd)", "Contratado (R$)", "Antes do período (R$)", ...d.meses.map((m) => `${mesLongo(m)} (R$)`), ...d.meses.map((m) => `${mesLongo(m)} (qtd)`), "Medido acumulado (qtd)", "Medido acumulado (R$)", "Saldo (qtd)", "Saldo (R$)", "Consumo qtd (%)", "Consumo valor (%)", "Confere com o Senior", "Diferença Senior - pedidos (R$)"];
-    const linhas = d.linhas.map((l) => [csvTxt(l.descricao), csvTxt(l.unidade ?? ""), csvNum(l.qtdContratada), csvNum(l.valorContratado), csvNum(l.antes.valor), ...d.meses.map((m) => csvNum(l.porMes[m]?.valor ?? 0)), ...d.meses.map((m) => csvNum(l.porMes[m]?.qtd ?? 0)), csvNum(l.qtdFaturada), csvNum(l.valorFaturado), csvNum(l.saldoQtd), csvNum(l.saldoValor), csvNum(l.pctQtd * 100), csvNum(l.pctValor * 100), csvTxt(l.confere ? "sim" : "não"), csvNum(l.difValor)].join(";"));
+    const cab = ["Linha", "Unidade", "Preço unitário (R$)", "Vendido (qtd)", "Vendido (R$)", "Antes do período (R$)", ...d.meses.map((m) => `${mesLongo(m)} (R$)`), ...d.meses.map((m) => `${mesLongo(m)} (qtd)`), "Medido acumulado (qtd)", "Medido acumulado (R$)", "Saldo (qtd)", "Saldo (R$)", "Consumo qtd (%)", "Consumo valor (%)", "Confere com o Senior", "Diferença Senior - pedidos (R$)"];
+    const linhas = d.linhas.map((l) => [csvTxt(l.descricao), csvTxt(l.unidade ?? ""), csvNum(l.precoUnit), csvNum(l.qtdContratada), csvNum(l.valorContratado), csvNum(l.antes.valor), ...d.meses.map((m) => csvNum(l.porMes[m]?.valor ?? 0)), ...d.meses.map((m) => csvNum(l.porMes[m]?.qtd ?? 0)), csvNum(l.qtdFaturada), csvNum(l.valorFaturado), csvNum(l.saldoQtd), csvNum(l.saldoValor), csvNum(l.pctQtd * 100), csvNum(l.pctValor * 100), csvTxt(l.confere ? "sim" : "não"), csvNum(l.difValor)].join(";"));
     const blob = new Blob(["﻿" + [cab.map(csvTxt).join(";"), ...linhas].join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -141,6 +142,8 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
 
+  /** Preço médio medido da linha (valor faturado / quantidade faturada no Senior); null quando nao ha medicao ou preco contratado. */
+  const precoMedio = (l: Linha): number | null => (l.qtdFaturada > 0.0004 && l.valorFaturado > 0 && l.precoUnit > 0 ? l.valorFaturado / l.qtdFaturada : null);
   const celulaDoMes = (l: Linha, m: string) => {
     const c = l.porMes[m];
     const temValor = !!c && (c.valor > 0 || c.qtd > 0.0004);
@@ -239,6 +242,9 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
         ))}
       </div>
 
+      {/* ---------------- receita x faturamento (NF e ND do Senior) */}
+      <FaturamentoMedicao numCtr={numCtr} de={per.de} ate={per.ate} />
+
       {/* ---------------- graficos */}
       <section className="grid gap-5 lg:grid-cols-2">
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
@@ -267,7 +273,7 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
       {/* ---------------- planilha por linha */}
       <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <Titulo sub="Cada linha contratada no Senior: o contratado, o medido em cada mês, o medido acumulado, o saldo e o consumo. Clique num valor para ver os pedidos do mês, e no nome da linha para ver todos os dela.">Medição por linha do contrato</Titulo>
+          <Titulo sub="Cada linha contratada no Senior: o preço unitário, o vendido (quantidade e valor), o medido em cada mês, o medido acumulado, o saldo e o consumo. Clique num valor para ver os pedidos do mês, e no nome da linha para ver todos os dela.">Medição por linha do contrato</Titulo>
           <div className="flex flex-wrap items-center gap-2">
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar linha" className="w-44 rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-brand" aria-label="Buscar linha" />
             <button type="button" onClick={baixarCsv} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">Baixar (CSV)</button>
@@ -285,7 +291,8 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
             <thead>
               <tr>
                 <th className="sticky left-0 top-0 z-30 min-w-[250px] border-b border-gray-200 bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Linha</th>
-                <th className={th}>Contratado</th>
+                <th className={th} title="Preço unitário do contrato (E160CVS). Em amarelo: o preço médio medido está 1% ou mais afastado do contratado">Preço unit.</th>
+                <th className={th} title="O que foi vendido no contrato: quantidade e valor contratados na linha">Vendido</th>
                 <th className={th} title="Medido antes do período escolhido">Antes</th>
                 {d.meses.map((m) => <th key={m} className={th}>{mesCurto(m)}</th>)}
                 <th className={`${th} text-gray-900`}>Medido acum.</th>
@@ -304,8 +311,12 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
                     <td className="sticky left-0 z-10 border-b border-gray-100 bg-white px-3 py-1.5 text-left group-hover:bg-gray-50">
                       <button type="button" onClick={() => selecionar(l.seqCvs, null)} className="block w-full text-left" title="Ver todos os pedidos desta linha">
                         <span className="line-clamp-1 font-medium text-gray-800">{l.descricao}</span>
-                        <span className="text-[11px] text-gray-400">linha {l.seqCvs}{l.unidade ? ` · ${l.unidade}` : ""} · {moeda(l.precoUnit)} por {l.unidade ?? "un."}</span>
+                        <span className="text-[11px] text-gray-400">linha {l.seqCvs}{l.unidade ? ` · ${l.unidade}` : ""}</span>
                       </button>
+                    </td>
+                    <td className={`${celula} text-gray-700`} title={precoMedio(l) !== null ? `Preço médio medido: ${moeda(precoMedio(l)!)} por ${l.unidade ?? "un."}` : undefined}>
+                      <span className="block leading-tight">{moeda(l.precoUnit)}{l.unidade && <span className="block text-[10.5px] font-normal text-gray-400">por {l.unidade}</span>}</span>
+                      {precoMedio(l) !== null && Math.abs(precoMedio(l)! / l.precoUnit - 1) >= 0.01 && <span className="block text-[10.5px] font-medium text-amber-700">médio {moeda(precoMedio(l)!)}</span>}
                     </td>
                     <td className={`${celula} text-gray-700`}>{dual(l.valorContratado, l.qtdContratada)}</td>
                     <td className={`${celula} text-gray-500`}>{l.antes.valor > 0 || l.antes.qtd > 0.0004 ? dual(l.antes.valor, l.antes.qtd) : <span className="text-gray-200">·</span>}</td>
@@ -329,6 +340,7 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
               {linhasVisiveis.length > 0 && mostraValor && (
                 <tr className="font-semibold">
                   <td className="sticky bottom-0 left-0 z-20 border-t-2 border-gray-200 bg-gray-50 px-3 py-2 text-left text-gray-900">Total do contrato <span className="font-normal text-gray-400">(em valor)</span></td>
+                  <td className="sticky bottom-0 z-10 border-t-2 border-gray-200 bg-gray-50 px-2 py-2" />
                   <td className="sticky bottom-0 z-10 whitespace-nowrap border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right">{vc(d.totais.contratado)}</td>
                   <td className="sticky bottom-0 z-10 whitespace-nowrap border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right text-gray-500">{d.totais.antes > 0 ? vc(d.totais.antes) : "·"}</td>
                   {d.meses.map((m) => { const t = d.totais.porMes.find((x) => x.mes === m)!; return <td key={m} className="sticky bottom-0 z-10 whitespace-nowrap border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right">{t.valor > 0 ? vc(t.valor) : <span className="font-normal text-gray-300">·</span>}</td>; })}
@@ -339,7 +351,7 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
                   <td className="sticky bottom-0 z-10 border-t-2 border-dashed border-gray-200 bg-gray-50 px-2 py-2 text-right text-gray-200">—</td>
                 </tr>
               )}
-              {linhasVisiveis.length === 0 && <tr><td colSpan={d.meses.length + 8} className="px-3 py-10 text-center text-gray-400">Nenhuma linha com esses filtros.</td></tr>}
+              {linhasVisiveis.length === 0 && <tr><td colSpan={d.meses.length + 9} className="px-3 py-10 text-center text-gray-400">Nenhuma linha com esses filtros.</td></tr>}
             </tbody>
           </table>
         </div>
