@@ -22,6 +22,7 @@ export type Competencia = { competencia: string; origem: OrigemCompetencia; bole
  */
 export const CORRECAO_MES_DO_BOLETIM: Readonly<Record<string, { mes: string; motivo: string }>> = {
   "68|BM7": { mes: "2026-08", motivo: "CCR Aeroportos: PEDCLI 'BM07 07.2026'; a NF 2026/116 (R$ 6.831,80, emitida em 11/09) tem periodo 11/08 a 10/09/2026 e competencia agosto na planilha de faturamento do financeiro" },
+  "137|BM1": { mes: "2026-09", motivo: "MONTTEC CT PR 044/2026: PEDCLI 'BM01 07.2026'; a NF 2026/120 (R$ 7.588,21, emitida em 25/09) tem periodo 31/07 a 24/09/2026 e competencia setembro na planilha de faturamento do financeiro (Faturamento ATUAL (10), 20/10/2026)" },
 };
 
 /** Corte de dia por centro de custo (calibrado no Rito contra a planilha do financeiro). Ausente = sempre "emissao menos 1 mes". */

@@ -108,6 +108,16 @@ test("mes de boletim corrigido so' onde a planilha de faturamento do financeiro 
   assert.equal(competenciaDoPedido({ pedCli: "BM07 07.2026", dataEmissao: "2026-09-11", ccu: "340" })?.competencia, "2026-07");
 });
 
+test("MONTTEC BM01: Senior diz 07.2026, a NF 2026/120 tem periodo 31/07 a 24/09 e competencia setembro; BM02 e BM03 (10.2026) nao sao tocados", () => {
+  const c = competenciaDoPedido({ pedCli: "BM01 07.2026", dataEmissao: "2026-09-11", ccu: "102405", numCtr: "137" });
+  assert.equal(c?.competencia, "2026-09");
+  assert.equal(c?.corrigidoDe, "2026-07");
+  assert.equal(competenciaDoPedido({ pedCli: "BM02 10.2026", dataEmissao: "2026-10-06", ccu: "102405", numCtr: "137" })?.competencia, "2026-10");
+  assert.equal(competenciaDoPedido({ pedCli: "BM03 10.2026", dataEmissao: "2026-10-14", ccu: "102405", numCtr: "137" })?.competencia, "2026-10");
+  // outro contrato com o mesmo numero de boletim nao e' tocado
+  assert.equal(competenciaDoPedido({ pedCli: "BM01 07.2026", dataEmissao: "2026-09-11", ccu: "1", numCtr: "99" })?.competencia, "2026-07");
+});
+
 test("o Senior estava certo: MRN 3581 BM47 ('BM47 07.2026 C' = complementar de julho, periodo 26/07 a 31/07) e MRN 3728 BM20 ('01 06.2026' = semestre ate junho) NAO sao corrigidos", () => {
   assert.equal(competenciaDoPedido({ pedCli: "BM47 07.2026 C", dataEmissao: "2026-09-11", ccu: "240", numCtr: "12" })?.competencia, "2026-07");
   assert.equal(competenciaDoPedido({ pedCli: "BM20 01 06.2026", dataEmissao: "2026-08-17", ccu: "310", numCtr: "9" })?.competencia, "2026-06");
