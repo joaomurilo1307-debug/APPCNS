@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { montarMedicao, numero } from "../src/lib/medicao/montagem";
+import { montarMedicao, numero, valorDoItem } from "../src/lib/medicao/montagem";
 import { montarDetalhe, mesesDe } from "../src/lib/medicao/detalhe";
 
 // ---- fixture que imita o formato real do Senior (virgula decimal, datas dd/mm/aaaa, aditivo com linha zerada)
@@ -179,4 +179,51 @@ test("conferencia: a soma dos pedidos fecha (ou nao) com o faturado do Senior, l
   assert.equal(a.confere, false);
   assert.equal(a.difValor, 100); // Senior 600 - pedidos 500
   assert.equal(a.saldoValor, 400); // o saldo segue o Senior
+});
+
+// ---------------------------------------------------------------- valor do item conforme a situacao (dados reais do Senior, 19/10/2026)
+const item = (o: Record<string, string>) => ({ CODFIL: "1", NUMPED: "1", SEQISP: "1", CTRCVS: "7", SEQCTR: "2", PEDCLI: "", ...o });
+
+test("valor do item: aberto e encerrado usam o VLRBRU do Senior", () => {
+  const a = valorDoItem(item({ SITISP: "1", QTDPED: "57,04687", QTDCAN: "0", PREUNI: "107,88", VLRBRU: "6154,22" }));
+  assert.equal(a.valor, 6154.22);
+  assert.equal(a.calculado, false);
+  assert.equal(a.situacao, "ABERTO");
+  assert.equal(valorDoItem(item({ SITISP: "9", QTDPED: "1", QTDCAN: "0", PREUNI: "5376,05", VLRBRU: "5376,05" })).situacao, "ENCERRADO");
+});
+
+test("valor do item: faturado tem VLRBRU zerado no Senior -> quantidade x preco (fecha com a NF 123 = 145.500,49)", () => {
+  // itens reais do pedido 237 (SVPM CT 072/2024, boletim 15 de 08/2025), todos SITISP 4 e VLRBRU 0
+  const reais = [["2", "14052,35"], ["1", "26116,85"], ["2", "6944,5683333333"], ["2", "21348,37020833"], ["0,967", "23144,21833"], ["2", "1053,67875"], ["2", "2608,00770833"], ["1", "4989,22"]];
+  const total = reais.reduce((s, [q, p]) => { const v = valorDoItem(item({ SITISP: "4", QTDPED: q, QTDCAN: "0", PREUNI: p, VLRBRU: "0" })); assert.equal(v.calculado, true); return s + v.valor; }, 0);
+  assert.equal(Math.round(total * 100) / 100, 145500.49);
+});
+
+test("valor do item: estornado (NF cancelada, item reaberto) nao usa o VLRBRU em dobro", () => {
+  const v = valorDoItem(item({ SITISP: "8", QTDPED: "0,5", QTDCAN: "0", PREUNI: "38993,30594", VLRBRU: "38993,31" }));
+  assert.equal(v.valor, 19496.65);
+  assert.equal(v.situacao, "ESTORNADO");
+});
+
+test("valor do item: cancelado nao e' medicao; item aberto sem VLRBRU cai em quantidade x preco; sem SITISP vale o VLRBRU", () => {
+  const c = valorDoItem(item({ SITISP: "5", QTDPED: "2", QTDCAN: "2", PREUNI: "14052,35", VLRBRU: "0" }));
+  assert.equal(c.cancelado, true);
+  assert.equal(c.valor, 0);
+  assert.equal(valorDoItem(item({ SITISP: "1", QTDPED: "2", QTDCAN: "0", PREUNI: "10", VLRBRU: "0" })).valor, 20);
+  assert.equal(valorDoItem(item({ QTDPED: "1", VLRBRU: "18000,14" })).valor, 18000.14); // fixture antiga, sem SITISP
+});
+
+test("montagem: item faturado entra com valor, cancelado fica de fora e a linha confere com o Senior", () => {
+  const itensF = [
+    item({ NUMPED: "384", SITISP: "4", QTDPED: "2", QTDCAN: "0", PREUNI: "9000,07", VLRBRU: "0", PEDCLI: "BM35 01.2026" }),
+    item({ NUMPED: "400", SITISP: "5", QTDPED: "1", QTDCAN: "1", PREUNI: "9000,07", VLRBRU: "0", PEDCLI: "BM36 02.2026" }),
+    item({ NUMPED: "414", SITISP: "1", QTDPED: "1", QTDCAN: "0", PREUNI: "18000,14", VLRBRU: "18000,14", PEDCLI: "BM37 03.2026" }),
+  ];
+  const r = montarMedicao({ contratos, linhas: linhas.map((l) => (l.SEQCVS === "2" ? { ...l, QTDFAT: "3", VLRFAT: "36000,28" } : l)), itens: itensF, pedidos, rateios });
+  assert.equal(r.resumo.itensCancelados, 1);
+  assert.equal(r.resumo.itensComValorCalculado, 1);
+  assert.equal(r.itens.length, 2);
+  assert.equal(r.itens.find((i) => i.numPed === "384")!.valor, 18000.14);
+  assert.equal(r.itens.find((i) => i.numPed === "384")!.situacao, "FATURADO");
+  assert.equal(r.resumo.totalLinhasQueNaoBatem, 0);
 });

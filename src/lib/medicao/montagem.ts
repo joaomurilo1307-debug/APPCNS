@@ -1,5 +1,6 @@
 // Monta, a partir das linhas cruas do Senior, o que o modulo de Medicao guarda e mostra. So' calculo (sem banco e sem Senior).
 //   contratado  = E160CVS (QTDCVS, VLRTOT)            medido acumulado = soma dos itens dos pedidos (E120ISP) = E160CVS (QTDFAT, VLRFAT)
+//   valor de cada item: ver valorDoItem (o Senior ZERA o valor do item depois que o pedido e' faturado)
 //   saldo       = contratado - medido                  mes de cada medicao = boletim do PEDCLI, ou emissao menos 1 mes (ver competencia.ts)
 //   centro de custo de cada item = rateio do pedido (E120RAT); o do contrato = o de maior valor entre os itens. Nunca por nome.
 
@@ -10,7 +11,7 @@ export type Linha = Record<string, string>;
 export type EntradaMedicao = {
   contratos: Linha[]; // E160CTR: NUMCTR, NUMOFI, CODCLI, DATINI
   linhas: Linha[]; // E160CVS: NUMCTR, SEQCVS, CODSER, CPLCVS, UNIMED, QTDCVS, PREUNI, VLRTOT, QTDFAT, VLRFAT
-  itens: Linha[]; // E120ISP: CODFIL, NUMPED, SEQISP, CTRCVS, SEQCTR, QTDPED, VLRBRU, PEDCLI
+  itens: Linha[]; // E120ISP: CODFIL, NUMPED, SEQISP, CTRCVS, SEQCTR, SITISP, QTDPED, QTDCAN, PREUNI, VLRBRU, PEDCLI
   pedidos: Linha[]; // E120PED: CODFIL, NUMPED, DATEMI, SITPED
   rateios: Linha[]; // E120RAT: CODFIL, NUMPED, SEQISP, CODCCU, VLRRAT
 };
@@ -39,12 +40,37 @@ export type ResultadoMedicao = {
   resumo: {
     contratosComLinhas: number; contratosSemPedido: number; contratosSemCentroDeCusto: number; linhas: number; itens: number;
     itensPorBoletim: number; itensPorEmissao: number; itensBoletimInconsistente: number; itensSemLinhaNoCatalogo: number; itensSemData: number;
+    itensCancelados: number; itensComValorCalculado: number;
     contratosComMaisDeUmCcu: { numCtr: string; ccus: string }[];
     linhasQueNaoBatem: { numCtr: string; seqCvs: number; qtdSenior: number; qtdPedidos: number; valorSenior: number; valorPedidos: number }[];
     totalLinhasQueNaoBatem: number;
     pedCliSemMes: { numCtr: string; exemplos: string[] }[]; // para ajustar o leitor do boletim contrato a contrato
   };
 };
+
+/** Situacao do item do pedido (E120ISP.SITISP), lida dos dados reais do Senior em 19/10/2026 (4.877 itens dos contratos ativos). */
+export const SITUACAO_ITEM: Readonly<Record<string, string>> = { "1": "ABERTO", "2": "FATURADO PARCIAL", "4": "FATURADO", "5": "CANCELADO", "8": "ESTORNADO", "9": "ENCERRADO" };
+
+/**
+ * Quantidade e valor medidos de um item de pedido. O Senior NAO mantem o VLRBRU em todo item:
+ *   1 ABERTO e 9 ENCERRADO: VLRBRU vale (soma dos 3.561 itens fecha com quantidade x preco ao centavo).
+ *   4 FATURADO (1.234 itens, todos com VLRBRU = 0), 2 FATURADO PARCIAL: o valor e' zerado ao faturar -> quantidade x preco unitario, que fecha com a
+ *      nota ao centavo (pedido 237 = NF 123 = R$ 145.500,49; pedido 140 + 141 = NF 68 + 69 = R$ 182.765,39).
+ *   8 ESTORNADO (NF cancelada e item reaberto): o VLRBRU vem em dobro (calculado sobre a quantidade em aberto, que soma a ja faturada) -> quantidade x preco.
+ *   5 CANCELADO: nao e' medicao (QTDCAN = QTDPED, VLRBRU = 0).
+ * Sem essa regra, 25% dos itens entravam com valor zero e contratos inteiros (SVPM, SUDECAP, AGA, PM Contagem) apareciam sem medicao mes a mes.
+ */
+export function valorDoItem(it: Linha): { cancelado: boolean; qtd: number; valor: number; calculado: boolean; situacao: string | null } {
+  const sit = texto(it.SITISP);
+  const situacao = SITUACAO_ITEM[sit] ?? null;
+  if (sit === "5") return { cancelado: true, qtd: 0, valor: 0, calculado: false, situacao };
+  const qtd = Math.max(0, numero(it.QTDPED) - numero(it.QTDCAN));
+  const bruto = numero(it.VLRBRU);
+  const porPreco = arred(qtd * numero(it.PREUNI));
+  if (sit === "2" || sit === "4" || sit === "8") return { cancelado: false, qtd, valor: porPreco, calculado: true, situacao };
+  if (bruto === 0 && porPreco > 0) return { cancelado: false, qtd, valor: porPreco, calculado: true, situacao };
+  return { cancelado: false, qtd, valor: bruto, calculado: false, situacao };
+}
 
 const chavePedido = (filial: string | undefined, numPed: string | undefined) => `${texto(filial)}|${texto(numPed)}`;
 
@@ -97,7 +123,7 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
     const porCcu = new Map<string, number>();
     for (const it of itensPorCtr.get(n) ?? []) {
       const c = ccuDominante(`${chavePedido(it.CODFIL, it.NUMPED)}|${texto(it.SEQISP)}`);
-      if (c) porCcu.set(c, (porCcu.get(c) ?? 0) + numero(it.VLRBRU));
+      if (c) porCcu.set(c, (porCcu.get(c) ?? 0) + valorDoItem(it).valor);
     }
     const ordenados = [...porCcu.entries()].sort((a, b) => b[1] - a[1]);
     ccuDoContrato.set(n, { principal: ordenados[0]?.[0] ?? null, todos: ordenados.map(([c]) => c) });
@@ -108,7 +134,7 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
   const itens: ItemMedicao[] = [];
   const resumo: ResultadoMedicao["resumo"] = {
     contratosComLinhas: numCtrs.length, contratosSemPedido: 0, contratosSemCentroDeCusto: 0, linhas: 0, itens: 0, itensPorBoletim: 0, itensPorEmissao: 0, itensBoletimInconsistente: 0, itensSemLinhaNoCatalogo: 0, itensSemData: 0,
-    contratosComMaisDeUmCcu: [], linhasQueNaoBatem: [], totalLinhasQueNaoBatem: 0, pedCliSemMes: [],
+    itensCancelados: 0, itensComValorCalculado: 0, contratosComMaisDeUmCcu: [], linhasQueNaoBatem: [], totalLinhasQueNaoBatem: 0, pedCliSemMes: [],
   };
 
   for (const n of numCtrs) {
@@ -123,9 +149,12 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
     for (const it of itensPorCtr.get(n) ?? []) {
       const seq = Number(texto(it.SEQCTR));
       if (!seqNoCatalogo.has(seq)) { resumo.itensSemLinhaNoCatalogo += 1; continue; }
+      const v = valorDoItem(it);
+      if (v.cancelado) { resumo.itensCancelados += 1; continue; } // item cancelado nao e' medicao e nao entra no faturado do Senior
+      if (v.calculado) resumo.itensComValorCalculado += 1;
       const ped = pedidoPorChave.get(chavePedido(it.CODFIL, it.NUMPED));
       const emissao = dataIso(ped?.DATEMI);
-      const qtd = numero(it.QTDPED), valor = numero(it.VLRBRU);
+      const qtd = v.qtd, valor = v.valor;
       // o acumulado do Senior (QTDFAT/VLRFAT) conta todo item do pedido; a conferencia usa o mesmo criterio
       somaQtd.set(seq, (somaQtd.get(seq) ?? 0) + qtd);
       somaVal.set(seq, (somaVal.get(seq) ?? 0) + valor);
@@ -135,7 +164,7 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
       if (comp.origem === "BOLETIM") resumo.itensPorBoletim += 1; else { resumo.itensPorEmissao += 1; if (texto(it.PEDCLI)) semMes.add(texto(it.PEDCLI)); }
       if (comp.inconsistente) resumo.itensBoletimInconsistente += 1;
       temItem = true;
-      itens.push({ numCtr: n, seqCvs: seq, numPed: texto(it.NUMPED), seqIsp: Number(texto(it.SEQISP)) || 0, dataEmissao: emissao, competencia: comp.competencia, origem: comp.origem, boletim: comp.boletim, pedCli: texto(it.PEDCLI) || null, situacao: texto(ped?.SITPED) || null, qtd, valor: arred(valor), codccu: ccuDominante(`${chavePedido(it.CODFIL, it.NUMPED)}|${texto(it.SEQISP)}`) });
+      itens.push({ numCtr: n, seqCvs: seq, numPed: texto(it.NUMPED), seqIsp: Number(texto(it.SEQISP)) || 0, dataEmissao: emissao, competencia: comp.competencia, origem: comp.origem, boletim: comp.boletim, pedCli: texto(it.PEDCLI) || null, situacao: v.situacao ?? (texto(ped?.SITPED) || null), qtd, valor: arred(valor), codccu: ccuDominante(`${chavePedido(it.CODFIL, it.NUMPED)}|${texto(it.SEQISP)}`) });
     }
 
     let valorMedido = 0;

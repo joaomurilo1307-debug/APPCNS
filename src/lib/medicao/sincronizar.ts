@@ -44,7 +44,7 @@ export async function lerMedicaoDoSenior(progresso: (etapa: string, pct: number)
   if (comLinha.length === 0) throw new Error("Nenhuma linha contratada com valor foi lida (E160CVS) — atualização abortada, nada foi alterado.");
 
   await progresso("Lendo os itens dos pedidos de venda (etapa mais demorada, ~1 a 3 min)", 18);
-  const itens = await comRetentativa("itens dos pedidos (E120ISP)", () => c(`SELECT CODFIL, NUMPED, SEQISP, CTRCVS, SEQCTR, QTDPED, VLRBRU, PEDCLI FROM E120ISP WHERE CTRCVS IN (${comLinha.join(",")})`, 10 * MINUTO));
+  const itens = await comRetentativa("itens dos pedidos (E120ISP)", () => c(`SELECT CODFIL, NUMPED, SEQISP, CTRCVS, SEQCTR, SITISP, QTDPED, QTDCAN, PREUNI, VLRBRU, PEDCLI FROM E120ISP WHERE CTRCVS IN (${comLinha.join(",")})`, 10 * MINUTO));
 
   const peds = soNumeros([...new Set(itens.map((i) => i.NUMPED.trim()))]);
   const pedidos: Linha[] = [], rateios: Linha[] = [];
