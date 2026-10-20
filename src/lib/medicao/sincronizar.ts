@@ -62,7 +62,7 @@ export async function lerMedicaoDoSenior(progresso: (etapa: string, pct: number)
   let faturamento: EntradaFaturamento | null = null, faturamentoErro: string | null = null;
   try {
     await progresso("Lendo as notas fiscais de serviço (E140NFV)", 82);
-    const notas = await comRetentativa("notas fiscais (E140NFV)", () => c("SELECT CODFIL, CODSNF, NUMNFV, DATEMI, CODCLI, VLRBSE, SITNFV FROM E140NFV WHERE SITNFV IN ('1','2')", 5 * MINUTO));
+    const notas = await comRetentativa("notas fiscais (E140NFV)", () => c("SELECT CODFIL, CODSNF, NUMNFV, DATEMI, CODCLI, VLRBSE, VLRLIQ, SITNFV FROM E140NFV WHERE SITNFV IN ('1','2')", 5 * MINUTO));
     await progresso("Lendo os itens das notas (E140ISV)", 84);
     const itensNota = await comRetentativa("itens das notas (E140ISV)", () => c("SELECT CODFIL, CODSNF, NUMNFV, NUMPED, CODCCU, VLRBRU FROM E140ISV", 5 * MINUTO));
     await progresso("Lendo os títulos das notas e as notas de débito (E301TCR)", 86);

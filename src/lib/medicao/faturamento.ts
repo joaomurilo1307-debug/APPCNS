@@ -11,7 +11,7 @@ import { COMPETENCIA_ACUMULADO, competenciaPorEmissao } from "./competencia";
 import { numero, type ItemMedicao, type Linha } from "./montagem";
 
 export type EntradaFaturamento = {
-  notas: Linha[]; // E140NFV: CODFIL, CODSNF, NUMNFV, DATEMI, CODCLI, VLRBSE, SITNFV
+  notas: Linha[]; // E140NFV: CODFIL, CODSNF, NUMNFV, DATEMI, CODCLI, VLRBSE (bruto), VLRLIQ (liquido, depois das retencoes), SITNFV
   itensNota: Linha[]; // E140ISV: CODFIL, CODSNF, NUMNFV, NUMPED, SEQISP, CODCCU, VLRBRU
   titulos: Linha[]; // E301TCR: NUMTIT, CODFIL, CODTPT, CODCLI, SITTIT, DATEMI, VLRORI, CODCCU, FILNFV, CODSNF, NUMNFV
   rateios: Linha[]; // E301RAT: NUMTIT, CODFIL, CODCCU, PERRAT, VLRRAT
@@ -19,8 +19,9 @@ export type EntradaFaturamento = {
 
 export type DocFaturamento = {
   chave: string; tipo: "NF" | "ND"; numero: string; filial: string; serie: string | null; dataEmissao: string; // aaaa-mm-dd
-  valor: number; // a parte deste centro de custo
-  valorDoc: number; // valor total do documento
+  valor: number; // BRUTO, a parte deste centro de custo
+  valorLiquido: number; // liquido da parte (NF: depois das retencoes, E140NFV.VLRLIQ; ND: sem retencao, igual ao bruto)
+  valorDoc: number; // valor bruto total do documento
   codccu: string | null; competencia: string; origem: "PEDIDO" | "EMISSAO" | "ACUMULADO"; pedidos: string | null; situacao: string | null; codCli: string | null;
 };
 
@@ -94,6 +95,7 @@ export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<Item
     const sit = texto(n.SITNFV);
     if (sit !== "1" && sit !== "2") continue; // 3 = cancelada e reemitida (a substituta ja esta aqui)
     const valorDoc = arred(numero(n.VLRBSE));
+    const liquidoDoc = arred(numero(n.VLRLIQ)) > 0 ? arred(numero(n.VLRLIQ)) : valorDoc; // sem liquido no Senior: igual ao bruto
     const emissao = dataIso(n.DATEMI);
     if (valorDoc <= 0 || !emissao) continue; // rascunho sem valor
     const k = `${texto(n.CODFIL)}|${texto(n.CODSNF)}|${texto(n.NUMNFV)}`;
@@ -106,7 +108,7 @@ export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<Item
       let competencia: string, origem: DocFaturamento["origem"];
       if (doPedido) { competencia = doPedido.competencia; origem = doPedido.competencia === COMPETENCIA_ACUMULADO ? "ACUMULADO" : "PEDIDO"; }
       else { competencia = competenciaPorEmissao(emissao, parte.ccu) ?? emissao.slice(0, 7); origem = "EMISSAO"; }
-      docs.push({ chave: `NF|${k}|${parte.ccu ?? ""}`, tipo: "NF", numero: texto(n.NUMNFV), filial: texto(n.CODFIL), serie: texto(n.CODSNF) || null, dataEmissao: emissao, valor: parte.valor, valorDoc, codccu: parte.ccu, competencia, origem, pedidos: peds.length ? peds.join(",") : null, situacao: sit === "2" ? "AUTORIZADA" : "EM ELABORACAO", codCli: texto(n.CODCLI) || null });
+      docs.push({ chave: `NF|${k}|${parte.ccu ?? ""}`, tipo: "NF", numero: texto(n.NUMNFV), filial: texto(n.CODFIL), serie: texto(n.CODSNF) || null, dataEmissao: emissao, valor: parte.valor, valorLiquido: arred((liquidoDoc * parte.valor) / valorDoc), valorDoc, codccu: parte.ccu, competencia, origem, pedidos: peds.length ? peds.join(",") : null, situacao: sit === "2" ? "AUTORIZADA" : "EM ELABORACAO", codCli: texto(n.CODCLI) || null });
     }
   }
 
@@ -118,7 +120,7 @@ export function montarFaturamento(e: EntradaFaturamento, itensMedicao: Pick<Item
     const pesos = new Map(rateioDoTitulo.get(`${texto(t.CODFIL)}|${texto(t.NUMTIT)}`) ?? []);
     if (pesos.size === 0 && texto(t.CODCCU)) pesos.set(texto(t.CODCCU), valorDoc);
     for (const parte of repartir(valorDoc, pesos)) {
-      docs.push({ chave: `ND|${texto(t.CODFIL)}|${texto(t.NUMTIT)}|${parte.ccu ?? ""}`, tipo: "ND", numero: texto(t.NUMTIT), filial: texto(t.CODFIL), serie: null, dataEmissao: emissao, valor: parte.valor, valorDoc, codccu: parte.ccu, competencia: competenciaPorEmissao(emissao, parte.ccu) ?? emissao.slice(0, 7), origem: "EMISSAO", pedidos: null, situacao: texto(t.SITTIT) === "LQ" ? "LIQUIDADA" : "EM ABERTO", codCli: texto(t.CODCLI) || null });
+      docs.push({ chave: `ND|${texto(t.CODFIL)}|${texto(t.NUMTIT)}|${parte.ccu ?? ""}`, tipo: "ND", numero: texto(t.NUMTIT), filial: texto(t.CODFIL), serie: null, dataEmissao: emissao, valor: parte.valor, valorLiquido: parte.valor, valorDoc, codccu: parte.ccu, competencia: competenciaPorEmissao(emissao, parte.ccu) ?? emissao.slice(0, 7), origem: "EMISSAO", pedidos: null, situacao: texto(t.SITTIT) === "LQ" ? "LIQUIDADA" : "EM ABERTO", codCli: texto(t.CODCLI) || null });
     }
   }
   return docs;

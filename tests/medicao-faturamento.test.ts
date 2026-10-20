@@ -66,81 +66,114 @@ test("faturamento: ND rateada em dois centros de custo reparte o valor sem perde
   assert.equal(docs[0].competencia, "2026-06");
 });
 
-// ---------------------------------------------------------------- conciliacao
-const item = (numPed: string, competencia: string, valor: number, extra: Partial<ItemConc> = {}): ItemConc => ({ numPed, competencia, origem: "BOLETIM", boletim: "BM41", situacao: "ABERTO", qtd: 1, valor, codccu: "230", dataEmissao: "2026-07-10", ...extra });
-const doc = (numero: string, competencia: string, valor: number, extra: Partial<DocConc> = {}): DocConc => ({ chave: `NF|2|A24|${numero}|230`, tipo: "NF", numero, filial: "2", serie: "A24", dataEmissao: "2026-07-17", valor, valorDoc: valor, codccu: "230", competencia, origem: "EMISSAO", pedidos: null, situacao: "AUTORIZADA", ...extra });
+// ---------------------------------------------------------------- conciliacao (o contrato vale pelos seus pedidos; as notas pelo CC principal)
+const item = (numPed: string, competencia: string, valor: number, extra: Partial<ItemConc> = {}): ItemConc => ({ numPed, competencia, origem: "BOLETIM", boletim: "BM41", situacao: "ABERTO", qtd: 1, valor, dataEmissao: "2026-07-10", ...extra });
+const doc = (numero: string, competencia: string, valor: number, extra: Partial<DocConc> = {}): DocConc => ({ chave: `NF|2|A24|${numero}|230`, tipo: "NF", numero, filial: "2", serie: "A24", dataEmissao: "2026-07-17", valor, valorLiquido: valor, valorDoc: valor, codccu: "230", competencia, origem: "EMISSAO", pedidos: null, situacao: "AUTORIZADA", ...extra });
 
-test("conciliacao: mes que fecha, mes com medicao sem nota e saldo a faturar acumulado", () => {
+test("receita do mes = medicao em NF + notas de debito; as linhas dos pedidos fecham com ela (MRN 3748, janeiro: pedido 386 = NF 243, pedido 387 = ND 09/2026)", () => {
+  const itens = [item("386", "2026-01", 250769.62), item("387", "2026-01", 19308.64)];
+  const docs = [doc("243", "2026-01", 250769.62), doc("ND 09/2026", "2026-01", 19308.64, { tipo: "ND", chave: "ND|2|09|230" })];
+  const c = conciliar(itens, docs, [], "2026-01", "2026-01");
+  const m = c.meses[0];
+  assert.equal(m.nf, 250769.62);
+  assert.equal(m.nd, 19308.64);
+  assert.equal(m.faturado, 270078.26); // receita bruta
+  assert.equal(m.medido, 270078.26); // soma das linhas dos pedidos
+  assert.equal(m.dif, 0);
+  assert.equal(m.ndAvulsa, 0); // a ND e' o pedido 387: nao soma duas vezes
+  assert.deepEqual(c.pedidos.map((p) => p.documentos[0].tipo).sort(), ["ND", "NF"]);
+});
+
+test("receita bruta e liquida: a NF tem retencoes, a ND nao tem", () => {
+  const itens = [item("481", "2026-06", 818045.02), item("482", "2026-06", 571996.93)];
+  const docs = [doc("266", "2026-06", 818045.02, { valorLiquido: 726833 }), doc("ND 31/2026", "2026-06", 571996.93, { tipo: "ND", chave: "ND|2|31|230" })];
+  const m = conciliar(itens, docs, [], "2026-06", "2026-06").meses[0];
+  assert.equal(m.faturado, 1390041.95); // bruta
+  assert.equal(m.retencoes, 91212.02); // so' da NF
+  assert.equal(m.liquido, 1298829.93);
+  assert.equal(m.dif, 0);
+});
+
+test("pedido dividido entre centros de custo no rateio do Senior nao e' problema: o contrato vale pelo pedido inteiro (pedido 308 = NF 227)", () => {
+  // o item de R$ 10.088,24 esta rateado para o CC 240 no Senior, mas o pedido e' do contrato: 692.433,74 = NF 227
+  const itens = [item("308", "2025-10", 682345.5), item("308", "2025-10", 10088.24)];
+  const c = conciliar(itens, [doc("227", "2025-11", 692433.74)], [], "2025-10", "2025-11");
+  assert.equal(c.docs[0].vinculo, "VALOR");
+  assert.equal(c.docs[0].competencia, "2025-10"); // a nota volta para o mes do trabalho
+  assert.equal(c.meses[0].dif, 0);
+  assert.equal(c.totais.saldoAcum, 0);
+});
+
+test("mes que fecha, mes com pedido incompleto e saldo do periodo (MRN 3687, julho: nota de R$ 793 mil e pedido de R$ 17)", () => {
   const itens = [item("481", "2026-05", 800000), item("482", "2026-06", 818045.02), item("503", "2026-07", 17.08)];
-  const docs = [doc("255", "2026-05", 800000), doc("266", "2026-06", 818045.02), doc("274", "2026-07", 793568.85, { chave: "NF|2|A24|274|230" })];
-  const c = conciliar(itens, docs, "230", "2026-05", "2026-07");
+  const docs = [doc("255", "2026-05", 800000), doc("266", "2026-06", 818045.02), doc("274", "2026-07", 793568.85)];
+  const c = conciliar(itens, docs, [], "2026-05", "2026-07");
   assert.equal(c.inicio, "2026-05");
   assert.equal(c.meses[0].dif, 0);
   assert.equal(c.meses[1].dif, 0);
   assert.equal(c.meses[2].medido, 17.08);
   assert.equal(c.meses[2].faturado, 793568.85);
-  assert.equal(c.meses[2].dif, 17.08 - 793568.85);
-  assert.equal(c.meses[2].saldoAcum, -793551.77); // faturou o que a medicao do Senior ainda nao tem
+  assert.equal(c.meses[2].dif, -793551.77);
+  assert.equal(c.totais.saldoAcum, -793551.77);
   assert.equal(c.totais.mesesComDiferenca, 1);
 });
 
-test("conciliacao: pedido recebe a nota pelo vinculo do Senior ou, sem ele, pelo mesmo valor no mesmo centro de custo", () => {
+test("pedido recebe a nota pelo vinculo do Senior ou, sem ele, pelo mesmo valor ao centavo", () => {
   const itens = [item("481", "2026-06", 818045.02), item("140", "2026-04", 156243.25, { situacao: "FATURADO" }), item("999", "2026-06", 12.34)];
   const docs = [doc("266", "2026-06", 818045.02), doc("68", "2026-04", 156243.25, { chave: "NF|1|A25|68|230", pedidos: "140", origem: "PEDIDO" })];
-  const c = conciliar(itens, docs, "230", "2026-04", "2026-06");
+  const c = conciliar(itens, docs, [], "2026-04", "2026-06");
   const p = (n: string) => c.pedidos.find((x) => x.numPed === n)!;
   assert.deepEqual({ n: p("140").documentos[0].numero, como: p("140").documentos[0].como }, { n: "68", como: "NOTA" });
   assert.deepEqual({ n: p("481").documentos[0].numero, como: p("481").documentos[0].como }, { n: "266", como: "VALOR" });
-  assert.equal(p("999").documentos.length, 0); // sem nota
+  assert.equal(p("999").documentos.length, 0); // ainda sem nota
   assert.equal(c.totais.pedidosSemNota, 1);
 });
 
-test("conciliacao: nota emitida meses depois, de mesmo valor, volta para o mes do pedido (faturamento em lote)", () => {
-  // SUDECAP: pedidos de outubro a dezembro faturados todos em marco do ano seguinte
+test("nota emitida meses depois, de mesmo valor, volta para o mes do pedido (faturamento em lote da SUDECAP)", () => {
   const itens = [item("367", "2025-10", 180405.84), item("368", "2025-11", 164018.7), item("369", "2025-12", 178516.05)];
   const docs = [doc("27", "2026-02", 180405.84), doc("28", "2026-02", 164018.7), doc("29", "2026-02", 178516.05)];
-  const c = conciliar(itens, docs, "230", "2025-10", "2026-02");
+  const c = conciliar(itens, docs, [], "2025-10", "2026-02");
   assert.deepEqual(c.meses.map((m) => m.dif), [0, 0, 0, 0, 0]);
   assert.equal(c.totais.saldoAcum, 0);
   assert.equal(c.docs.find((d) => d.numero === "27")!.competenciaOriginal, "2026-02"); // o mes da emissao fica visivel
   assert.equal(c.docs.find((d) => d.numero === "27")!.competencia, "2025-10");
 });
 
-test("conciliacao: nota que e' a soma de dois pedidos do mes (e pedido que e' a soma de duas notas)", () => {
+test("nota que e' a soma de dois pedidos do mes (e pedido que e' a soma de duas notas)", () => {
   const itens = [item("10", "2026-03", 1000), item("11", "2026-03", 234.56), item("12", "2026-04", 700)];
   const docs = [doc("1", "2026-04", 1234.56), doc("2", "2026-04", 300), doc("3", "2026-04", 400)];
-  const c = conciliar(itens, docs, "230", "2026-03", "2026-04");
+  const c = conciliar(itens, docs, [], "2026-03", "2026-04");
   assert.equal(c.docs.find((d) => d.numero === "1")!.vinculo, "SOMA");
   assert.deepEqual(c.docs.find((d) => d.numero === "1")!.pedidosLigados.sort(), ["10", "11"]);
   assert.equal(c.pedidos.find((p) => p.numPed === "12")!.documentos.length, 2);
   assert.equal(c.totais.saldoAcum, 0);
 });
 
-test("conciliacao: pedido sem nota com nota do mesmo valor em OUTRO centro de custo recebe o aviso (nunca e' corrigido)", () => {
-  const itens = [item("380", "2026-01", 229215.93, { codccu: "102185" })];
-  const docs = [doc("16", "2026-01", 229215.93, { codccu: "170", chave: "NF|1|A26|16|170" })];
-  const c = conciliar(itens, docs, "102185", "2026-01", "2026-01");
+test("pedido sem nota que tem nota do mesmo valor em OUTRO centro de custo recebe o aviso (nunca e' corrigido)", () => {
+  const itens = [item("380", "2026-01", 229215.93)];
+  const outro = [doc("16", "2026-01", 229215.93, { codccu: "170", chave: "NF|1|A26|16|170" })];
+  const c = conciliar(itens, [], outro, "2026-01", "2026-01");
   assert.equal(c.pedidos[0].documentos.length, 0);
   assert.deepEqual(c.pedidos[0].possivelOutroCc && { cc: c.pedidos[0].possivelOutroCc.codccu, n: c.pedidos[0].possivelOutroCc.numero }, { cc: "170", n: "16" });
   assert.equal(c.meses[0].faturado, 0); // o valor continua onde o Senior o deixou
 });
 
-test("conciliacao: carga acumulada e nota de antes do inicio ficam fora do saldo; so' conta o centro de custo escolhido", () => {
-  const itens = [item("231", "0000-00", 9353971.49, { origem: "ACUMULADO" }), item("482", "2026-06", 100), item("700", "2026-06", 555, { codccu: "240" })];
-  const docs = [doc("100", "2019-03", 50000), doc("266", "2026-06", 100), doc("901", "2026-06", 777, { codccu: "240", chave: "x" })];
-  const c = conciliar(itens, docs, "230", "2026-06", "2026-06");
+test("carga acumulada e nota de antes do primeiro pedido ficam fora do saldo e dos meses", () => {
+  const itens = [item("231", "0000-00", 9353971.49, { origem: "ACUMULADO" }), item("482", "2026-06", 100)];
+  const docs = [doc("100", "2019-03", 50000), doc("266", "2026-06", 100)];
+  const c = conciliar(itens, docs, [], "2026-06", "2026-06");
   assert.equal(c.acumulados.medido, 9353971.49);
   assert.deepEqual(c.notasAntesDoInicio, { qtd: 1, valor: 50000 });
   assert.equal(c.meses.length, 1);
-  assert.equal(c.meses[0].medido, 100); // nao soma o item do centro de custo 240
+  assert.equal(c.meses[0].medido, 100);
   assert.equal(c.meses[0].faturado, 100);
   assert.equal(c.totais.saldoAcum, 0);
 });
 
-test("conciliacao: o saldo do periodo comeca em zero e o saldo desde o inicio da medicao vai a parte", () => {
+test("o saldo do periodo comeca em zero e o saldo desde o inicio da medicao vai a parte", () => {
   const itens = [item("1", "2026-01", 1000), item("2", "2026-03", 500)];
   const docs = [doc("10", "2026-04", 600)]; // janeiro nunca foi faturado; a nota de abril e' de outro pedido (sem pedido)
-  const c = conciliar(itens, docs, "230", "2026-03", "2026-04");
+  const c = conciliar(itens, docs, [], "2026-03", "2026-04");
   assert.deepEqual(c.antes, { medido: 1000, receita: 1000, faturado: 0, saldoAcum: 1000 });
   assert.equal(c.meses[0].saldoAcum, 500); // so' o que aconteceu no periodo
   assert.equal(c.meses[0].saldoDesdeInicio, 1500);
@@ -148,36 +181,21 @@ test("conciliacao: o saldo do periodo comeca em zero e o saldo desde o inicio da
   assert.equal(c.totais.saldoDesdeInicio, 900);
 });
 
-test("receita = pedidos + notas de debito: a ND avulsa soma por cima, a ND que ja e' um pedido nao soma de novo", () => {
-  // junho: NF 266 (pedido 481) + ND 31 (que e' o pedido 482, mesmo valor) -> receita = pedidos. julho: pedido 503 + ND avulsa de 5.000 (sem pedido) -> receita = pedido + ND
+test("ND que nao e' pedido (avulsa) soma por cima das linhas; a ND que e' pedido nao soma de novo", () => {
   const itens = [item("481", "2026-06", 818045.02), item("482", "2026-06", 571996.93), item("503", "2026-07", 100000)];
   const docs = [
     doc("266", "2026-06", 818045.02),
-    doc("31", "2026-06", 571996.93, { tipo: "ND", chave: "ND|2|31|230" }),
+    doc("ND 31", "2026-06", 571996.93, { tipo: "ND", chave: "ND|2|31|230" }),
     doc("274", "2026-07", 100000),
-    doc("40", "2026-07", 5000, { tipo: "ND", chave: "ND|2|40|230" }), // ND avulsa
+    doc("ND 40", "2026-07", 5000, { tipo: "ND", chave: "ND|2|40|230" }), // sem pedido
   ];
-  const c = conciliar(itens, docs, "230", "2026-06", "2026-07");
-  assert.equal(c.meses[0].receita, 1390041.95); // ND 31 e' o pedido 482: nao soma por cima
+  const c = conciliar(itens, docs, [], "2026-06", "2026-07");
+  assert.equal(c.meses[0].receita, 1390041.95);
   assert.equal(c.meses[0].ndAvulsa, 0);
   assert.equal(c.meses[0].dif, 0);
   assert.equal(c.meses[1].ndAvulsa, 5000);
   assert.equal(c.meses[1].receita, 105000); // pedido 100.000 + ND avulsa 5.000
   assert.equal(c.meses[1].faturado, 105000); // NF 100.000 + ND 5.000
   assert.equal(c.meses[1].dif, 0);
-  assert.equal(c.totais.receita, 1495041.95);
   assert.equal(c.totais.saldoAcum, 0);
-});
-
-test("conciliacao: nota com o valor do pedido inteiro, pedido rateado entre dois centros de custo (pedido 308: CC 230 + CC 240 = NF 227)", () => {
-  const itens = [item("308", "2025-10", 682345.5, { codccu: "230" }), item("308", "2025-10", 10088.24, { codccu: "240" })];
-  const docs = [doc("227", "2025-11", 692433.74)]; // saiu inteira no CC 230
-  const c230 = conciliar(itens, docs, "230", "2025-10", "2025-11");
-  assert.equal(c230.docs[0].vinculo, "PEDIDO_DIVIDIDO");
-  assert.equal(c230.docs[0].competencia, "2025-10");
-  assert.deepEqual(c230.pedidos[0].divisao, [{ codccu: "230", valor: 682345.5 }, { codccu: "240", valor: 10088.24 }]);
-  assert.equal(c230.meses[0].dif, 10088.24 * -1); // a nota cobre mais que a parte do CC 230: o rateio diferente fica a mostra
-  // vista do CC 240: o pedido tem so' a parte dele, mas a nota do pedido inteiro esta no CC 230
-  const c240 = conciliar(itens, docs, "240", "2025-10", "2025-11");
-  assert.equal(c240.pedidos[0].possivelOutroCc?.codccu, "230");
 });

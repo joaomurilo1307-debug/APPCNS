@@ -1698,8 +1698,9 @@ model FaturamentoMedicao {
   filial      String
   serie       String?
   dataEmissao DateTime
-  valor       Float // a parte deste centro de custo
-  valorDoc    Float // valor total do documento
+  valor       Float // BRUTO: a parte deste centro de custo
+  valorLiquido Float @default(0) // liquido da parte (NF: depois das retencoes; ND: igual ao bruto)
+  valorDoc    Float // valor bruto total do documento
   codccu      String?
   competencia String // aaaa-mm do mes da medicao (0000-00 = carga acumulada)
   origem      String // PEDIDO (mes do pedido da nota) | EMISSAO (regra da emissao do Rito) | ACUMULADO
