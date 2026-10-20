@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { montarFaturamento, type DocFaturamento } from "../src/lib/medicao/faturamento";
+import { ccuDosContratosSemPedido, montarFaturamento, type DocFaturamento } from "../src/lib/medicao/faturamento";
 import { reatribuirNotasPorValor } from "../src/lib/medicao/reatribuicao";
 import { conciliar, type DocConc, type ItemConc } from "../src/lib/medicao/conciliacao";
 
@@ -343,4 +343,27 @@ test("valor aproximado: nota maior que o pedido conta a nota e o pedido fica com
   assert.equal(ago.semNota, 0);
   assert.equal(ago.notaAcima, 200);
   assert.equal(ago.receita, 50200);
+});
+
+const ctr = (numCtr: string, codCli: string | null, codccu: string | null) => ({ numCtr, codCli, codccu });
+const nd = (numero: string, codCli: string | null, codccu: string, extra: Partial<DocFaturamento> = {}): DocFaturamento => ({ chave: `ND|1|${numero}`, tipo: "ND", numero, filial: "1", serie: null, dataEmissao: "2026-07-03", valor: 89430, valorLiquido: 89430, valorDoc: 89430, codccu, competencia: "2026-06", origem: "EMISSAO", pedidos: null, situacao: null, codCli, codccuOriginal: null, ...extra });
+
+test("contrato sem pedido recebe o centro de custo pelo codigo do cliente das notas (MACFROTAS CT 4336/2026: duas NDs de aluguel no CC 102325)", () => {
+  const contratos = [ctr("130", "711682", null), ctr("29", "5", "190")];
+  const r = ccuDosContratosSemPedido(contratos, [nd("01/2026", "711682", "102325"), nd("02/2026", "711682", "102325", { valor: 87780 })]);
+  assert.deepEqual(r, [{ numCtr: "130", codccu: "102325" }]);
+  assert.equal(contratos[0].codccu, "102325");
+});
+
+test("contrato sem pedido: nao atribui quando e' ambiguo (dois centros de custo, centro de custo de outro contrato, nota duplicada ou cliente com dois contratos sem CC)", () => {
+  const doisCc = [ctr("130", "711682", null)];
+  assert.deepEqual(ccuDosContratosSemPedido(doisCc, [nd("1", "711682", "A"), nd("2", "711682", "B")]), []);
+  const emUso = [ctr("130", "711682", null), ctr("29", "5", "A")];
+  assert.deepEqual(ccuDosContratosSemPedido(emUso, [nd("1", "711682", "A")]), []);
+  const duplicada = [ctr("130", "711682", null)];
+  assert.deepEqual(ccuDosContratosSemPedido(duplicada, [nd("1", "711682", "A", { duplicadaDe: "0" })]), []);
+  const doisContratos = [ctr("130", "711682", null), ctr("131", "711682", null)];
+  assert.deepEqual(ccuDosContratosSemPedido(doisContratos, [nd("1", "711682", "A")]), []);
+  const outroCliente = [ctr("130", "711682", null)];
+  assert.deepEqual(ccuDosContratosSemPedido(outroCliente, [nd("1", "999", "A")]), []);
 });
