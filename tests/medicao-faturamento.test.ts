@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { montarFaturamento } from "../src/lib/medicao/faturamento";
+import { montarFaturamento, type DocFaturamento } from "../src/lib/medicao/faturamento";
+import { reatribuirNotasPorValor } from "../src/lib/medicao/reatribuicao";
 import { conciliar, type DocConc, type ItemConc } from "../src/lib/medicao/conciliacao";
 
 // ---- dados reais do Senior (19/10/2026), formato do GetDBInfo: virgula decimal, datas dd/mm/aaaa
@@ -32,8 +33,8 @@ const rateios = [
 ];
 // competencia dos pedidos 140 e 141 (boletim BM30 04.2025), como sai da montagem da medicao
 const itensMedicao = [
-  { numPed: "140", competencia: "2025-04", origem: "BOLETIM" as const, valor: 156243.25 },
-  { numPed: "141", competencia: "2025-04", origem: "BOLETIM" as const, valor: 26522.14 },
+  { numPed: "140", numCtr: "23", competencia: "2025-04", origem: "BOLETIM" as const, valor: 156243.25 },
+  { numPed: "141", numCtr: "23", competencia: "2025-04", origem: "BOLETIM" as const, valor: 26522.14 },
 ];
 
 test("faturamento: nota de pedido usa o mes do pedido; nota sem pedido usa a regra da emissao; centro de custo vem do rateio do titulo", () => {
@@ -64,6 +65,48 @@ test("faturamento: ND rateada em dois centros de custo reparte o valor sem perde
   assert.equal(Math.round(docs.reduce((s, d) => s + d.valor, 0) * 100), 57199693);
   assert.deepEqual(docs.map((d) => d.codccu).sort(), ["230", "240"]);
   assert.equal(docs[0].competencia, "2026-06");
+});
+
+
+test("nota ligada a pedido e' do centro de custo do contrato do pedido, nao do rateio do titulo (NF 105: R$ 118.300 = pedido 205 da AGA QZ)", () => {
+  const e = {
+    notas: [{ CODFIL: "1", CODSNF: "A25", NUMNFV: "105", DATEMI: "06/08/2025", CODCLI: "39", VLRBSE: "118300", VLRLIQ: "104000", SITNFV: "2" }],
+    itensNota: [{ CODFIL: "1", CODSNF: "A25", NUMNFV: "105", NUMPED: "205", CODCCU: "", VLRBRU: "118300" }],
+    titulos: [{ NUMTIT: "105PL01", CODFIL: "1", CODTPT: "NF", CODCLI: "39", SITTIT: "LQ", DATEMI: "06/08/2025", VLRORI: "104000", CODCCU: "160", FILNFV: "1", CODSNF: "A25", NUMNFV: "105" }],
+    // o Senior ratearam o titulo: R$ 106.089,36 no CC 160 (AGA QZ) e R$ 12.210,64 no CC 190 (MRN 3748), mas a nota inteira e' o pedido 205
+    rateios: [{ NUMTIT: "105PL01", CODFIL: "1", CODCCU: "160", PERRAT: "89", VLRRAT: "92960" }, { NUMTIT: "105PL01", CODFIL: "1", CODCCU: "190", PERRAT: "11", VLRRAT: "11040" }],
+  };
+  const docs = montarFaturamento(e, [{ numPed: "205", numCtr: "29", competencia: "2025-07", origem: "BOLETIM", valor: 118300 }], [{ numCtr: "29", codccu: "160" }, { numCtr: "8", codccu: "190" }]);
+  assert.equal(docs.length, 1);
+  assert.equal(docs[0].codccu, "160");
+  assert.equal(docs[0].valor, 118300);
+  assert.equal(docs[0].valorLiquido, 104000);
+  assert.equal(docs[0].competencia, "2025-07");
+  // sem a lista de contratos o comportamento antigo (rateio do titulo) continua
+  assert.equal(montarFaturamento(e, [{ numPed: "205", numCtr: "29", competencia: "2025-07", origem: "BOLETIM", valor: 118300 }]).length, 2);
+});
+
+const docF = (numero: string, ccu: string, valor: number, comp: string): DocFaturamento => ({ chave: `NF|2|A24|${numero}|${ccu}`, tipo: "NF", numero, filial: "2", serie: "A24", dataEmissao: "2025-09-15", codccuOriginal: null, valor, valorLiquido: valor, valorDoc: valor, codccu: ccu, competencia: comp, origem: "EMISSAO", pedidos: null, situacao: "AUTORIZADA", codCli: "54" });
+const itemM = (numCtr: string, numPed: string, comp: string, valor: number) => ({ numCtr, seqCvs: 1, numPed, seqIsp: 1, dataEmissao: "2025-09-10", competencia: comp, origem: "BOLETIM" as const, boletim: "BM1", pedCli: null, situacao: "ABERTO", qtd: 1, valor, codccu: null });
+
+test("nota lancada no CC de outro contrato vai para o contrato do pedido de mesmo valor (NF 216: R$ 453.400,04 no CC 190, pedido 251 do MRN 3686)", () => {
+  const contratos = [{ numCtr: "6", codccu: "210" }, { numCtr: "8", codccu: "190" }];
+  const itens = [itemM("6", "251", "2025-08", 453400.04), itemM("8", "249", "2025-08", 166241.02)];
+  const docs = [docF("215", "190", 166241.02, "2025-08"), docF("216", "190", 453400.04, "2025-08")];
+  const r = reatribuirNotasPorValor(docs, itens, contratos);
+  const d216 = r.docs.find((d) => d.numero === "216")!;
+  assert.equal(d216.codccu, "210");
+  assert.equal(d216.codccuOriginal, "190");
+  assert.equal(r.docs.find((d) => d.numero === "215")!.codccu, "190"); // casa com o proprio pedido: fica
+  assert.equal(r.reatribuidas.length, 1);
+});
+
+test("nota que casa com pedido do proprio contrato nunca e' levada embora, e valor pequeno nao e' reatribuido", () => {
+  const contratos = [{ numCtr: "6", codccu: "210" }, { numCtr: "8", codccu: "190" }];
+  const itens = [itemM("6", "251", "2025-08", 453400.04), itemM("8", "249", "2025-08", 453400.04), itemM("6", "252", "2025-08", 900)];
+  const docs = [docF("216", "190", 453400.04, "2025-08"), docF("300", "190", 900, "2025-08")];
+  const r = reatribuirNotasPorValor(docs, itens, contratos);
+  assert.equal(r.reatribuidas.length, 0); // 216 casa com o pedido 249 do proprio contrato 8; 900 < R$ 1.000
 });
 
 // ---------------------------------------------------------------- conciliacao (o contrato vale pelos seus pedidos; as notas pelo CC principal)

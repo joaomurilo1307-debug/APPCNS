@@ -90,19 +90,18 @@ export function LinhasAvanco({ pontos }: { pontos: { mes: string; fin: number; f
 
 export type ConsumoLinha = { seq: number; rotulo: string; unidade: string | null; pctQtd: number; pctValor: number; divergenciaPp: number | null; detalhe: string };
 
-/** Para cada linha: o quanto da quantidade e o quanto do valor ja foi consumido, lado a lado. A diferenca grande entre os dois e' sinalizada. */
+/** Para cada linha: o quanto da quantidade e o quanto do valor ja foi consumido, lado a lado. */
 export function ConsumoPorLinha({ itens, selecionada, onSelecionar }: { itens: ConsumoLinha[]; selecionada: number | null; onSelecionar: (seq: number) => void }) {
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-4 text-xs text-gray-500">
         <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-indigo-500" /> Quantidade consumida</span>
         <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-teal-600" /> Valor consumido</span>
-        <span className="flex items-center gap-1.5"><span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-800">difere</span> quantidade e valor se afastam 10 pontos ou mais</span>
       </div>
       <ul className="divide-y divide-gray-100">
         {itens.map((i) => (
           <li key={i.seq}>
-            <button type="button" onClick={() => onSelecionar(i.seq)} title={i.detalhe} className={`grid w-full grid-cols-[minmax(150px,1.1fr)_2fr_auto] items-center gap-3 px-2 py-1.5 text-left hover:bg-gray-50 ${selecionada === i.seq ? "bg-teal-50" : ""}`}>
+            <button type="button" onClick={() => onSelecionar(i.seq)} title={i.detalhe} className={`grid w-full grid-cols-[minmax(150px,1.1fr)_2fr] items-center gap-3 px-2 py-1.5 text-left hover:bg-gray-50 ${selecionada === i.seq ? "bg-teal-50" : ""}`}>
               <span className="truncate text-[12.5px] text-gray-800">{i.rotulo}<span className="ml-1.5 text-[11px] text-gray-400">{i.unidade ?? ""}</span></span>
               <span className="space-y-1">
                 {([["qtd", i.pctQtd, "bg-indigo-500"], ["valor", i.pctValor, "bg-teal-600"]] as const).map(([k, v, cor]) => (
@@ -112,7 +111,6 @@ export function ConsumoPorLinha({ itens, selecionada, onSelecionar }: { itens: C
                   </span>
                 ))}
               </span>
-              <span className="w-12 text-right">{i.divergenciaPp !== null && Math.abs(i.divergenciaPp) >= 10 ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-800" title={`Quantidade ${percentual(i.pctQtd, 0)} · valor ${percentual(i.pctValor, 0)}`}>difere</span> : null}</span>
             </button>
           </li>
         ))}

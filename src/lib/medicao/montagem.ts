@@ -2,6 +2,9 @@
 //   contratado  = E160CVS (QTDCVS, VLRTOT)            medido acumulado = soma dos itens dos pedidos (E120ISP) = E160CVS (QTDFAT, VLRFAT)
 //   valor de cada item: ver valorDoItem (o Senior ZERA o valor do item depois que o pedido e' faturado)
 //   saldo       = contratado - medido                  mes de cada medicao = boletim do PEDCLI, ou emissao menos 1 mes (ver competencia.ts)
+//   O CONSUMIDO de cada linha (qtdFaturada/valorFaturado) e' a soma dos itens dos pedidos: a mesma fonte dos meses, para que os meses somem o acumulado.
+//   O acumulado do Senior (E160CVS) so' vira conferencia no resumo (linhasQueNaoBatem). Item de pedido em linha sem orcamento no contrato (linha zerada ou
+//   apagada no Senior) tambem entra: e' medicao real e a receita nao fecha sem ele.
 //   centro de custo de cada item = rateio do pedido (E120RAT); o do contrato = o de maior valor entre os itens. Nunca por nome.
 
 import { competenciaDoPedido } from "./competencia";
@@ -77,14 +80,16 @@ const chavePedido = (filial: string | undefined, numPed: string | undefined) => 
 export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
   // ---- linhas contratadas (so' contratos com alguma linha de valor: os aditivos/TACs sao contratos vazios no Senior)
   const linhasPorCtr = new Map<string, LinhaMedicao[]>();
+  const linhasSemOrcamento = new Map<string, Map<number, LinhaMedicao>>(); // linha zerada: so' entra se algum pedido medir nela
   for (const l of e.linhas) {
     const numCtr = texto(l.NUMCTR);
     const valor = numero(l.VLRTOT);
-    if (!numCtr || valor <= 0) continue; // linha zerada (placeholder de aditivo) nao e' linha de medicao
     const seq = Number(texto(l.SEQCVS));
-    if (!Number.isFinite(seq)) continue;
+    if (!numCtr || !Number.isFinite(seq)) continue;
+    const linha: LinhaMedicao = { numCtr, seqCvs: seq, codSer: texto(l.CODSER) || null, descricao: texto(l.CPLCVS) || `Serviço ${texto(l.CODSER)}`, unidade: texto(l.UNIMED) || null, qtdContratada: numero(l.QTDCVS), precoUnit: numero(l.PREUNI), valorContratado: arred(Math.max(0, valor)), qtdFaturada: numero(l.QTDFAT), valorFaturado: arred(numero(l.VLRFAT)) };
+    if (valor <= 0) { const m = linhasSemOrcamento.get(numCtr) ?? new Map<number, LinhaMedicao>(); m.set(seq, { ...linha, qtdContratada: 0, valorContratado: 0 }); linhasSemOrcamento.set(numCtr, m); continue; }
     const lista = linhasPorCtr.get(numCtr) ?? [];
-    lista.push({ numCtr, seqCvs: seq, codSer: texto(l.CODSER) || null, descricao: texto(l.CPLCVS) || `Serviço ${texto(l.CODSER)}`, unidade: texto(l.UNIMED) || null, qtdContratada: numero(l.QTDCVS), precoUnit: numero(l.PREUNI), valorContratado: arred(valor), qtdFaturada: numero(l.QTDFAT), valorFaturado: arred(numero(l.VLRFAT)) });
+    lista.push(linha);
     linhasPorCtr.set(numCtr, lista);
   }
   const ctrPorNum = new Map(e.contratos.map((c) => [texto(c.NUMCTR), c]));
@@ -148,8 +153,14 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
 
     for (const it of itensPorCtr.get(n) ?? []) {
       const seq = Number(texto(it.SEQCTR));
-      if (!seqNoCatalogo.has(seq)) { resumo.itensSemLinhaNoCatalogo += 1; continue; }
       const v = valorDoItem(it);
+      if (!seqNoCatalogo.has(seq)) {
+        if (v.cancelado) { resumo.itensCancelados += 1; continue; }
+        // linha zerada no contrato, ou apagada no Senior: o item e' medicao real e entra, numa linha sem orcamento
+        const nova = linhasSemOrcamento.get(n)?.get(seq) ?? { numCtr: n, seqCvs: seq, codSer: null, descricao: `Linha ${seq} (sem orçamento no contrato)`, unidade: null, qtdContratada: 0, precoUnit: 0, valorContratado: 0, qtdFaturada: 0, valorFaturado: 0 };
+        ls.push(nova); ls.sort((a, b) => a.seqCvs - b.seqCvs); seqNoCatalogo.add(seq);
+        resumo.itensSemLinhaNoCatalogo += 1;
+      }
       if (v.cancelado) { resumo.itensCancelados += 1; continue; } // item cancelado nao e' medicao e nao entra no faturado do Senior
       if (v.calculado) resumo.itensComValorCalculado += 1;
       const ped = pedidoPorChave.get(chavePedido(it.CODFIL, it.NUMPED));
@@ -169,9 +180,10 @@ export function montarMedicao(e: EntradaMedicao): ResultadoMedicao {
 
     let valorMedido = 0;
     for (const l of ls) {
-      linhas.push(l);
-      valorMedido += l.valorFaturado;
       const qp = somaQtd.get(l.seqCvs) ?? 0, vp = somaVal.get(l.seqCvs) ?? 0;
+      // consumido = soma dos pedidos (mesma fonte dos meses); o acumulado do Senior fica so' na conferencia do resumo
+      linhas.push({ ...l, qtdFaturada: Math.round(qp * 1000) / 1000, valorFaturado: arred(vp) });
+      valorMedido += arred(vp);
       if (Math.abs(qp - l.qtdFaturada) > 0.001 || Math.abs(vp - l.valorFaturado) > 0.05) {
         resumo.totalLinhasQueNaoBatem += 1;
         if (resumo.linhasQueNaoBatem.length < 25) resumo.linhasQueNaoBatem.push({ numCtr: n, seqCvs: l.seqCvs, qtdSenior: l.qtdFaturada, qtdPedidos: Math.round(qp * 1000) / 1000, valorSenior: l.valorFaturado, valorPedidos: arred(vp) });

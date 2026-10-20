@@ -81,8 +81,8 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
     if (!m.medido && !m.faturado) return <span className="text-gray-300">·</span>;
     if (Math.abs(m.dif) < 0.05) return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-800" title={m.ndAvulsa > 0 ? `Fecha: as linhas dos pedidos (${moeda(m.medido)}) mais a nota de débito sem pedido (${moeda(m.ndAvulsa)}) são a receita` : "A soma das linhas dos pedidos do mês é a receita"}>fecha</span>;
     return m.dif > 0
-      ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-semibold text-amber-800" title={`Linhas dos pedidos de ${mesLongo(m.mes)} ${moeda(m.receita)} e notas emitidas ${moeda(m.faturado)}: faltam ${moeda(m.dif)} em nota`}>a faturar {vc(m.dif)}</span>
-      : <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10.5px] font-semibold text-rose-800" title={`Notas emitidas ${moeda(m.faturado)} e linhas dos pedidos ${moeda(m.receita)}: o pedido do mês está incompleto no Senior (${moeda(-m.dif)} a menos)`}>pedido incompleto {vc(-m.dif)}</span>;
+      ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-semibold text-amber-800" title={`Linhas medidas em ${mesLongo(m.mes)}: ${moeda(m.receita)}. Notas emitidas: ${moeda(m.faturado)}. Faltam ${moeda(m.dif)} em nota.`}>a faturar {vc(m.dif)}</span>
+      : <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10.5px] font-semibold text-rose-800" title={`Notas emitidas: ${moeda(m.faturado)}. Linhas medidas no Senior: ${moeda(m.receita)}. Faltam ${moeda(-m.dif)} de medição lançada nos pedidos.`}>falta lançar {vc(-m.dif)}</span>;
   };
 
   return (
@@ -127,7 +127,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
               <th className={`${th} text-right text-gray-900`}>Receita bruta</th>
               <th className={`${th} text-right`} title="Retenções da nota fiscal (PIS, COFINS, CSLL, IRRF, ISS…); a nota de débito não tem retenção">Retenções</th>
               <th className={`${th} text-right`}>Receita líquida</th>
-              <th className={`${th} text-right`} title="Soma das linhas dos pedidos de medição do mês">Linhas dos pedidos</th>
+              <th className={`${th} text-right`} title="Soma das linhas dos pedidos de medição do mês">Soma das linhas medidas</th>
               <th className={`${th} text-center`}>Conferência</th>
             </tr>
           </thead>

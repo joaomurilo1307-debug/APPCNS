@@ -1702,6 +1702,7 @@ model FaturamentoMedicao {
   valorLiquido Float @default(0) // liquido da parte (NF: depois das retencoes; ND: igual ao bruto)
   valorDoc    Float // valor bruto total do documento
   codccu      String?
+  codccuOriginal String? // centro de custo que o Senior tinha, quando a nota foi levada para o contrato do pedido de mesmo valor (reatribuicao.ts)
   competencia String // aaaa-mm do mes da medicao (0000-00 = carga acumulada)
   origem      String // PEDIDO (mes do pedido da nota) | EMISSAO (regra da emissao do Rito) | ACUMULADO
   pedidos     String? // numeros dos pedidos de venda ligados a nota no Senior (itens da nota), separados por virgula

@@ -6,7 +6,7 @@
 // Tudo vem do Senior, somente leitura.
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SeletorPeriodo, { type Atalho } from "@/components/contratos/SeletorPeriodo";
 import { BarrasPorMes, ConsumoPorLinha, Gauge, LinhasAvanco } from "./GraficosMedicao";
 import ReceitaContrato from "./ReceitaContrato";
@@ -129,8 +129,8 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
   const consumoLinhas = [...d.linhas].filter((l) => l.qtdContratada > 0 || l.valorContratado > 0).sort((a, b) => Math.max(b.pctQtd, b.pctValor) - Math.max(a.pctQtd, a.pctValor));
 
   function baixarCsv() {
-    const cab = ["Linha", "Unidade", "Preço unitário (R$)", "Vendido (qtd)", "Vendido (R$)", "Antes do período (R$)", ...d.meses.map((m) => `${mesLongo(m)} (R$)`), ...d.meses.map((m) => `${mesLongo(m)} (qtd)`), "Medido acumulado (qtd)", "Medido acumulado (R$)", "Saldo (qtd)", "Saldo (R$)", "Consumo qtd (%)", "Consumo valor (%)", "Confere com o Senior", "Diferença Senior - pedidos (R$)"];
-    const linhas = d.linhas.map((l) => [csvTxt(l.descricao), csvTxt(l.unidade ?? ""), csvNum(l.precoUnit), csvNum(l.qtdContratada), csvNum(l.valorContratado), csvNum(l.antes.valor), ...d.meses.map((m) => csvNum(l.porMes[m]?.valor ?? 0)), ...d.meses.map((m) => csvNum(l.porMes[m]?.qtd ?? 0)), csvNum(l.qtdFaturada), csvNum(l.valorFaturado), csvNum(l.saldoQtd), csvNum(l.saldoValor), csvNum(l.pctQtd * 100), csvNum(l.pctValor * 100), csvTxt(l.confere ? "sim" : "não"), csvNum(l.difValor)].join(";"));
+    const cab = ["Linha", "Unidade", "Preço unitário (R$)", "Vendido (qtd)", "Vendido (R$)", "Antes do período (R$)", ...d.meses.map((m) => `${mesLongo(m)} (R$)`), ...d.meses.map((m) => `${mesLongo(m)} (qtd)`), "Consumido (qtd)", "Consumido (R$)", "Saldo (qtd)", "Saldo (R$)", "Consumo qtd (%)", "Consumo valor (%)"];
+    const linhas = d.linhas.map((l) => [csvTxt(l.descricao), csvTxt(l.unidade ?? ""), csvNum(l.precoUnit), csvNum(l.qtdContratada), csvNum(l.valorContratado), csvNum(l.antes.valor), ...d.meses.map((m) => csvNum(l.porMes[m]?.valor ?? 0)), ...d.meses.map((m) => csvNum(l.porMes[m]?.qtd ?? 0)), csvNum(l.qtdFaturada), csvNum(l.valorFaturado), csvNum(l.saldoQtd), csvNum(l.saldoValor), csvNum(l.pctQtd * 100), csvNum(l.pctValor * 100)].join(";"));
     const blob = new Blob(["﻿" + [cab.map(csvTxt).join(";"), ...linhas].join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -139,26 +139,17 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
 
-  /** Preço médio medido da linha (valor faturado / quantidade faturada no Senior); null quando nao ha medicao ou preco contratado. */
-  const precoMedio = (l: Linha): number | null => (l.qtdFaturada > 0.0004 && l.valorFaturado > 0 && l.precoUnit > 0 ? l.valorFaturado / l.qtdFaturada : null);
-  const celulaDoMes = (l: Linha, m: string) => {
-    const c = l.porMes[m];
-    const temValor = !!c && (c.valor > 0 || c.qtd > 0.0004);
-    if (!temValor) return <td key={m} className="p-0 text-right"><span className="block px-2 py-1.5 text-gray-200">·</span></td>;
-    const base = mostraValor ? c.valor / maxValor : c.qtd / maxDaLinha(l);
-    const a = Math.min(0.5, 0.07 + base * 0.43);
-    const ativa = sel?.seq === l.seqCvs && sel?.mes === m;
-    return (
-      <td key={m} className="p-0 text-right">
-        <button type="button" onClick={() => selecionar(l.seqCvs, m)} title={`${l.descricao} · ${mesLongo(m)}: ${moeda(c.valor)} · ${qtdFmt(c.qtd)} ${l.unidade ?? ""}. Clique para ver os pedidos.`}
-          className={`block w-full whitespace-nowrap px-2 py-1.5 text-right hover:outline hover:outline-1 hover:outline-teal-600 ${ativa ? "outline outline-2 outline-teal-700" : ""}`} style={{ backgroundColor: `rgba(13,148,136,${a})` }}>
-          {modo === "ambos" ? <Dupla valor={vc(c.valor)} qtd={qtdCompacta(c.qtd)} /> : <span className="text-gray-900">{modo === "valor" ? vc(c.valor) : qtdCompacta(c.qtd)}</span>}
-        </button>
-      </td>
-    );
-  };
-
-  const th = "sticky top-0 z-20 border-b border-gray-200 bg-gray-50 px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500";
+  const cols = modo === "ambos" ? 2 : 1;
+  // cabecalho em dois niveis (grupo e Qtd | R$): as duas linhas ficam fixas ao rolar
+  const thG = "sticky z-20 h-8 border-b border-gray-200 bg-gray-50 px-2 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500";
+  const thS = "sticky top-8 z-20 h-6 border-b border-gray-200 bg-gray-50 px-2 text-right text-[10.5px] font-medium text-gray-400";
+  const thT = "sticky z-20 border-b border-gray-200 bg-gray-50 px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500";
+  const total = (v: number, estilo: string) => (
+    <>
+      {mostraQtd && <td className={`sticky bottom-0 z-10 border-l border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right font-normal text-gray-300`}>·</td>}
+      {mostraValor && <td className={`sticky bottom-0 z-10 whitespace-nowrap ${mostraQtd ? "" : "border-l"} border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right ${estilo}`}>{v > 0 ? vc(v) : <span className="font-normal text-gray-300">·</span>}</td>}
+    </>
+  );
 
   return (
     <div className="space-y-6">
@@ -211,7 +202,7 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
       {/* ---------------- planilha por linha */}
       <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <Titulo sub="Cada linha do contrato: preço unitário, o que foi vendido (o budget, em quantidade e valor), quanto foi medido em cada mês (quantidade e valor), o consumido e o % do budget já consumido. Clique num valor para ver os pedidos do mês, e no nome da linha para ver todos os dela.">Medição por linha do contrato</Titulo>
+          <Titulo sub="Cada linha do contrato: preço unitário, o que foi vendido (o budget), quanto foi medido em cada mês em quantidade e em valor, o consumido acumulado, o % do budget já consumido e o saldo. Clique num mês para ver os pedidos, e no nome da linha para ver todos os dela.">Medição por linha do contrato</Titulo>
           <div className="flex flex-wrap items-center gap-2">
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar linha" className="w-44 rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-brand" aria-label="Buscar linha" />
             <button type="button" onClick={baixarCsv} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">Baixar (CSV)</button>
@@ -226,20 +217,48 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
           <table className="w-full border-separate border-spacing-0 text-[12.5px] tabular-nums">
             <thead>
               <tr>
-                <th className="sticky left-0 top-0 z-30 min-w-[250px] border-b border-gray-200 bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Linha</th>
-                <th className={th} title="Preço unitário da linha no contrato">Preço unit.</th>
-                <th className={th} title="O budget da linha: quantidade e valor vendidos no contrato">Vendido (budget)</th>
-                <th className={th} title="Medido antes do período escolhido">Antes</th>
-                {d.meses.map((m) => <th key={m} className={th}>{mesCurto(m)}</th>)}
-                <th className={`${th} text-gray-900`} title="Tudo que já foi medido na linha, desde o início do contrato">Consumido</th>
-                <th className={`${th} min-w-[118px] text-left`} title="Quanto do budget da linha já foi consumido, pela quantidade e pelo valor">% consumido</th>
-                <th className={`${th} text-gray-900`} title="Vendido menos consumido">Saldo</th>
+                <th rowSpan={2} className="sticky left-0 top-0 z-30 min-w-[250px] border-b border-gray-200 bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Linha</th>
+                <th rowSpan={2} className={`${thT} top-0`} title="Preço unitário da linha no contrato">Preço unit.</th>
+                <th colSpan={cols} className={`${thG} top-0 border-l`} title="O budget da linha: quantidade e valor vendidos no contrato">Vendido (budget)</th>
+                <th colSpan={cols} className={`${thG} top-0 border-l`} title="Medido antes do período escolhido">Antes</th>
+                {d.meses.map((m) => <th key={m} colSpan={cols} className={`${thG} top-0 border-l`}>{mesCurto(m)}</th>)}
+                <th colSpan={cols} className={`${thG} top-0 border-l text-gray-900`} title="Tudo que já foi medido na linha, desde o início do contrato">Consumido</th>
+                <th rowSpan={2} className={`${thT} top-0 min-w-[118px] border-l text-left`} title="Quanto do budget da linha já foi consumido, pela quantidade e pelo valor">% consumido</th>
+                <th colSpan={cols} className={`${thG} top-0 border-l text-gray-900`} title="Vendido menos consumido">Saldo</th>
+              </tr>
+              <tr>
+                {Array.from({ length: 4 + d.meses.length }).map((_, g) => (
+                  <Fragment key={g}>
+                    {mostraQtd && <th className={`${thS} border-l`}>Qtd</th>}
+                    {mostraValor && <th className={`${thS} ${mostraQtd ? "" : "border-l"}`}>R$</th>}
+                  </Fragment>
+                ))}
               </tr>
             </thead>
             <tbody>
               {linhasVisiveis.map((l) => {
                 const celula = "whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right";
-                const dual = (v: number, q: number) => (modo === "ambos" ? <Dupla valor={vc(v)} qtd={qtdCompacta(q)} unidade={l.unidade} cinza /> : modo === "valor" ? vc(v) : qtdCompacta(q));
+                const par = (q: number, v: number, estilo = "text-gray-700", vazio = false) => (
+                  <>
+                    {mostraQtd && <td className={`${celula} border-l border-gray-100 ${estilo}`}>{vazio ? <span className="text-gray-200">·</span> : qtdCompacta(q)}</td>}
+                    {mostraValor && <td className={`${celula} ${mostraQtd ? "" : "border-l border-gray-100"} ${estilo}`}>{vazio ? <span className="text-gray-200">·</span> : vc(v)}</td>}
+                  </>
+                );
+                const mes = (m: string) => {
+                  const c = l.porMes[m];
+                  const tem = !!c && (c.valor > 0 || c.qtd > 0.0004);
+                  if (!tem) return <Fragment key={m}>{par(0, 0, "", true)}</Fragment>;
+                  const a = Math.min(0.5, 0.07 + (c.valor / maxValor) * 0.43);
+                  const ativa = sel?.seq === l.seqCvs && sel?.mes === m;
+                  const cel = (txt: string, primeira: boolean) => (
+                    <td className="p-0 text-right" style={{ backgroundColor: `rgba(13,148,136,${a})` }} key={primeira ? "q" : "v"}>
+                      <button type="button" onClick={() => selecionar(l.seqCvs, m)} title={`${l.descricao} · ${mesLongo(m)}: ${qtdFmt(c.qtd)} ${l.unidade ?? ""} · ${moeda(c.valor)}. Clique para ver os pedidos.`}
+                        className={`block w-full whitespace-nowrap px-2 py-1.5 text-right text-gray-900 hover:outline hover:outline-1 hover:outline-teal-600 ${primeira && mostraQtd ? "border-l border-gray-100" : ""} ${!mostraQtd && primeira ? "border-l border-gray-100" : ""} ${ativa ? "outline outline-2 outline-teal-700" : ""}`}>{txt}</button>
+                    </td>
+                  );
+                  return <Fragment key={m}>{mostraQtd && cel(qtdCompacta(c.qtd), true)}{mostraValor && cel(vc(c.valor), !mostraQtd)}</Fragment>;
+                };
+                const semAntes = !(l.antes.valor > 0 || l.antes.qtd > 0.0004);
                 return (
                   <tr key={l.seqCvs} className="group">
                     <td className="sticky left-0 z-10 border-b border-gray-100 bg-white px-3 py-1.5 text-left group-hover:bg-gray-50">
@@ -248,40 +267,37 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
                         <span className="text-[11px] text-gray-400">linha {l.seqCvs}{l.unidade ? ` · ${l.unidade}` : ""}</span>
                       </button>
                     </td>
-                    <td className={`${celula} text-gray-700`}>
-                      <span className="block leading-tight">{moeda(l.precoUnit)}{l.unidade && <span className="block text-[10.5px] font-normal text-gray-400">por {l.unidade}</span>}</span>
-                    </td>
-                    <td className={`${celula} text-gray-700`}>{dual(l.valorContratado, l.qtdContratada)}</td>
-                    <td className={`${celula} text-gray-500`}>{l.antes.valor > 0 || l.antes.qtd > 0.0004 ? dual(l.antes.valor, l.antes.qtd) : <span className="text-gray-200">·</span>}</td>
-                    {d.meses.map((m) => celulaDoMes(l, m))}
-                    <td className={`${celula} font-semibold`} title={`Consumido da linha: ${moeda(l.valorFaturado)} · ${qtdFmt(l.qtdFaturada)} ${l.unidade ?? ""}`}>{modo === "ambos" ? <Dupla valor={vc(l.valorFaturado)} qtd={qtdCompacta(l.qtdFaturada)} unidade={l.unidade} /> : modo === "valor" ? vc(l.valorFaturado) : qtdCompacta(l.qtdFaturada)}</td>
-                    <td className="border-b border-gray-100 px-2 py-1.5">
+                    <td className={`${celula} text-gray-700`}>{l.precoUnit > 0 ? moeda(l.precoUnit) : <span className="text-gray-300">·</span>}{l.unidade && l.precoUnit > 0 && <span className="block text-[10.5px] font-normal text-gray-400">por {l.unidade}</span>}</td>
+                    {par(l.qtdContratada, l.valorContratado)}
+                    {par(l.antes.qtd, l.antes.valor, "text-gray-500", semAntes)}
+                    {d.meses.map((m) => mes(m))}
+                    {par(l.qtdFaturada, l.valorFaturado, "font-semibold text-gray-900")}
+                    <td className="border-b border-l border-gray-100 px-2 py-1.5">
                       <div className="space-y-1">
-                        {mostraQtd && <div className="flex items-center gap-1.5" title={`Quantidade: ${qtdFmt(l.qtdFaturada)} de ${qtdFmt(l.qtdContratada)} ${l.unidade ?? ""}`}><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100"><div className="h-1.5 bg-indigo-500" style={{ width: `${Math.min(100, l.pctQtd * 100)}%` }} /></div><span className="w-8 text-right text-[11px] text-gray-500">{Math.round(l.pctQtd * 100)}%</span></div>}
-                        {mostraValor && <div className="flex items-center gap-1.5" title={`Valor: ${moeda(l.valorFaturado)} de ${moeda(l.valorContratado)}`}><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100"><div className={`h-1.5 ${l.pctValor >= 0.95 ? "bg-amber-500" : "bg-teal-600"}`} style={{ width: `${Math.min(100, l.pctValor * 100)}%` }} /></div><span className="w-8 text-right text-[11px] text-gray-500">{Math.round(l.pctValor * 100)}%</span></div>}
+                        <div className="flex items-center gap-1.5" title={`Quantidade: ${qtdFmt(l.qtdFaturada)} de ${qtdFmt(l.qtdContratada)} ${l.unidade ?? ""}`}><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100"><div className="h-1.5 bg-indigo-500" style={{ width: `${Math.min(100, l.pctQtd * 100)}%` }} /></div><span className="w-8 text-right text-[11px] text-gray-500">{l.qtdContratada > 0 ? `${Math.round(l.pctQtd * 100)}%` : "—"}</span></div>
+                        <div className="flex items-center gap-1.5" title={`Valor: ${moeda(l.valorFaturado)} de ${moeda(l.valorContratado)}`}><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100"><div className={`h-1.5 ${l.pctValor >= 0.95 ? "bg-amber-500" : "bg-teal-600"}`} style={{ width: `${Math.min(100, l.pctValor * 100)}%` }} /></div><span className="w-8 text-right text-[11px] text-gray-500">{l.valorContratado > 0 ? `${Math.round(l.pctValor * 100)}%` : "—"}</span></div>
                       </div>
                     </td>
-                    <td className={`${celula} font-semibold ${l.saldoValor <= 0.5 && l.saldoQtd <= 0.0005 ? "text-amber-700" : "text-gray-900"}`}>{modo === "ambos" ? <Dupla valor={vc(l.saldoValor)} qtd={qtdCompacta(l.saldoQtd)} unidade={l.unidade} /> : modo === "valor" ? vc(l.saldoValor) : qtdCompacta(l.saldoQtd)}</td>
+                    {par(l.saldoQtd, l.saldoValor, l.saldoValor <= 0.5 && l.saldoQtd <= 0.0005 ? "font-semibold text-amber-700" : "font-semibold text-gray-900")}
                   </tr>
                 );
               })}
-              {linhasVisiveis.length > 0 && mostraValor && (
+              {linhasVisiveis.length > 0 && (
                 <tr className="font-semibold">
-                  <td className="sticky bottom-0 left-0 z-20 border-t-2 border-gray-200 bg-gray-50 px-3 py-2 text-left text-gray-900">Total do contrato <span className="font-normal text-gray-400">(em valor)</span></td>
+                  <td className="sticky bottom-0 left-0 z-20 border-t-2 border-gray-200 bg-gray-50 px-3 py-2 text-left text-gray-900">Total do contrato <span className="font-normal text-gray-400">(em R$; as quantidades têm unidades diferentes)</span></td>
                   <td className="sticky bottom-0 z-10 border-t-2 border-gray-200 bg-gray-50 px-2 py-2" />
-                  <td className="sticky bottom-0 z-10 whitespace-nowrap border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right">{vc(d.totais.contratado)}</td>
-                  <td className="sticky bottom-0 z-10 whitespace-nowrap border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right text-gray-500">{d.totais.antes > 0 ? vc(d.totais.antes) : "·"}</td>
-                  {d.meses.map((m) => { const t = d.totais.porMes.find((x) => x.mes === m)!; return <td key={m} className="sticky bottom-0 z-10 whitespace-nowrap border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right">{t.valor > 0 ? vc(t.valor) : <span className="font-normal text-gray-300">·</span>}</td>; })}
-                  <td className="sticky bottom-0 z-10 whitespace-nowrap border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right">{vc(d.totais.medido)}</td>
-                  <td className="sticky bottom-0 z-10 border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-left text-[11px] text-gray-500">{Math.round(d.totais.pct * 100)}% do valor</td>
-                  <td className="sticky bottom-0 z-10 whitespace-nowrap border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-right">{vc(d.totais.saldo)}</td>
+                  {total(d.totais.contratado, "text-gray-900")}
+                  {total(d.totais.antes, "text-gray-500")}
+                  {d.meses.map((m) => <Fragment key={m}>{total(d.totais.porMes.find((x) => x.mes === m)?.valor ?? 0, "text-gray-900")}</Fragment>)}
+                  {total(d.totais.medido, "text-gray-900")}
+                  <td className="sticky bottom-0 z-10 border-l border-t-2 border-gray-200 bg-gray-50 px-2 py-2 text-left text-[11px] font-normal text-gray-500">{Math.round(d.totais.pct * 100)}% do valor</td>
+                  {total(d.totais.saldo, "text-gray-900")}
                 </tr>
               )}
-              {linhasVisiveis.length === 0 && <tr><td colSpan={d.meses.length + 7} className="px-3 py-10 text-center text-gray-400">Nenhuma linha com esses filtros.</td></tr>}
+              {linhasVisiveis.length === 0 && <tr><td colSpan={3 + cols * (4 + d.meses.length)} className="px-3 py-10 text-center text-gray-400">Nenhuma linha com esses filtros.</td></tr>}
             </tbody>
           </table>
         </div>
-        {modo !== "valor" && <p className="mt-2 text-xs text-gray-500">As linhas têm unidades diferentes (HH, un., mês…): a quantidade é sempre lida linha a linha, por isso não há total de quantidade do contrato.</p>}
       </section>
 
       {/* ---------------- detalhe dos pedidos */}
@@ -325,91 +341,22 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
         </section>
       )}
 
-      {/* ---------------- mais analises (recolhido) */}
+      {/* ---------------- graficos (recolhido) */}
       <details className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
-        <summary className="cursor-pointer text-sm font-medium text-gray-800">Mais análises: consumo por valor × quantidade e gráficos</summary>
-        <div className="mt-4 space-y-6">
-      {/* ---------------- consumo: valor x quantidade */}
-      <section aria-label="Consumo do contrato">
-        <Titulo sub="O mesmo contrato visto por dois lados: quanto do valor já foi medido e quanto do serviço (quantidade) já foi entregue. Quando os dois se afastam, vale entender por quê.">Consumo do contrato: valor × quantidade</Titulo>
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Gauge titulo="Consumo por valor (financeiro)" valor={d.consumo.financeiroPct} cor="teal" destaque={`${moeda(d.totais.medido)} de ${moeda(d.totais.contratado)}`} subtitulo={`Saldo a medir: ${moeda(d.totais.saldo)}`} />
-          <Gauge titulo="Consumo por quantidade (físico)" valor={d.consumo.fisicoPct} cor="indigo" destaque={`${d.consumo.linhasEsgotadas} de ${d.linhas.length} linhas esgotadas em quantidade`} subtitulo={`${d.consumo.linhasAcima80} linhas acima de 80% · ${d.consumo.linhasSemMedicao} sem medição`} />
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
-            <p className="text-[13px] font-medium text-gray-500">Diferença entre os dois</p>
-            <p className={`mt-1 text-4xl font-semibold tabular-nums tracking-tight ${Math.abs(gapPp) < 2 ? "text-gray-900" : "text-amber-700"}`}>{Math.abs(gapPp) < 0.05 ? "" : gapPp > 0 ? "+" : "−"}{Math.abs(gapPp) < 0.05 ? "0" : Math.abs(gapPp).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} <span className="text-lg font-medium text-gray-500">p.p.</span></p>
-            <p className="mt-3 text-[13px] leading-relaxed text-gray-600">
-              {Math.abs(gapPp) < 2 ? "Quantidade e valor andam juntos: o preço medido está alinhado ao contratado."
-                : gapPp > 0 ? "A quantidade avançou mais que o valor: indício de serviços medidos a um preço abaixo do contratado, ou ajuste nos pedidos."
-                  : "O valor avançou mais que a quantidade: indício de preço medido acima do contratado (reajustes) ou itens medidos só em valor."}
-            </p>
-            <p className="mt-2 text-xs text-gray-400">{d.consumo.linhasComDivergencia} linha(s) com consumo por quantidade e por valor 10 p.p. ou mais afastados.</p>
+        <summary className="cursor-pointer text-sm font-medium text-gray-800">Gráficos: avanço acumulado e consumo por linha</summary>
+        <div className="mt-4 grid gap-6 lg:grid-cols-2">
+          <div>
+            <Titulo sub="Quanto do contrato já foi medido ao fim de cada mês, pelo valor e pela quantidade.">Avanço acumulado: valor × quantidade</Titulo>
+            <LinhasAvanco pontos={d.totais.porMes.map((m) => ({ mes: m.mes, fin: m.acumuladoPct, fis: m.acumuladoFisicoPct }))} />
           </div>
-        </div>
-      </section>
-
-      {/* ---------------- graficos */}
-      <section className="grid gap-5 lg:grid-cols-2">
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
-          <Titulo sub="Valor medido em cada mês (mês do boletim). Clique num mês para ver os pedidos. Barras âmbar: medição muito abaixo da média.">Medido por mês</Titulo>
-          <BarrasPorMes
-            pontos={d.meses.map((m) => { const t = d.totais.porMes.find((x) => x.mes === m)!; return { mes: m, valor: t.valor, rotulo: t.boletins.join(", ") }; })}
-            selecionado={sel?.mes ?? null} mesAtual={d.mesAtual} alertas={d.alertas.map((a) => a.mes)} formato={(v) => vc(v)} titulo="Valor medido por mês"
-            onSelecionar={(m) => selecionar(null, sel?.mes === m && sel?.seq === null ? null : m)}
-          />
-        </div>
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
-          <Titulo sub="Quanto do contrato já foi medido ao fim de cada mês, pelo valor e pela quantidade. O previsto (P0) entra aqui quando for cadastrado.">Avanço acumulado: financeiro × físico</Titulo>
-          <LinhasAvanco pontos={d.totais.porMes.map((m) => ({ mes: m.mes, fin: m.acumuladoPct, fis: m.acumuladoFisicoPct }))} />
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <Titulo sub="Para cada linha do contrato: quanto da quantidade e quanto do valor já foram consumidos. Clique numa linha para ver os pedidos dela.">Consumo por linha: quantidade × valor</Titulo>
-          {consumoLinhas.length > 12 && <button type="button" onClick={() => setVerTodasLinhas((v) => !v)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">{verTodasLinhas ? "Mostrar as 12 primeiras" : `Mostrar as ${consumoLinhas.length} linhas`}</button>}
-        </div>
-        <ConsumoPorLinha selecionada={sel?.seq ?? null} onSelecionar={(s) => selecionar(s, null)}
-          itens={(verTodasLinhas ? consumoLinhas : consumoLinhas.slice(0, 12)).map((l) => ({ seq: l.seqCvs, rotulo: l.descricao, unidade: l.unidade, pctQtd: l.pctQtd, pctValor: l.pctValor, divergenciaPp: l.divergenciaPp, detalhe: `${qtdFmt(l.qtdFaturada)} de ${qtdFmt(l.qtdContratada)} ${l.unidade ?? ""} · ${moeda(l.valorFaturado)} de ${moeda(l.valorContratado)}` }))} />
-      </section>
-
-        </div>
-      </details>
-
-      {/* ---------------- conferencia com o Senior (recolhido) */}
-      <details className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
-        <summary className="cursor-pointer text-sm font-medium text-gray-800">Conferência técnica com o Senior (para o time de medição){d.conferencia.naoConferem > 0 ? ` · ${d.conferencia.naoConferem} linha(s) com diferença` : " · tudo confere"}</summary>
-        <div className="mt-4 space-y-4">
-      {/* ---------------- atencao */}
-      {(d.alertas.length > 0 || d.outrosCentros.length > 0 || d.conferencia.naoConferem > 0) && (
-        <section className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-[13px] leading-relaxed text-amber-950" aria-label="Pontos de atenção">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-800">Pontos de atenção</p>
-          <ul className="list-disc space-y-1 pl-5">
-            {d.alertas.length > 0 && <li><b>Medição possivelmente não lançada no Senior:</b> {d.alertas.map((a) => `${mesLongo(a.mes)} (${moeda(a.valor)}; média dos 3 meses anteriores ${moedaCompacta(a.mediaAnterior)})`).join("; ")}. Vale conferir com o time de medição.</li>}
-            {d.conferencia.naoConferem > 0 && <li><b>{d.conferencia.naoConferem} linha(s) em que o faturado do Senior difere da soma dos pedidos</b> (diferença somada de {moeda(d.conferencia.difValorAbsoluta)}). O saldo segue o Senior; a coluna “Confere” mostra a diferença de cada linha.</li>}
-            {d.outrosCentros.length > 0 && <li>Itens rateados, no pedido, para outro centro de custo: {d.outrosCentros.map((o) => `${o.nome} (${o.itens} item(ns), ${moeda(o.valor)})`).join("; ")}. Contam na medição do contrato.</li>}
-          </ul>
-        </section>
-      )}
-
-          <p className="text-[13px] text-gray-600">O consumido acumulado de cada linha segue o Senior (E160CVS). A soma dos pedidos de cada linha é comparada a ele aqui: {d.conferencia.conferem} de {d.conferencia.linhas} linhas fecham ao centavo.</p>
-          {d.linhas.some((l) => !l.confere) && (
-            <div className="overflow-x-auto rounded-xl border border-gray-100">
-              <table className="w-full min-w-[640px] border-separate border-spacing-0 text-[12.5px] tabular-nums">
-                <thead><tr><th className={`${th} text-left`}>Linha</th><th className={th}>Senior (consumido)</th><th className={th}>Soma dos pedidos</th><th className={th}>Diferença</th></tr></thead>
-                <tbody>
-                  {d.linhas.filter((l) => !l.confere).map((l) => (
-                    <tr key={l.seqCvs}>
-                      <td className="border-b border-gray-100 px-2 py-1.5 text-left text-gray-800">{l.descricao} <span className="text-[11px] text-gray-400">linha {l.seqCvs}</span></td>
-                      <td className="border-b border-gray-100 px-2 py-1.5 text-right">{moeda(l.valorFaturado)} <span className="text-[11px] text-gray-400">{qtdFmt(l.qtdFaturada)}</span></td>
-                      <td className="border-b border-gray-100 px-2 py-1.5 text-right">{moeda(l.medidoValor)} <span className="text-[11px] text-gray-400">{qtdFmt(l.medidoQtd)}</span></td>
-                      <td className="border-b border-gray-100 px-2 py-1.5 text-right">{moeda(l.difValor)} <span className="text-[11px] text-gray-400">{qtdFmt(l.difQtd)}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <Titulo sub="Para cada linha: quanto da quantidade e quanto do valor já foram consumidos.">Consumo por linha</Titulo>
+              {consumoLinhas.length > 12 && <button type="button" onClick={() => setVerTodasLinhas((v) => !v)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">{verTodasLinhas ? "Mostrar as 12 primeiras" : `Mostrar as ${consumoLinhas.length} linhas`}</button>}
             </div>
-          )}
+            <ConsumoPorLinha selecionada={sel?.seq ?? null} onSelecionar={(sq) => selecionar(sq, null)}
+              itens={(verTodasLinhas ? consumoLinhas : consumoLinhas.slice(0, 12)).map((l) => ({ seq: l.seqCvs, rotulo: l.descricao, unidade: l.unidade, pctQtd: l.pctQtd, pctValor: l.pctValor, divergenciaPp: null, detalhe: `${qtdFmt(l.qtdFaturada)} de ${qtdFmt(l.qtdContratada)} ${l.unidade ?? ""} · ${moeda(l.valorFaturado)} de ${moeda(l.valorContratado)}` }))} />
+          </div>
         </div>
       </details>
 

@@ -32,7 +32,7 @@ export type MesConc = {
   dif: number; saldoAcum: number; saldoDesdeInicio: number; pedidos: number; docs: number;
 };
 export type DocLigado = { chave: string; tipo: "NF" | "ND"; numero: string; valor: number; competencia: string; como: Vinculo };
-export type OutroCc = { codccu: string; tipo: "NF" | "ND"; numero: string; valor: number; competencia: string };
+export type OutroCc = { chave: string; codccu: string; tipo: "NF" | "ND"; numero: string; valor: number; competencia: string };
 export type PedidoConc = { numPed: string; competencia: string; boletins: string[]; situacoes: string[]; itens: number; valor: number; emissao: string; documentos: DocLigado[]; possivelOutroCc: OutroCc | null };
 export type DocResultado = DocConc & { competenciaOriginal: string; vinculo: Vinculo | null; pedidosLigados: string[] };
 export type Conciliacao = {
@@ -117,7 +117,7 @@ export function conciliar(itens: ItemConc[], docsDoCc: DocConc[], docsOutrosCc: 
   for (const p of pedLivres()) {
     if (p.valor < 1000) continue;
     const o = outrosCc.filter((d) => Math.abs(d.valor - p.valor) < TOL && Math.abs(indice(d.competencia) - indice(p.competencia)) <= 12).sort(maisPerto(p.competencia))[0];
-    if (o) p.possivelOutroCc = { codccu: o.codccu!, tipo: o.tipo, numero: o.numero, valor: o.valor, competencia: o.competencia };
+    if (o) p.possivelOutroCc = { chave: o.chave, codccu: o.codccu!, tipo: o.tipo, numero: o.numero, valor: o.valor, competencia: o.competencia };
   }
 
   // ---- receita mes a mes (com o mes efetivo de cada nota)

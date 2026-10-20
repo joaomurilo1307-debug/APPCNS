@@ -227,3 +227,28 @@ test("montagem: item faturado entra com valor, cancelado fica de fora e a linha 
   assert.equal(r.itens.find((i) => i.numPed === "384")!.situacao, "FATURADO");
   assert.equal(r.resumo.totalLinhasQueNaoBatem, 0);
 });
+
+test("o consumido de cada linha e' a soma dos pedidos (mesma fonte dos meses), mesmo que o acumulado do Senior seja outro", () => {
+  const diferente = linhas.map((l) => (l.NUMCTR === "7" && l.SEQCVS === "2" ? { ...l, QTDFAT: "5", VLRFAT: "99999" } : l));
+  const r = montarMedicao({ contratos, linhas: diferente, itens, pedidos, rateios });
+  const l2 = r.linhas.find((l) => l.numCtr === "7" && l.seqCvs === 2)!;
+  assert.equal(l2.qtdFaturada, 3);
+  assert.equal(l2.valorFaturado, 54000.42);
+  assert.equal(r.contratos.find((c) => c.numCtr === "7")!.valorMedido, 54000.42);
+  assert.equal(r.resumo.totalLinhasQueNaoBatem, 1); // a diferenca com o Senior fica so' no resumo, nao na tela
+});
+
+test("item de pedido em linha sem orcamento (zerada ou apagada no Senior) entra na medicao: linha sem orcamento", () => {
+  const comZerada = [...linhas, { NUMCTR: "7", SEQCVS: "10", CODSER: "9", CPLCVS: "MOBILIZACAO DE TECNICO", UNIMED: "UN", QTDCVS: "0,00001", PREUNI: "13938,99", VLRTOT: "0", QTDFAT: "0", VLRFAT: "0" }];
+  const itensX = [...itens, { CODFIL: "1", NUMPED: "224", SEQISP: "1", CTRCVS: "7", SEQCTR: "10", SITISP: "1", QTDPED: "1", QTDCAN: "0", PREUNI: "13855,05", VLRBRU: "13855,05", PEDCLI: "BM34 03.2026" }, { CODFIL: "1", NUMPED: "224", SEQISP: "2", CTRCVS: "7", SEQCTR: "99", SITISP: "1", QTDPED: "1", QTDCAN: "0", PREUNI: "100", VLRBRU: "100", PEDCLI: "BM34 03.2026" }];
+  const pedidosX = [...pedidos, { CODFIL: "1", NUMPED: "224", DATEMI: "10/04/2026", SITPED: "1" }];
+  const r = montarMedicao({ contratos, linhas: comZerada, itens: itensX, pedidos: pedidosX, rateios });
+  const l10 = r.linhas.find((l) => l.numCtr === "7" && l.seqCvs === 10)!;
+  assert.equal(l10.valorContratado, 0);
+  assert.equal(l10.valorFaturado, 13855.05);
+  const l99 = r.linhas.find((l) => l.numCtr === "7" && l.seqCvs === 99)!; // linha que nem existe no Senior
+  assert.equal(l99.valorFaturado, 100);
+  assert.match(l99.descricao, /sem orçamento/);
+  assert.equal(r.resumo.itensSemLinhaNoCatalogo, 2);
+  assert.equal(r.itens.filter((i) => i.numPed === "224").length, 2);
+});
