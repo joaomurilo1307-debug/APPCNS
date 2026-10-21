@@ -81,29 +81,6 @@ export async function listarOcsPorVencimento(de: string, ate: string, janela = J
     .sort((a, b) => (a.vencimento! < b.vencimento! ? -1 : a.vencimento! > b.vencimento! ? 1 : Number(a.numOcp) - Number(b.numOcp)));
 }
 
-/**
- * Notas de entrada ja' lancadas na Senior por OC (numOcp|codFil -> numeros de NF): o vinculo fica nos
- * itens da nota (E440IPC produto, E440ISC servico; NUMOCP/FILOCP). Lotes de 20 na E440IPC (40 ja'
- * estourou o tempo) e 50 na E440ISC. Lote que falha = sem nota daquele lote (nao derruba a lista).
- */
-export async function notasSeniorPorOc(numeros: string[]): Promise<Map<string, string[]>> {
-  const validos = numeros.filter((n) => /^\d+$/.test(n));
-  const achadas = new Map<string, Set<string>>();
-  for (const [tabela, tamanho] of [["E440IPC", 20], ["E440ISC", 50]] as const) {
-    for (let i = 0; i < validos.length; i += tamanho) {
-      try {
-        for (const l of await consultarSenior(`SELECT DISTINCT NUMNFC, NUMOCP, FILOCP FROM ${tabela} WHERE CODEMP = ${COD_EMP} AND NUMOCP IN (${validos.slice(i, i + tamanho).join(",")})`)) {
-          const k = `${l.NUMOCP}|${l.FILOCP}`;
-          achadas.set(k, (achadas.get(k) ?? new Set()).add(l.NUMNFC));
-        }
-      } catch {
-        /* best-effort */
-      }
-    }
-  }
-  return new Map([...achadas].map(([k, v]) => [k, [...v]]));
-}
-
 /** Soma dos itens (VLRORI) e do rateio por OC, em 2 consultas agrupadas. Falha = null (nao acusa rateio zerado). */
 async function totaisPorOc(apos: number, buscar: boolean) {
   const soma = async (sql: string) => {

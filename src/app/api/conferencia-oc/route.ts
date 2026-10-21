@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { listarOcsPorVencimento, notasSeniorPorOc, titulosQueExistem } from "@/lib/senior/ocsConferencia";
+import { listarOcsPorVencimento, titulosQueExistem } from "@/lib/senior/ocsConferencia";
 import { decidirReserva } from "@/lib/senior/reservaTitulo";
 
 // Conferencia de OC: TODAS as OCs com vencimento no periodo, direto da Senior
@@ -29,14 +29,13 @@ export async function GET(req: Request) {
   }
 
   const numeros = ocs.map((o) => o.numOcp);
-  const [dossies, gerados, nfsSenior] = await Promise.all([
+  const [dossies, gerados] = await Promise.all([
     prisma.dossieOC.findMany({
       where: { numOcp: { in: numeros } },
       select: { id: true, numOcp: true, status: true, motivo: true, arquivoPath: true, atualizadoEm: true },
       orderBy: { atualizadoEm: "desc" },
     }),
     prisma.tituloGeradoOC.findMany({ where: { numOcp: { in: numeros } } }),
-    notasSeniorPorOc(numeros),
   ]);
   const nfs = await prisma.nfAssociadaOC.findMany({ where: { numOcp: { in: numeros } }, select: { numOcp: true, codFil: true, numeroNf: true } });
   const nfsPorOc = new Map<string, string[]>();
@@ -67,7 +66,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ocs: ocs.map((o) => {
       const g = geradoPorOc.get(`${o.numOcp}|${o.codFil}`);
-      return { ...o, numTit: g?.numTit ?? o.numTitSenior, tituloGeradoAqui: !!g, dossieId: dossiePorOc.get(o.numOcp) ?? null, dossieStatus: ultimoPorOc.get(o.numOcp)?.status ?? null, dossieMotivo: ultimoPorOc.get(o.numOcp)?.motivo ?? null, nfs: [...new Set([...(nfsPorOc.get(`${o.numOcp}|${o.codFil}`) ?? []), ...(nfsSenior.get(`${o.numOcp}|${o.codFil}`) ?? [])])] };
+      return { ...o, numTit: g?.numTit ?? o.numTitSenior, tituloGeradoAqui: !!g, dossieId: dossiePorOc.get(o.numOcp) ?? null, dossieStatus: ultimoPorOc.get(o.numOcp)?.status ?? null, dossieMotivo: ultimoPorOc.get(o.numOcp)?.motivo ?? null, nfs: nfsPorOc.get(`${o.numOcp}|${o.codFil}`) ?? [] };
     }),
   });
 }
