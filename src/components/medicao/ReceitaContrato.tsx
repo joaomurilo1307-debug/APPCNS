@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Conciliacao, MesConc, Vinculo } from "@/lib/medicao/conciliacao";
+import { origemNoSenior } from "@/lib/medicao/origem";
 import { mesCurto, mesLongo, moeda, moedaCompacta } from "@/lib/custos/formato";
 
 type Resposta = {
@@ -88,6 +89,8 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
   const c = dados?.conciliacao ?? null;
   const pedidosMes = useMemo(() => (c ? c.pedidos.filter((p) => p.competencia === mes) : []), [c, mes]);
   const docsMes = useMemo(() => (c ? c.docs.filter((d) => d.competencia === mes) : []), [c, mes]);
+  const notaAcimaNoMes = !!c && !!mes && (c.meses.find((x) => x.mes === mes)?.dif ?? 0) < -0.05; // mes em que a nota passou do pedido: pedido sem nota ligada nao quer dizer "nota nao entrada"
+  const origem = useMemo(() => (c && mes ? origemNoSenior(c, mes) : null), [c, mes]); // fatos do Senior quando o mes nao fecha (nota sem pedido lancado, pedido sem nota)
 
   if (erro && !dados) return <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro}</div>;
   if (!dados) return <div className="h-72 animate-pulse rounded-2xl bg-gray-200/70" aria-busy />;
@@ -202,6 +205,17 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
             <h3 className="text-sm font-semibold text-gray-900">{mesLongo(mes)}: pedidos de medição e a nota de cada um</h3>
             <button type="button" onClick={() => setMes(null)} className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-[12.5px] text-gray-600 hover:bg-gray-50">Fechar</button>
           </div>
+          {origem && (
+            <div className="mb-3 rounded-lg border border-gray-200 bg-white px-3.5 py-3 text-[12.5px] leading-relaxed text-gray-700">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">O que o Senior mostra neste mês{dados.atualizadoEm ? ` · leitura de ${new Date(dados.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}</p>
+              <ul className="space-y-1">
+                {[...origem.notas, ...origem.pedidos].map((l) => (
+                  <li key={`${l.titulo}-${l.texto}`} className="flex gap-2"><span className="w-24 shrink-0 font-medium text-gray-900">{l.titulo}</span><span>{l.texto}</span></li>
+                ))}
+              </ul>
+              <p className="mt-2 border-t border-gray-100 pt-2 text-gray-800">{origem.resumo}</p>
+            </div>
+          )}
           <div className="overflow-x-auto rounded-lg border border-gray-100 bg-white">
             <table className="w-full min-w-[640px] border-separate border-spacing-0 text-[12.5px]">
               <thead><tr><th className={`${th} text-left`}>Pedido</th><th className={`${th} text-left`}>Boletim</th><th className={`${th} text-right`}>Linhas</th><th className={`${th} text-right`}>Valor do pedido</th><th className={`${th} text-left`}>Nota</th><th className={`${th} text-right`}>Bruto</th><th className={`${th} text-right`}>Líquido</th><th className={`${th} text-left`}>Recebimento</th></tr></thead>
@@ -214,10 +228,10 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
                       <td className={`${td} text-gray-600`}>{i === 0 ? p.boletins.join(", ") || "—" : ""}</td>
                       <td className={`${td} text-right text-gray-500`}>{i === 0 ? p.itens : ""}</td>
                       <td className={`${td} text-right font-medium tabular-nums text-gray-900`}>{i === 0 ? moeda(p.valor) : ""}</td>
-                      <td className={`${td} text-gray-800`}>{d ? <>{rotuloDoc(d.tipo, d.numero)} <span className="text-[11px] text-gray-400">{COMO[d.como]}</span></> : <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-800">ainda sem nota</span>}</td>
+                      <td className={`${td} text-gray-800`}>{d ? <>{rotuloDoc(d.tipo, d.numero)} <span className="text-[11px] text-gray-400">{COMO[d.como]}</span></> : notaAcimaNoMes ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-slate-700">sem nota ligada</span> : <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-800">ainda sem nota</span>}</td>
                       <td className={`${td} text-right tabular-nums text-gray-700`}>{d ? moeda(d.valor) : ""}</td>
                       <td className={`${td} text-right tabular-nums text-gray-700`}>{doc ? moeda(doc.valorLiquido) : ""}</td>
-                      <td className={td}>{doc ? <ChipNota d={doc} duplicada={!!doc.duplicadaDe} /> : d ? "" : <span className={`${chip} bg-amber-100 text-amber-800`}>pedido feito, nota não entrada</span>}</td>
+                      <td className={td}>{doc ? <ChipNota d={doc} duplicada={!!doc.duplicadaDe} /> : d ? "" : notaAcimaNoMes ? <span className={`${chip} bg-slate-100 text-slate-700`}>nota do mês acima do pedido</span> : <span className={`${chip} bg-amber-100 text-amber-800`}>pedido feito, nota não entrada</span>}</td>
                     </tr>
                   );
                 }))}
