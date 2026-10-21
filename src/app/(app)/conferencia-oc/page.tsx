@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { pendenciasOc } from "@/lib/senior/pendenciasOc";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
+import DossiesAutomaticos from "@/components/DossiesAutomaticos";
 
 // Conferência de OC: todas as OCs da Senior com vencimento no período (com ou sem
 // título). O financeiro confere, gera o título a partir da OC e baixa os dossiês.
@@ -257,6 +258,8 @@ export default function ConferenciaOcPage() {
           aprovada, gere o título a partir dela.
         </p>
       </div>
+
+      <DossiesAutomaticos />
 
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
         <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Vencimento</span>

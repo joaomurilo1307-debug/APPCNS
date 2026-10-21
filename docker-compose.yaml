@@ -32,6 +32,13 @@ services:
       SENIOR_WS_SAPIENS_PASSWORD: ${SENIOR_WS_SAPIENS_PASSWORD}
       # Gera o PDF do dossie de OC (botao Gerar dossie da Conferencia de OC): servico abaixo, so' na rede do compose
       GOTENBERG_URL: ${GOTENBERG_URL:-http://gotenberg:3000}
+      # Geracao automatica de dossies (src/lib/dossie/automatico.ts). Vazio = padrao; DOSSIE_AUTO=0 desliga o agendador.
+      DOSSIE_AUTO: ${DOSSIE_AUTO:-}
+      DOSSIE_AUTO_DIAS_ATRAS: ${DOSSIE_AUTO_DIAS_ATRAS:-}
+      DOSSIE_AUTO_DIAS_ATRAS_PAGAS: ${DOSSIE_AUTO_DIAS_ATRAS_PAGAS:-}
+      DOSSIE_AUTO_DIAS_FRENTE: ${DOSSIE_AUTO_DIAS_FRENTE:-}
+      DOSSIE_AUTO_LOTE: ${DOSSIE_AUTO_LOTE:-}
+      DOSSIE_AUTO_JANELA_OCS: ${DOSSIE_AUTO_JANELA_OCS:-}
       SENIORX_ACCOUNT: ${SENIORX_ACCOUNT:-}
       SENIORX_PASSWORD: ${SENIORX_PASSWORD:-}
       # Endpoints opcionais: vazio usa o padrao do cliente SOAP; definir ambos

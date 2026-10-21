@@ -1,10 +1,9 @@
 // Roda uma vez quando o servidor do Next sobe (Next 14: exige experimental.instrumentationHook em next.config.mjs).
-// Liga o agendador do Custo por Contrato -- so' em producao, no runtime Node, e nunca em homologacao/desenvolvimento.
+// Liga os agendadores internos (Custo por Contrato/Medicao e dossies de OC) -- ver instrumentation-node.ts, que so' e'
+// carregado no runtime Node.
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  if (process.env.NODE_ENV !== "production") return;
-  if (process.env.APP_ENV === "homologacao") return;
-  if (process.env.CUSTOS_AUTO === "0") return;
-  const { iniciarAgendadorCustos } = await import("./lib/custos/agendador");
-  iniciarAgendadorCustos();
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { iniciarAgendadores } = await import("./instrumentation-node");
+    await iniciarAgendadores();
+  }
 }

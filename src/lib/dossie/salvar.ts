@@ -19,6 +19,8 @@ export type DadosDossie = {
   status: "PUBLICADO" | "ERRO" | "GERANDO";
   motivo?: string | null;
   origem?: string | null;
+  /** Estado da OC quando o PDF foi gerado (geracao automatica); null = nao registrado. */
+  assinatura?: string | null;
 };
 
 export function chaveDaOc(codFil: string | number, numOcp: string | number) {
@@ -60,6 +62,9 @@ export async function salvarDossie(d: DadosDossie, pdf?: { bytes: Buffer; nome: 
     status: d.status,
     motivo: d.motivo ?? null,
     origem: d.origem ?? "APPCNS",
+    // gerou: a sequencia de falhas acaba. A assinatura so' vale para o PDF recem-gravado.
+    assinatura: d.status === "PUBLICADO" ? d.assinatura ?? null : existente?.assinatura ?? null,
+    tentativas: d.status === "PUBLICADO" ? 0 : existente?.tentativas ?? 0,
     arquivoNome,
     arquivoPath,
     arquivoBytes,
@@ -83,10 +88,13 @@ export async function marcarGerando(codFil: string, numOcp: string) {
   return prisma.dossieOC.create({ data: { chave, numOcp, codFil, titulos: [], status: "GERANDO", origem: "APPCNS" } });
 }
 
-/** Falha na geracao: so' troca status/motivo -- dados e PDF anteriores (se houver) ficam como estavam. */
+/**
+ * Falha na geracao: so' troca status/motivo -- dados e PDF anteriores (se houver) ficam como estavam. Conta a falha
+ * (`tentativas`), que a geracao automatica usa para espacar as novas tentativas.
+ */
 export async function registrarFalha(codFil: string, numOcp: string, motivo: string) {
   const chave = chaveDaOc(codFil, numOcp);
   const existente = await prisma.dossieOC.findUnique({ where: { chave } });
-  if (existente) return prisma.dossieOC.update({ where: { chave }, data: { status: "ERRO", motivo } });
-  return prisma.dossieOC.create({ data: { chave, numOcp, codFil, titulos: [], status: "ERRO", motivo, origem: "APPCNS" } });
+  if (existente) return prisma.dossieOC.update({ where: { chave }, data: { status: "ERRO", motivo, tentativas: { increment: 1 } } });
+  return prisma.dossieOC.create({ data: { chave, numOcp, codFil, titulos: [], status: "ERRO", motivo, origem: "APPCNS", tentativas: 1 } });
 }

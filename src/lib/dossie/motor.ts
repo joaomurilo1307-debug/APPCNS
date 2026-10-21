@@ -32,6 +32,23 @@ type Fluxo = {
 
 export type ExecutorHttp = (nome: string, corpo: string, indice: number) => Promise<string>;
 
+// Parametros que identificam UM registro (titulo, nota, OC, fornecedor...). Sem valor, o filtro "CAMPO = :Param" nao acha registro
+// nenhum -- mas a Senior varre a tabela inteira para descobrir isso (medido em 20/10/2026: E440ISC 61 s, E501MCP 19 s, E440IPC 14 s
+// para uma OC sem titulo/nota), trava a fila do web service para todo mundo e estoura o tempo. No n8n o "sempre emitir" mandava
+// um item vazio para essas consultas; aqui elas nem saem.
+const PARAMETROS_DE_CHAVE = ["NumNfc", "NumTit", "CodSnf", "CodTpt", "NumOcp", "NumApr", "CodFor", "CodUsu"];
+
+/** O corpo SOAP pede um registro por chave sem informar a chave? Devolve o nome do 1o parametro vazio (ou null). */
+export function parametroDeChaveVazio(corpo: string): string | null {
+  for (const m of corpo.matchAll(/&lt;name&gt;(\w+)&lt;\/name&gt;&lt;type&gt;\w+&lt;\/type&gt;&lt;value&gt;([^&]*)&lt;\/value&gt;/g)) {
+    if (PARAMETROS_DE_CHAVE.includes(m[1]) && m[2].trim() === "") return m[1];
+  }
+  return null;
+}
+
+/** Resposta de "zero linhas": os decodificadores do fluxo tratam o conteudo vazio como "sem registros". */
+export const RESPOSTA_SEM_LINHAS = "<GetDBInfoResponse><result><pmReturnGetDBInfo></pmReturnGetDBInfo></result></GetDBInfoResponse>";
+
 export type OpcoesMotor = {
   /** Executa a chamada SOAP (corpo ja renderizado, ainda sem credenciais). */
   http: ExecutorHttp;
@@ -39,6 +56,8 @@ export type OpcoesMotor = {
   extras?: Record<string, Item[]>;
   /** Chamado depois de cada no (para depurar/comparar com o gabarito). */
   aoTerminar?: (nome: string, saidas: Saidas) => void;
+  /** Consulta que nao foi enviada a Senior por falta de chave (ver parametroDeChaveVazio). */
+  aoPular?: (nome: string, motivo: string) => void;
 };
 
 const fluxo = fluxoJson as unknown as Fluxo;
@@ -131,6 +150,12 @@ export async function executarFluxo(entrada: Record<string, unknown>, opcoes: Op
           }
           const n = chamadas.get(nome) ?? 0;
           chamadas.set(nome, n + 1);
+          const vazio = parametroDeChaveVazio(corpo);
+          if (vazio) {
+            opcoes.aoPular?.(nome, `parametro ${vazio} vazio`);
+            out.push({ json: { data: RESPOSTA_SEM_LINHAS } });
+            continue;
+          }
           out.push({ json: { data: await opcoes.http(nome, corpo, n) } });
         }
         saidas = [out];

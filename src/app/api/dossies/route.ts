@@ -77,7 +77,7 @@ export async function GET() {
     vencimento: a.previsaoPagamento,
     valorTotal: a.valor,
     status: "AGUARDANDO_GERACAO",
-    motivo: "OC paga na Senior, mas a automação (n8n) ainda não enviou o dossiê.",
+    motivo: "OC paga na Senior, mas o dossiê ainda não foi gerado. Se o vencimento for dos últimos 90 dias, a geração automática do sistema faz isso na próxima verificação (a cada 5 minutos, de segunda a sábado); mais antiga que isso, use \"Gerar dossiê\" na Conferência de OC.",
     origem: "DETECCAO_INTERNA",
     gedDocumentId: null,
     temArquivo: false,

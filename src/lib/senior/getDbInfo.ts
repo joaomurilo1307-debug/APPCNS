@@ -68,9 +68,18 @@ let filaLeituras: Promise<void> = Promise.resolve();
 // Todas as telas compartilham uma fila por processo; duas requisicoes HTTP
 // simultaneas nao disparam consultas concorrentes no GetDBInfo.
 export function consultarSenior(sql: string, opcoes?: { timeoutMs?: number }): Promise<LinhaSenior[]> {
-  const consulta = filaLeituras.then(() => executarConsultaSenior(sql, opcoes?.timeoutMs));
-  filaLeituras = consulta.then(() => undefined, () => undefined);
-  return consulta;
+  return emFilaSenior(() => executarConsultaSenior(sql, opcoes?.timeoutMs));
+}
+
+/**
+ * Entra na MESMA fila das consultas acima: uma chamada ao web service por vez em todo o processo. Quem fala com a
+ * Senior por outro caminho (ex.: o motor do dossie, que monta o proprio SOAP) usa isto para nao competir com as telas.
+ * A falha de uma tarefa nao trava a fila.
+ */
+export function emFilaSenior<T>(tarefa: () => Promise<T>): Promise<T> {
+  const execucao = filaLeituras.then(tarefa);
+  filaLeituras = execucao.then(() => undefined, () => undefined);
+  return execucao;
 }
 
 async function executarConsultaSenior(sql: string, timeoutMs = 60_000): Promise<LinhaSenior[]> {

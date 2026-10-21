@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
@@ -188,6 +189,7 @@ export async function POST(req: Request) {
           const itensCnab: ItemRemessa[] = [];
           const seusNumeros: { numTit: string | null; seuNumero: string; formatoSenior: boolean }[] = [];
           const criados: { id: string; escrito: string }[] = [];
+          const linhasDosItens: Prisma.RemessaItemPagamentoCreateManyInput[] = [];
           let seq = 0;
           for (const item of grupo) {
             seq += 1;
@@ -205,37 +207,54 @@ export async function POST(req: Request) {
             const seuNumero = null;
             seusNumeros.push({ numTit: titulo?.numTit ?? null, seuNumero: seuNumero ?? referenciaEmpresa, formatoSenior: !!seuNumero });
 
-            const itemCriado = await tx.remessaItemPagamento.create({
-              data: {
-                remessaId: remessa.id,
-                tituloId: item.tituloId,
-                numeroSequencial: seq,
-                segmento: item.segmento,
-                formaPagamento: item.formaPagamento,
-                referenciaEmpresa,
-                seuNumero,
-                favorecidoNome: item.favorecidoNome,
-                favorecidoTipoDoc: item.favorecidoTipoDoc,
-                favorecidoDocumento: item.favorecidoDocumento,
-                bancoFavorecido: item.bancoFavorecido ?? null,
-                agenciaFavorecido: item.agenciaFavorecido ?? null,
-                contaFavorecido: item.contaFavorecido ?? null,
-                dacFavorecido: item.dacFavorecido ?? null,
-                codigoBarras: item.codigoBarras ?? null,
-                chavePixTipo: item.chavePixTipo ?? null,
-                chavePixValor: item.chavePixValor ?? null,
-                dadosComplementares:
-                  item.pixCopiaECola || item.nfLiquidacao || item.dadosTributo
-                    ? JSON.stringify({ pixCopiaECola: item.pixCopiaECola, nfLiquidacao: item.nfLiquidacao, dadosTributo: item.dadosTributo })
-                    : null,
-                valor: item.valor,
-                dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
-              },
+            linhasDosItens.push({
+              remessaId: remessa.id,
+              tituloId: item.tituloId,
+              numeroSequencial: seq,
+              segmento: item.segmento,
+              formaPagamento: item.formaPagamento,
+              referenciaEmpresa,
+              seuNumero,
+              favorecidoNome: item.favorecidoNome,
+              favorecidoTipoDoc: item.favorecidoTipoDoc,
+              favorecidoDocumento: item.favorecidoDocumento,
+              bancoFavorecido: item.bancoFavorecido ?? null,
+              agenciaFavorecido: item.agenciaFavorecido ?? null,
+              contaFavorecido: item.contaFavorecido ?? null,
+              dacFavorecido: item.dacFavorecido ?? null,
+              codigoBarras: item.codigoBarras ?? null,
+              chavePixTipo: item.chavePixTipo ?? null,
+              chavePixValor: item.chavePixValor ?? null,
+              dadosComplementares:
+                item.pixCopiaECola || item.nfLiquidacao || item.dadosTributo
+                  ? JSON.stringify({ pixCopiaECola: item.pixCopiaECola, nfLiquidacao: item.nfLiquidacao, dadosTributo: item.dadosTributo })
+                  : null,
+              valor: item.valor,
+              dataPagamento: new Date(`${item.dataPagamento}T00:00:00Z`),
             });
-            criados.push({ id: itemCriado.id, escrito: seuNumero ?? referenciaEmpresa });
-            await tx.auditLog.create({data:{userId:user.id,action:"REMESSA_DADOS_CONFERIDOS",entityType:"RemessaItemPagamento",entityId:itemCriado.id,metadata:JSON.stringify({tituloId:item.tituloId,consultaSenior:!!item.tituloId,beneficiarioBoletoConferido:item.segmento === "J",documento:item.favorecidoDocumento,codigoBarras:item.codigoBarras ?? null})}});
             itensCnab.push(itemParaCnab(item, seuNumero ?? referenciaEmpresa, seq));
           }
+
+          // Um unico INSERT para todos os itens da remessa (e outro para a auditoria), em vez de
+          // dois round-trips por item dentro da transacao. A ordem de retorno nao e' garantida,
+          // por isso o casamento com o item de origem e' pelo numero sequencial.
+          const itensCriados = await tx.remessaItemPagamento.createManyAndReturn({ data: linhasDosItens });
+          const criadoPorSeq = new Map(itensCriados.map((c) => [c.numeroSequencial, c]));
+          const auditoria: Prisma.AuditLogCreateManyInput[] = [];
+          grupo.forEach((item, i) => {
+            const linha = linhasDosItens[i];
+            const itemCriado = criadoPorSeq.get(linha.numeroSequencial);
+            if (!itemCriado) throw new Error(`Item ${linha.numeroSequencial} da remessa não foi gravado.`);
+            criados.push({ id: itemCriado.id, escrito: linha.seuNumero ?? linha.referenciaEmpresa });
+            auditoria.push({
+              userId: user.id,
+              action: "REMESSA_DADOS_CONFERIDOS",
+              entityType: "RemessaItemPagamento",
+              entityId: itemCriado.id,
+              metadata: JSON.stringify({ tituloId: item.tituloId, consultaSenior: !!item.tituloId, beneficiarioBoletoConferido: item.segmento === "J", documento: item.favorecidoDocumento, codigoBarras: item.codigoBarras ?? null }),
+            });
+          });
+          await tx.auditLog.createMany({ data: auditoria });
 
           const gerado = gerarArquivoRemessa(contaDebito, itensCnab, dataGeracao);
           const arquivoPix = ehPix(grupo[0]);

@@ -7,6 +7,7 @@
 
 import { NOME_SAIDA, executarFluxo, type Item } from "./motor";
 import { NOS } from "./nos/index.js";
+import { emFilaSenior } from "@/lib/senior/getDbInfo";
 import { chaveDaOc, registrarFalha, salvarDossie } from "./salvar";
 
 const URL_SENIOR = "https://web01s1p.seniorcloud.com.br:30901/g5-senior-services/sapiens_Synccom_senior_g5_co_ger_db";
@@ -52,9 +53,11 @@ export type Dependencias = { http?: (corpo: string) => Promise<string>; pdf?: (h
 
 /** Executa o fluxo e devolve o HTML + o registro pronto para gravar (sem tocar no banco). */
 export async function montarDossie(oc: { codEmp?: number; codFil: number; numOcp: number }, deps: Dependencias = {}) {
+  // Cada chamada entra na fila unica da Senior (uma por vez no processo): o agendador de dossies, as telas e a leitura
+  // dos custos nao disputam o web service, que atende mal consultas simultaneas.
   const estado = await executarFluxo(
     { codEmp: oc.codEmp ?? 1, codFil: oc.codFil, numOcp: oc.numOcp },
-    { http: (_nome, corpo) => (deps.http ?? chamarSenior)(corpo) }
+    { http: (_nome, corpo) => (deps.http ?? ((c: string) => emFilaSenior(() => chamarSenior(c))))(corpo) }
   );
   const gerador: any = estado.get(NOME_SAIDA)?.[0]?.[0]?.json ?? {};
   if (typeof gerador.html !== "string" || gerador.html.length < 200 || gerador.error) {
@@ -80,13 +83,30 @@ export async function montarDossie(oc: { codEmp?: number; codFil: number; numOcp
 // ---------- fila: uma geracao por vez ----------
 let fila: Promise<unknown> = Promise.resolve();
 
-/** Gera e grava. Nunca lanca: falha vira status ERRO com o motivo (e o PDF anterior, se houver, e' mantido). */
-export function gerarEGravar(oc: { codEmp?: number; codFil: number; numOcp: number }, deps: Dependencias = {}): Promise<{ ok: boolean; motivo?: string }> {
+/**
+ * Gera e grava. Nunca lanca: falha vira status ERRO com o motivo (e o PDF anterior, se houver, e' mantido).
+ * `extras.assinatura`/`extras.origem`: usados pela geracao automatica (lib/dossie/automatico.ts) para lembrar em que
+ * estado da OC o PDF foi feito; o botao manual nao informa (a assinatura fica vazia).
+ */
+export function gerarEGravar(
+  oc: { codEmp?: number; codFil: number; numOcp: number },
+  deps: Dependencias = {},
+  extras: { assinatura?: string | null; origem?: string } = {}
+): Promise<{ ok: boolean; motivo?: string }> {
   const trabalho = fila.then(async () => {
     try {
       const { pdf, nomeArquivo, envio } = await montarDossie(oc, deps);
       await salvarDossie(
-        { ...envio, chave: chaveDaOc(oc.codFil, oc.numOcp), numOcp: String(oc.numOcp), codFil: String(oc.codFil), status: "PUBLICADO", motivo: null, origem: "APPCNS" },
+        {
+          ...envio,
+          chave: chaveDaOc(oc.codFil, oc.numOcp),
+          numOcp: String(oc.numOcp),
+          codFil: String(oc.codFil),
+          status: "PUBLICADO",
+          motivo: null,
+          origem: extras.origem ?? "APPCNS",
+          assinatura: extras.assinatura ?? null,
+        },
         { bytes: pdf, nome: nomeArquivo }
       );
       return { ok: true };

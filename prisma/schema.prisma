@@ -1182,7 +1182,13 @@ model DossieOC {
 
   status         String    // PUBLICADO | ERRO | SEM_OC | OC_NAO_QUITADA
   motivo         String?   @db.Text // por que não gerou, quando status != PUBLICADO
-  origem         String?   // VIGIA_OC_QUITADA | RELATORIO_201 | MANUAL
+  origem         String?   // VIGIA_OC_QUITADA | RELATORIO_201 | MANUAL (n8n) | APPCNS (botao) | APPCNS_AUTO (agendador interno)
+
+  // Geracao automatica pelo APPCNS (lib/dossie/automatico.ts): "assinatura" e' o estado da OC (aprovacao, valor,
+  // titulos e NF digitados, quais titulos ainda estao abertos na Senior) quando o PDF foi gerado -- mudou, o PDF
+  // e' refeito. "tentativas" conta as falhas seguidas (zera ao gerar) e dita o intervalo da proxima tentativa.
+  assinatura     String?
+  tentativas     Int       @default(0)
 
   gedDocumentId  String?
   gedVersao      String?

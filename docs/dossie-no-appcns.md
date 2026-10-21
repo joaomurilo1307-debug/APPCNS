@@ -42,6 +42,61 @@ Para regenerar a partir de um backup do workflow:
    `GOTENBERG_URL`). Se o compose do servidor tiver ajustes locais, copie só o serviço `gotenberg` e a variável.
 2. Nenhuma tabela nova. Variáveis: as `SENIOR_WS_SAPIENS_*` que já existem.
 
+## Geração automática (substitui os jobs do n8n) — 20/10/2026
+
+Antes só o **botão** gerava no sistema; quem gerava sozinho eram dois jobs do n8n: "Disparo Dossiê pelo 201" (todo dia 06h) e o vigia de
+OC quitada. Agora o próprio servidor faz isso: `src/lib/dossie/agendador.ts` confere **a cada 5 minutos, de segunda a sábado, das 6h às 21h59**
+(horário de São Paulo; mesma janela do agendador do Custo por Contrato) e `src/lib/dossie/automatico.ts` decide o que gerar. Só lê a Senior.
+
+### Por que o n8n deixava dossiês sem gerar (lido do fluxo exportado "Disparo Dossiê pelo 201", versão de 15/09)
+
+| No n8n | Efeito |
+|---|---|
+| Só entravam títulos com **emissão nas últimas 24 h** (`diasRetroativos = 1`, `campoData = DATEMI`) | Título lançado dias depois da nota **nunca** entrava. É a causa mais comum. |
+| `CODFIL = 1` fixo | OC de outra filial nunca. |
+| Só `SITTIT` AB e LQ | Título em PE (já na remessa) ficava de fora. |
+| A OC era achada por `USU_NUMTIT LIKE` + item exato | Parcela digitada pela metade ("2072$") não casava. |
+| Uma falha da Senior às 06h derrubava o dia, **sem nova tentativa** | OC com erro só era tentada de novo se ainda estivesse na janela de 24 h. |
+| Título sem OC saía por um ramo que não gravava nada | Ninguém via o que ficou de fora. |
+| Uma OC sem título/nota fazia 3 consultas de **chave vazia** (varredura da tabela inteira na Senior: 14 a 61 s cada, medido em 20/10/2026) | A geração demorava ~3 min ou estourava o tempo. |
+
+### O que o sistema faz agora
+
+**Quem precisa de dossiê** (OC aprovada, `SITAPR = APR`, e não cancelada, `SITOCP <> 5`, de qualquer filial) — qualquer uma destas:
+1. tem **título em aberto** (AB/PE) citado em `USU_NUMTIT` (casamento por número exato, zeros à esquerda, parcela e base da parcela) **ou** associado à mão na
+   Programação de Pagamento (`TituloOcVinculo`) — vale mesmo que o vencimento da OC seja antigo ou esteja vazio;
+2. vence de **30 dias atrás a 45 dias à frente** (`USU_DATVECT`);
+3. já está **paga** no sistema (`AprovacaoSenior.pago`) e venceu nos últimos **90 dias** — o dossiê final que o vigia gerava.
+
+**O que faz com cada uma** (compara com o dossiê guardado; `DossieOC.assinatura` = estado da OC quando o PDF foi feito: aprovação, situação, valor,
+títulos e nota digitados e quais títulos ainda estão abertos na Senior):
+- sem dossiê, ou sem PDF, ou o PDF sumiu do servidor → **gera** (primeiro as que nunca tiveram, e as que vencem mais perto de hoje);
+- a assinatura mudou (título novo, título **pago**, nota, valor, situação) → **gera de novo**;
+- dossiê feito pelo n8n ou pelo botão (sem assinatura): se ele cita os títulos da OC, é **adotado** (só registra a assinatura, não refaz o PDF); se não cita, refaz;
+- falhou → tenta de novo **sozinho** com intervalo crescente: 5 min, 15, 30, 1 h, 2 h, 4 h, 8 h e depois a cada 24 h, para sempre (`DossieOC.tentativas`);
+- no máximo **12 por verificação** (`DOSSIE_AUTO_LOTE`), uma de cada vez; 3 falhas seguidas param a verificação; sem o Gotenberg a verificação não gera nada nem marca erro.
+
+**Onde acompanhar:** painel **Dossiês automáticos** no topo da Conferência de OC (quantas OCs precisam de dossiê, quantas estão em dia, o que falta e **por quê**,
+"Verificar agora"). Para monitor externo: `GET /api/senior/dossies/automatico` com o header `x-sync-key` (`ultimo.terminouEm` mostra se está vivo; `ultimo.pendentes`).
+
+**Variáveis (todas opcionais, no `.env` do servidor / compose):** `DOSSIE_AUTO=0` desliga o agendador; `DOSSIE_AUTO_DIAS_ATRAS` (30), `DOSSIE_AUTO_DIAS_FRENTE` (45),
+`DOSSIE_AUTO_DIAS_ATRAS_PAGAS` (90), `DOSSIE_AUTO_LOTE` (12), `DOSSIE_AUTO_JANELA_OCS` (2500 = quantas das últimas OCs a Senior lê por verificação).
+
+### Segurança da Senior (por que não derruba nada)
+
+- **Fila única:** todas as chamadas à Senior (as telas, a leitura de custos e o motor do dossiê) passam por `emFilaSenior` — uma por vez no processo.
+- **Consulta sem chave não sai:** o motor (`motor.ts`) não envia à Senior a consulta cujo parâmetro de chave (`NumNfc`, `NumTit`, `CodFor`...) está vazio e devolve "zero linhas".
+  O HTML do dossiê é **idêntico** ao de antes (OC 15182: 11.703 caracteres nos dois casos), mas a geração de uma OC sem título/nota caiu de **171 s para 11 s**.
+- Uma verificação completa lê só 3 coisas na Senior (~9 s): as últimas OCs, os títulos em aberto e, só para a lista do que falta, o nome dos fornecedores.
+
+### Quando desligar o n8n
+
+Depois de **um dia** com o painel verde (ou só com itens "aguardando nova tentativa"), desative no n8n o job `Disparo Dossiê pelo 201` e o vigia de OC quitada.
+Os dois podem conviver: gravam pela mesma chave por OC e o sistema só refaz o que mudou. O que deixa de existir é a **publicação no GED** (decisão de 15/10).
+
+**Pré-requisito em produção:** o serviço `gotenberg` do `docker-compose.yaml` precisa estar no ar (`docker compose up -d` com o compose novo). Sem ele o painel
+mostra "o serviço que converte o dossiê em PDF (Gotenberg) não respondeu" e nada é gerado.
+
 ## Convivência com o n8n
 
 O job das 6h (`Disparo Dossiê pelo 201`) continua gravando pela mesma chave por OC. Gerar de novo substitui o
