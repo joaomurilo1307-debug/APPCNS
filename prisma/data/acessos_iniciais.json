@@ -86,6 +86,34 @@
       "programacao_pagamento",
       "pagamentos_itau",
       "conferencia_oc"
+    ],
+    "completo": [
+      "painel",
+      "projetos",
+      "tarefas",
+      "sprint",
+      "gantt",
+      "calendario",
+      "chat",
+      "equipes",
+      "nucleos",
+      "metas",
+      "relatorios",
+      "pdi",
+      "aprovacoes_projetos",
+      "programacao_pagamento",
+      "pagamentos_itau",
+      "conferencia_oc",
+      "despesas_recorrentes",
+      "alertas_financeiro",
+      "notas_fiscais",
+      "aprovacoes_oc_todas",
+      "aprovacoes_oc",
+      "contratos",
+      "custos",
+      "medicao",
+      "previsao",
+      "p0"
     ]
   },
   "todosOsModulos": [
@@ -208,6 +236,76 @@
       "nome": "MONICA ADRIANA DE OLIVEIRA B CARNEIRO",
       "perfil": "pagamento_projetos",
       "bloquearOutros": true
+    },
+    {
+      "chapa": "2074",
+      "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA",
+      "perfil": "completo",
+      "marca": "completo",
+      "escopoProjetos": "TODOS",
+      "verTodosContratos": true
+    },
+    {
+      "chapa": "2155",
+      "nome": "RENATA REIS MARINHO",
+      "perfil": "completo",
+      "marca": "completo",
+      "escopoProjetos": "TODOS",
+      "verTodosContratos": true
+    },
+    {
+      "chapa": "2174",
+      "nome": "GABRIEL FURST FARIA",
+      "perfil": "completo",
+      "marca": "completo",
+      "escopoProjetos": "TODOS",
+      "verTodosContratos": true
+    },
+    {
+      "chapa": "2",
+      "nome": "ANDRE SILVA PERES",
+      "perfil": "completo",
+      "marca": "completo",
+      "escopoProjetos": "TODOS",
+      "verTodosContratos": true
+    },
+    {
+      "chapa": "1",
+      "nome": "CAROLINA SILVA PERES DE CARVALHO",
+      "perfil": "completo",
+      "marca": "completo",
+      "escopoProjetos": "TODOS",
+      "verTodosContratos": true
+    },
+    {
+      "chapa": "46",
+      "nome": "CLAUDIA GUIMARAES MOREIRA",
+      "perfil": "completo",
+      "marca": "completo",
+      "escopoProjetos": "TODOS",
+      "verTodosContratos": true
+    },
+    {
+      "chapa": "16",
+      "nome": "BRENO DE LANA GONÇALVES",
+      "perfil": "visao_total",
+      "marca": "visao",
+      "escopoProjetos": "TODOS",
+      "verTodosContratos": true
+    },
+    {
+      "chapa": "23",
+      "nome": "BRUNO DE LIMA E SOARES TEIXEIRA",
+      "perfil": "visao_total",
+      "marca": "visao",
+      "escopoProjetos": "NUCLEO"
+    },
+    {
+      "chapa": "25",
+      "nome": "SAMARA HISSA NEIVA AGUIAR PERES",
+      "perfil": "visao_total",
+      "marca": "visao",
+      "escopoProjetos": "NUCLEO"
     }
   ]
 }
