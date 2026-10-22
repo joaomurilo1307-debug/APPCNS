@@ -318,7 +318,7 @@ async function main() {
     assert.match(JSON.stringify(darfIncompleto.data.conferencia), /dados da guia/);
     passou("DARF sem os dados da guia nao gera remessa e a conferencia diz o que falta");
 
-    // Situacao do titulo na Senior (porta PostDBInfoFinan): PE ao gerar, AB na rejeicao e antes da baixa.
+    // Remessa nao marca mais PE na Senior: o titulo continua AB ao gerar, na rejeicao e na baixa.
     await modo("OK");
     const situacaoDe = async (tituloId: string) => {
       const { numTit } = await db.tituloContasAPagar.findUniqueOrThrow({ where: { id: tituloId } });
@@ -326,43 +326,20 @@ async function main() {
     };
     const itemPe = await criarItem();
     const remessaPe = await gerar(itemPe);
-    assert.equal(await situacaoDe(itemPe.tituloId), "PE");
-    passou("Gerar remessa marca o titulo em PE na Senior");
+    assert.equal(await situacaoDe(itemPe.tituloId), "AB");
+    passou("Gerar remessa nao marca o titulo como PE na Senior");
     const rejeicao = await http("/api/pagamentos-itau/retornos", { nomeArquivo: `TESTE-REJ-${remessaPe.id}.ret`, conteudo: mudarCampo(montarRetornoSimulado(remessaPe.conteudoArquivo!), 2, 231, 240, "AN") });
     assert.equal(rejeicao.status, 200, JSON.stringify(rejeicao.data));
     assert.equal(rejeicao.data.resumoStatus.REJEITADO, 1);
-    assert.deepEqual(rejeicao.data.situacaoSenior.map((s: any) => s.ok), [true]);
     assert.equal(await situacaoDe(itemPe.tituloId), "AB");
-    passou("Retorno rejeitado devolve o titulo para AB na Senior");
+    passou("Retorno rejeitado mantem o titulo em AB na Senior");
 
-    const itemBaixaPe = await criarItem();
-    const remessaBaixaPe = await pago(itemBaixaPe);
-    assert.equal(await situacaoDe(itemBaixaPe.tituloId), "PE");
-    const baixaPe = await http(`/api/pagamentos-itau/remessas/${remessaBaixaPe.id}/baixa-senior`, { confirmar: true });
-    assert.equal(baixaPe.data.enviados, 1, JSON.stringify(baixaPe.data));
-    assert.equal((await db.remessaItemPagamento.findFirstOrThrow({ where: { remessaId: remessaBaixaPe.id } })).baixaSeniorStatus, "ENVIADA");
-    passou("Baixa de titulo em PE volta para AB e baixa na Senior");
-
-    await modo("SITUACAO_FALHA");
-    const itemFalhaPe = await criarItem();
-    const rFalhaPe = await http("/api/pagamentos-itau/remessas", { contaBancariaId: "homologacao-conta", itens: [itemFalhaPe] });
-    assert.equal(rFalhaPe.status, 201, JSON.stringify(rFalhaPe.data)); remessaIds.push(rFalhaPe.data.remessas[0].id);
-    assert.equal(rFalhaPe.data.situacaoSenior[0].ok, false);
-    assert.match(rFalhaPe.data.situacaoSenior[0].mensagem, /Falha simulada/);
-    passou("Falha ao marcar PE nao desfaz a remessa e aparece na resposta");
-
-    await modo("OK");
-    const itemFalhaAb = await criarItem();
-    const remessaFalhaAb = await pago(itemFalhaAb);
-    const enviosAntes = (await estadoSenior()).envios;
-    await modo("SITUACAO_FALHA");
-    const baixaFalhaAb = await http(`/api/pagamentos-itau/remessas/${remessaFalhaAb.id}/baixa-senior`, { confirmar: true });
-    assert.equal(baixaFalhaAb.data.comErro, 1, JSON.stringify(baixaFalhaAb.data));
-    assert.equal((await estadoSenior()).envios, enviosAntes, "Nao pode chamar a baixa se o titulo nao voltou para AB.");
-    const itemErro = await db.remessaItemPagamento.findFirstOrThrow({ where: { remessaId: remessaFalhaAb.id } });
-    assert.equal(itemErro.baixaSeniorStatus, "ERRO"); assert.match(itemErro.baixaSeniorMsg ?? "", /não voltou para AB/);
-    passou("Titulo em PE que nao volta para AB fica fora da baixa com erro");
-    await modo("OK");
+    const itemBaixa = await criarItem();
+    const remessaBaixa = await pago(itemBaixa);
+    const baixa = await http(`/api/pagamentos-itau/remessas/${remessaBaixa.id}/baixa-senior`, { confirmar: true });
+    assert.equal(baixa.data.enviados, 1, JSON.stringify(baixa.data));
+    assert.equal((await db.remessaItemPagamento.findFirstOrThrow({ where: { remessaId: remessaBaixa.id } })).baixaSeniorStatus, "ENVIADA");
+    passou("Baixa de titulo de remessa nova segue direto, sem passar por PE");
 
     mkdirSync("tmp/homologacao", { recursive: true });
     writeFileSync("tmp/homologacao/resultado-http.json", JSON.stringify({ geradoEm: new Date().toISOString(), total: resultados.length, aprovados: resultados }, null, 2));
