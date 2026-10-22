@@ -3,12 +3,67 @@
     "chapa": "46",
     "nome": "CLAUDIA GUIMARAES MOREIRA",
     "gerente": [
-      "ADM", "ADM COMERCIAL", "ADM DEPARTAMENTO PESSOAL", "ADM DESENVOLVIMENTO E INOVACAO", "ADM FINANCEIRO",
-      "ADM GENTE E GESTAO", "ADM HSE", "ADM LOGISTICA", "ADM MARKETING", "ADM MEDIÇÃO", "ADM QUALIDADE", "ADM SUPRIMENTOS"
+      "ADM",
+      "ADM COMERCIAL",
+      "ADM DEPARTAMENTO PESSOAL",
+      "ADM DESENVOLVIMENTO E INOVACAO",
+      "ADM FINANCEIRO",
+      "ADM GENTE E GESTAO",
+      "ADM HSE",
+      "ADM LOGISTICA",
+      "ADM MARKETING",
+      "ADM MEDIÇÃO",
+      "ADM QUALIDADE",
+      "ADM SUPRIMENTOS"
     ]
   },
-  { "chapa": "25", "nome": "SAMARA HISSA NEIVA AGUIAR PERES", "gerente": ["ADM MEIO AMBIENTE E SUSTENTABILIDADE"], "membro": "ADM MEIO AMBIENTE E SUSTENTABILIDADE" },
-  { "chapa": "22", "nome": "ELAINE MARIA RIBEIRO DE CARVALHO", "coordenador": ["ADM DEPARTAMENTO PESSOAL"], "membro": "ADM DEPARTAMENTO PESSOAL" },
-  { "chapa": "16", "nome": "BRENO DE LANA GONÇALVES", "coordenador": ["ADM ENGENHARIA"], "membro": "ADM ENGENHARIA" },
-  { "chapa": "17", "nome": "DEBORA OLIVEIRA QUEIROZ", "coordenador": ["ADM COMERCIAL"], "membro": "ADM COMERCIAL" }
+  {
+    "chapa": "25",
+    "nome": "SAMARA HISSA NEIVA AGUIAR PERES",
+    "gerente": [
+      "ADM MEIO AMBIENTE E SUSTENTABILIDADE"
+    ],
+    "membro": "ADM MEIO AMBIENTE E SUSTENTABILIDADE"
+  },
+  {
+    "chapa": "22",
+    "nome": "ELAINE MARIA RIBEIRO DE CARVALHO",
+    "coordenador": [
+      "ADM DEPARTAMENTO PESSOAL"
+    ],
+    "membro": "ADM DEPARTAMENTO PESSOAL"
+  },
+  {
+    "chapa": "16",
+    "nome": "BRENO DE LANA GONÇALVES",
+    "coordenador": [
+      "ADM ENGENHARIA"
+    ],
+    "membro": "ADM ENGENHARIA"
+  },
+  {
+    "chapa": "17",
+    "nome": "DEBORA OLIVEIRA QUEIROZ",
+    "coordenador": [
+      "ADM COMERCIAL"
+    ],
+    "membro": "ADM COMERCIAL"
+  },
+  {
+    "chapa": "23",
+    "nome": "BRUNO DE LIMA E SOARES TEIXEIRA",
+    "gerente": [
+      "ADM ENGENHARIA"
+    ]
+  },
+  {
+    "chapa": "2209",
+    "nome": "ALAN GONCALVES DE JESUS",
+    "membro": "ADM ENGENHARIA"
+  },
+  {
+    "chapa": "2175",
+    "nome": "VITOR ALVES DAVID JUNIOR",
+    "membro": "ADM ENGENHARIA"
+  }
 ]

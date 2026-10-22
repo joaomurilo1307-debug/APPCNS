@@ -5,26 +5,17 @@
 //   1) nucleos: cria so' os que faltam, por nome, UMA vez (marca "seed.nucleos-adm.concluido" na auditoria). Se o Joao renomear ou
 //      apagar um nucleo depois, ele nao volta.
 //   2) responsaveis (prisma/data/nucleos_adm_responsaveis.json): para cada pessoa, acha o usuario pela matricula (chapa) ou, se nao achar,
-//      pelo nome completo quando for unico, e liga como gerente/coordenador/membro. Cada pessoa tem a sua marca
+//      pelo nome (completo ou curto cadastrado) quando for unico, e liga como gerente/coordenador/membro. Cada pessoa tem a sua marca
 //      ("seed.nucleos-adm.resp.<chapa>"): quem nao foi encontrada tenta de novo no proximo boot; quem ja foi ligada nunca e' refeita.
 // Nao mexe em equipes, projetos nem em nucleos que ja existiam alem do que esta listado.
 import { PrismaClient } from "@prisma/client";
 import fs from "fs";
 import path from "path";
+import { acharUsuario } from "./achar-usuario";
 
 const prisma = new PrismaClient();
 const MARCA_NUCLEOS = "seed.nucleos-adm.concluido";
 const dado = (nome: string) => JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", nome), "utf-8"));
-
-function chaveNome(bruto: string): string {
-  return bruto
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 async function criarNucleos() {
   if (await prisma.auditLog.findFirst({ where: { action: MARCA_NUCLEOS }, select: { id: true } })) {
@@ -51,8 +42,6 @@ type Responsavel = { chapa: string; nome: string; gerente?: string[]; coordenado
 async function ligarResponsaveis() {
   const lista: Responsavel[] = dado("nucleos_adm_responsaveis.json");
   const usuarios = await prisma.user.findMany({ select: { id: true, name: true } });
-  const porNome = new Map<string, string[]>();
-  for (const u of usuarios) porNome.set(chaveNome(u.name), [...(porNome.get(chaveNome(u.name)) ?? []), u.id]);
 
   const idsNucleo = new Map((await prisma.nucleo.findMany({ select: { id: true, name: true } })).map((n) => [n.name, n.id]));
   const ligados: string[] = [];
@@ -62,11 +51,7 @@ async function ligarResponsaveis() {
     const marca = `seed.nucleos-adm.resp.${r.chapa}`;
     if (await prisma.auditLog.findFirst({ where: { action: marca }, select: { id: true } })) continue;
 
-    let userId = (await prisma.user.findUnique({ where: { matriculaSenior: r.chapa }, select: { id: true } }))?.id;
-    if (!userId) {
-      const ids = porNome.get(chaveNome(r.nome)) ?? [];
-      if (ids.length === 1) userId = ids[0];
-    }
+    const userId = (await acharUsuario(prisma, r.chapa, r.nome, usuarios))?.id;
     if (!userId) {
       semUsuario.push(`${r.chapa} ${r.nome}`);
       continue;

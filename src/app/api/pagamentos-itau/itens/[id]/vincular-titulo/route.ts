@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { negarSemEdicao, negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 
 // Associa, depois do retorno do banco, um titulo a um pagamento que ficou sem
@@ -25,6 +26,8 @@ async function carregar(id: string) {
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  const negado = await negarSemModulo(session.user as any, "pagamentos_itau");
+  if (negado) return negado;
   const c = await carregar(params.id);
   if ("erro" in c) return c.erro;
   const { item } = c;
@@ -53,6 +56,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
   if (!ROLES_ESCRITA.includes(user.role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemEdicao(user, "pagamentos_itau");
+  if (negado) return negado;
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos" }, { status: 422 });
 
