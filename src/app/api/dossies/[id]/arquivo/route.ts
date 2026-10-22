@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/uploadValidation";
 import { readFile } from "fs/promises";
@@ -10,15 +11,13 @@ import path from "path";
 // login no Senior nem sair da tela. Inline, pra abrir no visualizador do
 // navegador em vez de baixar.
 
-const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  if (!PAPEIS.includes(user.role)) {
-    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-  }
+  const negado = await negarSemModulo(session.user as any, "conferencia_oc", "programacao_pagamento");
+  if (negado) return negado;
 
   const dossie = await prisma.dossieOC.findUnique({ where: { id: params.id } });
   if (!dossie) return NextResponse.json({ error: "Dossiê não encontrado" }, { status: 404 });

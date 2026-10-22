@@ -254,12 +254,15 @@ export default function MapaOC({
   aprovacao: a,
   codToNome,
   titulosVinculados,
+  semDadosDePagamento,
   onClose,
   onAtualizado,
 }: {
   aprovacao: Aprovacao;
   codToNome: Record<string, string>;
   titulosVinculados?: TituloVinculado[];
+  // true = a pessoa nao e' do time financeiro: o servidor nao manda titulos e a tela nao mostra nada de pagamento
+  semDadosDePagamento?: boolean;
   onClose: () => void;
   // Recarrega esta OC no componente-pai depois de disparar a sincronização
   // manual (o modal não busca dados sozinho) -- pedido do João 15/09/2026,
@@ -284,7 +287,7 @@ export default function MapaOC({
     const controle = new AbortController();
     setDadosConferencia("carregando");
     (async () => {
-        if (!vivo) return;
+        if (!vivo || semDadosDePagamento) return;
         const ids = idsConferencia ? idsConferencia.split("|") : [];
         if (!ids.length) { setDadosConferencia({ dados: [], avisos: [], completo: true, consultadoEm: new Date().toISOString() }); return; }
         try {
@@ -307,7 +310,7 @@ export default function MapaOC({
     return () => {
       vivo = false; controle.abort();
     };
-  }, [a.numOcp, idsConferencia, consultaPagamento]);
+  }, [a.numOcp, idsConferencia, consultaPagamento, semDadosDePagamento]);
 
   const conferenciaPronta = typeof dadosConferencia === "object" ? dadosConferencia : null;
   const conferencia = montarConferenciaPagamento(titulosVinculados ?? [], conferenciaPronta?.dados ?? []);
@@ -440,6 +443,7 @@ export default function MapaOC({
               <dt className="text-xs text-gray-500">Criada por</dt>
               <dd className="font-medium">{a.criadorNome || (a.criadorCod ? `Usuário Senior #${a.criadorCod}` : "—")}</dd>
             </div>
+            {!semDadosDePagamento && (<>
             <div>
               <dt className="text-xs text-gray-500">Pagamento (do título real, não da OC)</dt>
               <dd>
@@ -483,6 +487,7 @@ export default function MapaOC({
                 {conferenciaPronta?.consultadoEm && <p className="text-gray-400">Consulta dos títulos: {new Date(conferenciaPronta.consultadoEm).toLocaleString("pt-BR")}</p>}
               </dd>
             </div>
+            </>)}
             <div>
               <dt className="text-xs text-gray-500">Emissão</dt>
               <dd>{new Date(a.dataEmissao).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</dd>

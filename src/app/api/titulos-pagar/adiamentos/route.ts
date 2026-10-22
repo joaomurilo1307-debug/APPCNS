@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 
 // Historico dos titulos "jogados pra proxima programacao" (06/10/2026): fica
@@ -12,9 +13,8 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  if (!["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"].includes(user.role)) {
-    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-  }
+  const negado = await negarSemModulo(session.user as any, "programacao_pagamento");
+  if (negado) return negado;
 
   const adiamentos = await prisma.tituloAdiamento.findMany({
     orderBy: [{ programacaoOrigem: "desc" }, { marcadoEm: "desc" }],

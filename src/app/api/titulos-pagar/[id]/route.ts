@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { chavesFornecedor, normalizarReferencia } from "@/lib/vinculoOcTitulo";
 import { avisarCriadorOc, type ResultadoAviso } from "@/lib/avisoPagamentoAprovado";
@@ -32,9 +33,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  if (!["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"].includes(user.role)) {
-    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-  }
+  const negado = await negarSemEdicao(session.user as any, "programacao_pagamento");
+  if (negado) return negado;
 
   const body = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(body);

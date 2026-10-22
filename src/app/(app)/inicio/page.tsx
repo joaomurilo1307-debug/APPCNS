@@ -2,29 +2,34 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { IconFolders, IconBarChart } from "@/components/NavIcons";
+import { MODULOS } from "@/lib/acesso/catalogo";
+import { modulosDoUsuario } from "@/lib/acesso/servidor";
 
-// Tela inicial: escolhe o modulo. Os papeis de cada cartao seguem os do menu (Sidebar.tsx).
-const MODULOS = [
+// Tela inicial: escolhe o modulo. Cada cartao aparece se a pessoa entra em ao menos um modulo do grupo (catalogo de acesso) e
+// abre o primeiro modulo liberado dela.
+const CARTOES = [
   {
-    href: "/dashboard",
+    grupos: ["gestao"],
     titulo: "Projetos e Gestão",
     descricao: "Projetos, tarefas, sprint, Gantt, calendário, metas, PDI e relatórios.",
     icon: IconFolders,
-    roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"],
   },
   {
-    href: "/programacao-pagamento",
-    titulo: "Financeiro",
-    descricao: "Aprovações de OC, conferência de OC, programação de pagamento, SISPAG e custos.",
+    grupos: ["financeiro", "contratos"],
+    titulo: "Financeiro e Contratos",
+    descricao: "Aprovações de OC, contratos, custos e medição; para o time financeiro, também conferência de OC, programação de pagamento e SISPAG.",
     icon: IconBarChart,
-    roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"],
   },
 ];
 
 export default async function InicioPage() {
   const session = await getServerSession(authOptions);
   const user = session?.user as any;
-  const modulos = MODULOS.filter((m) => m.roles.includes(user?.role));
+  const liberados = new Set(user?.id ? await modulosDoUsuario(user) : []);
+  const modulos = CARTOES.flatMap((c) => {
+    const primeiro = MODULOS.find((m) => c.grupos.includes(m.grupo) && liberados.has(m.id));
+    return primeiro ? [{ ...c, href: primeiro.href }] : [];
+  });
 
   return (
     <div className="mx-auto max-w-4xl">

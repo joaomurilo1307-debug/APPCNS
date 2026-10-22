@@ -25,20 +25,25 @@ export function podeVerCcu(escopo: EscopoCustos, codccu: string): boolean {
   return escopo.todos || escopo.ccus.has(codccu);
 }
 
-export async function escopoDeCustos(db: typeof prismaReal, usuario: { id: string; role?: string }): Promise<EscopoCustos> {
+/**
+ * `area` diz ONDE o escopo vai ser usado: "FINANCEIRO" (padrao: custos, medicao, previsao, contratos) ou "PROJETOS" (demandas e projetos do
+ * contrato). O acesso liberado na tela Usuarios > Acesso vale na area escolhida ou nas duas (AMBOS, o que ja existia).
+ */
+export async function escopoDeCustos(db: typeof prismaReal, usuario: { id: string; role?: string }, area: "FINANCEIRO" | "PROJETOS" = "FINANCEIRO"): Promise<EscopoCustos> {
   if (usuario.role && ["ADMIN", "DIRETOR"].includes(usuario.role)) return montarEscopo(true, []);
   const eu = await db.user.findUnique({
     where: { id: usuario.id },
     select: {
       verTodosCustos: true,
-      acessosCentroCusto: { select: { codccu: true } },
+      acessosCentroCusto: { select: { codccu: true, area: true } },
       teams: { select: { team: { select: { codccu: true } } } },
     },
   });
   if (!eu) return montarEscopo(false, []);
   if (eu.verTodosCustos) return montarEscopo(true, []);
   const ccus = new Set<string>();
-  for (const a of eu.acessosCentroCusto) ccus.add(a.codccu);
+  // area ausente (registro antigo ou de teste) = AMBOS, o padrao do banco
+  for (const a of eu.acessosCentroCusto) if (!a.area || a.area === "AMBOS" || a.area === area) ccus.add(a.codccu);
   for (const t of eu.teams) if (t.team.codccu) ccus.add(t.team.codccu);
   return montarEscopo(false, ccus);
 }

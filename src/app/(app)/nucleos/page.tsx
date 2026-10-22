@@ -12,6 +12,9 @@ type Nucleo = {
   description: string | null;
   membros: Person[];
   gerentes: Person[];
+  coordenadores: Person[];
+  projetos: { id: string; name: string; status: string }[];
+  gero: boolean; // a pessoa e' gerente ou coordenadora deste nucleo (ou admin): associa projetos e controla as demandas
 };
 
 const nivelLabel: Record<string, string> = {
@@ -38,6 +41,10 @@ export default function NucleosPage() {
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editGerenteIds, setEditGerenteIds] = useState<string[]>([]);
+  const [editCoordenadorIds, setEditCoordenadorIds] = useState<string[]>([]);
+  const [meusProjetos, setMeusProjetos] = useState<{ id: string; name: string }[]>([]);
+  const [assocChoice, setAssocChoice] = useState<Record<string, string>>({});
+  const [erroAssoc, setErroAssoc] = useState("");
   const [addMemberChoice, setAddMemberChoice] = useState("");
   const [addingMember, setAddingMember] = useState(false);
 
@@ -51,10 +58,32 @@ export default function NucleosPage() {
     if (res.ok) setAllPeople(await res.json());
   }
 
+  async function loadProjetos() {
+    const res = await fetch("/api/projects");
+    if (res.ok) setMeusProjetos((await res.json()).map((p: any) => ({ id: p.id, name: p.name })));
+  }
+
   useEffect(() => {
     load();
     loadPeople();
+    loadProjetos();
   }, []);
+
+  async function associar(nucleoId: string, projectId: string, soltar: boolean) {
+    setErroAssoc("");
+    const res = await fetch(`/api/nucleos/${nucleoId}/projetos`, {
+      method: soltar ? "DELETE" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErroAssoc(data?.error ?? "Não foi possível atualizar o projeto do núcleo.");
+      return;
+    }
+    setAssocChoice((x) => ({ ...x, [nucleoId]: "" }));
+    load();
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -75,13 +104,14 @@ export default function NucleosPage() {
     setEditName(n.name);
     setEditDescription(n.description ?? "");
     setEditGerenteIds(n.gerentes.map((g) => g.id));
+    setEditCoordenadorIds(n.coordenadores.map((g) => g.id));
   }
 
   async function saveEdit(id: string) {
     await fetch(`/api/nucleos/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editName, description: editDescription || null, gerenteIds: editGerenteIds }),
+      body: JSON.stringify({ name: editName, description: editDescription || null, gerenteIds: editGerenteIds, coordenadorIds: editCoordenadorIds }),
     });
     setEditingId(null);
     load();
@@ -100,6 +130,10 @@ export default function NucleosPage() {
 
   function toggleGerente(id: string) {
     setEditGerenteIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function toggleCoordenador(id: string) {
+    setEditCoordenadorIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   async function handleAddMember(nucleoId: string) {
@@ -173,6 +207,15 @@ export default function NucleosPage() {
                     </label>
                   ))}
                 </div>
+                <p className="mt-1 text-xs font-semibold text-gray-500">Coordenadores deste núcleo</p>
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-md border border-gray-200 p-2">
+                  {allPeople.map((p) => (
+                    <label key={p.id} className="flex items-center gap-2 text-xs">
+                      <input type="checkbox" checked={editCoordenadorIds.includes(p.id)} onChange={() => toggleCoordenador(p.id)} />
+                      {p.name}
+                    </label>
+                  ))}
+                </div>
                 {isAdmin && (
                   <>
                     <p className="mt-2 text-xs font-semibold text-gray-500">Adicionar pessoa como membro deste núcleo</p>
@@ -225,6 +268,20 @@ export default function NucleosPage() {
                 </div>
                 {n.description && <p className="mt-1 text-sm text-gray-500">{n.description}</p>}
 
+                {n.coordenadores.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold text-gray-500">Coordenadores</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {n.coordenadores.map((g) => (
+                        <span key={g.id} className="flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-800">
+                          <Avatar name={g.name} color={g.avatarColor} photoUrl={g.avatarUrl} size={14} />
+                          {g.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {n.gerentes.length > 0 && (
                   <div className="mt-3">
                     <p className="text-xs font-semibold text-gray-500">Gerentes/visualizadores</p>
@@ -238,6 +295,30 @@ export default function NucleosPage() {
                     </div>
                   </div>
                 )}
+
+                <div className="mt-3">
+                  <p className="text-xs font-semibold text-gray-500">Projetos do núcleo ({n.projetos.length})</p>
+                  <ul className="mt-1 space-y-1">
+                    {n.projetos.map((p) => (
+                      <li key={p.id} className="flex items-center gap-2 text-sm">
+                        <a href={`/projetos/${p.id}`} className="flex-1 truncate text-brand-dark hover:underline">{p.name}</a>
+                        {n.gero && <button onClick={() => associar(n.id, p.id, true)} className="text-xs text-gray-400 hover:text-red-600">Soltar</button>}
+                      </li>
+                    ))}
+                    {n.projetos.length === 0 && <li className="text-xs text-gray-400">Nenhum projeto associado que você possa ver.</li>}
+                  </ul>
+                  {n.gero && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <select value={assocChoice[n.id] ?? ""} onChange={(e) => setAssocChoice((x) => ({ ...x, [n.id]: e.target.value }))} className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs">
+                        <option value="">Associar projeto ao núcleo…</option>
+                        {meusProjetos.filter((p) => !n.projetos.some((q) => q.id === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <button disabled={!assocChoice[n.id]} onClick={() => associar(n.id, assocChoice[n.id], false)} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-40">Associar</button>
+                    </div>
+                  )}
+                  {n.gero && <a href="/projetos/demandas" className="mt-2 inline-block text-xs font-medium text-brand-dark hover:underline">Demandas do núcleo →</a>}
+                </div>
+                {erroAssoc && <p className="mt-2 text-xs text-red-600">{erroAssoc}</p>}
 
                 <p className="mt-3 text-xs text-gray-400">{n.membros.length} pessoa(s)</p>
                 <ul className="mt-3 space-y-2">

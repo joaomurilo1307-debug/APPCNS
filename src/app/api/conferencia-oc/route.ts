@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { listarOcsPorVencimento, titulosQueExistem } from "@/lib/senior/ocsConferencia";
 import { decidirReserva } from "@/lib/senior/reservaTitulo";
@@ -8,13 +9,13 @@ import { decidirReserva } from "@/lib/senior/reservaTitulo";
 // Conferencia de OC: TODAS as OCs com vencimento no periodo, direto da Senior
 // (GetDBInfo), com a situacao de aprovacao, se ja tem titulo e se tem dossie.
 
-const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!PAPEIS.includes((session.user as any).role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "conferencia_oc");
+  if (negado) return negado;
 
   const u = new URL(req.url);
   const de = u.searchParams.get("de") ?? "";

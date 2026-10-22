@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { consultarSenior } from "@/lib/senior/getDbInfo";
 import { COD_EMP, dataIso, lerOcParaTitulo, numeroSenior } from "@/lib/senior/ocsConferencia";
@@ -11,12 +12,12 @@ import { listarNotasRecebidas, sugerirNotas } from "@/lib/edocs/notasRecebidas";
 // Notas fiscais da OC: as ja associadas (com a situacao delas na Senior) e as SUGESTOES
 // do eDocs X. O sistema so' sugere; quem associa e' o financeiro (POST /associar-nf).
 
-const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!PAPEIS.includes((session.user as any).role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "conferencia_oc");
+  if (negado) return negado;
 
   const u = new URL(req.url);
   const numOcp = u.searchParams.get("numOcp") ?? "";

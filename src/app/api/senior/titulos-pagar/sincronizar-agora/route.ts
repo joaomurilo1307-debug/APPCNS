@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Botão "Atualizar agora" da Programação de Pagamento -- pedido do João
 // 16/09/2026: "a programação de compra não está atualizada, preciso que
@@ -17,16 +17,8 @@ import { prisma } from "@/lib/prisma";
 export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  const user = session.user as any;
-
-  let podeVer = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"].includes(user.role);
-  if (!podeVer) {
-    const perfil = await prisma.user.findUnique({ where: { id: user.id }, select: { nivelHierarquico: true } });
-    podeVer = !!perfil?.nivelHierarquico && ["DIRETORIA", "GERENCIA", "COORDENACAO"].includes(perfil.nivelHierarquico);
-  }
-  if (!podeVer) {
-    return NextResponse.json({ error: "Sem permissão para sincronizar a programação de pagamento" }, { status: 403 });
-  }
+  const negado = await negarSemModulo(session.user as any, "programacao_pagamento", "pagamentos_itau");
+  if (negado) return negado;
 
   const url = process.env.TITULOS_SYNC_WEBHOOK_URL;
   const secret = process.env.TITULOS_SYNC_WEBHOOK_SECRET;

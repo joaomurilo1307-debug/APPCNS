@@ -49,5 +49,13 @@ if [ "$RUN_WIPE_EQ" = "true" ]; then
   npx tsx prisma/wipe-equipes-nucleos.ts || true
 fi
 
+# Nucleos dos setores ADM (planilha LISTAGEM DE ATIVOS, 22/10/2026): roda uma unica vez (marca na auditoria), sem variavel de ambiente.
+echo "Verificando nucleos ADM (uma vez)..."
+npx tsx prisma/seed-nucleos-adm.ts || true
+
+# Acessos iniciais do novo controle de acesso (financeiro por pessoa; Denise; Allan e Vitor): uma vez por pessoa, sem variavel de ambiente.
+echo "Aplicando acessos iniciais (uma vez por pessoa)..."
+npx tsx prisma/seed-acessos-iniciais.ts || true
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000

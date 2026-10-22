@@ -66,7 +66,7 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
   const [dados, setDados] = useState<{ itens: LinhaDetalhe[]; total: number } | "carregando" | "erro">("carregando");
   const [busca, setBusca] = useState("");
   const [ordem, setOrdem] = useState<"valor" | "data" | "fornecedor">("valor");
-  const [ocAberta, setOcAberta] = useState<{ aprovacao: Aprovacao; codToNome: Record<string, string>; titulosVinculados?: TituloVinculado[] } | "carregando" | null>(null);
+  const [ocAberta, setOcAberta] = useState<{ aprovacao: Aprovacao; codToNome: Record<string, string>; titulosVinculados?: TituloVinculado[]; semDadosDePagamento?: boolean } | "carregando" | null>(null);
   const [tituloAberto, setTituloAberto] = useState<DetalheTitulo | "carregando" | "erro" | null>(null);
 
   useEffect(() => {
@@ -110,7 +110,7 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
       const res = await fetch(`/api/senior/aprovacoes/${numOcp}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setOcAberta({ aprovacao: data.aprovacao ?? data, codToNome: data.codToNome ?? {}, titulosVinculados: data.titulosVinculados });
+      setOcAberta({ aprovacao: data.aprovacao ?? data, codToNome: data.codToNome ?? {}, titulosVinculados: data.titulosVinculados, semDadosDePagamento: !!data.semDadosDePagamento });
     } catch {
       setOcAberta(null);
       alert("Não foi possível carregar o mapa dessa OC.");
@@ -266,7 +266,7 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
         </div>
       )}
       {ocAberta && ocAberta !== "carregando" && (
-        <MapaOC aprovacao={ocAberta.aprovacao} codToNome={ocAberta.codToNome} titulosVinculados={ocAberta.titulosVinculados} onClose={() => setOcAberta(null)} onAtualizado={() => abrirOC(ocAberta.aprovacao.numOcp)} />
+        <MapaOC aprovacao={ocAberta.aprovacao} codToNome={ocAberta.codToNome} titulosVinculados={ocAberta.titulosVinculados} semDadosDePagamento={ocAberta.semDadosDePagamento} onClose={() => setOcAberta(null)} onAtualizado={() => abrirOC(ocAberta.aprovacao.numOcp)} />
       )}
 
       {tituloAberto === "carregando" && (

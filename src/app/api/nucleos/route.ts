@@ -2,25 +2,37 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { nucleoIdsQueGere, visibleProjectWhere } from "@/lib/permissions";
 import { z } from "zod";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const nucleos = await prisma.nucleo.findMany({
-    include: {
-      membros: {
-        select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true, nivelHierarquico: true },
+  const u = session.user as any;
+  const visiveis = await visibleProjectWhere(u.id, u.role);
+  const [nucleos, meus] = await Promise.all([
+    prisma.nucleo.findMany({
+      include: {
+        membros: {
+          select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true, nivelHierarquico: true },
+        },
+        gerentes: {
+          select: { id: true, name: true, avatarColor: true, avatarUrl: true },
+        },
+        coordenadores: {
+          select: { id: true, name: true, avatarColor: true, avatarUrl: true },
+        },
+        // so' os projetos do nucleo que a pessoa ja pode ver (a lista nao vaza nome de projeto de outro nucleo)
+        projetos: { where: visiveis, select: { id: true, name: true, status: true }, orderBy: { name: "asc" } },
       },
-      gerentes: {
-        select: { id: true, name: true, avatarColor: true, avatarUrl: true },
-      },
-    },
-    orderBy: { name: "asc" },
-  });
+      orderBy: { name: "asc" },
+    }),
+    nucleoIdsQueGere(u.id),
+  ]);
 
-  return NextResponse.json(nucleos);
+  // gero = a pessoa e' gerente ou coordenadora deste nucleo (ou admin): associa projetos e controla as demandas dele
+  return NextResponse.json(nucleos.map((n) => ({ ...n, gero: u.role === "ADMIN" || meus.includes(n.id) })));
 }
 
 const createNucleoSchema = z.object({

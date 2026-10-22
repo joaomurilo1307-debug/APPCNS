@@ -7,10 +7,10 @@ import { Barra, dataBr, Pill, PRIORIDADE_COR, PRIORIDADE_ROTULO, STATUS_COR, STA
 
 type Demanda = {
   id: string; titulo: string; status: string; prioridade: string; prazoDesejado: string | null; createdAt: string; projectId: string | null;
-  contrato: { codccu: string; nome: string }; solicitante: { id: string; name: string; role: string };
+  contrato: { codccu: string; nome: string }; nucleo?: { id: string; name: string } | null; solicitante: { id: string; name: string; role: string };
   itensTotal: number; itensFeitos: number; andamento: number | null; projetoStatus: string | null;
 };
-type Opcoes = { contratos: { codccu: string; nome: string; cliente: string | null }[]; equipes: { id: string; name: string }[]; podeGerir: boolean };
+type Opcoes = { contratos: { codccu: string; nome: string; cliente: string | null }[]; equipes: { id: string; name: string }[]; nucleos?: { id: string; name: string }[]; podeGerir: boolean };
 
 export default function DemandasView({ base, modo }: { base: string; modo: "gestor" | "cliente" }) {
   const [lista, setLista] = useState<Demanda[] | null>(null);
@@ -18,6 +18,7 @@ export default function DemandasView({ base, modo }: { base: string; modo: "gest
   const [erro, setErro] = useState("");
   const [status, setStatus] = useState("todas");
   const [contrato, setContrato] = useState("");
+  const [nucleo, setNucleo] = useState("");
   const [busca, setBusca] = useState("");
   const [novo, setNovo] = useState(false);
 
@@ -38,8 +39,8 @@ export default function DemandasView({ base, modo }: { base: string; modo: "gest
   }, [lista]);
   const filtradas = useMemo(() => {
     const t = busca.trim().toLowerCase();
-    return (lista ?? []).filter((d) => (status === "todas" || d.status === status) && (!contrato || d.contrato.codccu === contrato) && (!t || `${d.titulo} ${d.contrato.nome} ${d.solicitante.name}`.toLowerCase().includes(t)));
-  }, [lista, status, contrato, busca]);
+    return (lista ?? []).filter((d) => (status === "todas" || d.status === status) && (!contrato || d.contrato.codccu === contrato) && (!nucleo || d.nucleo?.id === nucleo) && (!t || `${d.titulo} ${d.contrato.nome} ${d.solicitante.name}`.toLowerCase().includes(t)));
+  }, [lista, status, contrato, nucleo, busca]);
 
   const abas: [string, string][] = [["todas", "Todas"], ["NOVA", "Novas"], ["EM_ANALISE", "Em análise"], ["EM_PROJETO", "Em projeto"], ["CONCLUIDA", "Concluídas"], ["RECUSADA", "Recusadas"]];
 
@@ -62,6 +63,12 @@ export default function DemandasView({ base, modo }: { base: string; modo: "gest
           </button>
         ))}
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar…" className="ml-auto w-48 rounded-lg border border-gray-200 px-3 py-1.5 text-sm" />
+        {opcoes && (opcoes.nucleos?.length ?? 0) > 0 && (lista ?? []).some((d) => d.nucleo) && (
+          <select value={nucleo} onChange={(e) => setNucleo(e.target.value)} className="max-w-[14rem] rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
+            <option value="">Todos os núcleos</option>
+            {opcoes.nucleos!.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+          </select>
+        )}
         {opcoes && opcoes.contratos.length > 1 && (
           <select value={contrato} onChange={(e) => setContrato(e.target.value)} className="max-w-[16rem] rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
             <option value="">Todos os contratos</option>
@@ -87,6 +94,7 @@ export default function DemandasView({ base, modo }: { base: string; modo: "gest
                   <Pill cor={STATUS_COR[d.status]}>{STATUS_ROTULO[d.status]}</Pill>
                   {d.prioridade !== "NORMAL" && <Pill cor={PRIORIDADE_COR[d.prioridade]}>{PRIORIDADE_ROTULO[d.prioridade]}</Pill>}
                   <span className="rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">CCU {d.contrato.codccu}</span>
+                  {d.nucleo && <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">Núcleo {d.nucleo.name}</span>}
                   <span className="ml-auto text-xs text-gray-400">{dataBr(d.createdAt)}</span>
                 </div>
                 <h2 className="mt-2 text-base font-semibold text-gray-900">{d.titulo}</h2>
@@ -111,7 +119,7 @@ export default function DemandasView({ base, modo }: { base: string; modo: "gest
 }
 
 function NovaDemanda({ opcoes, onFechar, onCriada }: { opcoes: Opcoes; onFechar: () => void; onCriada: (id: string) => void }) {
-  const [f, setF] = useState({ contrato: opcoes.contratos.length === 1 ? opcoes.contratos[0].codccu : "", titulo: "", descricao: "", prioridade: "NORMAL", prazo: "" });
+  const [f, setF] = useState({ contrato: opcoes.contratos.length === 1 ? opcoes.contratos[0].codccu : "", titulo: "", descricao: "", prioridade: "NORMAL", prazo: "", nucleoId: "" });
   const [itens, setItens] = useState<string[]>([]);
   const [novoItem, setNovoItem] = useState("");
   const [erro, setErro] = useState("");
@@ -125,7 +133,7 @@ function NovaDemanda({ opcoes, onFechar, onCriada }: { opcoes: Opcoes; onFechar:
     if (!f.contrato) return setErro("Escolha o contrato.");
     setSalvando(true); setErro("");
     const pendente = novoItem.trim();
-    const r = await fetch("/api/demandas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contrato: f.contrato, titulo: f.titulo, descricao: f.descricao || undefined, prioridade: f.prioridade, prazoDesejado: f.prazo || null, itens: pendente ? [...itens, pendente] : itens }) });
+    const r = await fetch("/api/demandas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contrato: f.contrato, titulo: f.titulo, descricao: f.descricao || undefined, prioridade: f.prioridade, prazoDesejado: f.prazo || null, nucleoId: f.nucleoId || undefined, itens: pendente ? [...itens, pendente] : itens }) });
     setSalvando(false);
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return setErro(typeof d.error === "string" ? d.error : "Confira os campos (o título precisa ter pelo menos 3 letras).");
@@ -146,6 +154,16 @@ function NovaDemanda({ opcoes, onFechar, onCriada }: { opcoes: Opcoes; onFechar:
             </select>
             {opcoes.contratos.length === 0 && <p className="mt-1 text-xs text-amber-700">Você ainda não está ligado a nenhum contrato. Peça ao administrador.</p>}
           </div>
+          {(opcoes.nucleos?.length ?? 0) > 0 && (
+            <div className="sm:col-span-2">
+              <label className={rot}>Núcleo que vai atender (opcional)</label>
+              <select className={campo} value={f.nucleoId} onChange={(e) => setF({ ...f, nucleoId: e.target.value })}>
+                <option value="">Sem núcleo definido</option>
+                {opcoes.nucleos!.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-gray-400">O coordenador e o gerente do núcleo escolhido passam a ver e controlar esta demanda.</p>
+            </div>
+          )}
           <div className="sm:col-span-2"><label className={rot}>Título</label><input className={campo} value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} required maxLength={160} /></div>
           <div className="sm:col-span-2"><label className={rot}>Descrição</label><textarea className={campo} rows={3} value={f.descricao} onChange={(e) => setF({ ...f, descricao: e.target.value })} /></div>
           <div><label className={rot}>Prioridade</label><select className={campo} value={f.prioridade} onChange={(e) => setF({ ...f, prioridade: e.target.value })}>{Object.entries(PRIORIDADE_ROTULO).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></div>

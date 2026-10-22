@@ -108,6 +108,9 @@ export default function AprovacoesSeniorPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [aberta, setAberta] = useState<Aprovacao | null>(null);
   const [titulosDaAberta, setTitulosDaAberta] = useState<TituloVinculado[]>([]);
+  const [semPagamentoAberta, setSemPagamentoAberta] = useState(false);
+  const [escopo, setEscopo] = useState<"TODAS" | "ENVOLVIDO">("TODAS");
+  const [semVinculoSenior, setSemVinculoSenior] = useState(false);
   const [busca, setBusca] = useState("");
   const [situacoesAtivas, setSituacoesAtivas] = useState<Set<string>>(new Set());
   const [somenteRateio, setSomenteRateio] = useState(false);
@@ -141,6 +144,7 @@ export default function AprovacoesSeniorPage() {
         setAberta(data.aprovacao);
         setCodToNome((prev) => ({ ...prev, ...(data.codToNome ?? {}) }));
         setTitulosDaAberta(data.titulosVinculados ?? []);
+        setSemPagamentoAberta(!!data.semDadosDePagamento);
       })
       .catch((e) => setErroResolvida(e.message))
       .finally(() => setCarregandoResolvida(null));
@@ -160,6 +164,8 @@ export default function AprovacoesSeniorPage() {
         setResolvidas(data.resolvidasRecentes);
         setCodToNome(data.codToNome ?? {});
         setSincronizadoEm(data.sincronizadoEm ?? null);
+        setEscopo(data.escopo === "ENVOLVIDO" ? "ENVOLVIDO" : "TODAS");
+        setSemVinculoSenior(!!data.semVinculoSenior);
       });
   }
 
@@ -264,6 +270,13 @@ export default function AprovacoesSeniorPage() {
             rateio; clique numa linha para ver o mapa completo da OC (fornecedor, valor, descrição, contratos do rateio,
             histórico de níveis e cotação).
           </p>
+          {escopo === "ENVOLVIDO" && (
+            <p className="mt-2 max-w-3xl rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              {semVinculoSenior
+                ? "Seu usuário ainda não está vinculado a um usuário do Senior, por isso nenhuma OC aparece aqui. Peça ao administrador para fazer o vínculo."
+                : "Você vê apenas as OCs em que está envolvido: as que você emitiu, as que aguardam sua aprovação, as que você já assinou e as da sua alçada."}
+            </p>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {sincronizadoEm && (
               <p
@@ -650,6 +663,7 @@ export default function AprovacoesSeniorPage() {
           aprovacao={aberta}
           codToNome={codToNome}
           titulosVinculados={titulosDaAberta}
+          semDadosDePagamento={semPagamentoAberta}
           onClose={() => setAberta(null)}
           onAtualizado={() => {
             abrirResolvida(aberta.numOcp);

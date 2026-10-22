@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { listarNotasRecebidas } from "@/lib/edocs/notasRecebidas";
 import { pagamentoDasNotas } from "@/lib/edocs/pagamentoNotas";
 
@@ -8,13 +9,13 @@ import { pagamentoDasNotas } from "@/lib/edocs/pagamentoNotas";
 // vencimento e forma de pagamento vem do XML de cada nota, lido uma vez e guardado (NfRecebidaPagamento).
 // Se faltar XML por ler, le ate' o orcamento de tempo e devolve "pendentes" -- a tela chama de novo.
 
-const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const ORCAMENTO_MS = 40_000;
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!PAPEIS.includes((session.user as any).role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "notas_fiscais");
+  if (negado) return negado;
 
   try {
     const forcar = new URL(req.url).searchParams.get("atualizar") === "1";

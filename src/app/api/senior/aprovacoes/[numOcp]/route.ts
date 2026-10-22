@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { escopoAprovacoesOC, podeAbrirOC } from "@/lib/acesso/aprovacoesOc";
 import { criarMotorVinculo, aplicarCorrecaoManual, chavesFornecedor, dataCompativel, mesmoValor } from "@/lib/vinculoOcTitulo";
 import { carregarCatalogoFormasPagamento, garantirFormasPagamentoAtualizadas } from "@/lib/senior/formasPagamento";
 
@@ -18,14 +19,7 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const user = session.user as any;
-  let podeVer = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"].includes(user.role);
-  if (!podeVer) {
-    const perfil = await prisma.user.findUnique({ where: { id: user.id }, select: { nivelHierarquico: true } });
-    podeVer = !!perfil?.nivelHierarquico && ["DIRETORIA", "GERENCIA", "COORDENACAO"].includes(perfil.nivelHierarquico);
-  }
-  if (!podeVer) {
-    return NextResponse.json({ error: "Sem permissão para ver aprovações do Senior" }, { status: 403 });
-  }
+  const escopo = await escopoAprovacoesOC(user);
 
   const aprovacao = await prisma.aprovacaoSenior.findUnique({
     where: { numOcp: params.numOcp },
@@ -35,12 +29,21 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
     },
   });
   if (!aprovacao) return NextResponse.json({ error: "OC não encontrada na base sincronizada" }, { status: 404 });
+  if (!(await podeAbrirOC(user, escopo, aprovacao))) {
+    return NextResponse.json({ error: "Sem permissão: você não está envolvido nesta OC" }, { status: 403 });
+  }
 
   const usuariosSenior = await prisma.usuarioSenior.findMany({
     include: { user: { select: { name: true } } },
   });
   const codToNome: Record<string, string> = {};
   for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
+
+  // Dados de PAGAMENTO (titulos, forma, boleto/PIX, conta) so' para o time financeiro (decisao do Joao, 22/10/2026): as demais
+  // pessoas recebem o descritivo, o rateio e as aprovacoes, sem titulos.
+  if (!escopo.pagamentos) {
+    return NextResponse.json({ aprovacao: { ...aprovacao, avisoVinculo: null }, codToNome, titulosVinculados: [], semDadosDePagamento: true });
+  }
 
   // Sentido inverso: quais títulos essa OC gerou. Precisa rodar o motor
   // contra TODAS as OCs (mesmo índice de /api/titulos-pagar) pra garantir

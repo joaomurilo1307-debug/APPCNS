@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { conferirItensRemessa, itemRemessaSchema } from "@/lib/pagamentos/conferenciaRemessa";
 
-const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
 // contaBancariaId e' opcional: com ela, a conferencia tambem faz o ensaio do
 // arquivo CNAB (que depende dos dados da conta debitada) e aponta o titulo que
@@ -19,7 +19,8 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const role = (session.user as any).role;
-  if (!ROLES_LEITURA.includes(role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "pagamentos_itau");
+  if (negado) return negado;
 
   const body = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(body);

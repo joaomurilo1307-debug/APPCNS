@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Avatar, { AVATAR_PALETTE } from "@/components/Avatar";
+import PainelAcesso from "@/components/usuarios/PainelAcesso";
 
 type UserRow = {
   id: string;
@@ -86,6 +87,8 @@ export default function UsuariosPage() {
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resetError, setResetError] = useState<string | null>(null);
+  // painel de acesso aberto: logo depois de criar um usuario (novo) ou pelo botao "Acesso" da linha
+  const [acessoDe, setAcessoDe] = useState<{ id: string; novo: boolean } | null>(null);
 
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
@@ -165,6 +168,8 @@ export default function UsuariosPage() {
         setError(message);
         return;
       }
+      const criado = await res.json().catch(() => null);
+      if (criado?.id) setAcessoDe({ id: criado.id, novo: true });
       setName("");
       setEmail("");
       setPassword("");
@@ -373,7 +378,11 @@ export default function UsuariosPage() {
               />
             ))}
           </div>
-          <button className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">Criar</button>
+          <button className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">Criar e definir acesso →</button>
+          {nucleos.length === 0 && (
+            <p className="w-full text-xs text-amber-700">Ainda não há núcleos cadastrados, por isso a lista “Núcleo…” está vazia. Digite o nome em “Ou novo núcleo” ou crie depois em Núcleos; o painel de acesso, logo após criar, também permite criar o núcleo.</p>
+          )}
+          <p className="w-full text-xs text-gray-500">Ao criar, abre o painel onde você escolhe os módulos, as telas (ver ou editar), os projetos, os contratos, os núcleos e o usuário do Senior.</p>
           {error && <p className="w-full text-sm text-red-600">{error}</p>}
         </form>
       )}
@@ -604,6 +613,12 @@ export default function UsuariosPage() {
                 <td className="px-4 py-3">
                   <div className="flex flex-col items-start gap-1">
                     <button
+                      onClick={() => setAcessoDe({ id: u.id, novo: false })}
+                      className="rounded-md bg-brand px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-dark"
+                    >
+                      Acesso
+                    </button>
+                    <button
                       onClick={() => handleDelete(u)}
                       className="text-xs text-red-500 hover:text-red-700 hover:underline"
                     >
@@ -625,6 +640,7 @@ export default function UsuariosPage() {
           </tbody>
         </table>
       </div>
+      {acessoDe && <PainelAcesso userId={acessoDe.id} novo={acessoDe.novo} onFechar={() => setAcessoDe(null)} onSalvo={load} />}
     </div>
   );
 }

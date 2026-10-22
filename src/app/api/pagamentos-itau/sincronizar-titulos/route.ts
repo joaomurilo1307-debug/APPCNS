@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 
 // Botão "Atualizar do Senior agora" do /pagamentos-itau.
 //
@@ -23,6 +24,8 @@ export async function POST() {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
   if (!ROLES_ESCRITA.includes(user.role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemEdicao(session.user as any, "pagamentos_itau");
+  if (negado) return negado;
 
   const url = process.env.TITULOS_SYNC_WEBHOOK_URL;
   const secret = process.env.TITULOS_SYNC_WEBHOOK_SECRET;

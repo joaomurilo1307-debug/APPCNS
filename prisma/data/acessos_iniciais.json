@@ -1,0 +1,23 @@
+{
+  "perfis": {
+    "financeiro": ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas"],
+    "visao_total": ["painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "chat", "metas", "relatorios", "pdi", "aprovacoes_projetos", "equipes", "nucleos", "aprovacoes_oc", "contratos", "custos", "medicao", "previsao", "p0"],
+    "membro_projetos": ["painel", "projetos", "tarefas", "sprint", "calendario", "chat", "metas", "pdi"]
+  },
+  "todosOsModulos": [
+    "painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "chat", "equipes", "nucleos", "metas", "relatorios", "pdi", "aprovacoes_projetos",
+    "programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas",
+    "aprovacoes_oc", "contratos", "custos", "medicao", "previsao", "p0"
+  ],
+  "pessoas": [
+    { "chapa": "2074", "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA", "perfil": "financeiro" },
+    { "chapa": "2155", "nome": "RENATA REIS MARINHO", "perfil": "financeiro" },
+    { "chapa": "2174", "nome": "GABRIEL FURST FARIA", "perfil": "financeiro" },
+    { "chapa": "2", "nome": "ANDRE SILVA PERES", "perfil": "financeiro" },
+    { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO", "perfil": "financeiro" },
+    { "chapa": "46", "nome": "CLAUDIA GUIMARAES MOREIRA", "perfil": "financeiro" },
+    { "chapa": "1231", "nome": "DENISE MARIA DE DEUS LOURENCO", "perfil": "visao_total", "escopoProjetos": "TODOS", "verTodosContratos": true },
+    { "chapa": "2209", "nome": "ALAN GONCALVES DE JESUS", "perfil": "membro_projetos", "bloquearOutros": true },
+    { "chapa": "2175", "nome": "VITOR ALVES DAVID JUNIOR", "perfil": "membro_projetos", "bloquearOutros": true }
+  ]
+}

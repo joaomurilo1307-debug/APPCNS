@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { COD_EMP, dataIso, lerOcParaTitulo, numeroSenior, tituloExiste } from "@/lib/senior/ocsConferencia";
 import { consolidarRateioTitulo, gravarTituloComRateioCP, gravarTituloCP, TNS_PADRAO, TPT_PADRAO, type TituloNovo } from "@/lib/senior/gravarTitulo";
@@ -15,7 +16,6 @@ import { montarPagamentoDoTitulo } from "@/lib/senior/pagamentoParaTitulo";
 // Bloqueia: aprovacao multinivel incompleta (E420OCP/E614APR/E614USU), OC que ja tem titulo
 // (USU_NUMTIT, registro local ou titulo igual na Senior).
 
-const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const schema = z.object({
   numOcp: z.string().regex(/^\d+$/),
   codFil: z.string().regex(/^\d+$/),
@@ -29,7 +29,8 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return recusa("Não autenticado", 401);
   const user = session.user as any;
-  if (!PAPEIS.includes(user.role)) return recusa("Sem permissão", 403);
+  const negado = await negarSemEdicao(user, "conferencia_oc");
+  if (negado) return negado;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return recusa("Dados inválidos (número do título: letras/números, até 15).", 422);
   const { numOcp, codFil, numTit } = parsed.data;

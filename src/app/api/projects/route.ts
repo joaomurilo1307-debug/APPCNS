@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSeSoConsulta } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam, visibleProjectWhere } from "@/lib/permissions";
 import { computePercentComplete } from "@/lib/progress";
@@ -59,6 +60,7 @@ const createProjectSchema = z.object({
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const soConsulta = await negarSeSoConsulta(session.user as any, "projetos"); if (soConsulta) return soConsulta; }
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role;

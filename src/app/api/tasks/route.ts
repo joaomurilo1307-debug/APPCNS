@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSeSoConsulta } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { visibleProjectWhere } from "@/lib/permissions";
 import { reconcileTaskOutlook } from "@/lib/taskOutlookSync";
@@ -98,6 +99,7 @@ async function nextOrder(projectId: string | null | undefined) {
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const soConsulta = await negarSeSoConsulta(session.user as any, "tarefas"); if (soConsulta) return soConsulta; }
 
   const role = (session.user as any).role;
   if (role === "CLIENTE" || role === "VISUALIZADOR") {

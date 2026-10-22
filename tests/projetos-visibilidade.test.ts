@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filtroProjetosDaPessoa } from "../src/lib/permissions";
+import { filtroProjetosComNucleo, filtroProjetosDaPessoa } from "../src/lib/permissions";
 
 test("projetos: so aparece o que a pessoa criou ou em que participa (nunca filtro vazio)", () => {
   const f = filtroProjetosDaPessoa("u1", ["t1", "t2"]);
@@ -21,4 +21,21 @@ test("projetos: pessoa sem equipe so enxerga o que criou/foi convidada (equipe v
 
 test("projetos: cada pessoa recebe um filtro diferente (sem vazamento entre usuarios)", () => {
   assert.notDeepEqual(filtroProjetosDaPessoa("a", ["t"]), filtroProjetosDaPessoa("b", ["t"]));
+});
+
+test("nucleo: coordenador do nucleo ve os projetos ligados ao nucleo (alem do gerente)", () => {
+  const f = filtroProjetosDaPessoa("u1", []);
+  assert.ok(f.OR.some((c: any) => c.nucleos?.some?.gerentes?.some?.id === "u1"), "gerente do nucleo");
+  assert.ok(f.OR.some((c: any) => c.nucleos?.some?.coordenadores?.some?.id === "u1"), "coordenador do nucleo");
+});
+
+test("nucleo (visao NUCLEO): soma os projetos das pessoas do nucleo ao filtro base; sem pessoas nada muda", () => {
+  const base = filtroProjetosDaPessoa("g1", ["t1"]);
+  assert.equal(filtroProjetosComNucleo(base, []), base);
+  const f = filtroProjetosComNucleo(base, ["a", "b", "a"]);
+  assert.equal(f.OR.length, base.OR.length + 3);
+  assert.deepEqual(f.OR.slice(0, base.OR.length), base.OR, "o que ja via continua");
+  assert.ok(f.OR.some((c: any) => c.ownerId?.in?.length === 2), "criados por gente do nucleo, sem repetir");
+  assert.ok(f.OR.some((c: any) => c.tasks?.some?.assigneeId?.in?.includes("a")));
+  assert.ok(f.OR.some((c: any) => c.team?.members?.some?.userId?.in?.includes("b")));
 });

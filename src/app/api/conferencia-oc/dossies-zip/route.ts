@@ -5,19 +5,20 @@ import { readFile } from "fs/promises";
 import path from "path";
 import JSZip from "jszip";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/uploadValidation";
 
 // ZIP com o PDF do dossiê de cada OC selecionada. OC sem dossiê vira linha no
 // aviso.txt -- nunca some em silêncio.
 
-const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const schema = z.object({ ocs: z.array(z.string().regex(/^\d+$/)).min(1).max(200) });
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!PAPEIS.includes((session.user as any).role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "conferencia_oc");
+  if (negado) return negado;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos" }, { status: 422 });
 

@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { aplicarCorrecaoManual, criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 import { buscarDadosPagamento, type PedidoTitulo } from "@/lib/senior/dadosPagamentoTitulos";
 import { sincronizacaoEmCurso } from "@/lib/senior/formasPagamento";
 
-const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
 const bodySchema = z.object({ tituloIds: z.array(z.string().min(1)).min(1).max(120), conferencia: z.boolean().optional() });
 
@@ -19,7 +19,8 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const role = (session.user as any).role;
-  if (!ROLES_LEITURA.includes(role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "programacao_pagamento", "pagamentos_itau", "conferencia_oc");
+  if (negado) return negado;
 
   const body = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(body);

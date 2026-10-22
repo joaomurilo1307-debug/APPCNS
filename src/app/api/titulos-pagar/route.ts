@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { motorDeOcs } from "@/lib/cache/ocsMotor";
@@ -17,9 +18,8 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  if (!["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"].includes(user.role)) {
-    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-  }
+  const negado = await negarSemModulo(session.user as any, "programacao_pagamento", "pagamentos_itau", "conferencia_oc");
+  if (negado) return negado;
 
   // Mantem o codigo/descricao da forma de pagamento atualizados em segundo plano (aparecem dentro da OC).
   garantirFormasPagamentoAtualizadas(true);

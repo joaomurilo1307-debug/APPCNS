@@ -8,6 +8,7 @@ const updateSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   description: z.string().nullable().optional(),
   gerenteIds: z.array(z.string()).optional(),
+  coordenadorIds: z.array(z.string()).optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -25,17 +26,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
-  const { gerenteIds, ...rest } = parsed.data;
+  const { gerenteIds, coordenadorIds, ...rest } = parsed.data;
 
   const updated = await prisma.nucleo.update({
     where: { id: params.id },
     data: {
       ...rest,
       ...(gerenteIds !== undefined ? { gerentes: { set: gerenteIds.map((id) => ({ id })) } } : {}),
+      ...(coordenadorIds !== undefined ? { coordenadores: { set: coordenadorIds.map((id) => ({ id })) } } : {}),
     },
     include: {
       membros: { select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true, nivelHierarquico: true } },
       gerentes: { select: { id: true, name: true, avatarColor: true, avatarUrl: true } },
+      coordenadores: { select: { id: true, name: true, avatarColor: true, avatarUrl: true } },
     },
   });
 

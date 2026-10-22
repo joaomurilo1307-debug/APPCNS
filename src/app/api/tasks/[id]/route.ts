@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSeSoConsulta } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { canModifyTaskScoped, canDeleteTask, canViewProject } from "@/lib/permissions";
 import { reconcileTaskOutlook, removeTaskFromOutlook } from "@/lib/taskOutlookSync";
@@ -48,6 +49,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const soConsulta = await negarSeSoConsulta(session.user as any, "tarefas"); if (soConsulta) return soConsulta; }
 
   const task = await prisma.task.findUnique({
     where: { id: params.id },
@@ -59,7 +61,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const role = (session.user as any).role;
   const isAssignee = task.assigneeId === userId;
 
-  if (!(await canModifyTaskScoped(userId, role, isAssignee, task.locked, task.project?.teamId))) {
+  if (!(await canModifyTaskScoped(userId, role, isAssignee, task.locked, task.project?.teamId, task.projectId))) {
     return NextResponse.json({ error: "Sem permissão para alterar esta tarefa" }, { status: 403 });
   }
 
@@ -157,6 +159,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const soConsulta = await negarSeSoConsulta(session.user as any, "tarefas"); if (soConsulta) return soConsulta; }
 
   const role = (session.user as any).role;
   if (!canDeleteTask(role)) {

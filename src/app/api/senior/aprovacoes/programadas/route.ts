@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import {
   criarMotorVinculo,
@@ -14,8 +15,6 @@ import {
   type TituloParaVinculo,
 } from "@/lib/vinculoOcTitulo";
 
-const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
-
 // OCs com previsão de pagamento (E420OCP.USU_DATVECT, campo que o comprador
 // preenche na OC -- é o que a pasta/relatório que o time financeiro usa por
 // fora provavelmente lê) num intervalo de datas, com o diagnóstico de cada
@@ -28,8 +27,8 @@ const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  const role = (session.user as any).role;
-  if (!ROLES_LEITURA.includes(role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "programacao_pagamento", "pagamentos_itau", "conferencia_oc");
+  if (negado) return negado;
 
   const { searchParams } = new URL(req.url);
   const de = searchParams.get("de");

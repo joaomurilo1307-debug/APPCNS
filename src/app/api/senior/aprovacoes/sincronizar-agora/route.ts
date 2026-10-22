@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Botão "Atualizar agora" das telas de OC -- pedido do João 15/09/2026:
 // "coloque um sincronizado quando, e um botão de rodar a sincronia ou
@@ -21,14 +21,8 @@ export async function POST() {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
 
-  let podeVer = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"].includes(user.role);
-  if (!podeVer) {
-    const perfil = await prisma.user.findUnique({ where: { id: user.id }, select: { nivelHierarquico: true } });
-    podeVer = !!perfil?.nivelHierarquico && ["DIRETORIA", "GERENCIA", "COORDENACAO"].includes(perfil.nivelHierarquico);
-  }
-  if (!podeVer) {
-    return NextResponse.json({ error: "Sem permissão para sincronizar aprovações do Senior" }, { status: 403 });
-  }
+  const negado = await negarSemModulo(user, "aprovacoes_oc", "aprovacoes_oc_todas", "programacao_pagamento", "conferencia_oc");
+  if (negado) return negado;
 
   const url = process.env.OC_SYNC_WEBHOOK_URL;
   const secret = process.env.OC_SYNC_WEBHOOK_SECRET;

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
+import { negarSemEdicao, negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
 import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
@@ -19,7 +20,6 @@ import {
   prepararItem,
 } from "@/lib/pagamentos/conferenciaRemessa";
 
-const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const ROLES_ESCRITA = ["ADMIN", "DIRETOR"];
 
 const bodySchema = z.object({
@@ -44,7 +44,8 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const role = (session.user as any).role;
-  if (!ROLES_LEITURA.includes(role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "pagamentos_itau");
+  if (negado) return negado;
 
   const remessas = await prisma.remessaPagamento.findMany({
     include: {
@@ -95,6 +96,8 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
   if (!ROLES_ESCRITA.includes(user.role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemEdicao(session.user as any, "pagamentos_itau");
+  if (negado) return negado;
 
   const body = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(body);

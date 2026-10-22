@@ -2,20 +2,21 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { chavesFornecedor, normalizarReferencia } from "@/lib/vinculoOcTitulo";
 
 // Associa (PUT) ou desfaz (DELETE) a OC de um titulo na Programacao de Pagamento.
 // Grava em TituloOcVinculo, que tem prioridade sobre o motor automatico.
 
-const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const schema = z.object({ numOcp: z.string().trim().min(1).max(30) });
 
 async function autorizar() {
   const session = await getServerSession(authOptions);
   if (!session) return { erro: NextResponse.json({ error: "Não autenticado" }, { status: 401 }) };
   const user = session.user as any;
-  if (!PAPEIS.includes(user.role)) return { erro: NextResponse.json({ error: "Sem permissão" }, { status: 403 }) };
+  const negado = await negarSemEdicao(user, "programacao_pagamento", "conferencia_oc");
+  if (negado) return { erro: negado };
   return { user };
 }
 

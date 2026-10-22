@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 
 const pedidoSchema = z.object({
@@ -14,6 +15,8 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as { id: string; role: string };
   if (!["ADMIN", "DIRETOR"].includes(user.role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemEdicao(user, "pagamentos_itau");
+  if (negado) return negado;
   const pedido = pedidoSchema.safeParse(await req.json().catch(() => null));
   if (!pedido.success) return NextResponse.json({ error: "Informe as remessas e a ação de limpeza ou restauração." }, { status: 422 });
   const { acao, remessaIds } = pedido.data;

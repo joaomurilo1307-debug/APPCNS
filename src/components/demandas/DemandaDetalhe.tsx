@@ -9,7 +9,7 @@ type Item = { id: string; texto: string; concluido: boolean; taskId: string | nu
 type Tarefa = { id: string; title: string; status: string; dueDate: string | null; parentTaskId: string | null; responsavel: string | null };
 type Detalhe = {
   id: string; titulo: string; descricao: string | null; status: string; prioridade: string; prazoDesejado: string | null; motivoRecusa: string | null; createdAt: string; projectId: string | null;
-  contrato: { codccu: string; nome: string; cliente: string | null }; solicitante: { id: string; name: string; role: string };
+  contrato: { codccu: string; nome: string; cliente: string | null }; nucleo?: { id: string; name: string } | null; solicitante: { id: string; name: string; role: string };
   itens: Item[]; comentarios: { id: string; texto: string; interno: boolean; createdAt: string; autor: { id: string; name: string; role: string } }[];
   project: { id: string; name: string; status: string; startDate: string | null; endDate: string | null; andamento: number; tasks: Tarefa[] } | null;
 };
@@ -23,6 +23,7 @@ export default function DemandaDetalhe({ id, base, modo }: { id: string; base: s
   const [erro, setErro] = useState("");
   const [msg, setMsg] = useState("");
   const [equipes, setEquipes] = useState<{ id: string; name: string }[]>([]);
+  const [nucleos, setNucleos] = useState<{ id: string; name: string }[]>([]);
   const [abrir, setAbrir] = useState(false);
   const [recusar, setRecusar] = useState(false);
 
@@ -33,7 +34,7 @@ export default function DemandaDetalhe({ id, base, modo }: { id: string; base: s
     setD(j.demanda); setPodeGerir(j.podeGerir); setSouSolicitante(j.souSolicitante);
   }, [id]);
   useEffect(() => { void carregar(); }, [carregar]);
-  useEffect(() => { if (podeGerir) fetch("/api/demandas/opcoes").then(async (r) => (r.ok ? setEquipes((await r.json()).equipes) : null)); }, [podeGerir]);
+  useEffect(() => { if (podeGerir) fetch("/api/demandas/opcoes").then(async (r) => { if (!r.ok) return; const o = await r.json(); setEquipes(o.equipes); setNucleos(o.nucleos ?? []); }); }, [podeGerir]);
 
   async function chamar(url: string, metodo: string, corpo?: any) {
     setMsg("");
@@ -61,6 +62,7 @@ export default function DemandaDetalhe({ id, base, modo }: { id: string; base: s
           <Pill cor={STATUS_COR[d.status]}>{STATUS_ROTULO[d.status]}</Pill>
           {d.prioridade !== "NORMAL" && <Pill cor={PRIORIDADE_COR[d.prioridade]}>{PRIORIDADE_ROTULO[d.prioridade]}</Pill>}
           <span className="rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">CCU {d.contrato.codccu}</span>
+          {d.nucleo && modo !== "cliente" && <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">Núcleo {d.nucleo.name}</span>}
         </div>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">{d.titulo}</h1>
         <p className="text-sm text-gray-500">{d.contrato.nome} · pedido por {d.solicitante.name} em {dataBr(d.createdAt)}{d.prazoDesejado ? ` · prazo desejado ${dataBr(d.prazoDesejado)}` : ""}</p>
@@ -85,6 +87,15 @@ export default function DemandaDetalhe({ id, base, modo }: { id: string; base: s
           {d.status === "EM_PROJETO" && <button onClick={() => chamar(`/api/demandas/${d.id}`, "PATCH", { status: "CONCLUIDA" })} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">Marcar como concluída</button>}
           {(d.status === "NOVA" || d.status === "EM_ANALISE") && <button onClick={() => setRecusar(true)} className="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50">Recusar</button>}
           {(d.status === "RECUSADA" || d.status === "CONCLUIDA") && !d.projectId && <button onClick={() => chamar(`/api/demandas/${d.id}`, "PATCH", { status: "EM_ANALISE" })} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">Reabrir</button>}
+          {nucleos.length > 0 && (
+            <label className="ml-auto flex items-center gap-2 text-sm text-gray-600">
+              Núcleo
+              <select value={d.nucleo?.id ?? ""} onChange={(e) => chamar(`/api/demandas/${d.id}`, "PATCH", { nucleoId: e.target.value || null })} className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
+                <option value="">Sem núcleo</option>
+                {nucleos.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+              </select>
+            </label>
+          )}
           {msg && <span className="text-sm text-red-600">{msg}</span>}
         </div>
       )}
