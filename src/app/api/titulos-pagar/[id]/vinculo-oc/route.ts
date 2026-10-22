@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import { negarSemModulo } from "@/lib/acesso/servidor";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { chavesFornecedor, normalizarReferencia } from "@/lib/vinculoOcTitulo";
 
@@ -15,7 +15,7 @@ async function autorizar() {
   const session = await getServerSession(authOptions);
   if (!session) return { erro: NextResponse.json({ error: "Não autenticado" }, { status: 401 }) };
   const user = session.user as any;
-  const negado = await negarSemModulo(user, "programacao_pagamento", "conferencia_oc");
+  const negado = await negarSemEdicao(user, "programacao_pagamento", "conferencia_oc");
   if (negado) return { erro: negado };
   return { user };
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSeSoConsulta } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam, canViewProject } from "@/lib/permissions";
 import { computePercentComplete } from "@/lib/progress";
@@ -51,6 +52,7 @@ const updateSchema = z.object({
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const soConsulta = await negarSeSoConsulta(session.user as any, "projetos"); if (soConsulta) return soConsulta; }
 
   const project = await prisma.project.findUnique({ where: { id: params.id } });
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
@@ -98,6 +100,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const soConsulta = await negarSeSoConsulta(session.user as any, "projetos"); if (soConsulta) return soConsulta; }
 
   const project = await prisma.project.findUnique({ where: { id: params.id } });
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });

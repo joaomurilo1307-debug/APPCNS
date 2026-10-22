@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Avatar, { AVATAR_PALETTE } from "@/components/Avatar";
+import PainelAcesso from "@/components/usuarios/PainelAcesso";
 
 type UserRow = {
   id: string;
@@ -86,6 +87,8 @@ export default function UsuariosPage() {
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resetError, setResetError] = useState<string | null>(null);
+  // painel de acesso aberto: logo depois de criar um usuario (novo) ou pelo botao "Acesso" da linha
+  const [acessoDe, setAcessoDe] = useState<{ id: string; novo: boolean } | null>(null);
 
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
@@ -165,6 +168,8 @@ export default function UsuariosPage() {
         setError(message);
         return;
       }
+      const criado = await res.json().catch(() => null);
+      if (criado?.id) setAcessoDe({ id: criado.id, novo: true });
       setName("");
       setEmail("");
       setPassword("");
@@ -604,6 +609,12 @@ export default function UsuariosPage() {
                 <td className="px-4 py-3">
                   <div className="flex flex-col items-start gap-1">
                     <button
+                      onClick={() => setAcessoDe({ id: u.id, novo: false })}
+                      className="rounded-md bg-brand px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-dark"
+                    >
+                      Acesso
+                    </button>
+                    <button
                       onClick={() => handleDelete(u)}
                       className="text-xs text-red-500 hover:text-red-700 hover:underline"
                     >
@@ -625,6 +636,7 @@ export default function UsuariosPage() {
           </tbody>
         </table>
       </div>
+      {acessoDe && <PainelAcesso userId={acessoDe.id} novo={acessoDe.novo} onFechar={() => setAcessoDe(null)} onSalvo={load} />}
     </div>
   );
 }

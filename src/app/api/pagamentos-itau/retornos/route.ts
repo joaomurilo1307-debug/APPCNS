@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import { negarSemModulo } from "@/lib/acesso/servidor";
+import { negarSemEdicao, negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { processarRetorno } from "@/lib/pagamentos/processarRetorno";
 import { alterarSituacaoTitulo } from "@/lib/senior/situacaoTitulo";
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
   if (!["ADMIN", "DIRETOR"].includes(user.role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-  const negado = await negarSemModulo(session.user as any, "pagamentos_itau");
+  const negado = await negarSemEdicao(session.user as any, "pagamentos_itau");
   if (negado) return negado;
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 422 });

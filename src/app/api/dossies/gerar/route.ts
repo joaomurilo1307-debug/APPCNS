@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import { negarSemModulo } from "@/lib/acesso/servidor";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { gerarEGravar } from "@/lib/dossie/gerar";
 import { chaveDaOc, marcarGerando } from "@/lib/dossie/salvar";
@@ -19,7 +19,7 @@ const GERANDO_VALE_MS = 15 * 60 * 1000; // passou disso, considera que a geracao
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  const negado = await negarSemModulo(session.user as any, "conferencia_oc", "programacao_pagamento");
+  const negado = await negarSemEdicao(session.user as any, "conferencia_oc", "programacao_pagamento");
   if (negado) return negado;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos (até 100 OCs)." }, { status: 422 });

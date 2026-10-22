@@ -8,13 +8,28 @@ export async function getUserTeamIds(userId: string): Promise<string[]> {
   return memberships.map((m) => m.teamId);
 }
 
-/** IDs de pessoas que pertencem a núcleos gerenciados/visualizados por este usuário (relação Nucleo.gerentes). */
+/** Núcleos que a pessoa gere: ela é gerente (Nucleo.gerentes) ou coordenadora (Nucleo.coordenadores) do núcleo. */
+export function filtroNucleosQueGere(userId: string) {
+  return { OR: [{ gerentes: { some: { id: userId } } }, { coordenadores: { some: { id: userId } } }] };
+}
+
+/** IDs de pessoas que pertencem a núcleos geridos por este usuário (gerente ou coordenador). */
 async function nucleoManagedUserIds(userId: string): Promise<string[]> {
   const nucleos = await prisma.nucleo.findMany({
-    where: { gerentes: { some: { id: userId } } },
+    where: filtroNucleosQueGere(userId),
     select: { membros: { select: { id: true } } },
   });
   return nucleos.flatMap((n) => n.membros.map((m) => m.id));
+}
+
+/** Ids dos núcleos que a pessoa gere (gerente ou coordenadora). */
+export async function nucleoIdsQueGere(userId: string): Promise<string[]> {
+  return (await prisma.nucleo.findMany({ where: filtroNucleosQueGere(userId), select: { id: true } })).map((n) => n.id);
+}
+
+/** A pessoa gere algum núcleo ligado a este projeto? (coordenador/gerente passam tarefas e subtarefas dos projetos do núcleo) */
+export async function geroNucleoDoProjeto(userId: string, projectId: string): Promise<boolean> {
+  return (await prisma.project.count({ where: { id: projectId, nucleos: { some: filtroNucleosQueGere(userId) } } })) > 0;
 }
 
 /**
@@ -27,7 +42,29 @@ async function nucleoManagedUserIds(userId: string): Promise<string[]> {
 export async function visibleProjectWhere(userId: string, role: string): Promise<any> {
   if (role === "ADMIN") return {};
 
-  return filtroProjetosDaPessoa(userId, await getUserTeamIds(userId));
+  // Visao escolhida na tela Usuarios > Acesso (22/10/2026): PROPRIOS (padrao) = regra acima; NUCLEO = tambem o que e' das pessoas dos
+  // nucleos que a pessoa gere; TODOS = todos os projetos.
+  const eu = await prisma.user.findUnique({ where: { id: userId }, select: { escopoProjetos: true } });
+  if (eu?.escopoProjetos === "TODOS") return {};
+
+  const base = filtroProjetosDaPessoa(userId, await getUserTeamIds(userId));
+  if (eu?.escopoProjetos !== "NUCLEO") return base;
+  const pessoas = await nucleoManagedUserIds(userId);
+  return filtroProjetosComNucleo(base, pessoas);
+}
+
+/** PURA: acrescenta ao filtro "criei ou participo" os projetos que sao das pessoas do(s) nucleo(s) geridos. Sem pessoas = o mesmo filtro. */
+export function filtroProjetosComNucleo(base: { OR: any[] }, pessoasDoNucleo: string[]) {
+  const ids = Array.from(new Set(pessoasDoNucleo));
+  if (ids.length === 0) return base;
+  return {
+    OR: [
+      ...base.OR,
+      { ownerId: { in: ids } },
+      { tasks: { some: { assigneeId: { in: ids } } } },
+      { team: { members: { some: { userId: { in: ids } } } } },
+    ],
+  };
 }
 
 /** PURA: o filtro "criei ou participo" (separada para teste). */
@@ -39,6 +76,7 @@ export function filtroProjetosDaPessoa(userId: string, teamIds: string[]) {
       { diretores: { some: { id: userId } } },
       { coordenadores: { some: { id: userId } } },
       { nucleos: { some: { gerentes: { some: { id: userId } } } } },
+      { nucleos: { some: { coordenadores: { some: { id: userId } } } } },
       { tasks: { some: { assigneeId: userId } } },
       { approverId: userId },
       { acessos: { some: { userId } } },
@@ -152,11 +190,15 @@ export async function canModifyTaskScoped(
   role: string,
   isAssignee: boolean,
   locked: boolean,
-  teamId: string | null | undefined
+  teamId: string | null | undefined,
+  projectId?: string | null
 ): Promise<boolean> {
   if (canModifyTask(role, isAssignee, locked)) return true;
-  if (locked || !teamId) return false;
-  return isTeamManager(userId, teamId);
+  if (locked) return false;
+  if (teamId && (await isTeamManager(userId, teamId))) return true;
+  // coordenador/gerente de um nucleo ligado ao projeto passa tarefas e subtarefas para o pessoal do nucleo (22/10/2026)
+  if (projectId && (await geroNucleoDoProjeto(userId, projectId))) return true;
+  return false;
 }
 
 export function canDeleteTask(role: string) {

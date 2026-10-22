@@ -12,7 +12,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const u = session.user as any;
   if (u.role === "VISUALIZADOR") return NextResponse.json({ error: "Perfil somente leitura" }, { status: 403 });
-  const d = await prisma.demanda.findUnique({ where: { id: params.id }, select: { id: true, solicitanteId: true, contrato: { select: { codccu: true } } } });
+  const d = await prisma.demanda.findUnique({ where: { id: params.id }, select: { id: true, solicitanteId: true, nucleoId: true, contrato: { select: { codccu: true } } } });
   if (!d) return NextResponse.json({ error: "Demanda não encontrada" }, { status: 404 });
   if (!(await podeVerDemanda(u, d))) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   const parsed = schema.safeParse(await req.json());

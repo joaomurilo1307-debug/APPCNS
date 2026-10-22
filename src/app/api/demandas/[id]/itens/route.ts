@@ -10,10 +10,10 @@ async function autorizar(id: string) {
   const session = await getServerSession(authOptions);
   if (!session) return { erro: NextResponse.json({ error: "Não autenticado" }, { status: 401 }) };
   const u = session.user as any;
-  const d = await prisma.demanda.findUnique({ where: { id }, select: { id: true, status: true, solicitanteId: true, contrato: { select: { codccu: true } } } });
+  const d = await prisma.demanda.findUnique({ where: { id }, select: { id: true, status: true, solicitanteId: true, nucleoId: true, contrato: { select: { codccu: true } } } });
   if (!d) return { erro: NextResponse.json({ error: "Demanda não encontrada" }, { status: 404 }) };
   if (!(await podeVerDemanda(u, d))) return { erro: NextResponse.json({ error: "Sem permissão" }, { status: 403 }) };
-  const gerir = await podeGerirDemandas(u);
+  const gerir = await podeGerirDemandas(u, d.nucleoId);
   if (!gerir && !(d.solicitanteId === u.id && d.status === "NOVA")) return { erro: NextResponse.json({ error: "A lista só pode ser alterada pela gestão (ou por quem pediu, enquanto a demanda é nova)" }, { status: 403 }) };
   return { d, gerir };
 }

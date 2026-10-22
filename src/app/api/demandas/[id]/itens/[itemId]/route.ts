@@ -9,10 +9,10 @@ async function carregar(id: string, itemId: string) {
   const session = await getServerSession(authOptions);
   if (!session) return { erro: NextResponse.json({ error: "Não autenticado" }, { status: 401 }) };
   const u = session.user as any;
-  const item = await prisma.demandaItem.findUnique({ where: { id: itemId }, include: { demanda: { select: { id: true, status: true, solicitanteId: true, projectId: true, contrato: { select: { codccu: true } } } } } });
+  const item = await prisma.demandaItem.findUnique({ where: { id: itemId }, include: { demanda: { select: { id: true, status: true, solicitanteId: true, nucleoId: true, projectId: true, contrato: { select: { codccu: true } } } } } });
   if (!item || item.demandaId !== id) return { erro: NextResponse.json({ error: "Item não encontrado" }, { status: 404 }) };
   if (!(await podeVerDemanda(u, item.demanda))) return { erro: NextResponse.json({ error: "Sem permissão" }, { status: 403 }) };
-  const gerir = await podeGerirDemandas(u);
+  const gerir = await podeGerirDemandas(u, item.demanda.nucleoId);
   const dono = item.demanda.solicitanteId === u.id && item.demanda.status === "NOVA";
   return { item, gerir, dono };
 }

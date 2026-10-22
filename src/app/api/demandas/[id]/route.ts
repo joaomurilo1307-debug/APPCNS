@@ -10,6 +10,7 @@ async function carregar(id: string) {
     where: { id },
     include: {
       contrato: { select: { codccu: true, nome: true, cliente: true } },
+      nucleo: { select: { id: true, name: true } },
       solicitante: { select: { id: true, name: true, role: true } },
       itens: { orderBy: { ordem: "asc" } },
       comentarios: { orderBy: { createdAt: "asc" }, include: { autor: { select: { id: true, name: true, role: true } } } },
@@ -33,7 +34,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       comentarios: d.comentarios.filter((c) => !cliente || !c.interno),
       project: d.project ? { ...d.project, tasks: tarefas.map((t) => ({ id: t.id, title: t.title, status: t.status, dueDate: t.dueDate, parentTaskId: t.parentTaskId, responsavel: cliente ? null : t.assignee?.name ?? null })), andamento: tarefas.length ? Math.round((tarefas.filter((t) => t.status === "FEITO").length / tarefas.length) * 100) : 0 } : null,
     },
-    podeGerir: await podeGerirDemandas(u),
+    podeGerir: await podeGerirDemandas(u, d.nucleoId),
     souSolicitante: d.solicitanteId === u.id,
   });
 }
@@ -45,6 +46,7 @@ const patchSchema = z.object({
   prazoDesejado: z.string().nullable().optional(),
   status: z.enum(STATUS_DEMANDA).optional(),
   motivoRecusa: z.string().trim().max(2000).nullable().optional(),
+  nucleoId: z.string().nullable().optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -57,10 +59,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const parsed = patchSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
   const p = parsed.data;
-  const gerir = await podeGerirDemandas(u);
+  const gerir = await podeGerirDemandas(u, d.nucleoId);
   const dono = d.solicitanteId === u.id;
   // quem pediu pode ajustar titulo/descricao/prioridade/prazo enquanto a demanda esta NOVA; situacao so' a gestao
   if (!gerir && !(dono && d.status === "NOVA")) return NextResponse.json({ error: "Só a gestão altera esta demanda" }, { status: 403 });
+  if (!gerir && p.nucleoId !== undefined) return NextResponse.json({ error: "Só a gestão escolhe o núcleo" }, { status: 403 });
+  if (p.nucleoId && !(await prisma.nucleo.count({ where: { id: p.nucleoId } }))) return NextResponse.json({ error: "Núcleo não encontrado" }, { status: 404 });
   if (!gerir && (p.status !== undefined || p.motivoRecusa !== undefined)) return NextResponse.json({ error: "Só a gestão muda a situação" }, { status: 403 });
   if (p.status === "EM_PROJETO" && !d.projectId) return NextResponse.json({ error: "Para colocar em projeto, use “Abrir projeto”" }, { status: 422 });
   if (p.status === "RECUSADA" && !(p.motivoRecusa ?? d.motivoRecusa)) return NextResponse.json({ error: "Informe o motivo da recusa" }, { status: 422 });
@@ -74,6 +78,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       ...(p.prazoDesejado !== undefined && { prazoDesejado: p.prazoDesejado ? new Date(`${p.prazoDesejado.slice(0, 10)}T00:00:00.000Z`) : null }),
       ...(p.status !== undefined && { status: p.status }),
       ...(p.motivoRecusa !== undefined && { motivoRecusa: p.motivoRecusa }),
+      ...(p.nucleoId !== undefined && { nucleoId: p.nucleoId || null }),
     },
     select: { id: true, status: true },
   });

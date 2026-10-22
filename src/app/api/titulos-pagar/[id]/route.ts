@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import { negarSemModulo } from "@/lib/acesso/servidor";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { chavesFornecedor, normalizarReferencia } from "@/lib/vinculoOcTitulo";
 import { avisarCriadorOc, type ResultadoAviso } from "@/lib/avisoPagamentoAprovado";
@@ -33,7 +33,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  const negado = await negarSemModulo(session.user as any, "programacao_pagamento");
+  const negado = await negarSemEdicao(session.user as any, "programacao_pagamento");
   if (negado) return negado;
 
   const body = await req.json().catch(() => null);

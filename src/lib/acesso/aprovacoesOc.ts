@@ -7,11 +7,14 @@ import { envolvidoNaOC, filtroGrosseiroDeEnvolvimento } from "./envolvimentoOc";
 import { podeAcessarModulo, type UsuarioDaSessao } from "./servidor";
 
 export type EscopoOC = {
+  /** a pessoa tem o modulo Aprovacoes de OC (ver todas ou as dela) */
+  modulo: boolean;
   /** ve TODAS as OCs (modulo "Aprovacoes de OC: ver todas") */
   todas: boolean;
   /** pode abrir dados de pagamento (titulos, forma de pagamento, boleto/PIX): so' o time financeiro */
   pagamentos: boolean;
-  /** CODUSU do Senior vinculados a esta pessoa (UsuarioSenior) */
+  /** CODUSU do Senior que o admin vinculou a esta pessoa (tela Usuarios > Acesso). So' o vinculo manual conta: o de-para automatico
+   *  pode estar errado (ex.: quem usa o login de outra pessoa) e um mesmo codigo pode valer para mais de uma pessoa. */
   codigos: string[];
 };
 
@@ -23,8 +26,11 @@ export function limparCacheDeOcs(userId?: string) {
   else guardado.clear();
 }
 
-/** null = a pessoa nao entra nas Aprovacoes de OC (nem completas nem as dela). */
-export async function escopoAprovacoesOC(usuario: UsuarioDaSessao): Promise<EscopoOC | null> {
+export async function codigosSeniorDe(userId: string): Promise<string[]> {
+  return (await prisma.vinculoSenior.findMany({ where: { userId }, select: { codigo: true } })).map((v) => v.codigo);
+}
+
+export async function escopoAprovacoesOC(usuario: UsuarioDaSessao): Promise<EscopoOC> {
   const [todas, minhas, programacao, itau, conferencia] = await Promise.all([
     podeAcessarModulo(usuario, "aprovacoes_oc_todas"),
     podeAcessarModulo(usuario, "aprovacoes_oc"),
@@ -32,9 +38,8 @@ export async function escopoAprovacoesOC(usuario: UsuarioDaSessao): Promise<Esco
     podeAcessarModulo(usuario, "pagamentos_itau"),
     podeAcessarModulo(usuario, "conferencia_oc"),
   ]);
-  if (!todas && !minhas) return null;
-  const codigos = (await prisma.usuarioSenior.findMany({ where: { userId: usuario.id }, select: { codigo: true } })).map((u) => u.codigo);
-  return { todas, pagamentos: programacao || itau || conferencia, codigos };
+  const codigos = todas || minhas ? await codigosSeniorDe(usuario.id) : [];
+  return { modulo: todas || minhas, todas, pagamentos: programacao || itau || conferencia, codigos };
 }
 
 /** Ids das OCs em que a pessoa esta envolvida (consulta grosseira no banco + conferencia exata aqui). Guardado por 60 s. */
@@ -57,12 +62,12 @@ export async function idsDeOcsEnvolvidas(userId: string, codigos: string[]): Pro
 }
 
 /**
- * Pode abrir esta OC? Sim se ve todas, se esta envolvido, ou se a OC e' de um contrato (centro de custo) que a pessoa ja enxerga em
+ * Pode abrir esta OC? Sim se ve todas, se tem o modulo e esta envolvido, ou se a OC e' de um contrato (centro de custo) que a pessoa ja enxerga em
  * Contratos/Custos -- o detalhe da OC abre a partir do custo do contrato.
  */
 export async function podeAbrirOC(usuario: UsuarioDaSessao, escopo: EscopoOC, oc: { id: string; codccu: string | null; rateioDetalhe: string | null }): Promise<boolean> {
   if (escopo.todas) return true;
-  if ((await idsDeOcsEnvolvidas(usuario.id, escopo.codigos)).has(oc.id)) return true;
+  if (escopo.modulo && (await idsDeOcsEnvolvidas(usuario.id, escopo.codigos)).has(oc.id)) return true;
   if (!(await podeAcessarModulo(usuario, "contratos")) && !(await podeAcessarModulo(usuario, "custos"))) return false;
   const custos = await escopoDeCustos(prisma, usuario);
   const ccus = new Set<string>();

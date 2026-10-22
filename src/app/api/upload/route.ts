@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role;
-  if (!(await canModifyTaskScoped(userId, role, task.assigneeId === userId, task.locked, task.project?.teamId))) {
+  if (!(await canModifyTaskScoped(userId, role, task.assigneeId === userId, task.locked, task.project?.teamId, task.projectId))) {
     return NextResponse.json({ error: "Sem permissão para anexar arquivos nesta tarefa" }, { status: 403 });
   }
 

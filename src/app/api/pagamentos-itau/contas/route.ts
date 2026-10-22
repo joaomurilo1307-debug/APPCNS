@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import { negarSemModulo } from "@/lib/acesso/servidor";
+import { negarSemEdicao, negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 
 const ROLES_ESCRITA = ["ADMIN", "DIRETOR"];
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const role = (session.user as any).role;
   if (!ROLES_ESCRITA.includes(role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-  const negado = await negarSemModulo(session.user as any, "pagamentos_itau");
+  const negado = await negarSemEdicao(session.user as any, "pagamentos_itau");
   if (negado) return negado;
 
   const body = await req.json().catch(() => null);

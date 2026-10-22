@@ -176,6 +176,7 @@ model User {
   escopoProjetos String @default("PROPRIOS")
   // modulos liberados ou negados para esta pessoa (sobrepoe o padrao do papel; ver src/lib/acesso/catalogo.ts)
   acessosModulo AcessoModulo[]
+  vinculosSenior VinculoSenior[]
   nucleosCoordenados Nucleo[] @relation("NucleoCoordenador")
   // centros de custo que esta pessoa acompanha em Custo por Centro de Custo (alem dos das equipes dela)
   acessosCentroCusto AcessoCentroCusto[]
@@ -443,6 +444,8 @@ model AcessoModulo {
   userId       String
   modulo       String
   permitido    Boolean
+  // VER = so' consulta; EDITAR = consulta e altera. So' vale quando permitido = true.
+  nivel        String   @default("EDITAR")
   concedidoPor String?
   atualizadoEm DateTime @updatedAt
 
@@ -450,6 +453,22 @@ model AcessoModulo {
 
   @@unique([userId, modulo])
   @@index([modulo])
+}
+
+// Vinculo MANUAL entre uma pessoa do sistema e um usuario (CODUSU) do Senior, escolhido pelo admin na tela Usuarios > Acesso.
+// Muitos-para-muitos de proposito: quem usa o login de outra pessoa (ex.: Monica usa o do Julimar) recebe o codigo dele sem tirar da outra.
+// E' o que define "envolvido" nas Aprovacoes de OC; o de-para automatico (UsuarioSenior.userId) nao conta.
+model VinculoSenior {
+  id        String   @id @default(cuid())
+  userId    String
+  codigo    String // CODUSU do Senior (UsuarioSenior.codigo)
+  criadoPor String?
+  criadoEm  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, codigo])
+  @@index([codigo])
 }
 
 // Ledger IMUTAVEL de qual centro de custo cada colaborador CLT tinha em

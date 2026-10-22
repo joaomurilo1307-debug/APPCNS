@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam } from "@/lib/permissions";
-import { podeGerirDemandas } from "@/lib/demandas";
+import { equipesDosNucleos, podeGerirDemandas } from "@/lib/demandas";
+import { nucleoIdsQueGere } from "@/lib/permissions";
 import { z } from "zod";
 
 // A gestao abre um PROJETO a partir da demanda: o projeto nasce com o titulo/descricao dela, cada item da lista vira uma tarefa (para delegar,
@@ -25,7 +26,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!d) return NextResponse.json({ error: "Demanda não encontrada" }, { status: 404 });
   if (d.projectId) return NextResponse.json({ error: "Esta demanda já virou projeto" }, { status: 409 });
   if (d.status === "RECUSADA" || d.status === "CONCLUIDA") return NextResponse.json({ error: "Reabra a demanda (Nova ou Em análise) antes de abrir o projeto" }, { status: 409 });
-  if (!(await canManageTeam(u.id, u.role, parsed.data.teamId))) return NextResponse.json({ error: "Só o gestor da equipe (ou um admin) abre projeto nela" }, { status: 403 });
+  if (!(await podeGerirDemandas(u, d.nucleoId))) return NextResponse.json({ error: "Só a gestão (ou o coordenador/gerente do núcleo da demanda) abre projeto a partir dela" }, { status: 403 });
+  // gestor da equipe (ou admin) abre em qualquer equipe dele; coordenador/gerente do nucleo da demanda, nas equipes com gente do nucleo
+  const noNucleo = !!d.nucleoId && (await nucleoIdsQueGere(u.id)).includes(d.nucleoId) && (await equipesDosNucleos([d.nucleoId])).some((e) => e.id === parsed.data.teamId);
+  if (!noNucleo && !(await canManageTeam(u.id, u.role, parsed.data.teamId))) return NextResponse.json({ error: "Só o gestor da equipe (ou um admin) abre projeto nela" }, { status: 403 });
 
   const clientes = await prisma.contratoUsuario.findMany({ where: { contratoId: d.contrato.id }, select: { userId: true } });
   const donosCliente = new Set(clientes.map((c) => c.userId));
@@ -37,6 +41,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         name: parsed.data.nome ?? d.titulo,
         description: [d.descricao, `Origem: demanda para o contrato ${d.contrato.nome} (CCU ${d.contrato.codccu}).`].filter(Boolean).join("\n\n"),
         teamId: parsed.data.teamId, ownerId: u.id, status: "PLANEJADO",
+        ...(d.nucleoId ? { nucleos: { connect: { id: d.nucleoId } } } : {}),
         endDate: d.prazoDesejado ?? undefined,
       },
     });

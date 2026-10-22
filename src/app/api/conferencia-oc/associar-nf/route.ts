@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import { negarSemModulo } from "@/lib/acesso/servidor";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { buscarNotaPorChave } from "@/lib/edocs/notasRecebidas";
 
@@ -16,7 +16,7 @@ async function autorizar() {
   const session = await getServerSession(authOptions);
   if (!session) return { r: erro("Não autenticado", 401) } as const;
   const user = session.user as any;
-  const negado = await negarSemModulo(user, "conferencia_oc");
+  const negado = await negarSemEdicao(user, "conferencia_oc");
   if (negado) return { r: negado } as const;
   return { user } as const;
 }

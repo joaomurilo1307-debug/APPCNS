@@ -20,9 +20,6 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
 
   const user = session.user as any;
   const escopo = await escopoAprovacoesOC(user);
-  if (!escopo) {
-    return NextResponse.json({ error: "Sem permissão para ver aprovações do Senior" }, { status: 403 });
-  }
 
   const aprovacao = await prisma.aprovacaoSenior.findUnique({
     where: { numOcp: params.numOcp },

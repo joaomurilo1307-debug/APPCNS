@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import { negarSemModulo } from "@/lib/acesso/servidor";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { COD_EMP, dataIso, lerOcParaTitulo, numeroSenior, tituloExiste } from "@/lib/senior/ocsConferencia";
 import { consolidarRateioTitulo, gravarTituloComRateioCP, gravarTituloCP, TNS_PADRAO, TPT_PADRAO, type TituloNovo } from "@/lib/senior/gravarTitulo";
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return recusa("Não autenticado", 401);
   const user = session.user as any;
-  const negado = await negarSemModulo(user, "conferencia_oc");
+  const negado = await negarSemEdicao(user, "conferencia_oc");
   if (negado) return negado;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return recusa("Dados inválidos (número do título: letras/números, até 15).", 422);

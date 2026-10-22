@@ -34,7 +34,6 @@ export type ModuloDef = {
 
 const TODOS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] as const;
 const GESTAO = ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] as const;
-const SEM_COLAB = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] as const;
 
 export const MODULOS: ReadonlyArray<ModuloDef> = [
   // ---- gestao de projetos
@@ -59,8 +58,8 @@ export const MODULOS: ReadonlyArray<ModuloDef> = [
   { id: "alertas_financeiro", href: "/alertas-financeiro", label: "Alertas do financeiro", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Avisos de pagamento" },
   { id: "notas_fiscais", href: "/notas-fiscais", label: "Notas fiscais recebidas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Notas contra o CNPJ da empresa" },
   { id: "aprovacoes_oc_todas", href: "/aprovacoes/senior", label: "Aprovações de OC: ver todas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Sem isto, a pessoa vê só as OCs em que está envolvida" },
-  // ---- aprovacoes de OC (cada um ve as suas) e contratos: seguem o papel, como sempre
-  { id: "aprovacoes_oc", href: "/aprovacoes/senior", label: "Aprovações de OC", grupo: "contratos", restrito: false, padraoPapeis: SEM_COLAB, descricao: "As OCs do Senior em que a pessoa está envolvida" },
+  // ---- aprovacoes de OC (cada um ve as suas; liberada pessoa a pessoa, por enquanto so' para poucos) e contratos (seguem o papel)
+  { id: "aprovacoes_oc", href: "/aprovacoes/senior", label: "Aprovações de OC", grupo: "contratos", restrito: true, padraoPapeis: [], descricao: "As OCs do Senior em que a pessoa está envolvida (precisa do vínculo com o usuário do Senior)" },
   { id: "contratos", href: "/contratos", label: "Contratos", grupo: "contratos", restrito: false, padraoPapeis: TODOS, descricao: "Contratos e centros de custo" },
   { id: "custos", href: "/custos/plano-de-contas", label: "Custo por centro de custo", grupo: "contratos", restrito: false, padraoPapeis: TODOS, descricao: "Custo realizado do Senior" },
   { id: "medicao", href: "/medicao", label: "Receita e medição", grupo: "contratos", restrito: false, padraoPapeis: TODOS, descricao: "Medição, notas e recebimento" },
@@ -84,6 +83,36 @@ export const PAPEIS_DO_SISTEMA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVAD
 
 /** Liberacoes e bloqueios gravados para a pessoa: modulo -> true (libera) | false (bloqueia). */
 export type Sobreposicoes = ReadonlyMap<string, boolean>;
+
+/** VER = so' consulta; EDITAR = consulta e altera. */
+export type NivelAcesso = "VER" | "EDITAR";
+export type Niveis = ReadonlyMap<string, NivelAcesso>;
+
+/** Nivel quando nada foi gravado: VISUALIZADOR so' consulta, os demais papeis consultam e alteram (como sempre foi). */
+export function nivelPadraoDoPapel(papel: string): NivelAcesso {
+  return papel === "VISUALIZADOR" ? "VER" : "EDITAR";
+}
+
+/** O nivel da pessoa neste modulo; null quando ela nem entra nele. ADMIN sempre edita. */
+export function nivelDoModulo(def: ModuloDef, papel: string, sobre: Sobreposicoes, niveis: Niveis): NivelAcesso | null {
+  if (!moduloPermitido(def, papel, sobre)) return null;
+  if (papel === "ADMIN") return "EDITAR";
+  return niveis.get(def.id) ?? nivelPadraoDoPapel(papel);
+}
+
+export function lerNiveis(linhas: ReadonlyArray<{ modulo: string; permitido: boolean; nivel?: string | null }>): Map<string, NivelAcesso> {
+  const m = new Map<string, NivelAcesso>();
+  for (const l of linhas) if (POR_ID.has(l.modulo) && l.permitido && (l.nivel === "VER" || l.nivel === "EDITAR")) m.set(l.modulo, l.nivel);
+  return m;
+}
+
+/** Modulo + nivel de tudo o que a pessoa enxerga, na ordem do catalogo. */
+export function acessosEfetivos(papel: string, sobre: Sobreposicoes, niveis: Niveis): { modulo: ModuloId; nivel: NivelAcesso }[] {
+  return MODULOS.flatMap((m) => {
+    const n = nivelDoModulo(m, papel, sobre, niveis);
+    return n ? [{ modulo: m.id, nivel: n }] : [];
+  });
+}
 
 export function moduloPermitido(def: ModuloDef, papel: string, sobre: Sobreposicoes): boolean {
   if (papel === "ADMIN") return true;
@@ -109,15 +138,21 @@ export function lerSobreposicoes(linhas: ReadonlyArray<{ modulo: string; permiti
  * O que gravar para que a pessoa fique EXATAMENTE com `desejados` (ids de modulo): so' guarda a diferenca em relacao ao padrao do papel,
  * para a tela nao encher o banco de linhas redundantes. ADMIN nao tem linhas.
  */
-export function sobreposicoesParaGravar(papel: string, desejados: ReadonlyArray<string>): { modulo: string; permitido: boolean }[] {
+export function sobreposicoesParaGravar(
+  papel: string,
+  desejados: ReadonlyArray<string>,
+  niveisDesejados: Readonly<Record<string, NivelAcesso | undefined>> = {}
+): { modulo: string; permitido: boolean; nivel?: NivelAcesso }[] {
   if (papel === "ADMIN") return [];
   const quer = new Set(desejados);
-  const saida: { modulo: string; permitido: boolean }[] = [];
+  const padraoNivel = nivelPadraoDoPapel(papel);
+  const saida: { modulo: string; permitido: boolean; nivel?: NivelAcesso }[] = [];
   for (const m of MODULOS) {
     if (m.grupo === "admin") continue;
     const padrao = !m.restrito && m.padraoPapeis.includes(papel);
     const q = quer.has(m.id);
-    if (q !== padrao) saida.push({ modulo: m.id, permitido: q });
+    const nivel = niveisDesejados[m.id] ?? padraoNivel;
+    if (q !== padrao || (q && nivel !== padraoNivel)) saida.push(q ? { modulo: m.id, permitido: true, nivel } : { modulo: m.id, permitido: false });
   }
   return saida;
 }

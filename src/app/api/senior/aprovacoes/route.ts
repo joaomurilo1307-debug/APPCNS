@@ -14,7 +14,7 @@ export async function GET() {
 
   const user = session.user as any;
   const escopo = await escopoAprovacoesOC(user);
-  if (!escopo) {
+  if (!escopo.modulo) {
     return NextResponse.json({ error: "Sem permissão para ver aprovações do Senior" }, { status: 403 });
   }
   const meusIds = escopo.todas ? null : Array.from(await idsDeOcsEnvolvidas(user.id, escopo.codigos));
