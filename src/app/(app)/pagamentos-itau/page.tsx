@@ -219,11 +219,54 @@ type PreviaBaixa = {
 };
 
 type PainelBaixa = { remessaId: string; arquivo: string; numCco: string; previa: PreviaBaixa | null; carregando: boolean; erro: string | null };
-type RemessaDoRetorno = { id: string; nomeArquivo: string | null; contaNumCcoSenior: string | null; qtdProntos: number; qtdConferir: number; qtdConcluidos: number };
+type RemessaDoRetorno = { id: string; nomeArquivo: string | null; contaNumCcoSenior: string | null; qtdProntos: number; qtdSemTitulo?: number; qtdConferir: number; qtdConcluidos: number };
 type RetornoImportado = {
   id: string; nomeArquivo: string; processadoEm: string; totalRegistros: number; totalReconhecidos: number;
   naoReconhecidos: string[]; resumoStatus: Record<string, number>; remessasVinculadas: RemessaDoRetorno[]; legadoSemResumo: boolean;
 };
+
+type CandidatoTitulo = { id: string; numTit: string; tipo: string; fornecedorNome: string | null; vencimentoProgramado: string | null; situacao: string };
+
+// Liga a um pagamento sem titulo (vinculo perdido no sincronismo) o titulo aberto do mesmo favorecido e valor.
+function AssociarTitulo({ itemId, onFeito }: { itemId: string; onFeito: () => void }) {
+  const [estado, setEstado] = useState<{ candidatos: CandidatoTitulo[]; escolhido: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  async function buscar() {
+    setOcupado(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/pagamentos-itau/itens/${itemId}/vincular-titulo`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Erro ao buscar títulos");
+      setEstado({ candidatos: d.candidatos, escolhido: d.candidatos[0]?.id ?? "" });
+      if (!d.candidatos.length) setMsg("Nenhum título aberto com o mesmo favorecido e valor.");
+    } catch (e: any) { setMsg(e.message); } finally { setOcupado(false); }
+  }
+  async function vincular() {
+    if (!estado?.escolhido) return;
+    setOcupado(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/pagamentos-itau/itens/${itemId}/vincular-titulo`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tituloId: estado.escolhido }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Erro ao vincular");
+      onFeito();
+    } catch (e: any) { setMsg(e.message); setOcupado(false); }
+  }
+  return (
+    <span className="ml-2 inline-flex flex-wrap items-center gap-1">
+      {!estado?.candidatos.length && <button disabled={ocupado} onClick={buscar} className="rounded border border-amber-400 px-2 py-0.5 text-[11px] font-medium text-amber-900 disabled:opacity-50">Associar título</button>}
+      {estado && estado.candidatos.length > 0 && (
+        <>
+          <select value={estado.escolhido} onChange={(e) => setEstado({ ...estado, escolhido: e.target.value })} className="rounded border border-gray-300 px-1 py-0.5 text-[11px]">
+            {estado.candidatos.map((t) => <option key={t.id} value={t.id}>{t.numTit} ({t.tipo}) — {t.fornecedorNome ?? ""} — venc. {t.vencimentoProgramado ? new Date(t.vencimentoProgramado).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "—"} — {t.situacao}</option>)}
+          </select>
+          <button disabled={ocupado} onClick={vincular} className="rounded bg-brand px-2 py-0.5 text-[11px] font-medium text-white disabled:opacity-50">Vincular</button>
+        </>
+      )}
+      {msg && <span className="text-[11px] text-red-700">{msg}</span>}
+    </span>
+  );
+}
 
 type Remessa = {
   id: string;
@@ -2016,8 +2059,8 @@ export default function PagamentosItauPage() {
                   {ret.naoReconhecidos.length > 0 && <p className="break-all rounded bg-amber-50 p-2 text-amber-800">Sem correspondência; não foram enviados à Sênior: {ret.naoReconhecidos.join(", ")}.</p>}
                   {ret.remessasVinculadas.map(r => (
                     <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2">
-                      <span>{r.nomeArquivo ?? r.id}: {r.qtdProntos} a conferir para baixa, {r.qtdConferir} inconclusivo(s), {r.qtdConcluidos} concluído(s) na Sênior.</span>
-                      {(r.qtdProntos > 0 || r.qtdConferir > 0) && <button disabled={painelBaixa?.carregando} onClick={() => abrirBaixa(r)} className="rounded-lg bg-brand px-3 py-1.5 font-medium text-white disabled:opacity-50">Conferir na Sênior</button>}
+                      <span>{r.nomeArquivo ?? r.id}: {r.qtdProntos} a conferir para baixa{(r.qtdSemTitulo ?? 0) > 0 ? `, ${r.qtdSemTitulo} sem título vinculado` : ""}, {r.qtdConferir} inconclusivo(s), {r.qtdConcluidos} concluído(s) na Sênior.</span>
+                      {(r.qtdProntos > 0 || r.qtdConferir > 0 || (r.qtdSemTitulo ?? 0) > 0) && <button disabled={painelBaixa?.carregando} onClick={() => abrirBaixa(r)} className="rounded-lg bg-brand px-3 py-1.5 font-medium text-white disabled:opacity-50">Conferir na Sênior</button>}
                     </div>
                   ))}
                   {(ret.resumoStatus.AGENDADO ?? 0) > 0 && <p className="text-sky-800">Agendamentos aguardam o retorno de liquidação do banco e não autorizam baixa.</p>}
@@ -2094,6 +2137,7 @@ export default function PagamentosItauPage() {
                     {painelBaixa.previa.bloqueados.map((i) => (
                       <li key={i.itemId}>
                         {i.numTit} — {i.fornecedor}: {i.motivo}
+                        {i.numTit === "—" && <AssociarTitulo itemId={i.itemId} onFeito={() => chamarBaixa(false)} />}
                       </li>
                     ))}
                   </ul>
