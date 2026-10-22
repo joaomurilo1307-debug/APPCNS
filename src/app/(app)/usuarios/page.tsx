@@ -378,7 +378,11 @@ export default function UsuariosPage() {
               />
             ))}
           </div>
-          <button className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">Criar</button>
+          <button className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">Criar e definir acesso →</button>
+          {nucleos.length === 0 && (
+            <p className="w-full text-xs text-amber-700">Ainda não há núcleos cadastrados, por isso a lista “Núcleo…” está vazia. Digite o nome em “Ou novo núcleo” ou crie depois em Núcleos; o painel de acesso, logo após criar, também permite criar o núcleo.</p>
+          )}
+          <p className="w-full text-xs text-gray-500">Ao criar, abre o painel onde você escolhe os módulos, as telas (ver ou editar), os projetos, os contratos, os núcleos e o usuário do Senior.</p>
           {error && <p className="w-full text-sm text-red-600">{error}</p>}
         </form>
       )}

@@ -126,6 +126,9 @@ test("perfis prontos: usam so' modulos do catalogo; membro de projetos e coorden
     for (const f of FINANCEIRO_RESTRITO) assert.ok(!por(id).modulos.includes(f), `${id} nao pode ter ${f}`);
   }
   for (const f of FINANCEIRO_RESTRITO) assert.ok(por("financeiro").modulos.includes(f));
+  for (const p of PERFIS_PRONTOS.filter((x) => x.id !== "financeiro")) for (const f of FINANCEIRO_RESTRITO) assert.ok(!p.modulos.includes(f), `${p.id} nao pode ter ${f}`);
+  assert.equal(por("consulta").nivel, "VER");
+  assert.equal(por("consulta").papel, "VISUALIZADOR");
   assert.equal(por("membro_projetos").escopoProjetos, "PROPRIOS");
   assert.equal(por("gerente_nucleo").escopoProjetos, "NUCLEO");
 });

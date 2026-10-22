@@ -14,7 +14,7 @@ type Dados = {
   papeis: string[];
   grupos: { id: string; nome: string; ajuda: string }[];
   modulos: { id: string; label: string; grupo: string; restrito: boolean; descricao: string }[];
-  perfis: { id: string; nome: string; descricao: string; papel: string; modulos: string[]; escopoProjetos: Escopo }[];
+  perfis: { id: string; nome: string; descricao: string; papel: string; modulos: string[]; escopoProjetos: Escopo; nivel?: Nivel }[];
   acessos: { modulo: string; nivel: Nivel }[];
   projetos: { disponiveis: { id: string; name: string; status: string; equipe: string | null }[]; liberados: string[] };
   contratos: { disponiveis: { codccu: string; nome: string }[]; liberados: { codccu: string; area: Area }[]; verTodos: boolean; verTodosPeloPapel: boolean };
@@ -59,6 +59,9 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
   const [verTodos, setVerTodos] = useState(false);
   const [contratos, setContratos] = useState<Record<string, Area>>({});
   const [membroDe, setMembroDe] = useState<string | null>(null);
+  const [nucleosLista, setNucleosLista] = useState<{ id: string; name: string }[]>([]);
+  const [novoNucleo, setNovoNucleo] = useState("");
+  const [erroNucleo, setErroNucleo] = useState("");
   const [gerente, setGerente] = useState<Set<string>>(new Set());
   const [coordenador, setCoordenador] = useState<Set<string>>(new Set());
   const [senior, setSenior] = useState<{ codigo: string; nome: string; tambemUsam: string[] }[]>([]);
@@ -83,6 +86,7 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
       setVerTodos(d.contratos.verTodos);
       setContratos(Object.fromEntries(d.contratos.liberados.map((c) => [c.codccu, c.area])));
       setMembroDe(d.nucleos.membroDe);
+      setNucleosLista(d.nucleos.todos);
       setGerente(new Set(d.nucleos.gerente));
       setCoordenador(new Set(d.nucleos.coordenador));
       setSenior(d.senior.vinculos);
@@ -108,8 +112,37 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
     if (!p) return;
     setPerfilAplicado(id);
     if (dados && dados.usuario.role !== "ADMIN") setPapel(p.papel);
-    setNiveis(Object.fromEntries(p.modulos.map((m) => [m, "EDITAR" as Nivel])));
+    setNiveis(Object.fromEntries(p.modulos.map((m) => [m, (p.nivel ?? "EDITAR") as Nivel])));
     setEscopo(p.escopoProjetos);
+  }
+  // Modulos que aparecem na tela inicial: nem todo mundo ve todos. Ligar traz as telas comuns do modulo; o financeiro restrito nunca vem junto.
+  const MODULOS_TOPO = [
+    { id: "gestao", nome: "Projetos e Gestão", ajuda: "Projetos, tarefas, sprint, Gantt, calendário, metas, PDI e relatórios.", grupos: ["gestao"] },
+    { id: "financeiro", nome: "Financeiro e Contratos", ajuda: "Contratos, custos, medição, previsão, Aprovações de OC e, só para o time financeiro, os pagamentos.", grupos: ["financeiro", "contratos"] },
+  ];
+  const idsDoModulo = (grupos: string[]) => modulosEditaveis.filter((m) => grupos.includes(m.grupo));
+  const moduloLigado = (grupos: string[]) => idsDoModulo(grupos).some((m) => niveis[m.id]);
+  function alternarModulo(grupos: string[], ligar: boolean) {
+    setPerfilAplicado(null);
+    setNiveis((x) => {
+      const n = { ...x };
+      for (const m of idsDoModulo(grupos)) {
+        if (!ligar) n[m.id] = null;
+        else if (!m.restrito && !n[m.id]) n[m.id] = papel === "VISUALIZADOR" ? "VER" : "EDITAR";
+      }
+      return n;
+    });
+  }
+  async function criarNucleo() {
+    const nome = novoNucleo.trim();
+    if (nome.length < 2) return setErroNucleo("Digite o nome do núcleo (mínimo 2 letras).");
+    setErroNucleo("");
+    const r = await fetch("/api/nucleos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome }) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j?.id) return setErroNucleo(typeof j?.error === "string" ? j.error : "Não foi possível criar o núcleo.");
+    setNucleosLista((l) => (l.some((n) => n.id === j.id) ? l : [...l, { id: j.id, name: j.name }].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))));
+    setMembroDe(j.id);
+    setNovoNucleo("");
   }
   const mudarNivel = (id: string, n: Nivel | null) => { setPerfilAplicado(null); setNiveis((x) => ({ ...x, [id]: n })); };
   const alternar = (conj: Set<string>, id: string) => { const n = new Set(conj); if (n.has(id)) n.delete(id); else n.add(id); return n; };
@@ -186,9 +219,29 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
               </div>
             </Secao>
 
-            <Secao titulo="Telas" ajuda="Para cada tela: sem acesso, só ver (consulta) ou editar (consulta e altera). O financeiro restrito só entra por aqui, nunca pelo papel.">
+            <Secao titulo="Módulos" ajuda="Nem todo mundo vê todos os módulos. Ligue só o que a pessoa vai usar; é isso que aparece como cartão na tela inicial dela.">
+              <div className={`grid gap-3 sm:grid-cols-2 ${ehAdmin ? "pointer-events-none opacity-50" : ""}`}>
+                {MODULOS_TOPO.map((m) => {
+                  const ligado = moduloLigado(m.grupos);
+                  const total = idsDoModulo(m.grupos).length;
+                  const ativas = idsDoModulo(m.grupos).filter((x) => niveis[x.id]).length;
+                  return (
+                    <label key={m.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${ligado ? "border-brand bg-brand/5" : "border-gray-200 bg-white"}`}>
+                      <input type="checkbox" className="mt-1 h-5 w-5" checked={ligado} onChange={(e) => alternarModulo(m.grupos, e.target.checked)} aria-label={`Módulo ${m.nome}`} />
+                      <span>
+                        <span className="block text-sm font-semibold text-gray-800">{m.nome} <span className="font-normal text-gray-500">· {ligado ? `${ativas} de ${total} telas` : "desligado"}</span></span>
+                        <span className="block text-xs text-gray-500">{m.ajuda}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </Secao>
+
+            <Secao titulo="Telas" ajuda="Dentro de cada módulo ligado: sem acesso, só ver (consulta) ou editar (consulta e altera). O financeiro restrito só entra por aqui, nunca pelo papel.">
               <div className={`grid gap-4 ${ehAdmin ? "pointer-events-none opacity-50" : ""}`}>
-                {dados.grupos.filter((g) => g.id !== "admin").map((g) => (
+                {MODULOS_TOPO.every((m) => !moduloLigado(m.grupos)) && !ehAdmin && <p className="text-sm text-gray-500">Nenhum módulo ligado. Ligue um módulo acima ou aplique um perfil pronto.</p>}
+                {dados.grupos.filter((g) => g.id !== "admin" && MODULOS_TOPO.some((m) => m.grupos.includes(g.id) && moduloLigado(m.grupos))).map((g) => (
                   <div key={g.id}>
                     <p className={`text-xs font-semibold uppercase tracking-wide ${g.id === "financeiro" ? "text-amber-700" : "text-gray-500"}`}>{g.nome}</p>
                     <p className="mb-1 text-xs text-gray-400">{g.ajuda}</p>
@@ -279,17 +332,22 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
                 <label className={rot}>Pertence ao núcleo</label>
                 <select className={campo} value={membroDe ?? ""} onChange={(e) => setMembroDe(e.target.value || null)}>
                   <option value="">Nenhum</option>
-                  {dados.nucleos.todos.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+                  {nucleosLista.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
                 </select>
+                <div className="mt-2 flex items-center gap-2">
+                  <input className={campo} placeholder={nucleosLista.length === 0 ? "Nenhum núcleo cadastrado: digite o nome para criar" : "Criar um núcleo novo…"} value={novoNucleo} onChange={(e) => setNovoNucleo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); criarNucleo(); } }} />
+                  <button type="button" onClick={criarNucleo} className="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50">Criar núcleo</button>
+                </div>
+                {erroNucleo && <p className="mt-1 text-xs text-red-600">{erroNucleo}</p>}
                 <ul className="mt-3 divide-y divide-gray-100 rounded-md border border-gray-200 bg-white">
-                  {dados.nucleos.todos.map((n) => (
+                  {nucleosLista.map((n) => (
                     <li key={n.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
                       <span className="flex-1 font-medium text-gray-800">{n.name}</span>
                       <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={coordenador.has(n.id)} onChange={() => setCoordenador(alternar(coordenador, n.id))} /> Coordenador</label>
                       <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={gerente.has(n.id)} onChange={() => setGerente(alternar(gerente, n.id))} /> Gerente</label>
                     </li>
                   ))}
-                  {dados.nucleos.todos.length === 0 && <li className="px-3 py-2 text-xs text-gray-400">Nenhum núcleo cadastrado. Crie em Núcleos.</li>}
+                  {nucleosLista.length === 0 && <li className="px-3 py-2 text-xs text-gray-400">Quando houver núcleos, marque aqui quem coordena e quem gerencia cada um.</li>}
                 </ul>
               </Secao>
 
