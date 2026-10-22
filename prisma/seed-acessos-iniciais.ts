@@ -8,10 +8,10 @@
 import { PrismaClient } from "@prisma/client";
 import fs from "fs";
 import path from "path";
-import { acharUsuario } from "./achar-usuario";
+import { acharUsuario, escolherPorPalavra } from "./achar-usuario";
 
 const prisma = new PrismaClient();
-type Pessoa = { chapa: string; nome: string; perfil: string; escopoProjetos?: string; verTodosContratos?: boolean; bloquearOutros?: boolean; marca?: string };
+type Pessoa = { chapa: string; nome: string; perfil: string; escopoProjetos?: string; verTodosContratos?: boolean; bloquearOutros?: boolean; marca?: string; palavraNoNome?: string; bloquear?: string[] };
 const dados = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "acessos_iniciais.json"), "utf-8")) as {
   perfis: Record<string, string[]>;
   todosOsModulos: string[];
@@ -27,13 +27,13 @@ async function main() {
   for (const p of dados.pessoas) {
     const marca = `seed.acessos-iniciais.${p.chapa}${p.marca ? "." + p.marca : ""}`; // "marca" distingue uma segunda aplicacao na mesma pessoa
     if (await prisma.auditLog.findFirst({ where: { action: marca }, select: { id: true } })) continue;
-    const achado = await acharUsuario(prisma, p.chapa, p.nome, usuarios);
+    const achado = p.palavraNoNome ? escolherPorPalavra(usuarios, p.palavraNoNome) : await acharUsuario(prisma, p.chapa, p.nome, usuarios);
     if (!achado) {
       naoAchados.push(`${p.chapa} ${p.nome} (${p.perfil})`);
       continue;
     }
     const liberar = dados.perfis[p.perfil] ?? [];
-    const bloquear = p.bloquearOutros ? dados.todosOsModulos.filter((m) => !liberar.includes(m)) : [];
+    const bloquear = [...new Set([...(p.bloquearOutros ? dados.todosOsModulos.filter((m) => !liberar.includes(m)) : []), ...(p.bloquear ?? [])])];
 
     await prisma.$transaction(async (tx) => {
       for (const modulo of liberar) {

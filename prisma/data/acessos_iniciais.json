@@ -74,19 +74,6 @@
       "aprovacoes_oc",
       "contratos"
     ],
-    "pagamento_projetos": [
-      "painel",
-      "projetos",
-      "tarefas",
-      "sprint",
-      "calendario",
-      "chat",
-      "metas",
-      "pdi",
-      "programacao_pagamento",
-      "pagamentos_itau",
-      "conferencia_oc"
-    ],
     "completo": [
       "painel",
       "projetos",
@@ -114,6 +101,28 @@
       "medicao",
       "previsao",
       "p0"
+    ],
+    "coordenacao_financeira": [
+      "painel",
+      "projetos",
+      "tarefas",
+      "sprint",
+      "gantt",
+      "calendario",
+      "chat",
+      "metas",
+      "relatorios",
+      "pdi",
+      "aprovacoes_projetos",
+      "equipes",
+      "nucleos",
+      "programacao_pagamento",
+      "pagamentos_itau",
+      "conferencia_oc",
+      "despesas_recorrentes",
+      "alertas_financeiro",
+      "notas_fiscais",
+      "aprovacoes_oc_todas"
     ]
   },
   "todosOsModulos": [
@@ -232,12 +241,6 @@
       "escopoProjetos": "NUCLEO"
     },
     {
-      "chapa": "2234",
-      "nome": "MONICA ADRIANA DE OLIVEIRA B CARNEIRO",
-      "perfil": "pagamento_projetos",
-      "bloquearOutros": true
-    },
-    {
       "chapa": "2074",
       "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA",
       "perfil": "completo",
@@ -306,6 +309,19 @@
       "perfil": "visao_total",
       "marca": "visao",
       "escopoProjetos": "NUCLEO"
+    },
+    {
+      "chapa": "JULIMAR",
+      "nome": "JULIMAR (cadastro usado pela Monica, coordenadora financeira)",
+      "palavraNoNome": "JULIMAR",
+      "perfil": "coordenacao_financeira",
+      "bloquear": [
+        "contratos",
+        "custos",
+        "medicao",
+        "previsao",
+        "p0"
+      ]
     }
   ]
 }
