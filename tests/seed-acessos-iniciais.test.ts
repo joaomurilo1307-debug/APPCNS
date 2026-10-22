@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { MODULOS, PERFIS_PRONTOS } from "../src/lib/acesso/catalogo";
-import { chaveNome, escolherUsuario } from "../prisma/achar-usuario";
+import { chaveNome, escolherPorPalavra, escolherUsuario } from "../prisma/achar-usuario";
 
 const dados = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "acessos_iniciais.json"), "utf-8"));
 const idsDoCatalogo = MODULOS.filter((m) => m.grupo !== "admin").map((m) => m.id as string);
@@ -20,14 +20,16 @@ test("seed de acessos: perfis do seed iguais aos perfis prontos do painel", () =
   assert.deepEqual([...dados.perfis.financeiro].sort(), [...restritos].sort(), "financeiro = todo o grupo financeiro restrito");
 });
 
-test("seed de acessos: perfis de nucleo iguais ao painel; Monica = Projetos + as 3 telas de pagamento/conferencia, nada mais", () => {
+test("seed de acessos: perfis de nucleo iguais ao painel; coordenacao financeira = gestao + todo o financeiro, sem contratos", () => {
   const catalogo = (id: string) => PERFIS_PRONTOS.find((p) => p.id === id)!.modulos as string[];
   assert.deepEqual([...dados.perfis.gerente_nucleo].sort(), [...catalogo("gerente_nucleo")].sort());
   assert.deepEqual([...dados.perfis.coordenador_nucleo].sort(), [...catalogo("coordenador_nucleo")].sort());
-  assert.deepEqual([...dados.perfis.pagamento_projetos].sort(), [...catalogo("membro_projetos"), "programacao_pagamento", "pagamentos_itau", "conferencia_oc"].sort());
-  const monica = dados.pessoas.find((p: any) => p.chapa === "2234");
-  assert.equal(monica.perfil, "pagamento_projetos");
-  assert.equal(monica.bloquearOutros, true);
+  const cf = dados.perfis.coordenacao_financeira as string[];
+  for (const m of dados.perfis.financeiro) assert.ok(cf.includes(m), `coordenacao financeira precisa de ${m}`);
+  const julimar = dados.pessoas.find((p: any) => p.palavraNoNome === "JULIMAR");
+  assert.equal(julimar.perfil, "coordenacao_financeira");
+  assert.deepEqual([...julimar.bloquear].sort(), ["contratos", "custos", "medicao", "previsao", "p0"].sort());
+  for (const m of julimar.bloquear) assert.ok(!cf.includes(m), `${m} nao pode estar liberado`);
   for (const perfil of ["gerente_nucleo", "coordenador_nucleo"]) for (const m of ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "aprovacoes_oc_todas"]) assert.ok(!dados.perfis[perfil].includes(m), `${perfil} nao pode ter ${m}`);
 });
 
@@ -65,18 +67,24 @@ test("achar usuario: nome completo unico, nome curto cadastrado, e duvida devolv
   assert.equal(chaveNome("João  Murilo"), "JOAO MURILO");
 });
 
-test("seed de acessos: acesso completo so' para as 6 pessoas indicadas; pagamento so' em financeiro, completo e na Monica", () => {
+test("seed de acessos: acesso completo so' para as 6 pessoas indicadas; pagamento so' em financeiro, completo e coordenacao financeira", () => {
   assert.deepEqual([...dados.perfis.completo].sort(), [...dados.todosOsModulos].sort());
   const completos = dados.pessoas.filter((p: any) => p.perfil === "completo").map((p: any) => p.chapa).sort();
   assert.deepEqual(completos, ["1", "2", "2074", "2155", "2174", "46"].sort());
   const pag = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc"];
   for (const [perfil, mods] of Object.entries(dados.perfis) as [string, string[]][]) {
     const temPagamento = pag.some((m) => mods.includes(m));
-    assert.equal(temPagamento, ["financeiro", "completo", "pagamento_projetos"].includes(perfil), `perfil ${perfil}`);
+    assert.equal(temPagamento, ["financeiro", "completo", "coordenacao_financeira"].includes(perfil), `perfil ${perfil}`);
   }
   // Bruno e Samara: visao_total sem "ver todos os contratos" (o Joao escolhe os contratos no painel)
   for (const chapa of ["23", "25"]) {
     const e = dados.pessoas.find((p: any) => p.chapa === chapa && p.perfil === "visao_total");
     assert.ok(e && e.verTodosContratos === undefined && e.escopoProjetos === "NUCLEO", `chapa ${chapa}`);
   }
+});
+
+test("achar por palavra: so' quando ha um unico cadastro com a palavra (caso Julimar/Monica)", () => {
+  assert.deepEqual(escolherPorPalavra([{ id: "1", name: "Julimar Santos" }, { id: "2", name: "Renata Marinho" }], "JULIMAR"), { id: "1", via: "palavra" });
+  assert.equal(escolherPorPalavra([{ id: "1", name: "Julimar Santos" }, { id: "2", name: "Julimar Alves" }], "JULIMAR"), null);
+  assert.equal(escolherPorPalavra([{ id: "2", name: "Renata Marinho" }], "JULIMAR"), null);
 });

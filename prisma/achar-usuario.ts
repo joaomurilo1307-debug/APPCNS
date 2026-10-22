@@ -35,3 +35,10 @@ export async function acharUsuario(prisma: PrismaClient, chapa: string, nomeComp
   const usuarios = todos ?? (await prisma.user.findMany({ select: { id: true, name: true } }));
   return escolherUsuario(usuarios, nomeCompleto);
 }
+
+/** PURA: usuario cujo nome tem esta palavra (ex.: "JULIMAR"); so' se houver exatamente um. Para cadastros usados por outra pessoa, que nao constam da planilha. */
+export function escolherPorPalavra(usuarios: Candidato[], palavra: string): { id: string; via: "palavra" } | null {
+  const alvo = chaveNome(palavra);
+  const achados = usuarios.filter((u) => chaveNome(u.name).split(" ").includes(alvo));
+  return achados.length === 1 ? { id: achados[0].id, via: "palavra" } : null;
+}
