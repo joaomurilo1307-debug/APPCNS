@@ -16,7 +16,8 @@ export function statusDoItem(item: ItemRetorno): "PAGO" | "AGENDADO" | "CANCELAD
     if (!item.dataEfetiva || !item.valorEfetivo || item.valorEfetivo <= 0) throw new Error(`Pagamento ${item.referenciaEmpresa} confirmado sem data/valor efetivo validos.`);
     return "PAGO";
   }
-  if (adversos.some(c => !OCORRENCIAS[c] || ["DV", "EX"].includes(c))) {
+  // DV/EX (TED/DOC devolvido): so' esse pagamento vira REJEITADO e o titulo volta pra AB; nao recusa o arquivo todo.
+  if (adversos.some(c => !OCORRENCIAS[c])) {
     throw new Error(`Ocorrencia exige conferencia manual (${adversos.join(", ")}) no pagamento ${item.referenciaEmpresa}.`);
   }
   if (adversos.some(c => cancelamentos.includes(c))) return "CANCELADO";
