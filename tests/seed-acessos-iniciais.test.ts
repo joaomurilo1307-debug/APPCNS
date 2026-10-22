@@ -31,10 +31,10 @@ test("seed de acessos: perfis de nucleo iguais ao painel; Monica = Projetos + as
   for (const perfil of ["gerente_nucleo", "coordenador_nucleo"]) for (const m of ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "aprovacoes_oc_todas"]) assert.ok(!dados.perfis[perfil].includes(m), `${perfil} nao pode ter ${m}`);
 });
 
-test("seed de acessos: marca por pessoa e perfil (a Claudia recebe duas aplicacoes sem se confundirem)", () => {
+test("seed de acessos: marca por pessoa e perfil (a Claudia recebe tres aplicacoes sem se confundirem)", () => {
   const marcas = dados.pessoas.map((p: any) => `${p.chapa}${p.marca ? "." + p.marca : ""}`);
   assert.equal(new Set(marcas).size, marcas.length);
-  assert.ok(dados.pessoas.filter((p: any) => p.chapa === "46").length === 2);
+  assert.equal(dados.pessoas.filter((p: any) => p.chapa === "46").length, 3, "financeiro, gerente de nucleo e completo");
 });
 
 test("seed de acessos: nenhuma chapa repetida sem marca e todo perfil existe", () => {
@@ -63,4 +63,20 @@ test("achar usuario: nome completo unico, nome curto cadastrado, e duvida devolv
   assert.equal(escolherUsuario([...us, { id: "6", name: "Renata M" }], "RENATA REIS MARINHO")?.id, "1");
   assert.equal(escolherUsuario([{ id: "7", name: "Maria Silva" }, { id: "8", name: "MARIA SILVA" }], "Maria Silva"), null, "nome igual repetido: nao chuta");
   assert.equal(chaveNome("João  Murilo"), "JOAO MURILO");
+});
+
+test("seed de acessos: acesso completo so' para as 6 pessoas indicadas; pagamento so' em financeiro, completo e na Monica", () => {
+  assert.deepEqual([...dados.perfis.completo].sort(), [...dados.todosOsModulos].sort());
+  const completos = dados.pessoas.filter((p: any) => p.perfil === "completo").map((p: any) => p.chapa).sort();
+  assert.deepEqual(completos, ["1", "2", "2074", "2155", "2174", "46"].sort());
+  const pag = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc"];
+  for (const [perfil, mods] of Object.entries(dados.perfis) as [string, string[]][]) {
+    const temPagamento = pag.some((m) => mods.includes(m));
+    assert.equal(temPagamento, ["financeiro", "completo", "pagamento_projetos"].includes(perfil), `perfil ${perfil}`);
+  }
+  // Bruno e Samara: visao_total sem "ver todos os contratos" (o Joao escolhe os contratos no painel)
+  for (const chapa of ["23", "25"]) {
+    const e = dados.pessoas.find((p: any) => p.chapa === chapa && p.perfil === "visao_total");
+    assert.ok(e && e.verTodosContratos === undefined && e.escopoProjetos === "NUCLEO", `chapa ${chapa}`);
+  }
 });

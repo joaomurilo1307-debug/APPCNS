@@ -4,6 +4,7 @@
 // liberados, contratos (nos projetos e no financeiro), nucleos e vinculo com o usuario do Senior. Grava tudo de uma vez em
 // PUT /api/users/[id]/acesso. Usado na lista de usuarios e logo depois de criar um usuario.
 import { useEffect, useMemo, useState } from "react";
+import { AREAS, AREA_POR_CCU } from "@/lib/areas";
 
 type Nivel = "VER" | "EDITAR";
 type Area = "PROJETOS" | "FINANCEIRO" | "AMBOS";
@@ -152,6 +153,11 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
     const t = buscaProjeto.trim().toLowerCase();
     return (dados?.projetos.disponiveis ?? []).filter((p) => !t || `${p.name} ${p.equipe ?? ""}`.toLowerCase().includes(t)).slice(0, 200);
   }, [dados, buscaProjeto]);
+  // atalhos: marcar de uma vez todos os contratos de uma area (Engenharia, Ambiental, Administrativo), usando a mesma separacao do filtro "Contratos"
+  const porArea = useMemo(() => AREAS.map((a) => ({ ...a, ccus: (dados?.contratos.disponiveis ?? []).filter((x) => AREA_POR_CCU[x.codccu] === a.valor).map((x) => x.codccu) })), [dados]);
+  function marcarArea(ccus: string[], marcar: boolean) {
+    setContratos((x) => { const n = { ...x }; for (const c of ccus) { if (marcar) n[c] = n[c] ?? "AMBOS"; else delete n[c]; } return n; });
+  }
   const contratosFiltrados = useMemo(() => {
     const t = buscaContrato.trim().toLowerCase();
     return (dados?.contratos.disponiveis ?? []).filter((c) => !t || `${c.codccu} ${c.nome}`.toLowerCase().includes(t));
@@ -306,6 +312,18 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
                 </label>
                 <div className={verTodos || dados.contratos.verTodosPeloPapel ? "pointer-events-none opacity-40" : ""}>
                   <label className={`${rot} mt-4`}>Contratos liberados ({Object.keys(contratos).length})</label>
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {porArea.map((a) => {
+                      const todos = a.ccus.length > 0 && a.ccus.every((c) => contratos[c]);
+                      return (
+                        <button key={a.valor} type="button" disabled={a.ccus.length === 0} onClick={() => marcarArea(a.ccus, !todos)}
+                          className={`rounded-full border px-2.5 py-1 text-xs font-medium disabled:opacity-40 ${todos ? "border-brand bg-brand/10 text-brand-dark" : "border-gray-300 hover:bg-gray-50"}`}>
+                          {todos ? "✓ " : "+ "}{a.rotulo} ({a.ccus.length})
+                        </button>
+                      );
+                    })}
+                    <button type="button" onClick={() => setContratos({})} className="rounded-full border border-gray-300 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50">Limpar</button>
+                  </div>
                   <input className={campo} placeholder="Buscar contrato ou CCU…" value={buscaContrato} onChange={(e) => setBuscaContrato(e.target.value)} />
                   <ul className="mt-2 max-h-52 divide-y divide-gray-100 overflow-y-auto rounded-md border border-gray-200 bg-white">
                     {contratosFiltrados.map((c) => {
@@ -313,7 +331,7 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
                       return (
                         <li key={c.codccu} className="flex items-center gap-2 px-2.5 py-1.5 text-sm">
                           <input type="checkbox" checked={!!area} onChange={(e) => setContratos((x) => { const n = { ...x }; if (e.target.checked) n[c.codccu] = "AMBOS"; else delete n[c.codccu]; return n; })} aria-label={`Liberar ${c.nome}`} />
-                          <span className="flex-1 truncate"><span className="font-mono text-xs text-gray-400">{c.codccu}</span> {c.nome}</span>
+                          <span className="flex-1 truncate"><span className="font-mono text-xs text-gray-400">{c.codccu}</span> {c.nome}{AREA_POR_CCU[c.codccu] && <span className="ml-1 text-[10px] uppercase text-gray-400">{AREA_POR_CCU[c.codccu].slice(0, 3)}</span>}</span>
                           {area && (
                             <select value={area} onChange={(e) => setContratos((x) => ({ ...x, [c.codccu]: e.target.value as Area }))} className="rounded border border-gray-300 px-1.5 py-0.5 text-xs" aria-label={`Onde vale ${c.nome}`}>
                               {(Object.keys(AREA_ROTULO) as Area[]).map((a) => <option key={a} value={a}>{AREA_ROTULO[a]}</option>)}
