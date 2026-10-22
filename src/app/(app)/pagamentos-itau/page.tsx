@@ -1223,8 +1223,7 @@ export default function PagamentosItauPage() {
           (geradas.length > 1 ? " São 2 arquivos porque o Itaú exige o PIX separado dos demais pagamentos." : "") +
           (ignorados.length > 0
             ? ` ${ignorados.length} item(ns) com problema ficaram no carrinho — corrija o que a conferência aponta e gere de novo.`
-            : "") +
-          textoSituacaoSenior(data.situacaoSenior, "PE")
+            : "")
       );
       carregarTudo();
     } catch (e: any) {
