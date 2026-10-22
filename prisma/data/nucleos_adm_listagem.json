@@ -1,0 +1,17 @@
+[
+  { "name": "ADM", "description": "Gerência administrativa e coordenação de contratos" },
+  { "name": "ADM COMERCIAL" },
+  { "name": "ADM DEPARTAMENTO PESSOAL" },
+  { "name": "ADM DESENVOLVIMENTO E INOVACAO" },
+  { "name": "ADM ENGENHARIA" },
+  { "name": "ADM FINANCEIRO" },
+  { "name": "ADM GENTE E GESTAO" },
+  { "name": "ADM HSE" },
+  { "name": "ADM LOGISTICA" },
+  { "name": "ADM MARKETING" },
+  { "name": "ADM MEDIÇÃO" },
+  { "name": "ADM MEIO AMBIENTE E SUSTENTABILIDADE" },
+  { "name": "ADM QUALIDADE" },
+  { "name": "ADM SUPRIMENTOS" },
+  { "name": "ADMINISTRATIVO DIRETORIA" }
+]
