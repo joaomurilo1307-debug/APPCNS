@@ -160,6 +160,14 @@ test("Erro do Segmento B participa da decisao de status do PIX", () => {
   r = mudarCampo(r, 2, 231, 240, "BD"); r = mudarCampo(r, 3, 231, 240, "BI");
   assert.equal(statusDoItem(lerArquivoRetorno(r).itens[0]), "REJEITADO");
 });
+test("TED devolvido (DV/EX) rejeita so o pagamento e libera o titulo, sem recusar o arquivo", () => {
+  for (const codigo of ["DV", "EX"]) {
+    const r = mudarCampo(retornoDe(itemTeste("45")), 2, 231, 240, codigo);
+    assert.equal(statusDoItem(lerArquivoRetorno(r).itens[0]), "REJEITADO");
+  }
+  const confirmadoEDevolvido = mudarCampo(mudarCampo(retornoDe(itemTeste("45")), 2, 231, 240, "00"), 3, 231, 240, "DV");
+  assert.throws(() => statusDoItem(lerArquivoRetorno(confirmadoEDevolvido).itens[0]), /juntos/);
+});
 test("Reserva bloqueia o mesmo titulo em remessas historicas diferentes", async () => {
   const a = await pagamento({ status: "PAGO" }); const b = await pagamento({ status: "PAGO" });
   await db.remessaItemPagamento.update({ where: { id: b.item.id }, data: { tituloId: a.titulo.id } });
