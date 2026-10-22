@@ -2,25 +2,23 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { escopoAprovacoesOC, idsDeOcsEnvolvidas } from "@/lib/acesso/aprovacoesOc";
 
 // Lista as Ordens de Compra do Senior (pendentes + resolvidas recentes) pro
-// Relatorio de Aprovacoes. Visivel pra ADMIN/DIRETOR/GESTOR_PROJETO/APROVADOR
-// ou quem tem nivelHierarquico de coordenacao pra cima -- mesma regra usada
-// pra decidir quem recebe a notificacao de aprovacao pendente.
+// Relatorio de Aprovacoes. Desde 22/10/2026 (pedido do Joao): quem tem o modulo "Aprovacoes de OC: ver todas" (time financeiro) ve
+// todas; as demais pessoas veem so' as OCs em que estao envolvidas (emitiu, falta aprovar, ja assinou ou esta na alcada) --
+// src/lib/acesso/envolvimentoOc.ts. Sem acesso ao modulo: 403.
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const user = session.user as any;
-  let podeVer = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"].includes(user.role);
-  if (!podeVer) {
-    const perfil = await prisma.user.findUnique({ where: { id: user.id }, select: { nivelHierarquico: true } });
-    podeVer = !!perfil?.nivelHierarquico && ["DIRETORIA", "GERENCIA", "COORDENACAO"].includes(perfil.nivelHierarquico);
-  }
-
-  if (!podeVer) {
+  const escopo = await escopoAprovacoesOC(user);
+  if (!escopo) {
     return NextResponse.json({ error: "Sem permissão para ver aprovações do Senior" }, { status: 403 });
   }
+  const meusIds = escopo.todas ? null : Array.from(await idsDeOcsEnvolvidas(user.id, escopo.codigos));
+  const soMinhas = meusIds ? { id: { in: meusIds } } : {};
 
   // Pedido do João 14/09/2026: "todas", buscável igual no Senior -- não
   // mais um recorte de 50/500. Traz TODA OC resolvida (situacaoAtual, não
@@ -58,7 +56,7 @@ export async function GET() {
 
   const [pendentes, resolvidas, usuariosSenior, ultimaSinc] = await Promise.all([
     prisma.aprovacaoSenior.findMany({
-      where: { situacaoAtual: { in: ["ANA", "PRE"] } },
+      where: { situacaoAtual: { in: ["ANA", "PRE"] }, ...soMinhas },
       orderBy: { dataEmissao: "desc" },
       include: {
         eventos: { orderBy: { detectadoEm: "asc" } },
@@ -66,7 +64,7 @@ export async function GET() {
       },
     }),
     prisma.aprovacaoSenior.findMany({
-      where: { situacaoAtual: { in: ["APR", "REP", "CAN"] } },
+      where: { situacaoAtual: { in: ["APR", "REP", "CAN"] }, ...soMinhas },
       // Bug real corrigido 14/09/2026: ordenar por resolvidoEm primeiro
       // empurrava as ~8.700 OCs históricas (sem resolvidoEm, só o backfill
       // sabe que já foram resolvidas) pro final da lista -- como o front só
@@ -98,5 +96,8 @@ export async function GET() {
     resolvidasRecentes: resolvidas,
     codToNome,
     sincronizadoEm: ultimaSinc?.ultimaSincEm ?? null,
+    // Para a tela explicar por que a lista esta curta/vazia
+    escopo: escopo.todas ? "TODAS" : "ENVOLVIDO",
+    semVinculoSenior: !escopo.todas && escopo.codigos.length === 0,
   });
 }

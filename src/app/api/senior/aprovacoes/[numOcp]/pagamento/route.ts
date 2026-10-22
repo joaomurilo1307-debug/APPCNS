@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { pagamentoDaOc } from "@/lib/senior/pagamentoDaOc";
 
@@ -12,13 +13,9 @@ export async function GET(_req: Request, { params }: { params: { numOcp: string 
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const user = session.user as any;
-  let podeVer = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"].includes(user.role);
-  if (!podeVer) {
-    const perfil = await prisma.user.findUnique({ where: { id: user.id }, select: { nivelHierarquico: true } });
-    podeVer = !!perfil?.nivelHierarquico && ["DIRETORIA", "GERENCIA", "COORDENACAO"].includes(perfil.nivelHierarquico);
-  }
-  if (!podeVer) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  // Forma de pagamento da OC e' dado de pagamento: so' o time financeiro (decisao do Joao, 22/10/2026).
+  const negado = await negarSemModulo(session.user as any, "programacao_pagamento", "pagamentos_itau", "conferencia_oc");
+  if (negado) return negado;
 
   const oc = await prisma.aprovacaoSenior.findUnique({ where: { numOcp: params.numOcp }, select: { codFil: true } });
   if (!oc) return NextResponse.json({ error: "OC não encontrada na base sincronizada" }, { status: 404 });

@@ -6,7 +6,7 @@
 import { useCallback, useState } from "react";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 
-type Estado = { aprovacao: Aprovacao; codToNome: Record<string, string>; titulosVinculados?: TituloVinculado[] } | "carregando" | null;
+type Estado = { aprovacao: Aprovacao; codToNome: Record<string, string>; titulosVinculados?: TituloVinculado[]; semDadosDePagamento?: boolean } | "carregando" | null;
 
 export function useAbrirOC() {
   const [oc, setOc] = useState<Estado>(null);
@@ -21,7 +21,7 @@ export function useAbrirOC() {
       if (res.status === 404) throw new Error("Esta OC ainda não está na base sincronizada do Senior.");
       if (!res.ok) throw new Error("Não foi possível carregar a OC.");
       const data = await res.json();
-      setOc({ aprovacao: data.aprovacao ?? data, codToNome: data.codToNome ?? {}, titulosVinculados: data.titulosVinculados });
+      setOc({ aprovacao: data.aprovacao ?? data, codToNome: data.codToNome ?? {}, titulosVinculados: data.titulosVinculados, semDadosDePagamento: !!data.semDadosDePagamento });
     } catch (e: any) {
       setOc(null);
       setAviso(e?.message || "Não foi possível carregar a OC.");
@@ -36,7 +36,7 @@ export function useAbrirOC() {
         </div>
       )}
       {oc && oc !== "carregando" && (
-        <MapaOC aprovacao={oc.aprovacao} codToNome={oc.codToNome} titulosVinculados={oc.titulosVinculados} onClose={() => setOc(null)} onAtualizado={() => abrirOC(oc.aprovacao.numOcp)} />
+        <MapaOC aprovacao={oc.aprovacao} codToNome={oc.codToNome} titulosVinculados={oc.titulosVinculados} semDadosDePagamento={oc.semDadosDePagamento} onClose={() => setOc(null)} onAtualizado={() => abrirOC(oc.aprovacao.numOcp)} />
       )}
       {aviso && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setAviso(null)}>
