@@ -11,7 +11,7 @@ import path from "path";
 import { acharUsuario } from "./achar-usuario";
 
 const prisma = new PrismaClient();
-type Pessoa = { chapa: string; nome: string; perfil: string; escopoProjetos?: string; verTodosContratos?: boolean; bloquearOutros?: boolean };
+type Pessoa = { chapa: string; nome: string; perfil: string; escopoProjetos?: string; verTodosContratos?: boolean; bloquearOutros?: boolean; marca?: string };
 const dados = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "acessos_iniciais.json"), "utf-8")) as {
   perfis: Record<string, string[]>;
   todosOsModulos: string[];
@@ -25,7 +25,7 @@ async function main() {
   const naoAchados: string[] = [];
 
   for (const p of dados.pessoas) {
-    const marca = `seed.acessos-iniciais.${p.chapa}`;
+    const marca = `seed.acessos-iniciais.${p.chapa}${p.marca ? "." + p.marca : ""}`; // "marca" distingue uma segunda aplicacao na mesma pessoa
     if (await prisma.auditLog.findFirst({ where: { action: marca }, select: { id: true } })) continue;
     const achado = await acharUsuario(prisma, p.chapa, p.nome, usuarios);
     if (!achado) {
