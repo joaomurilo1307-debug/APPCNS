@@ -42,7 +42,8 @@ export async function escopoDeCustos(db: typeof prismaReal, usuario: { id: strin
   if (!eu) return montarEscopo(false, []);
   if (eu.verTodosCustos) return montarEscopo(true, []);
   const ccus = new Set<string>();
-  for (const a of eu.acessosCentroCusto) if (a.area === "AMBOS" || a.area === area) ccus.add(a.codccu);
+  // area ausente (registro antigo ou de teste) = AMBOS, o padrao do banco
+  for (const a of eu.acessosCentroCusto) if (!a.area || a.area === "AMBOS" || a.area === area) ccus.add(a.codccu);
   for (const t of eu.teams) if (t.team.codccu) ccus.add(t.team.codccu);
   return montarEscopo(false, ccus);
 }
