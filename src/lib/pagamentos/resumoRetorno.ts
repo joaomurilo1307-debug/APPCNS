@@ -20,6 +20,7 @@ export async function remessasDoRetorno(db: Pick<Prisma.TransactionClient, "reme
   return remessas.map(r => ({
     id: r.id, nomeArquivo: r.nomeArquivo, contaNumCcoSenior: r.contaBancaria.numCcoSenior,
     qtdProntos: r.itens.filter(i => i.status === "PAGO" && i.tituloId && i.dataEfetivacao && i.valorEfetivado && !["ENVIADA", "JA_BAIXADO", "EM_PROCESSAMENTO", "INDETERMINADO"].includes(i.baixaSeniorStatus ?? "")).length,
+    qtdSemTitulo: r.itens.filter(i => i.status === "PAGO" && !i.tituloId && !["ENVIADA", "JA_BAIXADO"].includes(i.baixaSeniorStatus ?? "")).length,
     qtdConferir: r.itens.filter(i => ["EM_PROCESSAMENTO", "INDETERMINADO"].includes(i.baixaSeniorStatus ?? "")).length,
     qtdConcluidos: r.itens.filter(i => ["ENVIADA", "JA_BAIXADO"].includes(i.baixaSeniorStatus ?? "")).length,
   }));
