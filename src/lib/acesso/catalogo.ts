@@ -169,6 +169,8 @@ export type PerfilPronto = {
   escopoProjetos: "PROPRIOS" | "NUCLEO" | "TODOS";
   /** nivel que o perfil da em todas as telas (padrao EDITAR) */
   nivel?: NivelAcesso;
+  /** true = o perfil ja marca "ve todos os contratos" */
+  verTodosContratos?: boolean;
 };
 
 const GESTAO_IDS: ModuloId[] = ["painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "chat", "metas", "relatorios", "pdi", "aprovacoes_projetos"];
@@ -181,6 +183,7 @@ export const PERFIS_PRONTOS: ReadonlyArray<PerfilPronto> = [
   { id: "coordenador_nucleo", nome: "Coordenador de núcleo", descricao: "Gere projetos, tarefas e demandas do núcleo; sem financeiro", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "equipes", "nucleos", "aprovacoes_oc", "contratos"], escopoProjetos: "NUCLEO" },
   { id: "membro_projetos", nome: "Membro de projetos", descricao: "Só acompanha projetos e tarefas; sem financeiro nem contratos", papel: "COLABORADOR", modulos: ["painel", "projetos", "tarefas", "sprint", "calendario", "chat", "metas", "pdi"], escopoProjetos: "PROPRIOS" },
   { id: "gestor_contratos", nome: "Gestor de contratos", descricao: "Projetos e gestão, mais contratos, custos, medição e previsão; sem financeiro de pagamento", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "aprovacoes_oc", "contratos", "custos", "medicao", "previsao", "p0"], escopoProjetos: "PROPRIOS" },
+  { id: "visao_total", nome: "Visão total (sem pagamentos)", descricao: "Vê todos os projetos, núcleos e contratos; fora só o financeiro de pagamento (SISPAG, programação, conferência de OC...)", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "equipes", "nucleos", ...CONTRATOS_IDS], escopoProjetos: "TODOS", verTodosContratos: true },
   { id: "consulta", nome: "Somente consulta", descricao: "Vê projetos e contratos, sem alterar nada", papel: "VISUALIZADOR", modulos: ["painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "metas", "relatorios", "contratos", "custos", "medicao", "previsao"], escopoProjetos: "PROPRIOS", nivel: "VER" },
   { id: "aprovador", nome: "Aprovador de OC", descricao: "Vê só as OCs em que está envolvido, mais contratos", papel: "APROVADOR", modulos: ["painel", "chat", "aprovacoes_projetos", "aprovacoes_oc", "contratos"], escopoProjetos: "PROPRIOS" },
 ];

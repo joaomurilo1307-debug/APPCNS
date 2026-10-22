@@ -14,7 +14,7 @@ type Dados = {
   papeis: string[];
   grupos: { id: string; nome: string; ajuda: string }[];
   modulos: { id: string; label: string; grupo: string; restrito: boolean; descricao: string }[];
-  perfis: { id: string; nome: string; descricao: string; papel: string; modulos: string[]; escopoProjetos: Escopo; nivel?: Nivel }[];
+  perfis: { id: string; nome: string; descricao: string; papel: string; modulos: string[]; escopoProjetos: Escopo; nivel?: Nivel; verTodosContratos?: boolean }[];
   acessos: { modulo: string; nivel: Nivel }[];
   projetos: { disponiveis: { id: string; name: string; status: string; equipe: string | null }[]; liberados: string[] };
   contratos: { disponiveis: { codccu: string; nome: string }[]; liberados: { codccu: string; area: Area }[]; verTodos: boolean; verTodosPeloPapel: boolean };
@@ -114,6 +114,7 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
     if (dados && dados.usuario.role !== "ADMIN") setPapel(p.papel);
     setNiveis(Object.fromEntries(p.modulos.map((m) => [m, (p.nivel ?? "EDITAR") as Nivel])));
     setEscopo(p.escopoProjetos);
+    if (p.verTodosContratos !== undefined) setVerTodos(p.verTodosContratos);
   }
   // Modulos que aparecem na tela inicial: nem todo mundo ve todos. Ligar traz as telas comuns do modulo; o financeiro restrito nunca vem junto.
   const MODULOS_TOPO = [
