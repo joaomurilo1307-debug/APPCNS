@@ -1,23 +1,213 @@
 {
   "perfis": {
-    "financeiro": ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas"],
-    "visao_total": ["painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "chat", "metas", "relatorios", "pdi", "aprovacoes_projetos", "equipes", "nucleos", "aprovacoes_oc", "contratos", "custos", "medicao", "previsao", "p0"],
-    "membro_projetos": ["painel", "projetos", "tarefas", "sprint", "calendario", "chat", "metas", "pdi"]
+    "financeiro": [
+      "programacao_pagamento",
+      "pagamentos_itau",
+      "conferencia_oc",
+      "despesas_recorrentes",
+      "alertas_financeiro",
+      "notas_fiscais",
+      "aprovacoes_oc_todas"
+    ],
+    "visao_total": [
+      "painel",
+      "projetos",
+      "tarefas",
+      "sprint",
+      "gantt",
+      "calendario",
+      "chat",
+      "metas",
+      "relatorios",
+      "pdi",
+      "aprovacoes_projetos",
+      "equipes",
+      "nucleos",
+      "aprovacoes_oc",
+      "contratos",
+      "custos",
+      "medicao",
+      "previsao",
+      "p0"
+    ],
+    "membro_projetos": [
+      "painel",
+      "projetos",
+      "tarefas",
+      "sprint",
+      "calendario",
+      "chat",
+      "metas",
+      "pdi"
+    ],
+    "gerente_nucleo": [
+      "painel",
+      "projetos",
+      "tarefas",
+      "sprint",
+      "gantt",
+      "calendario",
+      "chat",
+      "metas",
+      "relatorios",
+      "pdi",
+      "aprovacoes_projetos",
+      "equipes",
+      "nucleos",
+      "aprovacoes_oc",
+      "contratos"
+    ],
+    "coordenador_nucleo": [
+      "painel",
+      "projetos",
+      "tarefas",
+      "sprint",
+      "gantt",
+      "calendario",
+      "chat",
+      "metas",
+      "relatorios",
+      "pdi",
+      "aprovacoes_projetos",
+      "equipes",
+      "nucleos",
+      "aprovacoes_oc",
+      "contratos"
+    ],
+    "pagamento_projetos": [
+      "painel",
+      "projetos",
+      "tarefas",
+      "sprint",
+      "calendario",
+      "chat",
+      "metas",
+      "pdi",
+      "programacao_pagamento",
+      "pagamentos_itau",
+      "conferencia_oc"
+    ]
   },
   "todosOsModulos": [
-    "painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "chat", "equipes", "nucleos", "metas", "relatorios", "pdi", "aprovacoes_projetos",
-    "programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas",
-    "aprovacoes_oc", "contratos", "custos", "medicao", "previsao", "p0"
+    "painel",
+    "projetos",
+    "tarefas",
+    "sprint",
+    "gantt",
+    "calendario",
+    "chat",
+    "equipes",
+    "nucleos",
+    "metas",
+    "relatorios",
+    "pdi",
+    "aprovacoes_projetos",
+    "programacao_pagamento",
+    "pagamentos_itau",
+    "conferencia_oc",
+    "despesas_recorrentes",
+    "alertas_financeiro",
+    "notas_fiscais",
+    "aprovacoes_oc_todas",
+    "aprovacoes_oc",
+    "contratos",
+    "custos",
+    "medicao",
+    "previsao",
+    "p0"
   ],
   "pessoas": [
-    { "chapa": "2074", "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA", "perfil": "financeiro" },
-    { "chapa": "2155", "nome": "RENATA REIS MARINHO", "perfil": "financeiro" },
-    { "chapa": "2174", "nome": "GABRIEL FURST FARIA", "perfil": "financeiro" },
-    { "chapa": "2", "nome": "ANDRE SILVA PERES", "perfil": "financeiro" },
-    { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO", "perfil": "financeiro" },
-    { "chapa": "46", "nome": "CLAUDIA GUIMARAES MOREIRA", "perfil": "financeiro" },
-    { "chapa": "1231", "nome": "DENISE MARIA DE DEUS LOURENCO", "perfil": "visao_total", "escopoProjetos": "TODOS", "verTodosContratos": true },
-    { "chapa": "2209", "nome": "ALAN GONCALVES DE JESUS", "perfil": "membro_projetos", "bloquearOutros": true },
-    { "chapa": "2175", "nome": "VITOR ALVES DAVID JUNIOR", "perfil": "membro_projetos", "bloquearOutros": true }
+    {
+      "chapa": "2074",
+      "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA",
+      "perfil": "financeiro"
+    },
+    {
+      "chapa": "2155",
+      "nome": "RENATA REIS MARINHO",
+      "perfil": "financeiro"
+    },
+    {
+      "chapa": "2174",
+      "nome": "GABRIEL FURST FARIA",
+      "perfil": "financeiro"
+    },
+    {
+      "chapa": "2",
+      "nome": "ANDRE SILVA PERES",
+      "perfil": "financeiro"
+    },
+    {
+      "chapa": "1",
+      "nome": "CAROLINA SILVA PERES DE CARVALHO",
+      "perfil": "financeiro"
+    },
+    {
+      "chapa": "46",
+      "nome": "CLAUDIA GUIMARAES MOREIRA",
+      "perfil": "financeiro"
+    },
+    {
+      "chapa": "1231",
+      "nome": "DENISE MARIA DE DEUS LOURENCO",
+      "perfil": "visao_total",
+      "escopoProjetos": "TODOS",
+      "verTodosContratos": true
+    },
+    {
+      "chapa": "2209",
+      "nome": "ALAN GONCALVES DE JESUS",
+      "perfil": "membro_projetos",
+      "bloquearOutros": true
+    },
+    {
+      "chapa": "2175",
+      "nome": "VITOR ALVES DAVID JUNIOR",
+      "perfil": "membro_projetos",
+      "bloquearOutros": true
+    },
+    {
+      "chapa": "23",
+      "nome": "BRUNO DE LIMA E SOARES TEIXEIRA",
+      "perfil": "gerente_nucleo",
+      "escopoProjetos": "NUCLEO"
+    },
+    {
+      "chapa": "25",
+      "nome": "SAMARA HISSA NEIVA AGUIAR PERES",
+      "perfil": "gerente_nucleo",
+      "escopoProjetos": "NUCLEO"
+    },
+    {
+      "chapa": "46",
+      "nome": "CLAUDIA GUIMARAES MOREIRA",
+      "perfil": "gerente_nucleo",
+      "escopoProjetos": "NUCLEO",
+      "marca": "nucleo"
+    },
+    {
+      "chapa": "16",
+      "nome": "BRENO DE LANA GONÇALVES",
+      "perfil": "coordenador_nucleo",
+      "escopoProjetos": "NUCLEO"
+    },
+    {
+      "chapa": "22",
+      "nome": "ELAINE MARIA RIBEIRO DE CARVALHO",
+      "perfil": "coordenador_nucleo",
+      "escopoProjetos": "NUCLEO"
+    },
+    {
+      "chapa": "17",
+      "nome": "DEBORA OLIVEIRA QUEIROZ",
+      "perfil": "coordenador_nucleo",
+      "escopoProjetos": "NUCLEO"
+    },
+    {
+      "chapa": "2234",
+      "nome": "MONICA ADRIANA DE OLIVEIRA B CARNEIRO",
+      "perfil": "pagamento_projetos",
+      "bloquearOutros": true
+    }
   ]
 }

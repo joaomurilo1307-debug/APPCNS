@@ -20,8 +20,25 @@ test("seed de acessos: perfis do seed iguais aos perfis prontos do painel", () =
   assert.deepEqual([...dados.perfis.financeiro].sort(), [...restritos].sort(), "financeiro = todo o grupo financeiro restrito");
 });
 
-test("seed de acessos: nenhuma chapa repetida e todo perfil existe", () => {
-  const chapas = dados.pessoas.map((p: any) => p.chapa);
+test("seed de acessos: perfis de nucleo iguais ao painel; Monica = Projetos + as 3 telas de pagamento/conferencia, nada mais", () => {
+  const catalogo = (id: string) => PERFIS_PRONTOS.find((p) => p.id === id)!.modulos as string[];
+  assert.deepEqual([...dados.perfis.gerente_nucleo].sort(), [...catalogo("gerente_nucleo")].sort());
+  assert.deepEqual([...dados.perfis.coordenador_nucleo].sort(), [...catalogo("coordenador_nucleo")].sort());
+  assert.deepEqual([...dados.perfis.pagamento_projetos].sort(), [...catalogo("membro_projetos"), "programacao_pagamento", "pagamentos_itau", "conferencia_oc"].sort());
+  const monica = dados.pessoas.find((p: any) => p.chapa === "2234");
+  assert.equal(monica.perfil, "pagamento_projetos");
+  assert.equal(monica.bloquearOutros, true);
+  for (const perfil of ["gerente_nucleo", "coordenador_nucleo"]) for (const m of ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "aprovacoes_oc_todas"]) assert.ok(!dados.perfis[perfil].includes(m), `${perfil} nao pode ter ${m}`);
+});
+
+test("seed de acessos: marca por pessoa e perfil (a Claudia recebe duas aplicacoes sem se confundirem)", () => {
+  const marcas = dados.pessoas.map((p: any) => `${p.chapa}${p.marca ? "." + p.marca : ""}`);
+  assert.equal(new Set(marcas).size, marcas.length);
+  assert.ok(dados.pessoas.filter((p: any) => p.chapa === "46").length === 2);
+});
+
+test("seed de acessos: nenhuma chapa repetida sem marca e todo perfil existe", () => {
+  const chapas = dados.pessoas.map((p: any) => `${p.chapa}${p.marca ?? ""}`);
   assert.equal(new Set(chapas).size, chapas.length);
   for (const p of dados.pessoas) assert.ok(dados.perfis[p.perfil], `perfil ${p.perfil}`);
 });
