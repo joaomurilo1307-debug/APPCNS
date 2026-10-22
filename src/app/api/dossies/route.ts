@@ -1,21 +1,20 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { garantirFormasPagamentoAtualizadas } from "@/lib/senior/formasPagamento";
 
 // Lista os dossiês de OC recebidos da automação do n8n.
 // Mesmo nível de acesso da Programação de Pagamento e das Aprovações OC.
 
-const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  if (!PAPEIS.includes(user.role)) {
-    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-  }
+  const negado = await negarSemModulo(session.user as any, "conferencia_oc", "programacao_pagamento");
+  if (negado) return negado;
 
   // Mantem o codigo/descricao da forma de pagamento atualizados em segundo plano (aparecem dentro da OC).
   garantirFormasPagamentoAtualizadas(true);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { alterarVencimentoTitulo } from "@/lib/senior/alterarVencimento";
 
@@ -13,7 +14,6 @@ import { alterarVencimentoTitulo } from "@/lib/senior/alterarVencimento";
 //   DELETE -> devolve o titulo a programacao normal (fecha o lembrete; o
 //             registro continua no historico)
 
-const ROLES = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
 // novoVencimento (aaaa-mm-dd), opcional: ao deixar pra proxima programacao o vencimento
 // programado tambem e' alterado NA SENIOR (AlteraTitulosCP). Se a Senior recusar, nada e' marcado.
@@ -28,7 +28,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  if (!ROLES.includes(user.role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "programacao_pagamento");
+  if (negado) return negado;
 
   const body = await req.json().catch(() => ({}));
   const parsed = bodySchema.safeParse(body ?? {});
@@ -92,7 +93,8 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  if (!ROLES.includes(user.role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "programacao_pagamento");
+  if (negado) return negado;
 
   await prisma.tituloAdiamento.updateMany({
     where: { tituloId: params.id, resolvidoEm: null },

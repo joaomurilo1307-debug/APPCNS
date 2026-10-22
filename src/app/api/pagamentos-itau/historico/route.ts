@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 
 // Histórico de pagamentos: tudo que já foi gerado em remessa (item a item, com as
@@ -14,7 +15,6 @@ import { prisma } from "@/lib/prisma";
 //
 // Remessa RASCUNHO (arquivo nunca gerado) não conta como "gerada".
 
-const ROLES_LEITURA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 const STATUS_ATIVOS = ["PENDENTE", "AGENDADO", "PAGO"] as const;
 const LIMITE_PADRAO = 300;
 const LIMITE_MAXIMO = 1000;
@@ -23,7 +23,8 @@ export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const role = (session.user as any).role;
-  if (!ROLES_LEITURA.includes(role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "pagamentos_itau");
+  if (negado) return negado;
 
   const pedido = Number(new URL(req.url).searchParams.get("limite") ?? LIMITE_PADRAO);
   const limite = Number.isFinite(pedido) ? Math.min(Math.max(Math.trunc(pedido), 1), LIMITE_MAXIMO) : LIMITE_PADRAO;

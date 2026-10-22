@@ -9,6 +9,7 @@ import ConsominasLogo from "./ConsominasLogo";
 import { playNotificationSound, playRingtone } from "@/lib/notificationSound";
 import MiniChatWidget from "./MiniChatWidget";
 import { useSidebar } from "./SidebarContext";
+import { modulosEfetivos, type ModuloId } from "@/lib/acesso/catalogo";
 import {
   IconHome,
   IconFolders,
@@ -28,37 +29,38 @@ import {
 export type Modulo = "gestao" | "financeiro";
 
 // Cada link pertence a um modulo (escolhido em /inicio); "comum" aparece nos dois.
-const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: any; roles: string[] }[] = [
-  { href: "/dashboard", module: "gestao", label: "Painel", icon: IconHome, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/projetos", module: "gestao", label: "Projetos", icon: IconFolders, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/tarefas", module: "gestao", label: "Tarefas (todas)", icon: IconCheckSquare, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/sprint", module: "gestao", label: "Sprint da Semana", icon: IconZap, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/gantt", module: "gestao", label: "Gantt", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"] },
-  { href: "/calendario", module: "gestao", label: "Calendário", icon: IconCalendar, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/chat", module: "comum", label: "Chat", icon: IconChat, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
+const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: any; modulos: ModuloId[] }[] = [
+  { href: "/dashboard", module: "gestao", label: "Painel", icon: IconHome, modulos: ["painel"] },
+  { href: "/projetos", module: "gestao", label: "Projetos", icon: IconFolders, modulos: ["projetos"] },
+  { href: "/tarefas", module: "gestao", label: "Tarefas (todas)", icon: IconCheckSquare, modulos: ["tarefas"] },
+  { href: "/sprint", module: "gestao", label: "Sprint da Semana", icon: IconZap, modulos: ["sprint"] },
+  { href: "/gantt", module: "gestao", label: "Gantt", icon: IconBarChart, modulos: ["gantt"] },
+  { href: "/calendario", module: "gestao", label: "Calendário", icon: IconCalendar, modulos: ["calendario"] },
+  { href: "/chat", module: "comum", label: "Chat", icon: IconChat, modulos: ["chat"] },
   // Equipes restaurado no menu em 14/09/2026 (pedido do Joao: admin precisa
   // conseguir cadastrar pessoas nos projetos/equipes) -- a pagina e a API
   // ja existiam prontas, so estavam fora do menu desde antes. Nucleos
-  // continua escondido (Joao ainda nao pediu).
-  { href: "/equipes", module: "gestao", label: "Equipes", icon: IconUsers, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] },
-  { href: "/metas", module: "gestao", label: "Metas", icon: IconTarget, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/relatorios", module: "gestao", label: "Relatórios", icon: IconReport, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/pdi", module: "gestao", label: "PDI", icon: IconTrendingUp, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/aprovacoes", module: "gestao", label: "Aprovações", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/aprovacoes/senior", module: "financeiro", label: "Aprovações (OC Senior)", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/programacao-pagamento", module: "financeiro", label: "Programação de Pagamento", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/pagamentos-itau", module: "financeiro", label: "Pagamentos Itaú (SISPAG)", icon: IconBarChart, roles: ["ADMIN", "DIRETOR"] },
-  { href: "/conferencia-oc", module: "financeiro", label: "Conferência de OC", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/despesas-recorrentes", module: "financeiro", label: "Despesas recorrentes", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/alertas-financeiro", module: "financeiro", label: "Alertas do Financeiro", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/notas-fiscais", module: "financeiro", label: "Notas Fiscais recebidas", icon: IconCheckCircle, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"] },
-  { href: "/contratos", module: "financeiro", label: "Contratos", icon: IconFolders, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/custos/plano-de-contas", module: "financeiro", label: "Custo por Centro de Custo", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/medicao", module: "financeiro", label: "Receita e Medição", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/previsao", module: "financeiro", label: "Previsão por Centro de Custo", icon: IconBarChart, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/p0", module: "financeiro", label: "P0 dos Contratos", icon: IconFolders, roles: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] },
-  { href: "/usuarios", module: "comum", label: "Usuários", icon: IconShieldUser, roles: ["ADMIN"] },
-  { href: "/usuarios/senior", module: "comum", label: "Usuários do Senior", icon: IconShieldUser, roles: ["ADMIN"] },
+  // entrou em 22/10/2026 (coordenador e gerente de nucleo).
+  { href: "/equipes", module: "gestao", label: "Equipes", icon: IconUsers, modulos: ["equipes"] },
+  { href: "/nucleos", module: "gestao", label: "Núcleos", icon: IconUsers, modulos: ["nucleos"] },
+  { href: "/metas", module: "gestao", label: "Metas", icon: IconTarget, modulos: ["metas"] },
+  { href: "/relatorios", module: "gestao", label: "Relatórios", icon: IconReport, modulos: ["relatorios"] },
+  { href: "/pdi", module: "gestao", label: "PDI", icon: IconTrendingUp, modulos: ["pdi"] },
+  { href: "/aprovacoes", module: "gestao", label: "Aprovações", icon: IconCheckCircle, modulos: ["aprovacoes_projetos"] },
+  { href: "/aprovacoes/senior", module: "financeiro", label: "Aprovações (OC Senior)", icon: IconCheckCircle, modulos: ["aprovacoes_oc", "aprovacoes_oc_todas"] },
+  { href: "/programacao-pagamento", module: "financeiro", label: "Programação de Pagamento", icon: IconCheckCircle, modulos: ["programacao_pagamento"] },
+  { href: "/pagamentos-itau", module: "financeiro", label: "Pagamentos Itaú (SISPAG)", icon: IconBarChart, modulos: ["pagamentos_itau"] },
+  { href: "/conferencia-oc", module: "financeiro", label: "Conferência de OC", icon: IconCheckCircle, modulos: ["conferencia_oc"] },
+  { href: "/despesas-recorrentes", module: "financeiro", label: "Despesas recorrentes", icon: IconBarChart, modulos: ["despesas_recorrentes"] },
+  { href: "/alertas-financeiro", module: "financeiro", label: "Alertas do Financeiro", icon: IconCheckCircle, modulos: ["alertas_financeiro"] },
+  { href: "/notas-fiscais", module: "financeiro", label: "Notas Fiscais recebidas", icon: IconCheckCircle, modulos: ["notas_fiscais"] },
+  { href: "/contratos", module: "financeiro", label: "Contratos", icon: IconFolders, modulos: ["contratos"] },
+  { href: "/custos/plano-de-contas", module: "financeiro", label: "Custo por Centro de Custo", icon: IconBarChart, modulos: ["custos"] },
+  { href: "/medicao", module: "financeiro", label: "Receita e Medição", icon: IconBarChart, modulos: ["medicao"] },
+  { href: "/previsao", module: "financeiro", label: "Previsão por Centro de Custo", icon: IconBarChart, modulos: ["previsao"] },
+  { href: "/p0", module: "financeiro", label: "P0 dos Contratos", icon: IconFolders, modulos: ["p0"] },
+  { href: "/usuarios", module: "comum", label: "Usuários", icon: IconShieldUser, modulos: ["usuarios"] },
+  { href: "/usuarios/senior", module: "comum", label: "Usuários do Senior", icon: IconShieldUser, modulos: ["usuarios_senior"] },
 ];
 
 export default function Sidebar() {
@@ -77,8 +79,22 @@ export default function Sidebar() {
     if (match) setModulo(match.module as Modulo);
   }, [pathname]);
 
+  // Modulos liberados para ESTA pessoa (papel + liberacoes/bloqueios da tela Usuarios > Acesso). Enquanto a lista do servidor nao
+  // chega, usa o padrao do papel (que ja esconde o financeiro restrito), para o menu nao piscar com itens que ela nao pode abrir.
+  const [liberados, setLiberados] = useState<ModuloId[] | null>(null);
+  useEffect(() => {
+    if (!session) return;
+    let vivo = true;
+    fetch("/api/users/me/acesso")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (vivo && d?.modulos) setLiberados(d.modulos); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [session]);
+  const ativos = new Set<ModuloId>(liberados ?? (role ? modulosEfetivos(role, new Map()) : []));
+
   const links = baseLinks.filter(
-    (l) => (!role || l.roles.includes(role)) && (l.module === "comum" || l.module === modulo)
+    (l) => l.modulos.some((m) => ativos.has(m)) && (l.module === "comum" || l.module === modulo)
   );
 
   const [unreadTotal, setUnreadTotal] = useState(0);

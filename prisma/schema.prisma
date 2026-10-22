@@ -171,6 +171,12 @@ model User {
   // Custo por Plano de Contas sem virar DIRETOR (que traria outros
   // privilegios junto). So o ADMIN liga isso, pela tela de Usuarios.
   verTodosCustos Boolean @default(false)
+  // "tipo de visualizacao" dos PROJETOS (tela Usuarios > Acesso): PROPRIOS (so' o que criou/participa -- regra de 19/10), NUCLEO (tudo
+  // dos nucleos de que e' membro, gerente ou coordenador) ou TODOS. O ADMIN sempre ve todos.
+  escopoProjetos String @default("PROPRIOS")
+  // modulos liberados ou negados para esta pessoa (sobrepoe o padrao do papel; ver src/lib/acesso/catalogo.ts)
+  acessosModulo AcessoModulo[]
+  nucleosCoordenados Nucleo[] @relation("NucleoCoordenador")
   // centros de custo que esta pessoa acompanha em Custo por Centro de Custo (alem dos das equipes dela)
   acessosCentroCusto AcessoCentroCusto[]
   avatarColor  String    @default("#0f766e")
@@ -420,12 +426,30 @@ model AcessoCentroCusto {
   userId       String
   codccu       String
   concedidoPor String? // nome de quem concedeu
+  // onde o acesso vale: PROJETOS (demandas e projetos do contrato), FINANCEIRO (custos, medicao, previsao) ou AMBOS (padrao, o que ja existia)
+  area         String   @default("AMBOS")
   criadoEm     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, codccu])
   @@index([codccu])
+}
+
+// Liberacao (ou bloqueio) de UM modulo para UMA pessoa. Sem linha = vale o padrao do papel (ou "bloqueado" nos modulos restritos
+// do financeiro). So' o ADMIN grava, pela tela Usuarios > Acesso. Catalogo dos modulos: src/lib/acesso/catalogo.ts.
+model AcessoModulo {
+  id           String   @id @default(cuid())
+  userId       String
+  modulo       String
+  permitido    Boolean
+  concedidoPor String?
+  atualizadoEm DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, modulo])
+  @@index([modulo])
 }
 
 // Ledger IMUTAVEL de qual centro de custo cada colaborador CLT tinha em
@@ -581,7 +605,10 @@ model Nucleo {
 
   membros  User[]
   gerentes User[]    @relation("NucleoGerente")
+  // coordenadores do nucleo: associam projetos, passam tarefas/subtarefas para o pessoal do nucleo e controlam as demandas dele
+  coordenadores User[] @relation("NucleoCoordenador")
   projetos Project[] @relation("ProjectNucleo")
+  demandas Demanda[]
 }
 
 model UserTeam {
@@ -1572,9 +1599,12 @@ model Demanda {
   status        String    @default("NOVA") // NOVA | EM_ANALISE | EM_PROJETO | CONCLUIDA | RECUSADA
   motivoRecusa  String?   @db.Text
   projectId     String?   @unique
+  // nucleo que atende esta demanda (coordenador e gerente do nucleo a controlam); opcional, so' acrescenta
+  nucleoId      String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  nucleo      Nucleo?             @relation(fields: [nucleoId], references: [id], onDelete: SetNull)
   contrato    Contrato            @relation(fields: [contratoId], references: [id])
   solicitante User                @relation("DemandaSolicitante", fields: [solicitanteId], references: [id])
   project     Project?            @relation("DemandaProjeto", fields: [projectId], references: [id], onDelete: SetNull)
@@ -1584,6 +1614,7 @@ model Demanda {
   @@index([contratoId])
   @@index([solicitanteId])
   @@index([status])
+  @@index([nucleoId])
 }
 
 model DemandaItem {

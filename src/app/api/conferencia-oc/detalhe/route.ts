@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { dataIso, lerOcParaTitulo, numeroSenior, paraOc } from "@/lib/senior/ocsConferencia";
 import { lerAprovacaoOc } from "@/lib/senior/aprovacaoOc";
@@ -10,12 +11,12 @@ import { montarPagamentoDoTitulo } from "@/lib/senior/pagamentoParaTitulo";
 // (quem aprovou, o que falta, aprovadores cadastrados por CCU) e os dados de
 // pagamento que irao dentro do titulo. So' leitura.
 
-const PAPEIS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR"];
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!PAPEIS.includes((session.user as any).role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  const negado = await negarSemModulo(session.user as any, "conferencia_oc");
+  if (negado) return negado;
 
   const u = new URL(req.url);
   const numOcp = u.searchParams.get("numOcp") ?? "";
