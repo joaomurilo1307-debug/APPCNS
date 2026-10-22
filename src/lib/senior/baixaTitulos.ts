@@ -152,6 +152,67 @@ export function lerRespostaBaixa(texto: string): ResultadoBaixa {
   return { ok: resultado.toUpperCase() === "OK" && !erroExecucao, resultado, erroExecucao, itens };
 }
 
+// Porta alternativa (22/10/2026): servico com.senior.g5.co.int.padrao.titulos.contaspagar, porta Baixar.
+// A Senior NAO publica documentacao desse servico (pagina 404); o contrato abaixo vem so' do XSD do tenant
+// (...int_padrao_titulos_contaspagar?xsd=1) e o significado dos campos/retornos NAO esta confirmado --
+// por isso so' roda com SENIOR_BAIXA_PORTA=padrao e deve ser testado com 1 titulo antes de qualquer lote.
+// Criada porque GerarBaixaPorLoteCP recusa os titulos com "Titulo nao esta em portador empresa".
+const URL_PADRAO_BAIXAR =
+  "https://web01s1p.seniorcloud.com.br:30901/g5-senior-services/sapiens_Synccom_senior_g5_co_int_padrao_titulos_contaspagar";
+
+export function montarEnvelopeBaixar(lote: LoteBaixa, usuario: string, senha: string): string {
+  if (lote.titulos.length === 0) throw new Error("Lote de baixa vazio.");
+  if (!lote.numCco.trim() || lote.numCco.length > 14) throw new Error("numCco invalido (1 a 14 caracteres).");
+  const data = dataSenior(lote.datBai);
+  // Campos na ordem alfabetica do xs:sequence do XSD; ideExt (int) e' o indice do titulo no lote (1..n).
+  const itens = lote.titulos
+    .map((t, i) => {
+      if (!t.numTit.trim() || t.numTit.length > 15 || !t.codTpt.trim() || t.codTpt.length > 3) {
+        throw new Error("Chave do titulo excede o contrato Senior; nenhum identificador pode ser truncado na baixa.");
+      }
+      return (
+        `<baixaTituloPagar>` +
+        `<codEmp>${lote.codEmp}</codEmp><codFil>${t.codFil}</codFil><codFor>${t.codFor}</codFor>` +
+        `<codTns>${escaparXml(lote.tnsBai ?? TNS_BAIXA_CP)}</codTns><codTpt>${escaparXml(t.codTpt)}</codTpt>` +
+        `<datMov>${data}</datMov><datPgt>${data}</datPgt><ideExt>${i + 1}</ideExt>` +
+        `<numCco>${escaparXml(lote.numCco)}</numCco><numTit>${escaparXml(t.numTit)}</numTit>` +
+        (t.obs ? `<obsMcp>${escaparXml(t.obs.slice(0, 250))}</obsMcp>` : "") +
+        `<tnsCxb>${escaparXml(lote.tnsCxb ?? TNS_TESOURARIA_CP)}</tnsCxb>` +
+        `<vlrLiq>${valorSenior(t.valor)}</vlrLiq><vlrMov>${valorSenior(t.valor)}</vlrMov>` +
+        `</baixaTituloPagar>`
+      );
+    })
+    .join("");
+  return (
+    `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ser="http://services.senior.com.br">` +
+    `<soapenv:Header/><soapenv:Body><ser:Baixar>` +
+    `<user>${escaparXml(usuario)}</user><password>${escaparXml(senha)}</password><encryption>0</encryption>` +
+    `<parameters>${itens}</parameters></ser:Baixar></soapenv:Body></soapenv:Envelope>`
+  );
+}
+
+/** Traduz a resposta da Baixar pro mesmo formato de gerarBaixaPorLoteCP; qualquer coisa diferente de "OK" vira erro visivel. */
+export function lerRespostaBaixar(texto: string, lote: LoteBaixa): ResultadoBaixa {
+  const falha = /<(?:[\w-]+:)?faultstring\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?faultstring>/.exec(texto);
+  if (falha) return { ok: false, resultado: "", erroExecucao: desescaparXml(falha[1]).trim(), itens: [] };
+  const erroExecucao = campo(texto, "erroExecucao");
+  const itens: RetornoBaixaTitulo[] = [];
+  // Cada <resultado> do titulo traz um <resultado> interno ("OK"/"ERRO"): casa o par aninhado de uma vez.
+  for (const bloco of texto.matchAll(/<resultado>((?:(?!<\/resultado>)[\s\S])*?<resultado>[\s\S]*?<\/resultado>[\s\S]*?)<\/resultado>/g)) {
+    const indice = Number(campo(bloco[1], "ideExt"));
+    const titulo = lote.titulos[indice - 1];
+    const situacao = campo(bloco[1], "resultado").toUpperCase();
+    itens.push({
+      numInt: titulo?.numInt ?? "",
+      numTit: campo(bloco[1], "numTit"),
+      codFor: campo(bloco[1], "codFor"),
+      msgErr: situacao === "OK" ? "" : campo(bloco[1], "msgRet") || `Senior respondeu "${situacao || "sem resultado"}"`,
+    });
+  }
+  const todosOk = itens.length === lote.titulos.length && itens.every(i => !i.msgErr);
+  return { ok: todosOk && !erroExecucao, resultado: erroExecucao || !todosOk ? "ERRO" : "OK", erroExecucao, itens };
+}
+
 export async function gerarBaixaPorLoteCP(
   lote: LoteBaixa,
   opcoes: { fetchImpl?: typeof fetch } = {}
@@ -161,14 +222,18 @@ export async function gerarBaixaPorLoteCP(
   if (!usuario || !senha) {
     throw new Error("Defina SENIOR_WS_SAPIENS_USER e SENIOR_WS_SAPIENS_PASSWORD no .env (nao versionado).");
   }
-  const url = process.env.SENIOR_WS_BAIXA_URL?.trim() || URL_PADRAO_BAIXA;
+  const portaPadrao = process.env.SENIOR_BAIXA_PORTA?.trim() === "padrao";
+  const url = portaPadrao
+    ? process.env.SENIOR_WS_BAIXAR_URL?.trim() || URL_PADRAO_BAIXAR
+    : process.env.SENIOR_WS_BAIXA_URL?.trim() || URL_PADRAO_BAIXA;
   const resposta = await (opcoes.fetchImpl ?? fetch)(url, {
     method: "POST",
     headers: { "Content-Type": "text/xml; charset=UTF-8", SOAPAction: '""' },
-    body: montarEnvelopeBaixa(lote, usuario, senha),
+    body: portaPadrao ? montarEnvelopeBaixar(lote, usuario, senha) : montarEnvelopeBaixa(lote, usuario, senha),
     signal: AbortSignal.timeout(60_000),
   });
-  const lido = lerRespostaBaixa(await resposta.text());
+  const texto = await resposta.text();
+  const lido = portaPadrao ? lerRespostaBaixar(texto, lote) : lerRespostaBaixa(texto);
   if (!resposta.ok) return { ...lido, httpOk: false, ok: false, erroExecucao: lido.erroExecucao || `HTTP ${resposta.status} na baixa Senior. Conferir antes de repetir.` };
   return { ...lido, httpOk: true };
 }
