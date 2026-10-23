@@ -137,7 +137,8 @@
       "previsao",
       "p0",
       "aprovacoes_oc"
-    ]
+    ],
+    "so_visao_projetos": []
   },
   "todosOsModulos": [
     "painel",
@@ -363,6 +364,39 @@
       "nome": "CRISTINA AZEVEDO GOMES",
       "perfil": "contratos_oc",
       "marca": "contratos-oc"
+    },
+    {
+      "chapa": "16",
+      "nome": "BRENO DE LANA GONÇALVES",
+      "perfil": "so_visao_projetos",
+      "marca": "projetos-proprios",
+      "escopoProjetos": "PROPRIOS"
+    },
+    {
+      "chapa": "23",
+      "nome": "BRUNO DE LIMA E SOARES TEIXEIRA",
+      "perfil": "so_visao_projetos",
+      "marca": "projetos-proprios",
+      "escopoProjetos": "PROPRIOS"
+    },
+    {
+      "chapa": "16",
+      "nome": "BRENO DE LANA GONÇALVES",
+      "perfil": "so_visao_projetos",
+      "marca": "senior-vinculo",
+      "senior": [
+        "58"
+      ]
+    },
+    {
+      "chapa": "23",
+      "nome": "BRUNO DE LIMA E SOARES TEIXEIRA",
+      "perfil": "so_visao_projetos",
+      "marca": "senior-vinculo",
+      "senior": [
+        "54"
+      ],
+      "verTodosContratos": false
     }
   ],
   "configuracoes": {

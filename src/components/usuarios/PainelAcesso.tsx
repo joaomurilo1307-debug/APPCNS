@@ -1,10 +1,12 @@
 "use client";
 
-// Painel de acesso de UMA pessoa (so' o ADMIN abre): perfil pronto, telas (sem acesso / so' ver / editar), visao dos projetos, projetos
-// liberados, contratos (nos projetos e no financeiro), nucleos e vinculo com o usuario do Senior. Grava tudo de uma vez em
-// PUT /api/users/[id]/acesso. Usado na lista de usuarios e logo depois de criar um usuario.
+// Painel de acesso de UMA pessoa (so' o ADMIN abre): perfil pronto, telas de cada modulo em lista suspensa (sem acesso / so' ver / editar),
+// visao dos projetos, projetos liberados, contratos (nos projetos e no financeiro), nucleos e vinculo com o usuario do Senior. Grava tudo de
+// uma vez em PUT /api/users/[id]/acesso. Serve a duas telas: "Acesso" da lista de usuarios (userId) e "Novo usuario" (userId nulo), que cria a
+// pessoa (POST /api/users) e logo em seguida grava o acesso, na mesma janela.
 import { useEffect, useMemo, useState } from "react";
 import { AREAS, AREA_POR_CCU } from "@/lib/areas";
+import { AVATAR_PALETTE } from "@/components/Avatar";
 
 type Nivel = "VER" | "EDITAR";
 type Area = "PROJETOS" | "FINANCEIRO" | "AMBOS";
@@ -32,6 +34,7 @@ const ESCOPO_ROTULO: Record<Escopo, { nome: string; ajuda: string }> = {
   NUCLEO: { nome: "Os do núcleo", ajuda: "Além dos dele, os projetos ligados aos núcleos que gere e os das pessoas desses núcleos." },
   TODOS: { nome: "Todos os projetos", ajuda: "Enxerga todos os projetos do sistema." },
 };
+const NIVEL_ROTULO: Record<string, string> = { DIRETORIA: "Diretoria", GERENCIA: "Gerência", COORDENACAO: "Coordenação", SUPERVISOR: "Supervisor", COLABORADOR: "Colaborador" };
 const AREA_ROTULO: Record<Area, string> = { AMBOS: "Projetos e financeiro", PROJETOS: "Só nos projetos", FINANCEIRO: "Só no financeiro" };
 
 const rot = "mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500";
@@ -48,10 +51,31 @@ function Secao({ titulo, ajuda, children }: { titulo: string; ajuda?: string; ch
   );
 }
 
-export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { userId: string; novo?: boolean; onFechar: () => void; onSalvo?: () => void }) {
+type Pessoa = { nome: string; email: string; senha: string; cargo: string; diretoria: string; ramal: string; whatsapp: string; gestorId: string; dataInicio: string; nivel: string; cor: string };
+const PESSOA_VAZIA: Pessoa = { nome: "", email: "", senha: "", cargo: "", diretoria: "", ramal: "", whatsapp: "", gestorId: "", dataInicio: "", nivel: "", cor: AVATAR_PALETTE[0] };
+
+// mensagem legivel de uma resposta de erro da API (zod: fieldErrors / formErrors, ou texto)
+async function mensagemDeErro(r: Response, padrao: string): Promise<string> {
+  const j = await r.json().catch(() => null);
+  const e = j?.error;
+  if (e?.fieldErrors) {
+    const m = Object.entries(e.fieldErrors as Record<string, string[]>).filter(([, v]) => v?.length).map(([k, v]) => `${k}: ${v.join(", ")}`);
+    if (m.length) return m.join(" · ");
+  }
+  if (e?.formErrors?.length) return e.formErrors.join(", ");
+  return typeof e === "string" ? e : padrao;
+}
+
+export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { userId: string | null; usuarios?: { id: string; name: string }[]; onFechar: () => void; onSalvo?: () => void }) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  // "Novo usuario": sem id ainda; depois de criado a pessoa passa a existir e um novo clique em Salvar so' regrava o acesso
+  const [idCriado, setIdCriado] = useState<string | null>(null);
+  const idAlvo = userId ?? idCriado;
+  const criando = userId === null && idCriado === null;
+  const [pessoa, setPessoa] = useState<Pessoa>(PESSOA_VAZIA);
+  const mudaPessoa = (campoNome: keyof Pessoa, v: string) => setPessoa((x) => ({ ...x, [campoNome]: v }));
 
   const [papel, setPapel] = useState("COLABORADOR");
   const [niveis, setNiveis] = useState<Record<string, Nivel | null>>({});
@@ -74,7 +98,7 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
 
   useEffect(() => {
     let vivo = true;
-    fetch(`/api/users/${userId}/acesso`).then(async (r) => {
+    fetch(userId ? `/api/users/${userId}/acesso` : "/api/acesso/catalogo").then(async (r) => {
       const j = await r.json().catch(() => null);
       if (!vivo) return;
       if (!r.ok || !j) return setErro(j?.error ?? "Não foi possível carregar o acesso.");
@@ -119,11 +143,10 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
   }
   // Modulos que aparecem na tela inicial: nem todo mundo ve todos. Ligar traz as telas comuns do modulo; o financeiro restrito nunca vem junto.
   const MODULOS_TOPO = [
-    { id: "gestao", nome: "Projetos e Gestão", ajuda: "Projetos, tarefas, sprint, Gantt, calendário, metas, PDI e relatórios.", grupos: ["gestao"] },
-    { id: "financeiro", nome: "Financeiro e Contratos", ajuda: "Contratos, custos, medição, previsão, Aprovações de OC e, só para o time financeiro, os pagamentos.", grupos: ["financeiro", "contratos"] },
+    { id: "gestao", nome: "Módulo Projetos e Gestão", ajuda: "Projetos, tarefas, sprint, Gantt, calendário, metas, PDI e relatórios.", grupos: ["gestao"], ordem: ["gestao"] },
+    { id: "financeiro", nome: "Módulo Financeiro e Contratos", ajuda: "Contratos, custos, medição, previsão, Aprovações de OC e, só para o time financeiro, os pagamentos.", grupos: ["financeiro", "contratos"], ordem: ["contratos", "financeiro"] },
   ];
   const idsDoModulo = (grupos: string[]) => modulosEditaveis.filter((m) => grupos.includes(m.grupo));
-  const moduloLigado = (grupos: string[]) => idsDoModulo(grupos).some((m) => niveis[m.id]);
   function alternarModulo(grupos: string[], ligar: boolean) {
     setPerfilAplicado(null);
     setNiveis((x) => {
@@ -165,23 +188,51 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
 
   async function salvar() {
     if (!dados) return;
-    setSalvando(true); setErro("");
-    const acessos = Object.entries(niveis).filter(([, n]) => n).map(([modulo, nivel]) => ({ modulo, nivel }));
-    const r = await fetch(`/api/users/${userId}/acesso`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        role: papel !== dados.usuario.role ? papel : undefined,
-        acessos, escopoProjetos: escopo, projetos: Array.from(projetos),
-        contratos: { verTodos, itens: Object.entries(contratos).map(([codccu, area]) => ({ codccu, area })) },
-        nucleos: { membroDe, gerente: Array.from(gerente), coordenador: Array.from(coordenador) },
-        senior: senior.map((s) => s.codigo),
-      }),
-    });
-    setSalvando(false);
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) return setErro(typeof j.error === "string" ? j.error : "Não foi possível salvar. Confira os campos.");
-    onSalvo?.();
-    onFechar();
+    setErro("");
+    let id = idAlvo;
+    if (!id) {
+      if (pessoa.nome.trim().length < 2) return setErro("Digite o nome da pessoa.");
+      if (!/^\S+@\S+\.\S+$/.test(pessoa.email.trim())) return setErro("Digite um e-mail válido.");
+      if (pessoa.senha.length < 8) return setErro("A senha provisória precisa de pelo menos 8 caracteres.");
+    }
+    setSalvando(true);
+    try {
+      const eraCriacao = !id;
+      if (!id) {
+        const c = await fetch("/api/users", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: pessoa.nome.trim(), email: pessoa.email.trim(), password: pessoa.senha, role: papel, avatarColor: pessoa.cor,
+            cargo: pessoa.cargo || undefined, diretoria: pessoa.diretoria || undefined, ramal: pessoa.ramal || undefined, whatsapp: pessoa.whatsapp || undefined,
+            gestorImediatoId: pessoa.gestorId || undefined, dataInicio: pessoa.dataInicio ? new Date(pessoa.dataInicio).toISOString() : undefined,
+            nivelHierarquico: pessoa.nivel || undefined,
+          }),
+        });
+        if (!c.ok) return setErro(await mensagemDeErro(c, "Não foi possível criar o usuário."));
+        id = (await c.json().catch(() => null))?.id ?? null;
+        if (!id) return setErro("O usuário foi criado, mas a resposta veio incompleta. Abra “Acesso” na linha dele para definir as telas.");
+        setIdCriado(id);
+        onSalvo?.();
+      }
+      const acessos = Object.entries(niveis).filter(([, n]) => n).map(([modulo, nivel]) => ({ modulo, nivel }));
+      const r = await fetch(`/api/users/${id}/acesso`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: papel !== dados.usuario.role || eraCriacao ? papel : undefined,
+          acessos, escopoProjetos: escopo, projetos: Array.from(projetos),
+          contratos: { verTodos, itens: Object.entries(contratos).map(([codccu, area]) => ({ codccu, area })) },
+          nucleos: { membroDe, gerente: Array.from(gerente), coordenador: Array.from(coordenador) },
+          senior: senior.map((s) => s.codigo),
+        }),
+      });
+      if (!r.ok) return setErro(`${userId === null ? "O usuário foi criado, mas o acesso não foi salvo: " : ""}${await mensagemDeErro(r, "não foi possível salvar. Confira os campos.")}${userId === null ? " Corrija e clique em Salvar de novo." : ""}`);
+      onSalvo?.();
+      onFechar();
+    } catch {
+      setErro("Não foi possível conectar ao servidor. Tente de novo em alguns segundos.");
+    } finally {
+      setSalvando(false);
+    }
   }
 
   const resumo = dados
@@ -193,11 +244,13 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
       <div className="my-6 w-full max-w-5xl rounded-2xl bg-gray-50 shadow-2xl">
         <header className="flex flex-wrap items-start justify-between gap-3 rounded-t-2xl border-b border-gray-200 bg-white px-6 py-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-dark">{novo ? "Usuário criado: defina o acesso" : "Acesso do usuário"}</p>
-            <h2 className="text-xl font-semibold text-gray-900">{dados?.usuario.name ?? "Carregando…"}</h2>
-            {dados && <p className="text-sm text-gray-500">{dados.usuario.email}</p>}
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand-dark">{userId === null ? "Novo usuário" : "Acesso do usuário"}</p>
+            <h2 className="text-xl font-semibold text-gray-900">{userId === null ? (pessoa.nome.trim() || "Dados e acesso da nova pessoa") : dados?.usuario.name ?? "Carregando…"}</h2>
+            {userId === null
+              ? <p className="text-sm text-gray-500">{idCriado ? "Usuário criado. Falta só gravar o acesso." : "Preencha os dados e escolha o que a pessoa vê. Tudo é gravado ao clicar em “Criar usuário”."}</p>
+              : dados && <p className="text-sm text-gray-500">{dados.usuario.email}</p>}
           </div>
-          <button onClick={onFechar} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">{novo ? "Definir depois" : "Fechar"}</button>
+          <button onClick={onFechar} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">{userId === null && !idCriado ? "Cancelar" : "Fechar"}</button>
         </header>
 
         {!dados && !erro && <p className="p-6 text-sm text-gray-500">Carregando…</p>}
@@ -205,6 +258,36 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
 
         {dados && (
           <div className="grid gap-4 p-6">
+            {criando && (
+              <Secao titulo="Dados da pessoa" ajuda="Nome, e-mail e uma senha provisória (a pessoa troca no primeiro acesso). O restante é opcional.">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div><label className={rot}>Nome *</label><input className={campo} value={pessoa.nome} onChange={(e) => mudaPessoa("nome", e.target.value)} autoComplete="off" /></div>
+                  <div><label className={rot}>E-mail *</label><input className={campo} type="email" value={pessoa.email} onChange={(e) => mudaPessoa("email", e.target.value)} autoComplete="off" /></div>
+                  <div><label className={rot}>Senha provisória * (mín. 8)</label><input className={campo} type="password" value={pessoa.senha} onChange={(e) => mudaPessoa("senha", e.target.value)} autoComplete="new-password" /></div>
+                  <div><label className={rot}>Cargo</label><input className={campo} value={pessoa.cargo} onChange={(e) => mudaPessoa("cargo", e.target.value)} /></div>
+                  <div><label className={rot}>Diretoria</label><input className={campo} value={pessoa.diretoria} onChange={(e) => mudaPessoa("diretoria", e.target.value)} /></div>
+                  <div><label className={rot}>Gestor imediato</label>
+                    <select className={campo} value={pessoa.gestorId} onChange={(e) => mudaPessoa("gestorId", e.target.value)}>
+                      <option value="">Nenhum</option>
+                      {(usuarios ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select></div>
+                  <div><label className={rot}>Ramal</label><input className={campo} value={pessoa.ramal} onChange={(e) => mudaPessoa("ramal", e.target.value)} /></div>
+                  <div><label className={rot}>WhatsApp</label><input className={campo} value={pessoa.whatsapp} onChange={(e) => mudaPessoa("whatsapp", e.target.value)} /></div>
+                  <div><label className={rot}>Data de início</label><input className={campo} type="date" value={pessoa.dataInicio} onChange={(e) => mudaPessoa("dataInicio", e.target.value)} /></div>
+                  <div><label className={rot}>Nível hierárquico</label>
+                    <select className={campo} value={pessoa.nivel} onChange={(e) => mudaPessoa("nivel", e.target.value)}>
+                      <option value="">Não informado</option>
+                      {Object.entries(NIVEL_ROTULO).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select></div>
+                  <div><label className={rot}>Cor do avatar</label>
+                    <div className="flex items-center gap-1.5 py-1">
+                      {AVATAR_PALETTE.map((c) => (
+                        <button type="button" key={c} onClick={() => mudaPessoa("cor", c)} aria-label={`Cor ${c}`} className={`h-6 w-6 rounded-full ${pessoa.cor === c ? "ring-2 ring-offset-1 ring-gray-500" : ""}`} style={{ backgroundColor: c }} />
+                      ))}
+                    </div></div>
+                </div>
+              </Secao>
+            )}
             <Secao titulo="Papel e perfil pronto" ajuda="O perfil pronto preenche tudo abaixo de uma vez; depois é só ajustar o que for diferente.">
               <div className="grid gap-4 sm:grid-cols-[16rem_1fr]">
                 <div>
@@ -226,56 +309,64 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
               </div>
             </Secao>
 
-            <Secao titulo="Módulos" ajuda="Nem todo mundo vê todos os módulos. Ligue só o que a pessoa vai usar; é isso que aparece como cartão na tela inicial dela.">
-              <div className={`grid gap-3 sm:grid-cols-2 ${ehAdmin ? "pointer-events-none opacity-50" : ""}`}>
+            <Secao titulo="Módulos e telas" ajuda="Em cada módulo, escolha na lista de cada tela o que a pessoa vê: sem acesso, só ver (consulta) ou editar (consulta e altera). O módulo sem nenhuma tela liberada nem aparece na tela inicial dela. O financeiro de pagamento só entra por aqui, nunca pelo papel.">
+              <div className={`grid gap-4 xl:grid-cols-2 ${ehAdmin ? "pointer-events-none opacity-50" : ""}`}>
                 {MODULOS_TOPO.map((m) => {
-                  const ligado = moduloLigado(m.grupos);
                   const total = idsDoModulo(m.grupos).length;
                   const ativas = idsDoModulo(m.grupos).filter((x) => niveis[x.id]).length;
                   return (
-                    <label key={m.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${ligado ? "border-brand bg-brand/5" : "border-gray-200 bg-white"}`}>
-                      <input type="checkbox" className="mt-1 h-5 w-5" checked={ligado} onChange={(e) => alternarModulo(m.grupos, e.target.checked)} aria-label={`Módulo ${m.nome}`} />
-                      <span>
-                        <span className="block text-sm font-semibold text-gray-800">{m.nome} <span className="font-normal text-gray-500">· {ligado ? `${ativas} de ${total} telas` : "desligado"}</span></span>
-                        <span className="block text-xs text-gray-500">{m.ajuda}</span>
-                      </span>
-                    </label>
+                    <div key={m.id} className="rounded-xl border border-gray-200 bg-white" data-modulo={m.id}>
+                      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-100 p-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-gray-800">{m.nome}</p>
+                          <p className="text-xs text-gray-500">{m.ajuda}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                          <span className={`rounded-full px-2 py-1 font-medium ${ativas ? "bg-brand/10 text-brand-dark" : "bg-gray-100 text-gray-500"}`}>{ativas ? `${ativas} de ${total} telas` : "Desligado"}</span>
+                          <button type="button" onClick={() => alternarModulo(m.grupos, true)} className="rounded-md border border-gray-300 px-2 py-1 hover:bg-gray-50">Liberar as comuns</button>
+                          <button type="button" onClick={() => alternarModulo(m.grupos, false)} className="rounded-md border border-gray-300 px-2 py-1 text-gray-500 hover:bg-gray-50">Limpar</button>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 p-3">
+                        {m.ordem.map((gid) => {
+                          const g = dados.grupos.find((x) => x.id === gid);
+                          if (!g) return null;
+                          return (
+                            <div key={gid}>
+                              <p className={`text-xs font-semibold uppercase tracking-wide ${gid === "financeiro" ? "text-amber-700" : "text-gray-500"}`}>{g.nome}</p>
+                              <p className="mb-1 text-xs text-gray-400">{g.ajuda}</p>
+                              <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+                                {modulosEditaveis.filter((x) => x.grupo === gid).map((x) => {
+                                  const n = niveis[x.id] ?? null;
+                                  return (
+                                    <li key={x.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium text-gray-800">{x.label}</p>
+                                        <p className="text-xs text-gray-500">{x.descricao}</p>
+                                      </div>
+                                      <select
+                                        value={n ?? ""}
+                                        onChange={(e) => mudarNivel(x.id, (e.target.value || null) as Nivel | null)}
+                                        aria-label={`Acesso a ${x.label}`}
+                                        className={`rounded-md border px-2 py-1.5 text-xs font-medium ${n === "EDITAR" ? "border-brand bg-brand/10 text-brand-dark" : n === "VER" ? "border-sky-400 bg-sky-50 text-sky-800" : "border-gray-300 bg-white text-gray-600"}`}
+                                      >
+                                        <option value="">Sem acesso</option>
+                                        <option value="VER">Só ver</option>
+                                        <option value="EDITAR">Editar</option>
+                                      </select>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
-            </Secao>
-
-            <Secao titulo="Telas" ajuda="Dentro de cada módulo ligado: sem acesso, só ver (consulta) ou editar (consulta e altera). O financeiro restrito só entra por aqui, nunca pelo papel.">
-              <div className={`grid gap-4 ${ehAdmin ? "pointer-events-none opacity-50" : ""}`}>
-                {MODULOS_TOPO.every((m) => !moduloLigado(m.grupos)) && !ehAdmin && <p className="text-sm text-gray-500">Nenhum módulo ligado. Ligue um módulo acima ou aplique um perfil pronto.</p>}
-                {dados.grupos.filter((g) => g.id !== "admin" && MODULOS_TOPO.some((m) => m.grupos.includes(g.id) && moduloLigado(m.grupos))).map((g) => (
-                  <div key={g.id}>
-                    <p className={`text-xs font-semibold uppercase tracking-wide ${g.id === "financeiro" ? "text-amber-700" : "text-gray-500"}`}>{g.nome}</p>
-                    <p className="mb-1 text-xs text-gray-400">{g.ajuda}</p>
-                    <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
-                      {modulosEditaveis.filter((m) => m.grupo === g.id).map((m) => {
-                        const n = niveis[m.id] ?? null;
-                        return (
-                          <li key={m.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-gray-800">{m.label}</p>
-                              <p className="text-xs text-gray-500">{m.descricao}</p>
-                            </div>
-                            <div className="inline-flex overflow-hidden rounded-md border border-gray-300 text-xs font-medium" role="radiogroup" aria-label={`Acesso a ${m.label}`}>
-                              {([[null, "Sem acesso"], ["VER", "Só ver"], ["EDITAR", "Editar"]] as [Nivel | null, string][]).map(([v, nome]) => (
-                                <button key={nome} type="button" role="radio" aria-checked={n === v} onClick={() => mudarNivel(m.id, v)}
-                                  className={`px-3 py-1.5 ${n === v ? (v === null ? "bg-gray-200 text-gray-800" : v === "VER" ? "bg-sky-600 text-white" : "bg-brand text-white") : "bg-white text-gray-600 hover:bg-gray-50"}`}>
-                                  {nome}
-                                </button>
-                              ))}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+              {ehAdmin && <p className="mt-2 text-xs text-amber-700">Administrador acessa tudo; as telas acima não se aplicam.</p>}
             </Secao>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -412,8 +503,8 @@ export default function PainelAcesso({ userId, novo, onFechar, onSalvo }: { user
             <p className="text-xs text-gray-500">{resumo}</p>
             <div className="flex items-center gap-3">
               {erro && <span className="text-sm text-red-600">{erro}</span>}
-              <button onClick={onFechar} className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-              <button onClick={salvar} disabled={salvando} className="rounded-md bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60">{salvando ? "Salvando…" : "Salvar acesso"}</button>
+              <button onClick={onFechar} className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">{userId === null && idCriado ? "Fechar" : "Cancelar"}</button>
+              <button onClick={salvar} disabled={salvando} className="rounded-md bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60">{salvando ? "Salvando…" : userId === null && !idCriado ? "Criar usuário e salvar acesso" : "Salvar acesso"}</button>
             </div>
           </footer>
         )}
