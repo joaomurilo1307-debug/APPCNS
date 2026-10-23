@@ -217,6 +217,7 @@ model User {
   ownedProjects   Project[]      @relation("ProjectOwner")
   acessosProjeto  AcessoProjeto[] @relation("AcessosProjetoUser")
   demandasCriadas Demanda[]        @relation("DemandaSolicitante")
+  demandasAtendidas DemandaAtendente[] @relation("DemandaAtendente")
   comentariosDemanda DemandaComentario[]
   contratosAcompanhados ContratoUsuario[]
   approvingProjects Project[]    @relation("ProjectApprover")
@@ -1623,10 +1624,14 @@ model Demanda {
   projectId     String?   @unique
   // nucleo que atende esta demanda (coordenador e gerente do nucleo a controlam); opcional, so' acrescenta
   nucleoId      String?
+  // quando a gestao ACEITA anexando a um projeto que ja existe (em vez de abrir um projeto novo): onde a demanda virou tarefa/subtarefa
+  anexadaProjectId String?
+  anexadaTaskId    String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   nucleo      Nucleo?             @relation(fields: [nucleoId], references: [id], onDelete: SetNull)
+  atendentes  DemandaAtendente[]
   contrato    Contrato            @relation(fields: [contratoId], references: [id])
   solicitante User                @relation("DemandaSolicitante", fields: [solicitanteId], references: [id])
   project     Project?            @relation("DemandaProjeto", fields: [projectId], references: [id], onDelete: SetNull)
@@ -1637,6 +1642,20 @@ model Demanda {
   @@index([solicitanteId])
   @@index([status])
   @@index([nucleoId])
+}
+
+// Pessoas a quem a demanda foi dirigida ("Quem vai atender"): cada uma ve a demanda em "Pedidas para mim" e pode aceita-la.
+model DemandaAtendente {
+  id        String   @id @default(cuid())
+  demandaId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  demanda Demanda @relation(fields: [demandaId], references: [id], onDelete: Cascade)
+  user    User    @relation("DemandaAtendente", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([demandaId, userId])
+  @@index([userId])
 }
 
 model DemandaItem {

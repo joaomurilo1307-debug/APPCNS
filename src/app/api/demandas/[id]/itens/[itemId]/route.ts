@@ -12,7 +12,7 @@ async function carregar(id: string, itemId: string) {
   const item = await prisma.demandaItem.findUnique({ where: { id: itemId }, include: { demanda: { select: { id: true, status: true, solicitanteId: true, nucleoId: true, projectId: true, contrato: { select: { codccu: true } } } } } });
   if (!item || item.demandaId !== id) return { erro: NextResponse.json({ error: "Item não encontrado" }, { status: 404 }) };
   if (!(await podeVerDemanda(u, item.demanda))) return { erro: NextResponse.json({ error: "Sem permissão" }, { status: 403 }) };
-  const gerir = await podeGerirDemandas(u, item.demanda.nucleoId);
+  const gerir = await podeGerirDemandas(u, item.demanda.nucleoId, item.demanda.id);
   const dono = item.demanda.solicitanteId === u.id && item.demanda.status === "NOVA";
   return { item, gerir, dono };
 }
