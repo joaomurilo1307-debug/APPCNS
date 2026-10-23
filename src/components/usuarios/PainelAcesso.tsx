@@ -96,6 +96,8 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
   const [achadosSenior, setAchadosSenior] = useState<{ codigo: string; nome: string; usadoPor: string[] }[] | null>(null);
   const [perfilAplicado, setPerfilAplicado] = useState<string | null>(null);
   const [msgSenior, setMsgSenior] = useState("");
+  const [msgContratos, setMsgContratos] = useState("");
+  const [puxando, setPuxando] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -137,6 +139,27 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pessoa.email, userId, idCriado]);
+
+  // marca os contratos em que o(s) login(s) do Senior vinculados aprovam OC como coordenacao ou gerencia (niveis 1 e 2 da alcada)
+  async function puxarContratosDoSenior() {
+    if (senior.length === 0) return;
+    setPuxando(true); setMsgContratos("");
+    try {
+      const r = await fetch(`/api/acesso/senior/contratos?codigos=${senior.map((s) => s.codigo).join(",")}&niveis=1,2`);
+      const j = await r.json().catch(() => null);
+      if (!r.ok) return setMsgContratos(typeof j?.error === "string" ? j.error : "Não consegui consultar o Senior agora.");
+      const existentes = new Set((dados?.contratos.disponiveis ?? []).map((c) => c.codccu));
+      const achados = ((j?.ccus ?? []) as { codccu: string }[]).map((c) => c.codccu);
+      const marcar = achados.filter((c) => existentes.has(c));
+      setContratos((x) => { const n = { ...x }; for (const c of marcar) n[c] = n[c] ?? "AMBOS"; return n; });
+      const fora = achados.length - marcar.length;
+      setMsgContratos(achados.length === 0 ? "Nenhum contrato encontrado: este login não está na alçada de aprovação de OC como coordenação nem gerência." : `${marcar.length} contrato(s) marcado(s) onde aprova como coordenação ou gerência.${fora ? ` ${fora} do Senior não estão na lista do sistema.` : ""} Clique em Salvar acesso para gravar.`);
+    } catch {
+      setMsgContratos("Não consegui consultar o Senior agora.");
+    } finally {
+      setPuxando(false);
+    }
+  }
 
   // busca no Senior (espera o admin parar de digitar)
   useEffect(() => {
@@ -422,6 +445,10 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
                 </label>
                 <div className={verTodos || dados.contratos.verTodosPeloPapel ? "pointer-events-none opacity-40" : ""}>
                   <label className={`${rot} mt-4`}>Contratos liberados ({Object.keys(contratos).length})</label>
+                  <div className="mb-2 flex flex-wrap items-center gap-2 pointer-events-auto">
+                    <button type="button" onClick={puxarContratosDoSenior} disabled={senior.length === 0 || puxando} className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark disabled:opacity-50">{puxando ? "Consultando o Senior…" : "Puxar do Senior onde ele aprova"}</button>
+                    <span className="text-xs text-gray-500">{msgContratos || (senior.length ? "Marca os contratos em que o login do Senior aprova OC como coordenação ou gerência (níveis 1 e 2)." : "Vincule o usuário do Senior (seção Usuário do Senior) para usar.")}</span>
+                  </div>
                   <div className="mb-2 flex flex-wrap gap-1.5">
                     {porArea.map((a) => {
                       const todos = a.ccus.length > 0 && a.ccus.every((c) => contratos[c]);
