@@ -661,6 +661,8 @@ model Project {
   kanbanColumns  String?        @db.Text
   horizon        Horizon?
   orcamento      Float?
+  // contrato (centro de custo = Contrato.codccu) a que o projeto pertence; opcional
+  codccu         String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -690,6 +692,7 @@ model Project {
   @@index([teamId])
   @@index([ownerId])
   @@index([status])
+  @@index([codccu])
 }
 
 model ResourceRate {

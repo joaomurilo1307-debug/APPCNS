@@ -61,5 +61,9 @@ npx tsx prisma/seed-acessos-iniciais.ts || true
 echo "Vinculando usuarios ao login do Senior pelo e-mail (uma vez por pessoa)..."
 npx tsx prisma/seed-vinculos-senior-email.ts || true
 
+# Projeto de exemplo (ligado a um contrato) para o Bruno e o Breno: uma vez por pessoa, sem variavel de ambiente.
+echo "Criando projetos de exemplo (uma vez por pessoa)..."
+npx tsx prisma/seed-projetos-exemplo.ts || true
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000

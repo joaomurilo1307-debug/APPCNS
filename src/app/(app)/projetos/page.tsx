@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import ProgressBar from "@/components/ProgressBar";
+import EscolhaDePessoas, { type PessoaOpcao } from "@/components/demandas/Pessoas";
 
 type Project = {
   id: string;
@@ -10,6 +11,7 @@ type Project = {
   description: string | null;
   status: string;
   team: { id: string; name: string };
+  contrato?: { codccu: string; nome: string | null } | null;
   owner: { name: string };
   approver: { name: string } | null;
   approvalStatus: string;
@@ -21,6 +23,8 @@ type Project = {
 };
 
 type Team = { id: string; name: string };
+type Contrato = { codccu: string; nome: string };
+type NucleoComGente = { id: string; name: string; membros: { id: string }[] };
 
 const statusLabel: Record<string, string> = {
   PLANEJADO: "Planejado",
@@ -46,6 +50,14 @@ export default function ProjetosPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [name, setName] = useState("");
   const [teamId, setTeamId] = useState("");
+  const [codccu, setCodccu] = useState("");
+  const [pessoas, setPessoas] = useState<string[]>([]);
+  const [nucleoId, setNucleoId] = useState("");
+  const [contratos, setContratos] = useState<Contrato[]>([]);
+  const [opcoesPessoas, setOpcoesPessoas] = useState<PessoaOpcao[]>([]);
+  const [nucleos, setNucleos] = useState<NucleoComGente[]>([]);
+  const [erro, setErro] = useState("");
+  const [criando, setCriando] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
   async function load() {
@@ -57,19 +69,37 @@ export default function ProjetosPage() {
     setTeams(t);
   }
 
+  // contratos que a pessoa ve, pessoas que podem entrar no projeto e nucleos (para incluir as pessoas de um nucleo de uma vez)
+  async function loadOpcoes() {
+    const [o, n] = await Promise.all([fetch("/api/demandas/opcoes").then((r) => (r.ok ? r.json() : null)), fetch("/api/nucleos").then((r) => (r.ok ? r.json() : []))]);
+    if (o) { setContratos(o.contratos ?? []); setOpcoesPessoas(o.pessoas ?? []); }
+    setNucleos(Array.isArray(n) ? n : []);
+  }
+
   useEffect(() => {
     load();
+    loadOpcoes();
   }, []);
+
+  function incluirPessoasDoNucleo() {
+    const n = nucleos.find((x) => x.id === nucleoId);
+    if (n) setPessoas((atual) => Array.from(new Set([...atual, ...n.membros.map((m) => m.id)])));
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!teamId) return;
-    await fetch("/api/projects", {
+    setErro(""); setCriando(true);
+    const r = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, teamId }),
+      body: JSON.stringify(teamId ? { name, teamId, codccu: codccu || null, nucleoId: nucleoId || null } : { name, pessoas, codccu: codccu || null, nucleoId: nucleoId || null }),
     });
-    setName("");
+    setCriando(false);
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      return setErro(typeof j.error === "string" ? j.error : "Não foi possível criar. Confira o nome (mínimo 2 letras).");
+    }
+    setName(""); setTeamId(""); setCodccu(""); setPessoas([]); setNucleoId("");
     setShowForm(false);
     load();
   }
@@ -92,30 +122,54 @@ export default function ProjetosPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="mb-8 flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-white p-4">
-          <input
-            required
-            placeholder="Nome do projeto"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
-          />
-          <select
-            required
-            value={teamId}
-            onChange={(e) => setTeamId(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">Selecione a equipe</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <button className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
-            Criar
-          </button>
+        <form onSubmit={handleCreate} className="mb-8 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Nome do projeto</label>
+            <input required placeholder="Ex.: Medição de dados do contrato" value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Contrato</label>
+            <select value={codccu} onChange={(e) => setCodccu(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+              <option value="">Sem contrato (projeto interno)</option>
+              {contratos.map((c) => <option key={c.codccu} value={c.codccu}>{c.codccu} · {c.nome}</option>)}
+            </select>
+          </div>
+          {nucleos.length > 0 && (
+            <div>
+              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Núcleo (opcional)</label>
+              <div className="flex gap-2">
+                <select value={nucleoId} onChange={(e) => setNucleoId(e.target.value)} className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm">
+                  <option value="">Nenhum</option>
+                  {nucleos.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+                </select>
+                <button type="button" disabled={!nucleoId || teamId !== ""} onClick={incluirPessoasDoNucleo} className="shrink-0 rounded-md border border-gray-300 px-3 py-2 text-xs font-medium hover:bg-gray-50 disabled:opacity-40">Incluir as pessoas dele</button>
+              </div>
+            </div>
+          )}
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Pessoas do projeto</label>
+            {teamId === "" ? (
+              <>
+                <EscolhaDePessoas pessoas={opcoesPessoas} valor={pessoas} onChange={setPessoas} max={60} vazio="Só você por enquanto." />
+                <p className="mt-1 text-xs text-gray-400">Você entra como responsável. As pessoas escolhidas formam a equipe do projeto, criada junto com ele.</p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500">Usando a equipe escolhida abaixo; as pessoas dela já estão no projeto.</p>
+            )}
+          </div>
+          {teams.length > 0 && (
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Ou use uma equipe que já existe (opcional)</label>
+              <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+                <option value="">Criar a equipe com as pessoas escolhidas</option>
+                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
+          {erro && <p className="text-sm text-red-600 sm:col-span-2">{erro}</p>}
+          <div className="sm:col-span-2">
+            <button disabled={criando} className="rounded-md bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60">{criando ? "Criando…" : "Criar projeto"}</button>
+          </div>
         </form>
       )}
 
@@ -132,6 +186,9 @@ export default function ProjetosPage() {
                 {statusLabel[p.status]}
               </span>
             </div>
+            {p.contrato && (
+              <p className="mb-1"><span className="rounded-md bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-800">CCU {p.contrato.codccu}{p.contrato.nome ? ` · ${p.contrato.nome}` : ""}</span></p>
+            )}
             <p className="text-xs text-gray-400">
               {p.team.name} · Responsável: {p.owner.name}
             </p>
