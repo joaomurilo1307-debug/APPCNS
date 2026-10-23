@@ -120,6 +120,16 @@ test("seed de acessos: Breno e Bruno veem so' os projetos deles (criados ou adic
   for (const p of dados.pessoas) for (const c of p.senior ?? []) assert.match(c, /^\d+$/, "codigo do Senior e' numerico");
 });
 
+test("seed de acessos: Bruno recebe os 24 centros de custo em que aprova como coordenacao/gerencia no Senior (so' soma, sem tela nem visao)", () => {
+  const e = dados.pessoas.find((p: any) => p.chapa === "23" && p.marca === "contratos-alcada");
+  assert.equal(e.perfil, "so_visao_projetos");
+  assert.equal(e.contratos.length, 24);
+  assert.equal(new Set(e.contratos).size, 24, "sem repetidos");
+  for (const c of e.contratos) assert.match(c, /^\d+$/);
+  assert.equal(e.escopoProjetos, undefined);
+  assert.equal(e.verTodosContratos, undefined);
+});
+
 test("achar usuario: primeiro nome abreviado no cadastro (Cris x Cristina) vale, mas so' com o resto do nome batendo e unico", () => {
   const us = [{ id: "1", name: "Cris Gomes" }, { id: "2", name: "Carlos Gomes" }];
   assert.deepEqual(escolherUsuario(us, "CRISTINA AZEVEDO GOMES"), { id: "1", via: "nome-curto" });
