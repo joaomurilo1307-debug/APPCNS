@@ -24,7 +24,9 @@ export function escolherUsuario(usuarios: Candidato[], nomeCompleto: string): { 
   const palavrasAlvo = alvo.split(" ");
   const curtos = usuarios.filter((u) => {
     const p = chaveNome(u.name).split(" ").filter(Boolean);
-    return p.length >= 2 && p[0] === palavrasAlvo[0] && p.every((w) => palavrasAlvo.includes(w));
+    // o primeiro nome pode vir abreviado no cadastro ("Cris" para "Cristina"): vale se for o comeco do nome completo (3+ letras)
+    const primeiro = p[0] === palavrasAlvo[0] || (p[0].length >= 3 && palavrasAlvo[0].startsWith(p[0]));
+    return p.length >= 2 && primeiro && p.every((w, i) => (i === 0 ? true : palavrasAlvo.includes(w)));
   });
   return curtos.length === 1 ? { id: curtos[0].id, via: "nome-curto" } : null;
 }
