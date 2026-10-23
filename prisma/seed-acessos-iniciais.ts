@@ -16,6 +16,7 @@ const dados = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "dat
   perfis: Record<string, string[]>;
   todosOsModulos: string[];
   pessoas: Pessoa[];
+  configuracoes?: Record<string, string>;
 };
 const QUEM = "seed 22/10/2026";
 
@@ -63,6 +64,10 @@ async function main() {
       });
     });
     ligados.push(`${p.chapa}/${p.perfil}/${achado.via}`);
+  }
+  // configuracoes de partida (so' cria se ainda nao existir; nunca sobrescreve o que o financeiro editou na tela)
+  for (const [chave, valor] of Object.entries(dados.configuracoes ?? {})) {
+    await prisma.configuracao.upsert({ where: { chave }, update: {}, create: { chave, valor } });
   }
   console.log(`Acessos iniciais: ${ligados.length} aplicados (${ligados.join(", ") || "-"}); nao encontrados: ${naoAchados.length ? naoAchados.join(" | ") : "nenhum"}.`);
 }

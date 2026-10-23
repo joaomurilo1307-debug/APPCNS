@@ -4,7 +4,7 @@
 // e' o responsavel pelo custo. O pedido cai nas Aprovacoes do financeiro. O Senior nao e' alterado: o financeiro ajusta la, se aceitar.
 
 import { useEffect, useMemo, useState } from "react";
-import { LIMITES, validarPedido } from "@/lib/contestacoes";
+import { LIMITES, referenciaDoLancamento, validarPedido } from "@/lib/contestacoes";
 import { moeda } from "@/lib/custos/formato";
 
 export type LancamentoContestavel = { chave: string; fornecedor: string; numTit: string | null; numOcp: string | null; valor: number; linhaCusto: string | null; ccu: string; ccuNome: string | null };
@@ -54,7 +54,7 @@ export default function ContestarCusto({ item, onFechar, onEnviada }: { item: La
     onEnviada();
   }
 
-  const ref = item.numTit ? `Título ${item.numTit}` : item.numOcp ? `OC ${item.numOcp}` : "Lançamento";
+  const ref = referenciaDoLancamento(item);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Contestar custo" onClick={onFechar}>
@@ -62,11 +62,11 @@ export default function ContestarCusto({ item, onFechar, onEnviada }: { item: La
         <header className="rounded-t-2xl border-b border-gray-100 bg-gradient-to-r from-amber-50 to-transparent px-6 py-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Contestar custo</p>
           <h2 className="text-lg font-semibold text-gray-900">{item.fornecedor}</h2>
-          <p className="text-sm text-gray-500">{ref} · {moeda(item.valor)} · {item.ccuNome || `CC ${item.ccu}`}{item.linhaCusto ? ` · ${item.linhaCusto}` : ""}</p>
+          <p className="text-sm text-gray-500">{ref.charAt(0).toUpperCase() + ref.slice(1)} · {moeda(item.valor)} · {item.ccuNome || `CC ${item.ccu}`}{item.linhaCusto ? ` · ${item.linhaCusto}` : ""}</p>
         </header>
 
         <div className="grid gap-4 px-6 py-5">
-          <p className="rounded-lg bg-gray-50 px-3 py-2 text-[13px] text-gray-600">Use quando este custo não é do seu contrato. O pedido vai para o financeiro, que aceita ou rejeita; se aceitar, o ajuste é feito no Senior pelo financeiro.</p>
+          <p className="rounded-lg bg-gray-50 px-3 py-2 text-[13px] text-gray-600">Use quando este custo não é do seu contrato. O pedido segue para o financeiro com a OC, o título e a sua descrição, nas Aprovações e por e-mail. Ele aceita ou rejeita; se aceitar, o ajuste é feito no Senior pelo financeiro.</p>
 
           <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Justificativa</span>
