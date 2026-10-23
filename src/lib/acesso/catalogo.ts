@@ -15,7 +15,7 @@ export type GrupoModulo = "gestao" | "financeiro" | "contratos" | "admin";
 
 export type ModuloId =
   | "painel" | "projetos" | "tarefas" | "sprint" | "gantt" | "calendario" | "chat" | "equipes" | "nucleos" | "metas" | "relatorios" | "pdi" | "aprovacoes_projetos"
-  | "programacao_pagamento" | "pagamentos_itau" | "conferencia_oc" | "despesas_recorrentes" | "alertas_financeiro" | "notas_fiscais" | "aprovacoes_oc_todas"
+  | "programacao_pagamento" | "pagamentos_itau" | "conferencia_oc" | "despesas_recorrentes" | "alertas_financeiro" | "notas_fiscais" | "aprovacoes_oc_todas" | "contestacoes_custo"
   | "aprovacoes_oc"
   | "contratos" | "custos" | "medicao" | "previsao" | "p0"
   | "usuarios" | "usuarios_senior";
@@ -57,6 +57,7 @@ export const MODULOS: ReadonlyArray<ModuloDef> = [
   { id: "despesas_recorrentes", href: "/despesas-recorrentes", label: "Despesas recorrentes", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Contas fixas" },
   { id: "alertas_financeiro", href: "/alertas-financeiro", label: "Alertas do financeiro", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Avisos de pagamento" },
   { id: "notas_fiscais", href: "/notas-fiscais", label: "Notas fiscais recebidas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Notas contra o CNPJ da empresa" },
+  { id: "contestacoes_custo", href: "/aprovacoes", label: "Aprovar contestações de custo", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Recebe e decide as contestações de custo feitas na tela Ao vivo" },
   { id: "aprovacoes_oc_todas", href: "/aprovacoes/senior", label: "Aprovações de OC: ver todas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Sem isto, a pessoa vê só as OCs em que está envolvida" },
   // ---- aprovacoes de OC (cada um ve as suas; liberada pessoa a pessoa, por enquanto so' para poucos) e contratos (seguem o papel)
   { id: "aprovacoes_oc", href: "/aprovacoes/senior", label: "Aprovações de OC", grupo: "contratos", restrito: true, padraoPapeis: [], descricao: "As OCs do Senior em que a pessoa está envolvida (precisa do vínculo com o usuário do Senior)" },
@@ -174,7 +175,7 @@ export type PerfilPronto = {
 };
 
 const GESTAO_IDS: ModuloId[] = ["painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "chat", "metas", "relatorios", "pdi", "aprovacoes_projetos"];
-const FINANCEIRO_IDS: ModuloId[] = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas"];
+const FINANCEIRO_IDS: ModuloId[] = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas", "contestacoes_custo"];
 const CONTRATOS_IDS: ModuloId[] = ["aprovacoes_oc", "contratos", "custos", "medicao", "previsao", "p0"];
 
 export const PERFIS_PRONTOS: ReadonlyArray<PerfilPronto> = [

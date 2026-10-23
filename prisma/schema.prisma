@@ -177,6 +177,9 @@ model User {
   // modulos liberados ou negados para esta pessoa (sobrepoe o padrao do papel; ver src/lib/acesso/catalogo.ts)
   acessosModulo AcessoModulo[]
   vinculosSenior VinculoSenior[]
+  contestacoesFeitas ContestacaoCusto[] @relation("ContestacaoAutor")
+  contestacoesIndicado ContestacaoCusto[] @relation("ContestacaoIndicado")
+  contestacoesDecididas ContestacaoCusto[] @relation("ContestacaoDecisor")
   nucleosCoordenados Nucleo[] @relation("NucleoCoordenador")
   // centros de custo que esta pessoa acompanha em Custo por Centro de Custo (alem dos das equipes dela)
   acessosCentroCusto AcessoCentroCusto[]
@@ -1782,4 +1785,56 @@ model AtualizacaoMedicao {
   disparadoPor String?
   erro         String?
   resumo       Json?
+}
+
+// Contestacao de custo (23/10/2026): na tela Ao vivo, quem acompanha o contrato contesta um lancamento que nao e' dele: justifica, anexa arquivos
+// e indica quem e' o responsavel pelo custo. Cai nas Aprovacoes do financeiro (modulo "Aprovar contestacoes de custo"), que aceita ou rejeita.
+// O sistema NAO altera o Senior: "aceita" registra a decisao e o financeiro ajusta o lancamento la.
+model ContestacaoCusto {
+  id             String    @id @default(cuid())
+  criadoEm       DateTime  @default(now())
+  atualizadoEm   DateTime  @updatedAt
+  // o lancamento contestado, como aparece no Ao vivo (a chave e' estavel: titulo ou OC + centro de custo + conta)
+  chave          String
+  codccu         String
+  ccuNome        String?
+  origem         String // TITULO | OC
+  numTit         String?
+  numOcp         String?
+  fornecedor     String
+  linhaCusto     String?
+  valor          Float
+  dataLancamento String? // AAAA-MM-DD
+  autorId        String
+  justificativa  String    @db.Text
+  // quem, segundo o autor, e' o responsavel pelo custo
+  indicadoId     String?
+  status         String    @default("PENDENTE") // PENDENTE | ACEITA | REJEITADA
+  parecer        String?   @db.Text
+  decididoPorId  String?
+  decididoEm     DateTime?
+
+  autor       User               @relation("ContestacaoAutor", fields: [autorId], references: [id])
+  indicado    User?              @relation("ContestacaoIndicado", fields: [indicadoId], references: [id], onDelete: SetNull)
+  decididoPor User?              @relation("ContestacaoDecisor", fields: [decididoPorId], references: [id], onDelete: SetNull)
+  anexos      ContestacaoAnexo[]
+
+  @@index([chave])
+  @@index([status])
+  @@index([autorId])
+  @@index([indicadoId])
+  @@index([codccu])
+}
+
+model ContestacaoAnexo {
+  id            String   @id @default(cuid())
+  contestacaoId String
+  nome          String
+  caminho       String // relativo a UPLOAD_DIR
+  tamanho       Int
+  criadoEm      DateTime @default(now())
+
+  contestacao ContestacaoCusto @relation(fields: [contestacaoId], references: [id], onDelete: Cascade)
+
+  @@index([contestacaoId])
 }

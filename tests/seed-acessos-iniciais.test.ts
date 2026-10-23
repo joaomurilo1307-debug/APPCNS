@@ -88,3 +88,13 @@ test("achar por palavra: so' quando ha um unico cadastro com a palavra (caso Jul
   assert.equal(escolherPorPalavra([{ id: "1", name: "Julimar Santos" }, { id: "2", name: "Julimar Alves" }], "JULIMAR"), null);
   assert.equal(escolherPorPalavra([{ id: "2", name: "Renata Marinho" }], "JULIMAR"), null);
 });
+
+test("seed de acessos: quem decide contestacoes de custo = Monica (cadastro do Julimar ou e-mail monica.oliveira) e o Joao; so' esse modulo", () => {
+  assert.deepEqual(dados.perfis.revisor_contestacao, ["contestacoes_custo"]);
+  const revisores = dados.pessoas.filter((p: any) => p.perfil === "revisor_contestacao");
+  assert.ok(revisores.some((p: any) => p.palavraNoNome === "JULIMAR"));
+  assert.ok(revisores.some((p: any) => p.emailPrefixo === "monica.oliveira"));
+  assert.ok(revisores.some((p: any) => p.chapa === "2074"));
+  for (const perfil of ["financeiro", "completo", "coordenacao_financeira"]) assert.ok(dados.perfis[perfil].includes("contestacoes_custo"), perfil);
+  for (const perfil of ["visao_total", "membro_projetos", "gerente_nucleo", "coordenador_nucleo"]) assert.ok(!dados.perfis[perfil].includes("contestacoes_custo"), perfil);
+});

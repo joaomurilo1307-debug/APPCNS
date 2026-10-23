@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import SeletorPeriodo from "@/components/contratos/SeletorPeriodo";
 import { useAbrirOC } from "./AbrirOC";
+import ContestarCusto, { type LancamentoContestavel } from "./ContestarCusto";
 import { mesCurto, mesLongo, moeda, moedaCompacta } from "@/lib/custos/formato";
 
 type Item = {
@@ -57,6 +58,10 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
   const [pagina, setPagina] = useState(1);
   const filtrosRef = useRef("");
   const { abrirOC, janelaOC } = useAbrirOC();
+  // contestacao de custo: o lancamento aberto na janela, o estado de cada contestacao da pagina e o aviso depois de enviar
+  const [contestando, setContestando] = useState<LancamentoContestavel | null>(null);
+  const [contestadas, setContestadas] = useState<Record<string, { id: string; status: string; indicado: string | null }>>({});
+  const [avisoContestacao, setAvisoContestacao] = useState("");
 
   const ccu = codccu ?? centro;
   const consulta = useCallback(() => {
@@ -88,6 +93,13 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
   }, [consulta]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+  const chavesDaPagina = dados?.itens.map((i) => i.chave).join(",") ?? "";
+  const carregarContestacoes = useCallback(async () => {
+    if (!chavesDaPagina) return setContestadas({});
+    const r = await fetch(`/api/contestacoes?${new URLSearchParams({ chaves: chavesDaPagina })}`, { cache: "no-store" }).catch(() => null);
+    if (r?.ok) setContestadas((await r.json()).porChave ?? {});
+  }, [chavesDaPagina]);
+  useEffect(() => { void carregarContestacoes(); }, [carregarContestacoes]);
   useEffect(() => {
     const t = setInterval(() => { if (document.visibilityState === "visible") void carregar(); }, 180_000);
     return () => clearInterval(t);
@@ -188,7 +200,7 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
           <div className="overflow-x-auto rounded-xl border border-gray-100">
             <table className="w-full min-w-[980px] text-[13px]">
               <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                <tr><th className="px-3 py-2">Data</th>{!codccu && <th className="px-3 py-2">Centro de custo</th>}<th className="px-3 py-2">Lançamento</th><th className="px-3 py-2">Linha de custo</th><th className="px-3 py-2">OC</th><th className="px-3 py-2">Pagamento</th><th className="px-3 py-2 text-right">Valor</th></tr>
+                <tr><th className="px-3 py-2">Data</th>{!codccu && <th className="px-3 py-2">Centro de custo</th>}<th className="px-3 py-2">Lançamento</th><th className="px-3 py-2">Linha de custo</th><th className="px-3 py-2">OC</th><th className="px-3 py-2">Pagamento</th><th className="px-3 py-2 text-right">Valor</th><th className="px-3 py-2"><span className="sr-only">Contestar</span></th></tr>
               </thead>
               <tbody>
                 {dados.itens.map((i) => {
@@ -212,10 +224,21 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
                         <div className="mt-0.5 text-xs text-gray-400">{i.pagamento === "pago" ? (i.dataPagamento ? `em ${dataBr(i.dataPagamento)}` : "") : i.vencimento ? `vence ${dataBr(i.vencimento)}` : i.pagamento === "a_pagar" ? "sem data de vencimento" : ""}</div>
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-gray-900">{moeda(i.valor)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                        {contestadas[i.chave] ? (
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${contestadas[i.chave].status === "ACEITA" ? "bg-emerald-100 text-emerald-800" : contestadas[i.chave].status === "REJEITADA" ? "bg-gray-200 text-gray-700" : "bg-amber-100 text-amber-800"}`}
+                            title={contestadas[i.chave].indicado ? `Responsável indicado: ${contestadas[i.chave].indicado}` : undefined}>
+                            Contestado · {contestadas[i.chave].status === "ACEITA" ? "aceita" : contestadas[i.chave].status === "REJEITADA" ? "rejeitada" : "aguardando o financeiro"}
+                          </span>
+                        ) : (
+                          <button type="button" onClick={() => { setAvisoContestacao(""); setContestando({ chave: i.chave, fornecedor: i.fornecedor, numTit: i.numTit, numOcp: i.numOcp, valor: i.valor, linhaCusto: i.linhaCusto, ccu: i.ccu, ccuNome: i.ccuNome ?? (dados?.centros.find((c) => c.codccu === i.ccu)?.nome ?? null) }); }}
+                            className="rounded-lg border border-amber-300 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50" title="Este custo não é do meu contrato">Contestar</button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
-                {dados.itens.length === 0 && <tr><td colSpan={codccu ? 6 : 7} className="px-3 py-8 text-center text-gray-400">Nenhum lançamento com esses filtros neste período.</td></tr>}
+                {dados.itens.length === 0 && <tr><td colSpan={codccu ? 7 : 8} className="px-3 py-8 text-center text-gray-400">Nenhum lançamento com esses filtros neste período.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -229,6 +252,11 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
             </span>
           </footer>
         </>
+      )}
+      {avisoContestacao && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-800">{avisoContestacao}</p>}
+      {contestando && (
+        <ContestarCusto item={contestando} onFechar={() => setContestando(null)}
+          onEnviada={() => { setContestando(null); setAvisoContestacao("Contestação enviada ao financeiro. Acompanhe em Aprovações."); void carregarContestacoes(); }} />
       )}
       {janelaOC}
     </section>
