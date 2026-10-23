@@ -274,3 +274,12 @@ export function situacaoDoTituloNaSenior(linhas: LinhaSenior[]): {
   const valorAberto = numeroDaSenior(l.VLRABE);
   return { existe: true, aberto: l.SITTIT === "AB" && valorAberto > 0, sittit: l.SITTIT ?? "", valorAberto, dataPagamento: dataPagamentoNaSenior(l.ULTPGT) };
 }
+
+/**
+ * A resposta do webservice de baixa nao e' confiavel: a Senior pode gravar a baixa e ainda assim
+ * responder ERRO (passo posterior, ex.: tesouraria). A verdade e' a leitura do titulo depois da chamada.
+ * "Liquidado" = existe, saldo zero e situacao LQ.
+ */
+export function liquidadoNaSenior(s: ReturnType<typeof situacaoDoTituloNaSenior>): boolean {
+  return s.existe && s.valorAberto === 0 && s.sittit === "LQ";
+}
