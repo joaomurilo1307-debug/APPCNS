@@ -47,6 +47,7 @@ export default function NucleosPage() {
   const [erroAssoc, setErroAssoc] = useState("");
   const [addMemberChoice, setAddMemberChoice] = useState("");
   const [addingMember, setAddingMember] = useState(false);
+  const [msgEquipe, setMsgEquipe] = useState<Record<string, string>>({});
 
   async function load() {
     const res = await fetch("/api/nucleos");
@@ -83,6 +84,15 @@ export default function NucleosPage() {
     }
     setAssocChoice((x) => ({ ...x, [nucleoId]: "" }));
     load();
+  }
+
+  // cria uma equipe com as pessoas do nucleo (coordenadores e gerentes entram como gestores)
+  async function criarEquipe(n: Nucleo) {
+    const nome = window.prompt("Nome da equipe", `Equipe ${n.name}`);
+    if (nome === null) return;
+    const res = await fetch(`/api/nucleos/${n.id}/equipe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome: nome.trim() || undefined }) });
+    const j = await res.json().catch(() => ({}));
+    setMsgEquipe((x) => ({ ...x, [n.id]: res.ok ? `Equipe “${j.name}” criada com ${j.pessoas} pessoa(s). Use-a em Projetos → Novo projeto.` : typeof j.error === "string" ? j.error : "Não foi possível criar a equipe." }));
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -320,6 +330,12 @@ export default function NucleosPage() {
                 </div>
                 {erroAssoc && <p className="mt-2 text-xs text-red-600">{erroAssoc}</p>}
 
+                {n.gero && (
+                  <div className="mt-3">
+                    <button onClick={() => criarEquipe(n)} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50">Criar equipe com as pessoas do núcleo</button>
+                    {msgEquipe[n.id] && <p className="mt-1 text-xs text-gray-600">{msgEquipe[n.id]}</p>}
+                  </div>
+                )}
                 <p className="mt-3 text-xs text-gray-400">{n.membros.length} pessoa(s)</p>
                 <ul className="mt-3 space-y-2">
                   {n.membros.map((m) => (
