@@ -47,9 +47,61 @@ export type ResumoLancamento = { fornecedor: string; numTit?: string | null; num
 
 const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+/** "OC 15994 · título 008034" (os dois quando existem; "lançamento" se nenhum). */
+export function referenciaDoLancamento(c: { numTit?: string | null; numOcp?: string | null }): string {
+  const refs = [c.numOcp ? `OC ${c.numOcp}` : null, c.numTit ? `título ${c.numTit}` : null].filter(Boolean);
+  return refs.length ? refs.join(" · ") : "lançamento";
+}
+
 export function descricaoDoLancamento(c: ResumoLancamento): string {
-  const ref = c.numTit ? `título ${c.numTit}` : c.numOcp ? `OC ${c.numOcp}` : "lançamento";
-  return `${c.fornecedor} · ${ref} · ${moeda(c.valor)} · ${c.ccuNome || `CC ${c.codccu}`}`;
+  return `${c.fornecedor} · ${referenciaDoLancamento(c)} · ${moeda(c.valor)} · ${c.ccuNome || `CC ${c.codccu}`}`;
+}
+
+export type DadosDoEmail = ResumoLancamento & { linhaCusto?: string | null; dataLancamento?: string | null };
+
+const dataBr = (iso?: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
+
+/** E-mail enviado ao financeiro quando alguem contesta um custo: traz a OC, o titulo e a descricao, para decidir (ou ajustar no Senior) sem abrir o sistema. */
+export function emailDaContestacao(
+  c: DadosDoEmail,
+  p: { autor: string; justificativa: string; indicado?: string | null; anexos?: string[]; dominio?: string | null }
+): { subject: string; text: string } {
+  const link = p.dominio ? `https://${p.dominio}/aprovacoes#contestacoes` : null;
+  const linhas = [
+    "Olá,",
+    "",
+    `${p.autor} contestou um custo na tela Ao vivo e precisa da decisão do financeiro.`,
+    "",
+    `Contrato (centro de custo): ${c.ccuNome || "—"} (CCU ${c.codccu})`,
+    `Fornecedor: ${c.fornecedor}`,
+    `OC: ${c.numOcp || "não ligada"}`,
+    `Título: ${c.numTit || "sem título"}`,
+    ...(c.linhaCusto ? [`Linha de custo: ${c.linhaCusto}`] : []),
+    `Valor: ${moeda(c.valor)}`,
+    ...(c.dataLancamento ? [`Data do lançamento: ${dataBr(c.dataLancamento)}`] : []),
+    "",
+    "Descrição da contestação:",
+    p.justificativa.trim(),
+    "",
+    ...(p.indicado ? [`Responsável indicado por quem contestou: ${p.indicado}`] : []),
+    ...(p.anexos && p.anexos.length ? [`Arquivos anexados (para baixar no sistema): ${p.anexos.join(", ")}`] : []),
+    ...(link ? ["", `Para aceitar ou rejeitar: ${link}`] : []),
+    "Aceitar registra a decisão; o ajuste no Senior é feito pelo financeiro (o sistema não altera o Senior).",
+  ];
+  return { subject: `Contestação de custo: ${referenciaDoLancamento(c)} · ${moeda(c.valor)}`, text: linhas.join("\n") };
+}
+
+/** Separa uma lista de e-mails digitada (virgula, ponto e virgula ou quebra de linha), tira repetidos e descarta o que nao parece e-mail. */
+export function lerListaDeEmails(texto: string | null | undefined): { validos: string[]; invalidos: string[] } {
+  const validos: string[] = [];
+  const invalidos: string[] = [];
+  for (const bruto of (texto ?? "").split(/[\s,;]+/)) {
+    const e = bruto.trim().toLowerCase();
+    if (!e) continue;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) invalidos.push(bruto.trim());
+    else if (!validos.includes(e)) validos.push(e);
+  }
+  return { validos, invalidos };
 }
 
 export function notificacaoNova(c: ResumoLancamento, autor: string) {

@@ -7,7 +7,7 @@ import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { hojeBR } from "@/lib/financeiro/alertas";
 import { carregarAoVivo, nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
 import { notificacaoIndicado, notificacaoNova, validarPedido } from "@/lib/contestacoes";
-import { avisar, destinatariosDaRevisao, ehRevisorDeContestacao } from "@/lib/contestacoesServidor";
+import { avisar, destinatariosDaRevisao, ehRevisorDeContestacao, enviarEmailDaContestacao } from "@/lib/contestacoesServidor";
 import { saveUploadedFile, validateUploadFile } from "@/lib/uploadValidation";
 import { logAudit } from "@/lib/auditLog";
 
@@ -114,6 +114,12 @@ export async function POST(req: Request) {
   const n = notificacaoNova(resumo, user.name ?? "Alguém");
   await avisar(revisores, { ...n, tipo: "APROVACAO_PENDENTE" });
   if (indicadoId && indicadoId !== user.id) await avisar([indicadoId], notificacaoIndicado(resumo, user.name ?? "Alguém"));
+  // e-mail para o financeiro com a OC, o titulo e a descricao: ele decide (ou ajusta no Senior) sem precisar abrir o sistema
+  const indicadoNome = indicadoId ? (await prisma.user.findUnique({ where: { id: indicadoId }, select: { name: true } }))?.name ?? null : null;
+  void enviarEmailDaContestacao(
+    { ...resumo, linhaCusto: item.linhaCusto, dataLancamento: item.data ? item.data.slice(0, 10) : null },
+    { autor: user.name ?? "Alguém", justificativa, indicado: indicadoNome, anexos: arquivos.map((a) => a.name) }
+  );
   await logAudit({ userId: user.id, action: "contestacao.criar", entityType: "ContestacaoCusto", entityId: criada.id, metadata: { chave, codccu: item.ccu, indicadoId, anexos: arquivos.length } });
   return NextResponse.json({ id: criada.id }, { status: 201 });
 }

@@ -1838,3 +1838,11 @@ model ContestacaoAnexo {
 
   @@index([contestacaoId])
 }
+
+// Configuracoes simples do sistema (chave/valor), editaveis pela propria tela. Hoje: "contestacoes.emails" = e-mails que recebem os pedidos de
+// contestacao de custo (separados por virgula), alem das pessoas com o modulo "Aprovar contestacoes de custo".
+model Configuracao {
+  chave        String   @id
+  valor        String   @db.Text
+  atualizadoEm DateTime @updatedAt
+}

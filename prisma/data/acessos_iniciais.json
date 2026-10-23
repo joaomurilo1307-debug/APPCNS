@@ -350,5 +350,8 @@
       "perfil": "revisor_contestacao",
       "marca": "contestacoes"
     }
-  ]
+  ],
+  "configuracoes": {
+    "contestacoes.emails": "monica.oliveira@consominas.com.br"
+  }
 }
