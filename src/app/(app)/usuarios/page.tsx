@@ -67,28 +67,14 @@ export default function UsuariosPage() {
   const [filtroPapel, setFiltroPapel] = useState("");
   const [pagina, setPagina] = useState(0);
   const POR_PAGINA = 25;
-  const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState("COLABORADOR");
-  const [newUserColor, setNewUserColor] = useState(AVATAR_PALETTE[0]);
-  const [newCargo, setNewCargo] = useState("");
-  const [newDiretoria, setNewDiretoria] = useState("");
-  const [newRamal, setNewRamal] = useState("");
-  const [newWhatsapp, setNewWhatsapp] = useState("");
-  const [newGestorId, setNewGestorId] = useState("");
-  const [newDataInicio, setNewDataInicio] = useState("");
-  const [newNivel, setNewNivel] = useState("");
-  const [newNucleoId, setNewNucleoId] = useState("");
-  const [newNucleoName, setNewNucleoName] = useState("");
+  // janela unica de criacao: dados da pessoa + telas de cada modulo + projetos, contratos, nucleos e Senior
+  const [criarAberto, setCriarAberto] = useState(false);
   const [nucleos, setNucleos] = useState<NucleoOption[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resetError, setResetError] = useState<string | null>(null);
-  // painel de acesso aberto: logo depois de criar um usuario (novo) ou pelo botao "Acesso" da linha
-  const [acessoDe, setAcessoDe] = useState<{ id: string; novo: boolean } | null>(null);
+  // painel de acesso aberto pelo botao "Acesso" da linha
+  const [acessoDe, setAcessoDe] = useState<{ id: string } | null>(null);
 
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
@@ -123,73 +109,6 @@ export default function UsuariosPage() {
     load();
     loadNucleos();
   }, []);
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-          role: newUserRole,
-          avatarColor: newUserColor,
-          cargo: newCargo || undefined,
-          diretoria: newDiretoria || undefined,
-          ramal: newRamal || undefined,
-          whatsapp: newWhatsapp || undefined,
-          gestorImediatoId: newGestorId || undefined,
-          dataInicio: newDataInicio ? new Date(newDataInicio).toISOString() : undefined,
-          nivelHierarquico: newNivel || undefined,
-          nucleoId: newNucleoName ? undefined : newNucleoId || undefined,
-          newNucleoName: newNucleoName || undefined,
-        }),
-      });
-      if (!res.ok) {
-        let message = "Erro ao criar usuário";
-        try {
-          const data = await res.json();
-          if (data.error?.fieldErrors) {
-            const fieldMessages = Object.entries(data.error.fieldErrors as Record<string, string[]>)
-              .filter(([, msgs]) => msgs?.length)
-              .map(([field, msgs]) => `${field}: ${msgs.join(", ")}`);
-            if (fieldMessages.length) message = fieldMessages.join(" · ");
-          } else if (data.error?.formErrors?.length) {
-            message = data.error.formErrors.join(", ");
-          } else if (typeof data.error === "string") {
-            message = data.error;
-          }
-        } catch {
-          // resposta nao veio em JSON (ex: deploy em andamento) — mantem mensagem generica
-        }
-        setError(message);
-        return;
-      }
-      const criado = await res.json().catch(() => null);
-      if (criado?.id) setAcessoDe({ id: criado.id, novo: true });
-      setName("");
-      setEmail("");
-      setPassword("");
-      setNewUserColor(AVATAR_PALETTE[0]);
-      setNewCargo("");
-      setNewDiretoria("");
-      setNewRamal("");
-      setNewWhatsapp("");
-      setNewGestorId("");
-      setNewDataInicio("");
-      setNewNivel("");
-      setNewNucleoId("");
-      setNewNucleoName("");
-      setShowForm(false);
-      load();
-      loadNucleos();
-    } catch {
-      setError("Não foi possível conectar ao servidor. Tente novamente em alguns segundos.");
-    }
-  }
 
   async function updateRole(id: string, newRole: string) {
     await fetch(`/api/users/${id}`, {
@@ -296,96 +215,12 @@ export default function UsuariosPage() {
           <p className="text-sm text-gray-500">Cadastro de acesso e papéis. Restrito a Admin.</p>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => setCriarAberto(true)}
           className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
         >
           + Novo usuário
         </button>
       </div>
-
-      {showForm && (
-        <form onSubmit={handleCreate} className="mb-8 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-4">
-          <input required placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <input required type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <input
-            required
-            type="password"
-            minLength={8}
-            title="Mínimo de 8 caracteres"
-            placeholder="Senha provisória (mín. 8 caracteres)"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-56 rounded-md border border-gray-300 px-3 py-2 text-sm"
-          />
-          <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
-            {Object.entries(roleLabel).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-          <input placeholder="Cargo" value={newCargo} onChange={(e) => setNewCargo(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <input placeholder="Diretoria" value={newDiretoria} onChange={(e) => setNewDiretoria(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <input placeholder="Ramal" value={newRamal} onChange={(e) => setNewRamal(e.target.value)} className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <input placeholder="WhatsApp" value={newWhatsapp} onChange={(e) => setNewWhatsapp(e.target.value)} className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <select value={newGestorId} onChange={(e) => setNewGestorId(e.target.value)} className="w-44 rounded-md border border-gray-300 px-3 py-2 text-sm">
-            <option value="">Gestor imediato…</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
-          <input
-            type="date"
-            title="Data de início"
-            value={newDataInicio}
-            onChange={(e) => setNewDataInicio(e.target.value)}
-            className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
-          />
-          <select value={newNivel} onChange={(e) => setNewNivel(e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
-            <option value="">Nível hierárquico…</option>
-            {Object.entries(nivelLabel).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
-            ))}
-          </select>
-          <select
-            value={newNucleoId}
-            onChange={(e) => {
-              setNewNucleoId(e.target.value);
-              if (e.target.value) setNewNucleoName("");
-            }}
-            className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">Núcleo…</option>
-            {nucleos.map((n) => (
-              <option key={n.id} value={n.id}>{n.name}</option>
-            ))}
-          </select>
-          <input
-            placeholder="Ou novo núcleo"
-            value={newNucleoName}
-            onChange={(e) => {
-              setNewNucleoName(e.target.value);
-              if (e.target.value) setNewNucleoId("");
-            }}
-            className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm"
-          />
-          <div className="flex items-center gap-1">
-            {AVATAR_PALETTE.map((c) => (
-              <button
-                type="button"
-                key={c}
-                onClick={() => setNewUserColor(c)}
-                className={`h-6 w-6 rounded-full ${newUserColor === c ? "ring-2 ring-offset-1 ring-gray-500" : ""}`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </div>
-          <button className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">Criar e definir acesso →</button>
-          {nucleos.length === 0 && (
-            <p className="w-full text-xs text-amber-700">Ainda não há núcleos cadastrados, por isso a lista “Núcleo…” está vazia. Digite o nome em “Ou novo núcleo” ou crie depois em Núcleos; o painel de acesso, logo após criar, também permite criar o núcleo.</p>
-          )}
-          <p className="w-full text-xs text-gray-500">Ao criar, abre o painel onde você escolhe os módulos, as telas (ver ou editar), os projetos, os contratos, os núcleos e o usuário do Senior.</p>
-          {error && <p className="w-full text-sm text-red-600">{error}</p>}
-        </form>
-      )}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
@@ -613,7 +448,7 @@ export default function UsuariosPage() {
                 <td className="px-4 py-3">
                   <div className="flex flex-col items-start gap-1">
                     <button
-                      onClick={() => setAcessoDe({ id: u.id, novo: false })}
+                      onClick={() => setAcessoDe({ id: u.id })}
                       className="rounded-md bg-brand px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-dark"
                     >
                       Acesso
@@ -640,7 +475,15 @@ export default function UsuariosPage() {
           </tbody>
         </table>
       </div>
-      {acessoDe && <PainelAcesso userId={acessoDe.id} novo={acessoDe.novo} onFechar={() => setAcessoDe(null)} onSalvo={load} />}
+      {acessoDe && <PainelAcesso userId={acessoDe.id} onFechar={() => setAcessoDe(null)} onSalvo={load} />}
+      {criarAberto && (
+        <PainelAcesso
+          userId={null}
+          usuarios={users.filter((u) => u.active && !u.anonymizedAt).map((u) => ({ id: u.id, name: u.name }))}
+          onFechar={() => setCriarAberto(false)}
+          onSalvo={() => { load(); loadNucleos(); }}
+        />
+      )}
     </div>
   );
 }

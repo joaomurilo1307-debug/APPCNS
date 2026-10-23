@@ -107,6 +107,19 @@ test("seed de acessos: Cris (Cristina Azevedo Gomes) recebe so' contratos e Apro
   assert.ok(!("bloquearOutros" in cris), "o resto das telas dela continua como estava");
 });
 
+test("seed de acessos: Breno e Bruno veem so' os projetos deles (criados ou adicionados), com o login do Senior vinculado e sem mexer nas telas", () => {
+  const escopos = dados.pessoas.filter((p: any) => p.marca === "projetos-proprios");
+  assert.deepEqual(escopos.map((p: any) => [p.chapa, p.escopoProjetos]).sort(), [["16", "PROPRIOS"], ["23", "PROPRIOS"]]);
+  assert.deepEqual(dados.perfis.so_visao_projetos, [], "so mexe na visao, nunca nas telas ja ajustadas no painel");
+  const vinculos = dados.pessoas.filter((p: any) => p.marca === "senior-vinculo");
+  assert.deepEqual(vinculos.map((p: any) => [p.chapa, p.senior]).sort(), [["16", ["58"]], ["23", ["54"]]]);
+  const bruno = vinculos.find((p: any) => p.chapa === "23");
+  assert.equal(bruno.verTodosContratos, false, "Bruno ve so' os contratos que o Joao marcar");
+  const breno = dados.pessoas.filter((p: any) => p.chapa === "16" && p.marca !== "visao");
+  for (const p of breno) assert.equal(p.verTodosContratos, undefined, "os contratos do Breno nao mudam");
+  for (const p of dados.pessoas) for (const c of p.senior ?? []) assert.match(c, /^\d+$/, "codigo do Senior e' numerico");
+});
+
 test("achar usuario: primeiro nome abreviado no cadastro (Cris x Cristina) vale, mas so' com o resto do nome batendo e unico", () => {
   const us = [{ id: "1", name: "Cris Gomes" }, { id: "2", name: "Carlos Gomes" }];
   assert.deepEqual(escolherUsuario(us, "CRISTINA AZEVEDO GOMES"), { id: "1", via: "nome-curto" });
