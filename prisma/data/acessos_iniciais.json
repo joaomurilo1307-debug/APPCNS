@@ -7,7 +7,8 @@
       "despesas_recorrentes",
       "alertas_financeiro",
       "notas_fiscais",
-      "aprovacoes_oc_todas"
+      "aprovacoes_oc_todas",
+      "contestacoes_custo"
     ],
     "visao_total": [
       "painel",
@@ -100,7 +101,8 @@
       "custos",
       "medicao",
       "previsao",
-      "p0"
+      "p0",
+      "contestacoes_custo"
     ],
     "coordenacao_financeira": [
       "painel",
@@ -122,7 +124,11 @@
       "despesas_recorrentes",
       "alertas_financeiro",
       "notas_fiscais",
-      "aprovacoes_oc_todas"
+      "aprovacoes_oc_todas",
+      "contestacoes_custo"
+    ],
+    "revisor_contestacao": [
+      "contestacoes_custo"
     ]
   },
   "todosOsModulos": [
@@ -151,7 +157,8 @@
     "custos",
     "medicao",
     "previsao",
-    "p0"
+    "p0",
+    "contestacoes_custo"
   ],
   "pessoas": [
     {
@@ -322,6 +329,26 @@
         "previsao",
         "p0"
       ]
+    },
+    {
+      "chapa": "JULIMAR",
+      "nome": "JULIMAR (cadastro usado pela Monica, coordenadora financeira)",
+      "palavraNoNome": "JULIMAR",
+      "perfil": "revisor_contestacao",
+      "marca": "contestacoes"
+    },
+    {
+      "chapa": "MONICA.OLIVEIRA",
+      "nome": "E-mail monica.oliveira (coordenadora financeira)",
+      "emailPrefixo": "monica.oliveira",
+      "perfil": "revisor_contestacao",
+      "marca": "contestacoes"
+    },
+    {
+      "chapa": "2074",
+      "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA",
+      "perfil": "revisor_contestacao",
+      "marca": "contestacoes"
     }
   ]
 }

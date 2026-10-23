@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { montarConferenciaPagamento } from "@/lib/pagamentos/conferenciaPagamento";
 import type { DadosSeniorDoTitulo } from "@/lib/senior/dadosPagamentoTitulos";
+import { codigoPeloNome, nomeConta } from "@/lib/custos/planoContas";
 
 // Modal com o descritivo completo de uma Ordem de Compra do Senior
 // (fornecedor, valor, rateio por centro de custo, alçada/níveis de
@@ -38,6 +39,18 @@ export type NivelRateio = {
   aprovadoPorCod?: string | null;
   aprovadoEm?: string | null;
 };
+
+// A conta do rateio como "Nome da conta (conta 80)": a OC mostrava so' o numero (ou so' o nome) e o aprovador precisa dos dois para decidir rapido.
+function rotuloConta(bruto: string): string {
+  const t = bruto.trim();
+  const so = /^(?:conta\s*)?(\d{1,6})$/i.exec(t);
+  if (so) {
+    const nome = nomeConta(so[1]);
+    return nome ? `${nome} (conta ${so[1]})` : `conta ${so[1]}`;
+  }
+  const cod = codigoPeloNome(t);
+  return cod !== null ? `${t} (conta ${cod})` : t;
+}
 
 export type RateioItem = {
   seq?: number;
@@ -354,7 +367,7 @@ export default function MapaOC({
     g.linhas += 1;
     g.valor += r.valor ?? 0;
     const conta = r.contaFinanceira || r.nome;
-    if (conta) g.contas.add(conta);
+    if (conta) g.contas.add(rotuloConta(conta));
   }
   const rateioPorCC = Array.from(mapaCC.values());
 

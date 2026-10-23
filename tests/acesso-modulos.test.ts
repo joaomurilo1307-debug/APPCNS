@@ -16,7 +16,7 @@ import {
 } from "../src/lib/acesso/catalogo";
 
 const nenhuma = new Map<string, boolean>();
-const FINANCEIRO_RESTRITO: ModuloId[] = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas"];
+const FINANCEIRO_RESTRITO: ModuloId[] = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas", "contestacoes_custo"];
 
 test("catalogo: ids unicos e cada modulo tem rota", () => {
   const ids = MODULOS.map((m) => m.id);

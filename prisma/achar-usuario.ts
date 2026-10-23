@@ -42,3 +42,9 @@ export function escolherPorPalavra(usuarios: Candidato[], palavra: string): { id
   const achados = usuarios.filter((u) => chaveNome(u.name).split(" ").includes(alvo));
   return achados.length === 1 ? { id: achados[0].id, via: "palavra" } : null;
 }
+
+/** Usuario cujo e-mail comeca por este prefixo (ex.: "monica.oliveira" -> monica.oliveira@empresa); so' se houver exatamente um. */
+export async function acharPorEmail(prisma: PrismaClient, prefixo: string): Promise<{ id: string; via: "email" } | null> {
+  const achados = await prisma.user.findMany({ where: { email: { startsWith: prefixo.toLowerCase(), mode: "insensitive" } }, select: { id: true }, take: 3 });
+  return achados.length === 1 ? { id: achados[0].id, via: "email" } : null;
+}

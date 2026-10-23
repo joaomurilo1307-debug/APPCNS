@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ContestacoesDeCusto from "@/components/aprovacoes/ContestacoesDeCusto";
 import { useSession } from "next-auth/react";
 import Avatar from "@/components/Avatar";
 import { eventTypeLabel } from "@/lib/calendarColors";
@@ -185,6 +186,8 @@ export default function AprovacoesPage() {
           </button>
         )}
       </div>
+
+      <ContestacoesDeCusto />
 
       {ocsSenior.length > 0 && (
         <div className="mb-8">
