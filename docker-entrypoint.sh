@@ -57,5 +57,9 @@ npx tsx prisma/seed-nucleos-adm.ts || true
 echo "Aplicando acessos iniciais (uma vez por pessoa)..."
 npx tsx prisma/seed-acessos-iniciais.ts || true
 
+# Vincula ao login do Senior (igual a parte do e-mail antes do @) quem ainda nao tem vinculo: uma vez por pessoa, sem variavel de ambiente.
+echo "Vinculando usuarios ao login do Senior pelo e-mail (uma vez por pessoa)..."
+npx tsx prisma/seed-vinculos-senior-email.ts || true
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000

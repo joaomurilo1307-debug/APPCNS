@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { logAudit } from "@/lib/auditLog";
+import { vincularSeniorPorEmail } from "../../../../prisma/achar-senior";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -118,5 +119,7 @@ export async function POST(req: Request) {
     metadata: { name: user.name, email: user.email, role: user.role },
   });
 
-  return NextResponse.json(user, { status: 201 });
+  // o login do Senior e' a parte do e-mail antes do @: ja vincula, para a pessoa ver as OCs dela (nao impede a criacao se falhar)
+  const senior = await vincularSeniorPorEmail(prisma, user.id, user.email, "vinculo automatico por e-mail (novo usuario)").catch(() => null);
+  return NextResponse.json({ ...user, senior }, { status: 201 });
 }

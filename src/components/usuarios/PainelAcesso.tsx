@@ -95,6 +95,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
   const [buscaSenior, setBuscaSenior] = useState("");
   const [achadosSenior, setAchadosSenior] = useState<{ codigo: string; nome: string; usadoPor: string[] }[] | null>(null);
   const [perfilAplicado, setPerfilAplicado] = useState<string | null>(null);
+  const [msgSenior, setMsgSenior] = useState("");
 
   useEffect(() => {
     let vivo = true;
@@ -118,6 +119,24 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
     });
     return () => { vivo = false; };
   }, [userId]);
+
+  // login do Senior igual ao e-mail da pessoa (a parte antes do @): ao digitar o e-mail de um usuario novo e pelo botao
+  async function vincularPelaEmail(auto: boolean) {
+    const email = (userId === null && !idCriado ? pessoa.email : dados?.usuario.email ?? pessoa.email).trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) { if (!auto) setMsgSenior("Digite o e-mail da pessoa primeiro."); return; }
+    const r = await fetch(`/api/acesso/senior?email=${encodeURIComponent(email)}`).catch(() => null);
+    if (!r || !r.ok) { if (!auto) setMsgSenior("Não foi possível consultar o Senior agora. Tente de novo."); return; }
+    const a = (await r.json().catch(() => null))?.porEmail as { codigo: string; nome: string; usadoPor: string[] } | null | undefined;
+    if (!a) { setMsgSenior(auto ? "" : "Não achei login do Senior igual a este e-mail. Use a busca abaixo."); return; }
+    setSenior((x) => (x.some((s) => s.codigo === a.codigo) ? x : [...x, { codigo: a.codigo, nome: a.nome, tambemUsam: a.usadoPor }]));
+    setMsgSenior(`Achei pelo e-mail: ${a.nome} #${a.codigo}.${userId === null && !idCriado ? " Vai junto ao criar o usuário." : " Clique em Salvar acesso para gravar."}`);
+  }
+  useEffect(() => {
+    if (!(userId === null && !idCriado) || !/^\S+@\S+\.\S+$/.test(pessoa.email.trim())) return;
+    const t = setTimeout(() => { void vincularPelaEmail(true); }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pessoa.email, userId, idCriado]);
 
   // busca no Senior (espera o admin parar de digitar)
   useEffect(() => {
@@ -478,6 +497,10 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
                     <button type="button" className="font-semibold underline" onClick={() => setSenior([...senior, { codigo: s.codigo, nome: s.nome, tambemUsam: [] }])}>Usar</button>
                   </p>
                 ))}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => vincularPelaEmail(false)} className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark">Vincular pelo e-mail</button>
+                  <span className="text-xs text-gray-500">{msgSenior || "Procura o login do Senior igual ao e-mail da pessoa (a parte antes do @)."}</span>
+                </div>
                 <label className={`${rot} mt-4`}>Buscar no Senior (login ou código)</label>
                 <input className={campo} placeholder="Ex.: julimar ou 26" value={buscaSenior} onChange={(e) => setBuscaSenior(e.target.value)} />
                 {achadosSenior && (
