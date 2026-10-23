@@ -9,6 +9,7 @@ import {
   COD_EMP_PADRAO,
   gerarBaixaPorLoteCP,
   situacaoDoTituloNaSenior,
+  liquidadoNaSenior,
   type TituloParaBaixa,
 } from "@/lib/senior/baixaTitulos";
 import { erroDoItemBaixa, reservarItemBaixa } from "@/lib/senior/controleBaixa";
@@ -281,24 +282,33 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         let mensagemConferencia = "";
         let indeterminado = !respostaConclusiva;
         let liquidacaoConferida: ReturnType<typeof situacaoDoTituloNaSenior> | null = null;
-        if (!falhou) {
-          // OK no SOAP e aceite da operacao; conferir a liquidacao antes de
-          // registrar a baixa como concluida no app.
-          try {
-            const t = a.envio!;
-            const s = situacaoDoTituloNaSenior(await consultarSenior(
-              `SELECT NUMTIT, CODTPT, CODFOR, SITTIT, VLRABE, ULTPGT FROM E501TCP WHERE CODEMP = ${COD_EMP_PADRAO} AND CODFIL = ${t.codFil} ` +
-              `AND CODFOR = ${t.codFor} AND NUMTIT = '${t.numTit.replace(/'/g, "''")}' AND CODTPT = '${t.codTpt.replace(/'/g, "''")}'`
-            ));
-            if (!s.existe || s.valorAberto !== 0 || !["LQ", "AB"].includes(s.sittit)) {
-              falhou = true; indeterminado = true;
-              mensagemConferencia = "Senior respondeu OK, mas a liquidacao nao foi confirmada na leitura posterior. Conferir titulo e Tesouraria antes de repetir.";
-            } else liquidacaoConferida = s;
-          } catch {
+        // A resposta do webservice nao decide: depois da chamada le o titulo na Senior.
+        // Liquidado (saldo zero, LQ) = baixado, mesmo que o webservice tenha respondido ERRO.
+        const respostaOk = !falhou;
+        let consultaFalhou = false;
+        try {
+          const t = a.envio!;
+          const s = situacaoDoTituloNaSenior(await consultarSenior(
+            `SELECT NUMTIT, CODTPT, CODFOR, SITTIT, VLRABE, ULTPGT FROM E501TCP WHERE CODEMP = ${COD_EMP_PADRAO} AND CODFIL = ${t.codFil} ` +
+            `AND CODFOR = ${t.codFor} AND NUMTIT = '${t.numTit.replace(/'/g, "''")}' AND CODTPT = '${t.codTpt.replace(/'/g, "''")}'`
+          ));
+          if (liquidadoNaSenior(s) || (respostaOk && s.existe && s.valorAberto === 0 && s.sittit === "AB")) {
+            liquidacaoConferida = s;
+            if (!respostaOk) mensagemConferencia = `A Senior respondeu "${msgItem || mensagemLote || "erro"}", mas a consulta do titulo confirma a liquidacao (saldo zero).`;
+            falhou = false; indeterminado = false;
+          } else if (respostaOk) {
+            falhou = true; indeterminado = true;
+            mensagemConferencia = "Senior respondeu OK, mas a liquidacao nao foi confirmada na leitura posterior. Conferir titulo e Tesouraria antes de repetir.";
+          }
+        } catch {
+          consultaFalhou = true;
+          if (respostaOk) {
             falhou = true; indeterminado = true;
             mensagemConferencia = "Senior respondeu OK, mas a conferencia posterior falhou. Conferir titulo e Tesouraria antes de repetir.";
           }
         }
+        // Resposta de erro + consulta indisponivel: nao da' pra afirmar que nao gravou.
+        if (falhou && consultaFalhou) indeterminado = true;
         if (falhou) await prisma.remessaItemPagamento.update({
           where: { id: a.itemId },
           data: {
@@ -313,7 +323,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           erros.push({ numTit: a.numTit, erro: mensagemConferencia || msgItem || mensagemLote || "Erro não detalhado pela Senior" });
         } else {
           titulosAtualizados += await registrarBaixaConferida(prisma, {
-            itemId: a.itemId, status: "ENVIADA", mensagem: "Senior respondeu OK e a liquidacao foi conferida (saldo zero).", userId: user.id, situacao: liquidacaoConferida!,
+            itemId: a.itemId, status: "ENVIADA", mensagem: mensagemConferencia || "Senior respondeu OK e a liquidacao foi conferida (saldo zero).", userId: user.id, situacao: liquidacaoConferida!,
           });
           enviados += 1;
         }

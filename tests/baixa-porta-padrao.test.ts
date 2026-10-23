@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { gerarBaixaPorLoteCP, lerRespostaBaixar, montarEnvelopeBaixar } from "../src/lib/senior/baixaTitulos";
+import { gerarBaixaPorLoteCP, lerRespostaBaixar, liquidadoNaSenior, montarEnvelopeBaixar, situacaoDoTituloNaSenior } from "../src/lib/senior/baixaTitulos";
 
 const lote = {
   codEmp: 1, codFil: 1, datBai: new Date(Date.UTC(2026, 9, 20)), numCco: "341",
@@ -43,4 +43,12 @@ test("SENIOR_BAIXA_PORTA=padrao troca a URL e o envelope; sem a variavel segue o
   } finally { delete process.env.SENIOR_BAIXA_PORTA; }
   await gerarBaixaPorLoteCP(lote, { fetchImpl });
   assert.match(chamadas[1].url, /co_mfi_cpa_titulos$/); assert.match(chamadas[1].body, /GerarBaixaPorLoteCP/);
+});
+
+test("liquidadoNaSenior decide pela leitura do titulo, nao pela resposta do webservice", () => {
+  const lido = (SITTIT: string, VLRABE: string) => situacaoDoTituloNaSenior([{ NUMTIT: "1A1", CODTPT: "NFS", CODFOR: "1", SITTIT, VLRABE, ULTPGT: "21/10/2026" } as any]);
+  assert.equal(liquidadoNaSenior(lido("LQ", "0")), true);
+  assert.equal(liquidadoNaSenior(lido("AB", "2280")), false);
+  assert.equal(liquidadoNaSenior(lido("LQ", "100")), false);
+  assert.equal(liquidadoNaSenior(situacaoDoTituloNaSenior([])), false);
 });
