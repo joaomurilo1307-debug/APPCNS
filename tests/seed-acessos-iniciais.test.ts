@@ -98,3 +98,20 @@ test("seed de acessos: quem decide contestacoes de custo = Monica (cadastro do J
   for (const perfil of ["financeiro", "completo", "coordenacao_financeira"]) assert.ok(dados.perfis[perfil].includes("contestacoes_custo"), perfil);
   for (const perfil of ["visao_total", "membro_projetos", "gerente_nucleo", "coordenador_nucleo"]) assert.ok(!dados.perfis[perfil].includes("contestacoes_custo"), perfil);
 });
+
+test("seed de acessos: Cris (Cristina Azevedo Gomes) recebe so' contratos e Aprovacoes de OC (as dela), sem nenhuma tela de pagamento", () => {
+  assert.deepEqual([...dados.perfis.contratos_oc].sort(), ["aprovacoes_oc", "contratos", "custos", "medicao", "p0", "previsao"]);
+  const cris = dados.pessoas.find((p: any) => p.chapa === "1085");
+  assert.equal(cris.perfil, "contratos_oc");
+  assert.equal(cris.verTodosContratos, undefined, "os contratos dela o Joao escolhe no painel");
+  assert.ok(!("bloquearOutros" in cris), "o resto das telas dela continua como estava");
+});
+
+test("achar usuario: primeiro nome abreviado no cadastro (Cris x Cristina) vale, mas so' com o resto do nome batendo e unico", () => {
+  const us = [{ id: "1", name: "Cris Gomes" }, { id: "2", name: "Carlos Gomes" }];
+  assert.deepEqual(escolherUsuario(us, "CRISTINA AZEVEDO GOMES"), { id: "1", via: "nome-curto" });
+  assert.equal(escolherUsuario([{ id: "1", name: "Cris Silva" }], "CRISTINA AZEVEDO GOMES"), null, "sobrenome diferente nao vale");
+  assert.equal(escolherUsuario([{ id: "1", name: "Cris Gomes" }, { id: "2", name: "Cristi Gomes" }], "CRISTINA AZEVEDO GOMES"), null, "dois candidatos: nao chuta");
+  assert.equal(escolherUsuario([{ id: "1", name: "Cris Gomes" }, { id: "2", name: "Cristiane Gomes" }], "CRISTINA AZEVEDO GOMES")?.id, "1", "Cristiane nao e' abreviacao de Cristina");
+  assert.equal(escolherUsuario([{ id: "1", name: "Ca Gomes" }], "CRISTINA AZEVEDO GOMES"), null, "abreviacao com menos de 3 letras nao vale");
+});

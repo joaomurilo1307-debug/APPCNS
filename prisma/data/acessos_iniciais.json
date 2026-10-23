@@ -129,6 +129,14 @@
     ],
     "revisor_contestacao": [
       "contestacoes_custo"
+    ],
+    "contratos_oc": [
+      "contratos",
+      "custos",
+      "medicao",
+      "previsao",
+      "p0",
+      "aprovacoes_oc"
     ]
   },
   "todosOsModulos": [
@@ -349,6 +357,12 @@
       "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA",
       "perfil": "revisor_contestacao",
       "marca": "contestacoes"
+    },
+    {
+      "chapa": "1085",
+      "nome": "CRISTINA AZEVEDO GOMES",
+      "perfil": "contratos_oc",
+      "marca": "contratos-oc"
     }
   ],
   "configuracoes": {
