@@ -5,10 +5,13 @@
 
 import Link from "next/link";
 import FiltroContratos from "@/components/FiltroContratos";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mesCurto, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 import BotaoExcel from "@/components/BotaoExcel";
 import type { AbaExcel } from "@/lib/exportarExcel";
+import SeletorPeriodo, { atalhosDePeriodo } from "@/components/contratos/SeletorPeriodo";
+import { somaMes } from "@/lib/medicao/competencia";
+import FaturamentoGeral from "./FaturamentoGeral";
 
 type Contrato = {
   numCtr: string; numOfi: string; codccu: string | null; ccuNome: string | null; maisDeUmCcu: boolean;
@@ -16,7 +19,7 @@ type Contrato = {
   ultimoMes: { mes: string; valor: number } | null; serie: { mes: string; valor: number }[];
 };
 type Resposta = {
-  hoje: string; mesAtual: string; contratos: Contrato[]; semMedicao: number; incluiuSemMedicao: boolean; totais: { contratado: number; medido: number };
+  hoje: string; mesAtual: string; de: string; ate: string; contratos: Contrato[]; semMedicao: number; incluiuSemMedicao: boolean; totais: { contratado: number; medido: number };
   atualizacao: { emCurso: { etapa: string | null; progresso: number } | null; ultimaOk: string | null; erro: string | null };
 };
 
@@ -25,10 +28,11 @@ const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleString("pt-BR"
 function Barrinhas({ serie }: { serie: { mes: string; valor: number }[] }) {
   const max = Math.max(1, ...serie.map((s) => s.valor));
   return (
-    <svg viewBox="0 0 96 28" className="h-7 w-24" role="img" aria-label="Medição dos últimos 12 meses">
+    <svg viewBox="0 0 96 28" className="h-7 w-24" role="img" aria-label="Medição no período selecionado">
       {serie.map((s, i) => {
         const h = s.valor > 0 ? Math.max(2, (s.valor / max) * 26) : 0;
-        return <rect key={s.mes} x={i * 8 + 1} y={27 - h} width={6} height={h} rx={1.5} className={i === serie.length - 1 ? "fill-teal-400" : "fill-teal-600"}><title>{`${mesCurto(s.mes)}: ${moeda(s.valor)}`}</title></rect>;
+        const passo = 96 / Math.max(1, serie.length);
+        return <rect key={s.mes} x={i * passo + 1} y={27 - h} width={Math.max(0.8, passo - 2)} height={h} rx={1.5} className={i === serie.length - 1 ? "fill-teal-400" : "fill-teal-600"}><title>{`${mesCurto(s.mes)}: ${moeda(s.valor)}`}</title></rect>;
       })}
       <line x1={0} x2={96} y1={27.5} y2={27.5} className="stroke-gray-200" />
     </svg>
@@ -57,14 +61,25 @@ export default function MedicaoLista() {
   const [soComSaldo, setSoComSaldo] = useState(true);
   const [incluirSem, setIncluirSem] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
+  const [periodo, setPeriodo] = useState<{ de: string; ate: string } | null>(null);
+  const requisicao = useRef(0);
 
   const carregar = useCallback(async () => {
-    const r = await fetch(`/api/medicao${incluirSem ? "?todos=1" : ""}`, { cache: "no-store" });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { setErro(j.error || "Não foi possível carregar a medição."); return; }
-    setDados(j); setErro(null);
-    return j as Resposta;
-  }, [incluirSem]);
+    const id = ++requisicao.current;
+    const params = new URLSearchParams();
+    if (incluirSem) params.set("todos", "1");
+    if (periodo) { params.set("de", periodo.de); params.set("ate", periodo.ate); }
+    try {
+      const r = await fetch(`/api/medicao?${params}`, { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      if (id !== requisicao.current) return;
+      if (!r.ok) { setErro(j.error || "Não foi possível carregar a medição."); return; }
+      setDados(j); setErro(null);
+      return j as Resposta;
+    } catch {
+      if (id === requisicao.current) setErro("Não foi possível carregar a medição. Tente novamente.");
+    }
+  }, [incluirSem, periodo]);
 
   useEffect(() => { void carregar(); }, [carregar]);
   useEffect(() => {
@@ -102,13 +117,16 @@ export default function MedicaoLista() {
   const em = dados.atualizacao.emCurso;
   const saldoTotal = dados.totais.contratado - dados.totais.medido;
   const pctTotal = dados.totais.contratado > 0 ? dados.totais.medido / dados.totais.contratado : 0;
+  const per = periodo ?? { de: dados.de ?? somaMes(dados.mesAtual, -11), ate: dados.ate ?? dados.mesAtual };
+  const periodoCarregado = dados.de === per.de && dados.ate === per.ate;
+  const atalhos = [...atalhosDePeriodo("passado", dados.mesAtual), { rotulo: "Últimos 12 meses", de: somaMes(dados.mesAtual, -11), ate: dados.mesAtual }];
 
-  // planilha da lista que esta na tela (busca, "so com saldo" e ordem): consumo por valor e por quantidade, saldo e os ultimos 12 meses
+  // Planilha da lista na tela: acumulados intactos e serie mensal do periodo que terminou de carregar.
   function abasExcel(): AbaExcel[] {
     const meses = (lista[0] ?? dados!.contratos[0])?.serie.map((s) => s.mes) ?? [];
     return [{
       nome: "Medição por contrato",
-      observacao: `Receita e Medição · dados do Senior de ${hora(dados!.atualizacao.ultimaOk)}${soComSaldo ? " · só contratos com saldo a medir" : ""}${busca.trim() ? ` · busca: ${busca.trim()}` : ""}`,
+      observacao: `Receita e Medição · período mensal ${mesCurto(dados!.de)} a ${mesCurto(dados!.ate)} · contratado, medido acumulado e saldo desde o início · dados do Senior de ${hora(dados!.atualizacao.ultimaOk)}${soComSaldo ? " · só contratos com saldo a medir" : ""}${busca.trim() ? ` · busca: ${busca.trim()}` : ""}`,
       colunas: [
         { titulo: "Contrato", largura: 22 }, { titulo: "Centro de custo", largura: 36 }, { titulo: "CCU", largura: 8 }, { titulo: "Contratado", tipo: "moeda" }, { titulo: "Medido acumulado", tipo: "moeda" }, { titulo: "Saldo a medir", tipo: "moeda" },
         { titulo: "Consumo por valor", tipo: "percentual" }, { titulo: "Consumo por quantidade", tipo: "percentual" }, { titulo: "Linhas", tipo: "inteiro" }, { titulo: "Linhas esgotadas", tipo: "inteiro" }, { titulo: "Linhas acima de 80%", tipo: "inteiro" },
@@ -133,6 +151,18 @@ export default function MedicaoLista() {
         <button type="button" onClick={atualizar} disabled={!!em || atualizando} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{em || atualizando ? "Atualizando…" : "Atualizar do Senior"}</button>
       </div>
 
+      <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-label="Período da análise geral">
+        <h2 className="text-[15px] font-semibold text-gray-900">Período da análise</h2>
+        <SeletorPeriodo de={per.de} ate={per.ate} mesAtual={dados.mesAtual} modo="passado" atalhos={atalhos} onMudar={(de, ate) => {
+          ate = ate > dados.mesAtual ? dados.mesAtual : ate;
+          de = de > ate ? ate : de;
+          if (somaMes(de, 47) < ate) de = somaMes(ate, -47);
+          setPeriodo({ de, ate });
+        }} />
+        <p className="text-xs text-gray-500">O período vale para o acompanhamento mensal. Contratado, medido acumulado e saldo continuam considerando todo o contrato.</p>
+      </section>
+      {erro && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{erro}</p>}
+
       {dados.contratos.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 px-5 py-10 text-center text-sm text-gray-600">{em ? "A primeira leitura da medição está em andamento. Esta tela se atualiza sozinha." : "Nenhum contrato com medição nos centros de custo que você acompanha ainda."}</div>
       ) : (
@@ -152,11 +182,13 @@ export default function MedicaoLista() {
             ))}
           </div>
 
-          <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
+          <FaturamentoGeral de={per.de} ate={per.ate} mesAtual={dados.mesAtual} atualizadoEm={dados.atualizacao.ultimaOk} />
+
+          <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-busy={!periodoCarregado && !erro}>
             <header className="mb-3 flex flex-wrap items-center gap-2">
               <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar contrato, centro de custo ou número" className="min-w-[260px] flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" aria-label="Buscar contrato" />
               <FiltroContratos />
-              <BotaoExcel arquivo="receita-e-medicao" gerar={abasExcel} desabilitado={lista.length === 0} />
+              <BotaoExcel arquivo="receita-e-medicao" gerar={abasExcel} desabilitado={lista.length === 0 || !periodoCarregado} />
               <select value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm" aria-label="Ordenar">
                 <option value="saldo">Maior saldo primeiro</option>
                 <option value="valor">Mais consumido (valor)</option>
@@ -171,7 +203,7 @@ export default function MedicaoLista() {
             <div className="overflow-x-auto rounded-xl border border-gray-100">
               <table className="w-full min-w-[1080px] text-[13.5px] tabular-nums">
                 <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">
-                  <tr><th className="px-3 py-2 text-left">Contrato</th><th className="px-3 py-2 text-right">Contratado</th><th className="px-3 py-2 text-right">Medido</th><th className="px-3 py-2 text-right">Saldo</th><th className="px-3 py-2 text-left">Consumo</th><th className="px-3 py-2 text-left">Linhas</th><th className="px-3 py-2 text-left">Última medição</th><th className="px-3 py-2 text-left">12 meses</th></tr>
+                  <tr><th className="px-3 py-2 text-left">Contrato</th><th className="px-3 py-2 text-right">Contratado</th><th className="px-3 py-2 text-right">Medido</th><th className="px-3 py-2 text-right">Saldo</th><th className="px-3 py-2 text-left">Consumo</th><th className="px-3 py-2 text-left">Linhas</th><th className="px-3 py-2 text-left">Última medição</th><th className="px-3 py-2 text-left">Período</th></tr>
                 </thead>
                 <tbody>
                   {lista.map((c) => (
@@ -186,7 +218,7 @@ export default function MedicaoLista() {
                       <td className="px-3 py-2.5"><Consumo valor={c.pct} fisico={c.pctFisico} /></td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-left text-xs text-gray-500">{c.nLinhas} linhas{c.linhasEsgotadas > 0 && <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800">{c.linhasEsgotadas} esgotadas</span>}{c.linhasAcima80 > 0 && <span className="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 font-semibold text-gray-600">{c.linhasAcima80} &gt; 80%</span>}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-left text-gray-600">{c.ultimoMes ? <>{mesCurto(c.ultimoMes.mes)} · {moedaCompacta(c.ultimoMes.valor)}</> : <span className="text-gray-300">sem medição</span>}</td>
-                      <td className="px-3 py-2.5"><Barrinhas serie={c.serie} /></td>
+                      <td className="px-3 py-2.5">{periodoCarregado ? <Barrinhas serie={c.serie} /> : <span className="text-xs text-gray-400">{erro ? "Não carregado" : "Carregando…"}</span>}</td>
                     </tr>
                   ))}
                   {lista.length === 0 && <tr><td colSpan={8} className="px-3 py-10 text-center text-gray-400">Nenhum contrato com esses filtros.</td></tr>}

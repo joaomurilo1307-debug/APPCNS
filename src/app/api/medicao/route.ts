@@ -7,6 +7,7 @@ import { hojeBR } from "@/lib/financeiro/alertas";
 import { nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
 import { dispararMedicao, estadoMedicao } from "@/lib/medicao/sincronizar";
 import { somaMes } from "@/lib/medicao/competencia";
+import { normalizarPeriodoConsolidado } from "@/lib/medicao/consolidado";
 
 // Lista dos contratos com Medicao (so' os que tem linhas contratadas no Senior), com o resumo de cada um: contratado, medido, saldo e os ultimos meses.
 // Cada pessoa ve os contratos dos centros de custo que ja pode ver; contrato ainda sem centro de custo identificado so' aparece para quem ve tudo.
@@ -18,6 +19,8 @@ export async function GET(req: Request) {
   const visao = await escopoDeVisao(escopo); // filtro de area do topo das telas: so' estreita a lista
   const hoje = hojeBR();
   const mesAtual = hoje.slice(0, 7);
+  const params = new URL(req.url).searchParams;
+  const { de, ate } = normalizarPeriodoConsolidado(params.get("de"), params.get("ate"), mesAtual);
 
   const estado = await estadoMedicao();
   // abre a tela com dado fresco: se estiver velho, dispara a leitura em segundo plano (nao espera)
@@ -27,7 +30,7 @@ export async function GET(req: Request) {
   // "tem medicao" = ja houve pelo menos um item de pedido ou valor faturado; os demais so' aparecem se pedido (e so' para quem ve tudo)
   const comMedicao = new Set((await prisma.medicaoItem.groupBy({ by: ["numCtr"], where: { numCtr: { in: visiveis.map((c) => c.numCtr) } } })).map((x) => x.numCtr));
   const temMedicao = (c: { numCtr: string; valorMedido: number }) => comMedicao.has(c.numCtr) || c.valorMedido > 0;
-  const incluirSem = escopo.todos && new URL(req.url).searchParams.get("todos") === "1";
+  const incluirSem = escopo.todos && params.get("todos") === "1";
   const semMedicao = visiveis.filter((c) => !temMedicao(c)).length;
   const contratos = visiveis.filter((c) => temMedicao(c) || incluirSem);
   const numeros = contratos.map((c) => c.numCtr);
@@ -52,7 +55,9 @@ export async function GET(req: Request) {
     serie.set(x.numCtr, m);
   }
   const nomes = await nomesDosCentros(prisma, [...new Set(contratos.map((c) => c.codccu).filter((c): c is string => !!c))]);
-  const ultimos = Array.from({ length: 12 }, (_, i) => somaMes(mesAtual, i - 11));
+  // O recorte afeta somente a serie mensal; contratado, medido acumulado e saldo mantem a regra atual.
+  const ultimos: string[] = [];
+  for (let mes = de; mes <= ate; mes = somaMes(mes, 1)) ultimos.push(mes);
 
   const lista = contratos.map((c) => {
     const s = serie.get(c.numCtr) ?? new Map<string, number>();
@@ -68,7 +73,7 @@ export async function GET(req: Request) {
   });
 
   return NextResponse.json({
-    hoje, mesAtual, contratos: lista, semMedicao: escopo.todos ? semMedicao : 0, incluiuSemMedicao: incluirSem,
+    hoje, mesAtual, de, ate, contratos: lista, semMedicao: escopo.todos ? semMedicao : 0, incluiuSemMedicao: incluirSem,
     totais: { contratado: lista.reduce((s, c) => s + c.valorContratado, 0), medido: lista.reduce((s, c) => s + c.valorMedido, 0) },
     atualizacao: { emCurso: estado.emCurso && { etapa: estado.emCurso.etapa, progresso: estado.emCurso.progresso }, ultimaOk: estado.ultimaOk?.finalizadoEm ?? null, erro: estado.ultimoErro?.erro ?? null },
   });

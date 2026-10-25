@@ -35,6 +35,9 @@ export function LinhaAcompanhamento({
   mostrarMediaMovel,
   meta,
   altura = 320,
+  rotuloAcessivel = "Linha de acompanhamento do custo mensal",
+  rotuloMensal = "Custo no mês",
+  rotuloAcumulado = "Acumulado",
 }: {
   meses: string[];
   valores: number[];
@@ -45,6 +48,9 @@ export function LinhaAcompanhamento({
   mostrarMediaMovel: boolean;
   meta?: number | null;
   altura?: number;
+  rotuloAcessivel?: string;
+  rotuloMensal?: string;
+  rotuloAcumulado?: string;
 }) {
   const [ref, largura] = useLargura<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -93,7 +99,7 @@ export function LinhaAcompanhamento({
 
   return (
     <div ref={ref} className="relative w-full select-none" style={{ height: h }}>
-      <svg width={w} height={h} role="img" aria-label="Linha de acompanhamento do custo mensal" className="absolute left-0 top-0 block">
+      <svg width={w} height={h} role="img" aria-label={rotuloAcessivel} className="absolute left-0 top-0 block">
         {marcas.map((v) => (
           <g key={v}>
             <line x1={m.l} x2={w - m.r} y1={y(v)} y2={y(v)} stroke={v === 0 ? "#cbd5e1" : "#eef1f4"} strokeWidth={1} />
@@ -179,7 +185,7 @@ export function LinhaAcompanhamento({
             {tip.parcial && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">em andamento</span>}
           </div>
           <div className="flex items-baseline justify-between border-b border-gray-100 pb-1.5">
-            <span className="text-gray-500">{tip.acumulado ? "Acumulado" : "Custo no mês"}</span>
+            <span className="text-gray-500">{tip.acumulado ? rotuloAcumulado : rotuloMensal}</span>
             <span className="text-base font-semibold tabular-nums text-gray-900">{moeda(tip.valor)}</span>
           </div>
           <ul className="mt-1.5 space-y-1 text-gray-600">
@@ -216,7 +222,21 @@ export function LinhaAcompanhamento({
   );
 }
 
-export function LegendaLinha({ modo, mostrarMedia, mostrarMediaMovel, temMeta }: { modo: "mensal" | "acumulado"; mostrarMedia: boolean; mostrarMediaMovel: boolean; temMeta: boolean }) {
+export function LegendaLinha({
+  modo,
+  mostrarMedia,
+  mostrarMediaMovel,
+  temMeta,
+  rotuloMensal = "Custo do mês",
+  rotuloAcumulado = "Custo acumulado",
+}: {
+  modo: "mensal" | "acumulado";
+  mostrarMedia: boolean;
+  mostrarMediaMovel: boolean;
+  temMeta: boolean;
+  rotuloMensal?: string;
+  rotuloAcumulado?: string;
+}) {
   const item = (cor: string, texto: string, tracejado?: string) => (
     <span className="inline-flex items-center gap-2 text-[13px] text-gray-600">
       <svg width="28" height="10" aria-hidden>
@@ -227,7 +247,7 @@ export function LegendaLinha({ modo, mostrarMedia, mostrarMediaMovel, temMeta }:
   );
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-      {item(COR_LINHA, modo === "acumulado" ? "Custo acumulado" : "Custo do mês")}
+      {item(COR_LINHA, modo === "acumulado" ? rotuloAcumulado : rotuloMensal)}
       {modo === "mensal" && mostrarMedia && item(COR_MEDIA, "Média do período (meses fechados)", "3 5")}
       {modo === "mensal" && mostrarMediaMovel && item(COR_MM3, "Média móvel de 3 meses", "9 4 2 4")}
       {temMeta && item(COR_META, modo === "acumulado" ? "Meta acumulada" : "Meta mensal", "7 5")}
