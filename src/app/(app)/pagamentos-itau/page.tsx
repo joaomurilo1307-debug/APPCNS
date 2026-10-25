@@ -7,6 +7,8 @@ import { diaDeHoje, removerDaSelecaoSalva } from "@/lib/selecaoProgramacao";
 import { corrigirChavePix } from "@/lib/cnab240/itau/chavePix";
 import { formaDaArrecadacao } from "@/lib/cnab240/itau/constantes";
 import { montarBlocoSenior, podeAtualizarPagamento } from "@/lib/pagamentos/preenchimentoRemessa";
+import BotaoExcel from "@/components/BotaoExcel";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 type Titulo = {
   id: string;
@@ -943,6 +945,64 @@ export default function PagamentosItauPage() {
         .some((v) => String(v).toLowerCase().includes(termo))
     );
   }, [historico, buscaHistorico]);
+
+  // Planilha do Historico de pagamentos: busca ate 1000 pagamentos (a tela carrega 300) e aplica a mesma busca digitada; so' leitura.
+  async function abasHistoricoExcel(): Promise<AbaExcel[]> {
+    const r = await fetch("/api/pagamentos-itau/historico?limite=1000");
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || "Não foi possível buscar o histórico de pagamentos.");
+    const termo = buscaHistorico.trim().toLowerCase();
+    const itens: ItemHistorico[] = (d.itens ?? []).filter(
+      (i: ItemHistorico) => !termo || [i.numTit, i.fornecedorNome, i.favorecidoNome, i.arquivo, i.favorecidoDocumento].filter(Boolean).some((v) => String(v).toLowerCase().includes(termo))
+    );
+    const baixa = (i: ItemHistorico) =>
+      i.baixaSeniorStatus === "ENVIADA" || i.baixaSeniorStatus === "JA_BAIXADO" ? "Baixado na Senior"
+        : ["EM_PROCESSAMENTO", "INDETERMINADO"].includes(i.baixaSeniorStatus ?? "") ? "Baixa a conferir"
+          : i.baixaSeniorStatus === "ERRO" ? `Erro de baixa${i.baixaSeniorMsg ? `: ${i.baixaSeniorMsg}` : ""}` : "";
+    const total = d.total ?? itens.length;
+    return [{
+      nome: "Histórico de pagamentos",
+      observacao: `Tudo que já foi gerado em remessa · ${itens.length} pagamento(s)${total > (d.itens ?? []).length ? ` (os ${(d.itens ?? []).length} mais recentes de ${total})` : ""}${termo ? ` · busca: ${buscaHistorico.trim()}` : ""} · gerado em ${new Date().toLocaleString("pt-BR")}`,
+      colunas: [
+        { titulo: "Remessa gerada em", tipo: "data" }, { titulo: "Arquivo", largura: 26 }, { titulo: "Conta", largura: 18 }, { titulo: "Título", largura: 14 }, { titulo: "Fornecedor", largura: 36 },
+        { titulo: "Favorecido", largura: 36 }, { titulo: "CPF/CNPJ", largura: 20 }, { titulo: "Forma", largura: 30 }, { titulo: "Dados de pagamento", largura: 50 }, { titulo: "Pagamento em", tipo: "data" },
+        { titulo: "Valor", tipo: "moeda" }, { titulo: "Status", largura: 18 }, { titulo: "Efetivado em", tipo: "data" }, { titulo: "Valor efetivado", tipo: "moeda" }, { titulo: "Baixa na Senior", largura: 28 },
+      ],
+      linhas: itens.map((i) => [
+        i.geradaEm, i.arquivo ?? "", i.contaApelido, i.numTit ?? "", i.fornecedorNome ?? "", i.favorecidoNome, formatarDocumento(i.favorecidoDocumento),
+        FORMAS.find((f) => f.valor === i.formaPagamento)?.label ?? i.formaPagamento, dadosDePagamentoDoHistorico(i), i.dataPagamento,
+        i.valor, STATUS_ITEM_ROTULO[i.status] ?? i.status, i.dataEfetivacao ?? "", i.valorEfetivado, baixa(i),
+      ]),
+      rodape: ["", "", "", "", "", "", "", "", "TOTAL", "", itens.reduce((s, i) => s + i.valor, 0), "", "", "", ""],
+    }];
+  }
+
+  // Planilha das Remessas geradas (as que estao na lista, respeitando "Mostrar arquivadas") e dos retornos importados de cada uma.
+  function abasRemessasExcel(): AbaExcel[] {
+    const abas: AbaExcel[] = [
+      {
+        nome: "Remessas",
+        observacao: `Remessas geradas${mostrarArquivadas ? " (com as arquivadas)" : ""} · gerado em ${new Date().toLocaleString("pt-BR")}`,
+        colunas: [
+          { titulo: "Arquivo", largura: 30 }, { titulo: "Conta", largura: 18 }, { titulo: "Gerada em", tipo: "data" }, { titulo: "Situação", largura: 26 }, { titulo: "Criada por", largura: 26 },
+          { titulo: "Itens", tipo: "inteiro" }, { titulo: "Pendentes", tipo: "inteiro" }, { titulo: "Pagos", tipo: "inteiro" }, { titulo: "Rejeitados", tipo: "inteiro" },
+          { titulo: "Pagos sem baixa", tipo: "inteiro" }, { titulo: "Baixados na Senior", tipo: "inteiro" }, { titulo: "Erros de baixa", tipo: "inteiro" }, { titulo: "Baixas a conferir", tipo: "inteiro" },
+          { titulo: "Arquivada", largura: 10 }, { titulo: "Valor total", tipo: "moeda" },
+        ],
+        linhas: remessasVisiveis.map((r) => [
+          r.nomeArquivo ?? "", r.contaApelido, r.criadoEm, STATUS_LABEL[r.status] ?? r.status, r.criadoPorNome ?? "", r.qtdItens, r.qtdPendentes, r.qtdPagos, r.qtdRejeitados,
+          r.qtdPagosSemBaixa, r.qtdBaixados, r.qtdErroBaixa, r.qtdBaixaConferir, r.arquivadaEm ? "sim" : "", r.totalValor,
+        ]),
+        rodape: ["TOTAL", "", "", "", "", remessasVisiveis.reduce((s, r) => s + r.qtdItens, 0), "", "", "", "", "", "", "", "", remessasVisiveis.reduce((s, r) => s + r.totalValor, 0)],
+      },
+      {
+        nome: "Retornos importados",
+        colunas: [{ titulo: "Arquivo de retorno", largura: 34 }, { titulo: "Remessa", largura: 30 }, { titulo: "Processado em", tipo: "data" }, { titulo: "Registros reconhecidos", tipo: "inteiro" }],
+        linhas: remessasVisiveis.flatMap((r) => r.retornos.map((ret) => [ret.nomeArquivo, r.nomeArquivo ?? "", ret.processadoEm, ret.totalReconhecidos])),
+      },
+    ];
+    return abas.filter((a) => a.linhas.length > 0);
+  }
 
   // Monta o item do carrinho a partir de um título, sem efeito colateral --
   // separado de adicionarAoCarrinho pra poder ser chamado tanto no clique
@@ -2024,6 +2084,7 @@ export default function PagamentosItauPage() {
         <div className="flex items-center justify-between border-b border-gray-100 p-3">
           <p className="text-sm font-semibold text-gray-700">Remessas geradas</p>
           <div className="flex flex-wrap items-center gap-3">
+            <BotaoExcel arquivo="remessas-itau" gerar={abasRemessasExcel} desabilitado={remessasVisiveis.length === 0} />
             <label className="text-xs text-gray-600"><input type="checkbox" checked={mostrarArquivadas} onChange={e => setMostrarArquivadas(e.target.checked)} /> Mostrar arquivadas</label>
             <button onClick={() => limparRemessas("limpar")} disabled={limpandoRemessas || !remessas.some(r => !r.arquivadaEm)} className="text-xs text-brand underline disabled:opacity-40" title="Arquiva a lista e preserva o histórico, os retornos e os bloqueios contra pagamento duplicado">Limpar todas as remessas</button>
             {mostrarArquivadas && <button onClick={() => limparRemessas("restaurar")} disabled={limpandoRemessas || !remessas.some(r => r.arquivadaEm)} className="text-xs text-brand underline disabled:opacity-40">Restaurar remessas</button>}
@@ -2288,13 +2349,16 @@ export default function PagamentosItauPage() {
                   : ""}
             </p>
           </div>
-          <input
-            type="text"
-            placeholder="buscar título, favorecido, CPF/CNPJ ou arquivo..."
-            value={buscaHistorico}
-            onChange={(e) => setBuscaHistorico(e.target.value)}
-            className="w-72 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <BotaoExcel arquivo="historico-de-pagamentos-itau" gerar={abasHistoricoExcel} desabilitado={historico.itens.length === 0} />
+            <input
+              type="text"
+              placeholder="buscar título, favorecido, CPF/CNPJ ou arquivo..."
+              value={buscaHistorico}
+              onChange={(e) => setBuscaHistorico(e.target.value)}
+              className="w-72 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+            />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
