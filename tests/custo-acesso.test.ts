@@ -1,8 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { escopoDeCustos, lerListaDeAcessos, montarEscopo, podeVerCcu } from "../src/lib/custos/acesso";
+import { aplicarSelecaoAoEscopo, escopoDeCustos, lerListaDeAcessos, limparCacheDeContratosEncerrados, montarEscopo, podeVerCcu } from "../src/lib/custos/acesso";
 
-const bancoFalso = (usuario: any) => ({ user: { findUnique: async () => usuario } }) as any;
+// `encerrados` = CCUs dos contratos que o administrador encerrou; o cache de 30 s do escopo e' limpo a cada banco falso para os casos nao se misturarem
+const bancoFalso = (usuario: any, encerrados: string[] = []) => {
+  limparCacheDeContratosEncerrados();
+  return { user: { findUnique: async () => usuario }, contrato: { findMany: async () => encerrados.map((codccu) => ({ codccu })) } } as any;
+};
 
 test("escopo: todos, varios, um e nenhum", () => {
   assert.deepEqual([montarEscopo(true, []).tipo, montarEscopo(true, []).quantidade], ["todos", null]);
@@ -54,4 +58,38 @@ bruno@consominas.com.br;abc
   assert.equal(r.erros.length, 2);
   assert.match(r.erros[0], /linha 6/);
   assert.match(r.erros[1], /não é um número/);
+});
+
+test("contratos encerrados: so' o ADMIN ve; quem ve todos, quem tem acesso liberado e quem esta na equipe deixam de ver", async () => {
+  const admin = await escopoDeCustos(bancoFalso(null, ["190"]), { id: "1", role: "ADMIN" });
+  assert.ok(podeVerCcu(admin, "190"), "admin continua vendo o encerrado");
+  const diretor = await escopoDeCustos(bancoFalso(null, ["190"]), { id: "2", role: "DIRETOR" });
+  assert.ok(!podeVerCcu(diretor, "190") && podeVerCcu(diretor, "230"), "diretor ve todos, menos o encerrado");
+  assert.equal(diretor.tipo, "todos");
+  const todosCustos = await escopoDeCustos(bancoFalso({ verTodosCustos: true, acessosCentroCusto: [], teams: [] }, ["190"]), { id: "3", role: "APROVADOR" });
+  assert.ok(!podeVerCcu(todosCustos, "190") && podeVerCcu(todosCustos, "270"));
+  const liberado = await escopoDeCustos(bancoFalso({ verTodosCustos: false, acessosCentroCusto: [{ codccu: "190", area: "AMBOS" }, { codccu: "230", area: "AMBOS" }], teams: [{ team: { codccu: "270" } }] }, ["190", "270"]), { id: "4", role: "COLABORADOR" });
+  assert.deepEqual(Array.from(liberado.ccus).sort(), ["230"], "o liberado e o da equipe, ambos encerrados, somem; fica o 230");
+  assert.equal(liberado.tipo, "um");
+});
+
+test("contratos encerrados: a selecao do topo das telas nao traz o encerrado de volta", () => {
+  const e = montarEscopo(true, [], ["190"]);
+  assert.ok(!podeVerCcu(aplicarSelecaoAoEscopo(e, ["190", "230"]), "190"));
+  assert.ok(podeVerCcu(aplicarSelecaoAoEscopo(e, ["190", "230"]), "230"));
+  assert.deepEqual(Array.from(aplicarSelecaoAoEscopo(e, ["190", "230"]).ccus), ["230"]);
+  assert.equal(aplicarSelecaoAoEscopo(e, null), e, "sem selecao: o mesmo escopo");
+});
+
+test("contratos encerrados: o cache de 30 s vale e e' limpo quando o administrador muda a situacao", async () => {
+  const db1 = bancoFalso(null, []);
+  assert.equal((await escopoDeCustos(db1, { id: "2", role: "DIRETOR" })).ocultos.size, 0);
+  let consultas = 0;
+  const db2 = { user: { findUnique: async () => null }, contrato: { findMany: async () => { consultas++; return [{ codccu: "190" }]; } } } as any;
+  assert.equal((await escopoDeCustos(db2, { id: "2", role: "DIRETOR" })).ocultos.size, 0, "ainda no cache (vazio)");
+  assert.equal(consultas, 0);
+  limparCacheDeContratosEncerrados();
+  assert.equal((await escopoDeCustos(db2, { id: "2", role: "DIRETOR" })).ocultos.size, 1);
+  await escopoDeCustos(db2, { id: "2", role: "DIRETOR" });
+  assert.equal(consultas, 1, "segunda chamada usa o cache");
 });

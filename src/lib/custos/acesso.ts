@@ -10,19 +10,41 @@ import { COOKIE_VISAO, lerSelecao } from "../areas";
 export type EscopoCustos = {
   todos: boolean;
   ccus: ReadonlySet<string>; // so' vale quando todos = false
+  /** contratos ENCERRADOS (o administrador desativou): ninguem alem do ADMIN os ve, mesmo com acesso liberado ou vendo tudo */
+  ocultos: ReadonlySet<string>;
   tipo: "todos" | "varios" | "um" | "nenhum";
   quantidade: number | null; // null = todos
 };
 
-export function montarEscopo(todos: boolean, ccus: Iterable<string>): EscopoCustos {
-  if (todos) return { todos: true, ccus: new Set(), tipo: "todos", quantidade: null };
-  const conjunto = new Set(ccus);
+export function montarEscopo(todos: boolean, ccus: Iterable<string>, ocultos: Iterable<string> = []): EscopoCustos {
+  const fora = new Set(ocultos);
+  if (todos) return { todos: true, ccus: new Set(), ocultos: fora, tipo: "todos", quantidade: null };
+  const conjunto = new Set(Array.from(ccus).filter((c) => !fora.has(c)));
   const n = conjunto.size;
-  return { todos: false, ccus: conjunto, tipo: n === 0 ? "nenhum" : n === 1 ? "um" : "varios", quantidade: n };
+  return { todos: false, ccus: conjunto, ocultos: fora, tipo: n === 0 ? "nenhum" : n === 1 ? "um" : "varios", quantidade: n };
 }
 
 export function podeVerCcu(escopo: EscopoCustos, codccu: string): boolean {
+  if (escopo.ocultos.has(codccu)) return false;
   return escopo.todos || escopo.ccus.has(codccu);
+}
+
+// ---------------------------------------------------------------- contratos encerrados (guardados, sem aparecer para ninguem alem do ADMIN)
+let guardadoOcultos: { ate: number; ccus: Set<string> } | null = null;
+const VALIDADE_OCULTOS_MS = 30_000;
+
+/** Limpar quando o administrador ativa ou encerra contratos, para a mudanca valer na hora. */
+export function limparCacheDeContratosEncerrados() {
+  guardadoOcultos = null;
+}
+
+/** CCUs dos contratos com situacao ENCERRADO (so' os que tem ficha em Contrato). Guardado por 30 s. */
+export async function ccusDeContratosEncerrados(db: typeof prismaReal): Promise<Set<string>> {
+  const agora = Date.now();
+  if (guardadoOcultos && guardadoOcultos.ate > agora) return guardadoOcultos.ccus;
+  const lista = await db.contrato.findMany({ where: { status: "ENCERRADO" }, select: { codccu: true } });
+  guardadoOcultos = { ate: agora + VALIDADE_OCULTOS_MS, ccus: new Set(lista.map((c) => c.codccu)) };
+  return guardadoOcultos.ccus;
 }
 
 /**
@@ -30,7 +52,9 @@ export function podeVerCcu(escopo: EscopoCustos, codccu: string): boolean {
  * contrato). O acesso liberado na tela Usuarios > Acesso vale na area escolhida ou nas duas (AMBOS, o que ja existia).
  */
 export async function escopoDeCustos(db: typeof prismaReal, usuario: { id: string; role?: string }, area: "FINANCEIRO" | "PROJETOS" = "FINANCEIRO"): Promise<EscopoCustos> {
-  if (usuario.role && ["ADMIN", "DIRETOR"].includes(usuario.role)) return montarEscopo(true, []);
+  if (usuario.role === "ADMIN") return montarEscopo(true, []); // so' o administrador ve tambem os contratos encerrados
+  const ocultos = await ccusDeContratosEncerrados(db);
+  if (usuario.role === "DIRETOR") return montarEscopo(true, [], ocultos);
   const eu = await db.user.findUnique({
     where: { id: usuario.id },
     select: {
@@ -39,13 +63,13 @@ export async function escopoDeCustos(db: typeof prismaReal, usuario: { id: strin
       teams: { select: { team: { select: { codccu: true } } } },
     },
   });
-  if (!eu) return montarEscopo(false, []);
-  if (eu.verTodosCustos) return montarEscopo(true, []);
+  if (!eu) return montarEscopo(false, [], ocultos);
+  if (eu.verTodosCustos) return montarEscopo(true, [], ocultos);
   const ccus = new Set<string>();
   // area ausente (registro antigo ou de teste) = AMBOS, o padrao do banco
   for (const a of eu.acessosCentroCusto) if (!a.area || a.area === "AMBOS" || a.area === area) ccus.add(a.codccu);
   for (const t of eu.teams) if (t.team.codccu) ccus.add(t.team.codccu);
-  return montarEscopo(false, ccus);
+  return montarEscopo(false, ccus, ocultos);
 }
 
 // ---------------------------------------------------------------- importacao em lote ("email;190, 230, 102235")
@@ -89,7 +113,7 @@ export function lerListaDeAcessos(texto: string): { linhas: LinhaAcesso[]; erros
  */
 export function aplicarSelecaoAoEscopo(escopo: EscopoCustos, selecao: readonly string[] | null): EscopoCustos {
   if (!selecao || selecao.length === 0) return escopo;
-  return montarEscopo(false, escopo.todos ? selecao : selecao.filter((c) => escopo.ccus.has(c)));
+  return montarEscopo(false, escopo.todos ? selecao : selecao.filter((c) => escopo.ccus.has(c)), escopo.ocultos);
 }
 
 /** Os centros de custo escolhidos na lista suspensa (cookie da sessao). Fora de uma requisicao (testes, rotinas de fundo) nao ha cookie: sem filtro. */

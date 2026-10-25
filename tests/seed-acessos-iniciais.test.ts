@@ -79,7 +79,7 @@ test("seed de acessos: acesso completo so' para as 6 pessoas indicadas; pagament
   // Bruno e Samara: visao_total sem "ver todos os contratos" (o Joao escolhe os contratos no painel)
   for (const chapa of ["23", "25"]) {
     const e = dados.pessoas.find((p: any) => p.chapa === chapa && p.perfil === "visao_total");
-    assert.ok(e && e.verTodosContratos === undefined && e.escopoProjetos === "NUCLEO", `chapa ${chapa}`);
+    assert.ok(e && e.verTodosContratos === undefined && e.escopoProjetos === "PROPRIOS", `chapa ${chapa}`);
   }
 });
 

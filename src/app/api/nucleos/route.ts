@@ -48,8 +48,8 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const role = (session.user as any).role;
-  if (role !== "ADMIN" && role !== "DIRETOR") {
-    return NextResponse.json({ error: "Só administradores ou diretores podem criar núcleos" }, { status: 403 });
+  if (role !== "ADMIN") {
+    return NextResponse.json({ error: "Só administradores criam núcleos" }, { status: 403 });
   }
 
   const body = await req.json();

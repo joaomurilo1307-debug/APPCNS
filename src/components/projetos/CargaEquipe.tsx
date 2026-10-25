@@ -12,7 +12,7 @@ export default function CargaEquipe() {
   const [busca, setBusca] = useState("");
 
   async function carregar() {
-    const r = await fetch("/api/tasks", { cache: "no-store" });
+    const r = await fetch("/api/tarefas/resumo", { cache: "no-store" });
     const d = await r.json().catch(() => null);
     if (r.ok && Array.isArray(d)) setTarefas(d);
   }

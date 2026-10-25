@@ -182,7 +182,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
     setPerfilAplicado(id);
     if (dados && dados.usuario.role !== "ADMIN") setPapel(p.papel);
     setNiveis(Object.fromEntries(p.modulos.map((m) => [m, (p.nivel ?? "EDITAR") as Nivel])));
-    setEscopo(p.escopoProjetos);
+    setEscopo("PROPRIOS");
     if (p.verTodosContratos !== undefined) setVerTodos(p.verTodosContratos);
   }
   // Modulos que aparecem na tela inicial: nem todo mundo ve todos. Ligar traz as telas comuns do modulo; o financeiro restrito nunca vem junto.
@@ -263,7 +263,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: papel !== dados.usuario.role || eraCriacao ? papel : undefined,
-          acessos, escopoProjetos: escopo, projetos: Array.from(projetos),
+          acessos, escopoProjetos: "PROPRIOS", projetos: Array.from(projetos),
           contratos: { verTodos, itens: Object.entries(contratos).map(([codccu, area]) => ({ codccu, area })) },
           nucleos: { membroDe, gerente: Array.from(gerente), coordenador: Array.from(coordenador), diretor: Array.from(diretor) },
           senior: senior.map((s) => s.codigo),
@@ -414,15 +414,11 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
             </Secao>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <Secao titulo="Projetos" ajuda="Qual a visão da pessoa e quais projetos específicos ela recebe, além do que já participa.">
-                <div className="grid gap-2">
-                  {(Object.keys(ESCOPO_ROTULO) as Escopo[]).map((k) => (
-                    <label key={k} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 ${escopo === k ? "border-brand bg-brand/5" : "border-gray-200"}`}>
-                      <input type="radio" name="escopo" checked={escopo === k} onChange={() => setEscopo(k)} className="mt-1" />
-                      <span><span className="block text-sm font-medium text-gray-800">{ESCOPO_ROTULO[k].nome}</span><span className="block text-xs text-gray-500">{ESCOPO_ROTULO[k].ajuda}</span></span>
-                    </label>
-                  ))}
-                </div>
+              <Secao titulo="Projetos" ajuda="Quais projetos específicos ela recebe por convite, além do que já participa.">
+                <p className="rounded-lg border border-gray-200 bg-gray-50 p-2.5 text-xs text-gray-600">
+                  <b className="text-gray-800">Projetos são particulares.</b> Cada pessoa vê só os que criou, os de que faz parte da equipe, os que recebeu por convite (abaixo)
+                  e os que tem tarefa. Nunca os de outra pessoa, nem do mesmo núcleo. Só administradores veem todos.
+                </p>
                 <label className={`${rot} mt-4`}>Projetos liberados para ela ({projetos.size})</label>
                 <input className={campo} placeholder="Buscar projeto ou equipe…" value={buscaProjeto} onChange={(e) => setBuscaProjeto(e.target.value)} />
                 <ul className="mt-2 max-h-52 divide-y divide-gray-100 overflow-y-auto rounded-md border border-gray-200 bg-white">

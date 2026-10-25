@@ -70,23 +70,9 @@ export async function POST(req: Request) {
     },
   });
 
-  // vincula a pessoa aos projetos/contratos que ela marcou (entra na equipe
-  // de cada um como MEMBRO). So aceita projetos de equipe de contrato.
-  let projetosVinculados = 0;
-  if (projetoIds && projetoIds.length > 0) {
-    const projetos = await prisma.project.findMany({
-      where: { id: { in: projetoIds }, team: { codccu: { not: null } } },
-      select: { teamId: true },
-    });
-    for (const p of projetos) {
-      await prisma.userTeam.upsert({
-        where: { userId_teamId: { userId, teamId: p.teamId } },
-        update: {},
-        create: { userId, teamId: p.teamId, role: "MEMBRO" },
-      });
-      projetosVinculados++;
-    }
-  }
+  // 25/10/2026: projetos sao particulares. A pessoa NAO entra mais sozinha na equipe de projeto nenhum no primeiro acesso
+  // (antes marcava contratos e virava membro); quem entra num projeto e' quem e' chamado na aba Equipe. `projetoIds` e' ignorado.
+  const projetosVinculados = 0;
 
   await logAudit({
     userId,

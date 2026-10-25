@@ -47,13 +47,15 @@ export async function GET() {
   const escopo = await escopoDeCustos(prisma, user);
   const visao = await escopoDeVisao(escopo); // filtro de area do topo das telas: so' estreita o que a lista mostra; o acesso (escopo) e a mensagem de acesso nao mudam
   const ccusPermitidos: string[] | null = visao.todos ? null : Array.from(visao.ccus);
+  // quem ve todos tambem nao recebe os contratos ENCERRADOS (so' o administrador os ve)
+  const filtroCcu = ccusPermitidos ? { in: ccusPermitidos } : visao.ocultos.size > 0 ? { notIn: Array.from(visao.ocultos) } : undefined;
   const infoEscopo = { tipo: escopo.tipo, quantidade: escopo.quantidade, podeGerenciarAcessos: user.role === "ADMIN" };
   if (ccusPermitidos && ccusPermitidos.length === 0) {
     return NextResponse.json({ contratos: [], meses: mesesDoPeriodo, mesesCompetencia: mesesDoPeriodo, temCompetencia: false, mesCorrente, atualizacao, escopo: infoEscopo });
   }
 
   const registros = await prisma.custoContaFinanceira.findMany({
-    where: ccusPermitidos ? { codccu: { in: ccusPermitidos } } : undefined,
+    where: filtroCcu ? { codccu: filtroCcu } : undefined,
     include: { team: { select: { id: true, name: true, projects: { select: { id: true, name: true }, take: 1 } } } },
     orderBy: [{ competencia: "desc" }],
   });
@@ -66,7 +68,7 @@ export async function GET() {
   let temCompetencia = false;
   const grupos = await prisma.custoFinanceiroDetalhe.groupBy({
     by: ["codccu", "contaFinanceira", "competencia", "competenciaNota"],
-    where: ccusVisiveis ? { codccu: { in: ccusVisiveis } } : undefined,
+    where: filtroCcu ? { codccu: filtroCcu } : undefined,
     _sum: { valorRateado: true },
   });
   for (const g of grupos) {

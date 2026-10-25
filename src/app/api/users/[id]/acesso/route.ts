@@ -132,7 +132,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: alvo.id },
-      data: { ...(d.role ? { role: d.role } : {}), escopoProjetos: d.escopoProjetos, verTodosCustos: d.contratos.verTodos, nucleoId: d.nucleos.membroDe },
+      data: { ...(d.role ? { role: d.role } : {}), escopoProjetos: "PROPRIOS", verTodosCustos: d.contratos.verTodos, nucleoId: d.nucleos.membroDe },
     });
 
     await tx.acessoModulo.deleteMany({ where: { userId: alvo.id } });

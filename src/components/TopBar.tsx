@@ -30,8 +30,15 @@ export default function TopBar() {
 
   useEffect(() => {
     load();
-    fetch("/api/organograma").then((r) => r.json()).then(setPeople).catch(() => {});
   }, []);
+
+  // so' a busca usa a lista de pessoas: busca na primeira vez que a pessoa clica ou digita nela (e nao em toda tela que abre)
+  const pessoasPedidas = useRef(false);
+  function carregarPessoas() {
+    if (pessoasPedidas.current) return;
+    pessoasPedidas.current = true;
+    fetch("/api/organograma").then((r) => r.json()).then((l) => { if (Array.isArray(l)) setPeople(l); }).catch(() => { pessoasPedidas.current = false; });
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -85,8 +92,9 @@ export default function TopBar() {
           onChange={(e) => {
             setSearch(e.target.value);
             setSearchOpen(true);
+            carregarPessoas();
           }}
-          onFocus={() => setSearchOpen(true)}
+          onFocus={() => { setSearchOpen(true); carregarPessoas(); }}
           placeholder="🔍 Buscar..."
           className="w-full rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-sm shadow-sm outline-none transition-shadow focus:border-brand/40 focus:shadow-soft focus:ring-2 focus:ring-brand/15"
         />

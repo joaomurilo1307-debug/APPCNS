@@ -128,12 +128,12 @@ test("perfis prontos: usam so' modulos do catalogo; membro de projetos e coorden
   for (const f of FINANCEIRO_RESTRITO) assert.ok(por("financeiro").modulos.includes(f));
   for (const p of PERFIS_PRONTOS.filter((x) => x.id !== "financeiro")) for (const f of FINANCEIRO_RESTRITO) assert.ok(!p.modulos.includes(f), `${p.id} nao pode ter ${f}`);
   const total = por("visao_total");
-  assert.equal(total.escopoProjetos, "TODOS");
+  assert.equal(total.escopoProjetos, "PROPRIOS", "projetos sao particulares: nenhum perfil ve todos");
   assert.equal(total.verTodosContratos, true);
   for (const id of ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "aprovacoes_oc_todas"]) assert.ok(!total.modulos.includes(id as any), `visao_total nao pode ter ${id}`);
   assert.ok(total.modulos.includes("contratos") && total.modulos.includes("projetos") && total.modulos.includes("nucleos"));
   assert.equal(por("consulta").nivel, "VER");
   assert.equal(por("consulta").papel, "VISUALIZADOR");
   assert.equal(por("membro_projetos").escopoProjetos, "PROPRIOS");
-  assert.equal(por("gerente_nucleo").escopoProjetos, "NUCLEO");
+  for (const x of PERFIS_PRONTOS) assert.equal(x.escopoProjetos, "PROPRIOS", `${x.id}: projetos sao particulares`);
 });

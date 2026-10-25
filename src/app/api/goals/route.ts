@@ -3,14 +3,20 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { computeGoalFraction, computeGoalCurrentValue } from "@/lib/goals";
+import { visibleProjectWhere } from "@/lib/permissions";
 import { z } from "zod";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
+  // metas: cada pessoa ve as que sao dela (atribuidas a ela ou a uma equipe dela) e as dos projetos que ela enxerga; so' o administrador ve todas
+  const u = session.user as any;
+  const visiveis = u.role === "ADMIN"
+    ? {}
+    : { OR: [{ assignedUsers: { some: { id: u.id } } }, { assignedTeam: { members: { some: { userId: u.id } } } }, { project: await visibleProjectWhere(u.id, u.role) }] };
   const goals = await prisma.goal.findMany({
-    where: { parentGoalId: null },
+    where: { parentGoalId: null, ...visiveis },
     include: {
       project: { select: { id: true, name: true } },
       assignedUsers: { select: { id: true, name: true, avatarColor: true } },
