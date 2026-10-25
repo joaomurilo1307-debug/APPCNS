@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ContestacoesDeCusto from "@/components/aprovacoes/ContestacoesDeCusto";
 import { useSession } from "next-auth/react";
 import Avatar from "@/components/Avatar";
 import { eventTypeLabel } from "@/lib/calendarColors";
 import BotaoExcel from "@/components/BotaoExcel";
+import { dentroDoPeriodo, ROTULO_PERIODO, type PeriodoOc } from "@/lib/filtroOc";
 
 type Project = {
   id: string;
@@ -71,6 +72,23 @@ export default function AprovacoesPage() {
   const [ocsSenior, setOcsSenior] = useState<
     { id: string; numOcp: string; valor: number; fornecedorNome: string | null; fornecedorCodigo: string; contratoNome: string | null; contratoTexto: string | null; codccu: string | null; nivelAtual: number; dataEmissao: string }[]
   >([]);
+
+  // filtro por data de emissao (so' esconde da tela; nada e' alterado no Senior): as antigas que ja nao vao ser aprovadas saem da frente
+  const [periodoOc, setPeriodoOc] = useState<PeriodoOc>("90");
+  const [deOc, setDeOc] = useState("");
+  const [ateOc, setAteOc] = useState("");
+  useEffect(() => {
+    try {
+      const salvo = JSON.parse(localStorage.getItem("aprovacoes-oc-periodo") ?? "null");
+      if (salvo && salvo.periodo in ROTULO_PERIODO) { setPeriodoOc(salvo.periodo); setDeOc(salvo.de ?? ""); setAteOc(salvo.ate ?? ""); }
+    } catch { /* sem armazenamento: fica no padrao */ }
+  }, []);
+  function escolherPeriodo(periodo: PeriodoOc, de = deOc, ate = ateOc) {
+    setPeriodoOc(periodo); setDeOc(de); setAteOc(ate);
+    try { localStorage.setItem("aprovacoes-oc-periodo", JSON.stringify({ periodo, de, ate })); } catch { /* ignora */ }
+  }
+  const ocsNoPeriodo = useMemo(() => ocsSenior.filter((o) => dentroDoPeriodo(o.dataEmissao, periodoOc, deOc, ateOc)), [ocsSenior, periodoOc, deOc, ateOc]);
+  const ocsOcultas = ocsSenior.length - ocsNoPeriodo.length;
 
   async function loadOcsSenior() {
     const res = await fetch("/api/senior/aprovacoes/minhas");
@@ -194,20 +212,42 @@ export default function AprovacoesPage() {
         <div className="mb-8">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-gray-600">
-              Ordens de compra do Senior aguardando você ({ocsSenior.length})
+              Ordens de compra do Senior aguardando você ({ocsNoPeriodo.length}{ocsOcultas > 0 ? ` de ${ocsSenior.length}` : ""})
             </h2>
             <BotaoExcel
               arquivo="ocs-aguardando-aprovacao"
+              desabilitado={ocsNoPeriodo.length === 0}
               gerar={() => [{
                 nome: "OCs aguardando",
+                observacao: `Emitidas: ${periodoOc === "datas" ? `de ${deOc || "o início"} até ${ateOc || "hoje"}` : ROTULO_PERIODO[periodoOc].toLowerCase()}${ocsOcultas > 0 ? ` · ${ocsOcultas} mais antiga(s) fora do período` : ""}`,
                 colunas: [{ titulo: "OC", largura: 10 }, { titulo: "Fornecedor", largura: 40 }, { titulo: "Contrato", largura: 36 }, { titulo: "CCU", largura: 8 }, { titulo: "Nível de aprovação", tipo: "inteiro" }, { titulo: "Emissão", tipo: "data" }, { titulo: "Valor", tipo: "moeda" }],
-                linhas: ocsSenior.map((o) => [o.numOcp, o.fornecedorNome || o.fornecedorCodigo, o.contratoNome || o.contratoTexto || "", o.codccu ?? "", o.nivelAtual, o.dataEmissao, o.valor]),
-                rodape: ["", "TOTAL", "", "", "", "", ocsSenior.reduce((s, o) => s + o.valor, 0)],
+                linhas: ocsNoPeriodo.map((o) => [o.numOcp, o.fornecedorNome || o.fornecedorCodigo, o.contratoNome || o.contratoTexto || "", o.codccu ?? "", o.nivelAtual, o.dataEmissao, o.valor]),
+                rodape: ["", "TOTAL", "", "", "", "", ocsNoPeriodo.reduce((s, o) => s + o.valor, 0)],
               }]}
             />
           </div>
+          <div className="mb-3 flex flex-wrap items-end gap-3 text-xs text-gray-500">
+            <label>
+              <span className="mb-1 block font-medium">Emitidas</span>
+              <select value={periodoOc} onChange={(e) => escolherPeriodo(e.target.value as PeriodoOc)} className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-800">
+                {(Object.keys(ROTULO_PERIODO) as PeriodoOc[]).map((k) => <option key={k} value={k}>{ROTULO_PERIODO[k]}</option>)}
+              </select>
+            </label>
+            {periodoOc === "datas" && (
+              <>
+                <label><span className="mb-1 block font-medium">De</span><input type="date" value={deOc} onChange={(e) => escolherPeriodo("datas", e.target.value, ateOc)} className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-800" /></label>
+                <label><span className="mb-1 block font-medium">Até</span><input type="date" value={ateOc} onChange={(e) => escolherPeriodo("datas", deOc, e.target.value)} className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-800" /></label>
+              </>
+            )}
+            {ocsOcultas > 0 && (
+              <p className="pb-1.5 text-gray-400">
+                {ocsOcultas} OC(s) mais antiga(s) fora do período escolhido (nada muda no Senior). <button type="button" onClick={() => escolherPeriodo("todos")} className="underline hover:text-gray-600">Ver todas</button>
+              </p>
+            )}
+          </div>
+          {ocsNoPeriodo.length === 0 && <p className="rounded-xl border border-dashed border-gray-200 p-4 text-sm text-gray-400">Nenhuma OC aguardando você no período escolhido.</p>}
           <div className="grid gap-2">
-            {ocsSenior.map((o) => (
+            {ocsNoPeriodo.map((o) => (
               <a
                 key={o.id}
                 href="/aprovacoes/senior"
@@ -222,6 +262,7 @@ export default function AprovacoesPage() {
                     {o.fornecedorNome || o.fornecedorCodigo}
                     {" · "}
                     {o.contratoNome || o.contratoTexto || (o.codccu ? `CCU ${o.codccu}` : "sem contrato")}
+                    {o.dataEmissao ? ` · emitida em ${new Date(o.dataEmissao).toLocaleDateString("pt-BR", { timeZone: "UTC" })}` : ""}
                   </p>
                 </div>
                 <span className="text-sm font-semibold tabular-nums">

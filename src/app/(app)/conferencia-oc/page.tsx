@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { pendenciasOc } from "@/lib/senior/pendenciasOc";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 import DossiesAutomaticos from "@/components/DossiesAutomaticos";
+import BotaoExcel from "@/components/BotaoExcel";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 // Conferência de OC: todas as OCs da Senior com vencimento no período (com ou sem
 // título). O financeiro confere, gera o título a partir da OC e baixa os dossiês.
@@ -239,6 +241,21 @@ export default function ConferenciaOcPage() {
 
   const total = useMemo(() => filtradas.reduce((s, o) => s + o.valor, 0), [filtradas]);
   const chave = (o: Oc) => o.numOcp;
+
+  // planilha: as OCs que estao na tela (respeita o periodo, a busca e as situacoes marcadas), com as pendencias de cada uma
+  const statusDossie = (o: Oc) => (o.dossieStatus === "GERANDO" ? "gerando" : o.dossieId ? "pronto" : o.dossieStatus === "ERRO" ? "falhou" : "sem dossiê");
+  function abasExcel(): AbaExcel[] {
+    return [{
+      nome: "Conferência de OC",
+      observacao: `OCs sem título com vencimento de ${dataBr(de)} até ${dataBr(ate)}${sitSel.length ? ` · situação: ${sitSel.map((s) => SIT_LABEL[s]).join(", ")}` : ""}${busca.trim() ? ` · busca: ${busca.trim()}` : ""}`,
+      colunas: [
+        { titulo: "Vencimento", tipo: "data" }, { titulo: "OC", largura: 10 }, { titulo: "Filial", largura: 7 }, { titulo: "Fornecedor", largura: 44 }, { titulo: "Valor", tipo: "moeda" },
+        { titulo: "Aprovação", largura: 14 }, { titulo: "NF", largura: 18 }, { titulo: "Título", largura: 14 }, { titulo: "Pendências", largura: 36 }, { titulo: "Dossiê", largura: 12 }, { titulo: "Descrição", largura: 50 },
+      ],
+      linhas: filtradas.map((o) => [o.vencimento, o.numOcp, o.codFil, o.fornecedorNome || `Fornecedor ${o.codFor}`, o.valor, SIT_LABEL[o.sitApr] ?? o.sitApr, o.nfs.join(", "), o.numTit ?? "", pendenciasOc(o).join(" · "), statusDossie(o), o.descricao ?? ""]),
+      rodape: ["", "", "", "TOTAL", total, "", "", "", "", "", ""],
+    }];
+  }
   const todasMarcadas = filtradas.length > 0 && filtradas.every((o) => selecionadas.has(chave(o)));
 
   function alternar(o: Oc) {
@@ -305,9 +322,12 @@ export default function ConferenciaOcPage() {
         </div>
       )}
 
-      <p className="mb-2 text-sm text-gray-500">
-        {filtradas.length} OC{filtradas.length === 1 ? "" : "s"} · total {moeda(total)}
-      </p>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-gray-500">
+          {filtradas.length} OC{filtradas.length === 1 ? "" : "s"} · total {moeda(total)}
+        </p>
+        <BotaoExcel arquivo="conferencia-de-oc" gerar={abasExcel} desabilitado={filtradas.length === 0} />
+      </div>
 
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
         <table className="w-full text-[13px]">

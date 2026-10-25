@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import BotaoExcel from "@/components/BotaoExcel";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 type Nota = { chave: string; numero: string; serie: string; emitente: string; valor: number; emissao: string | null; vencimento?: string; dias?: number };
 type Titulo = { id: string; numTit: string; fornecedorNome: string; valorAberto: number; vencimento: string; dias: number };
@@ -53,6 +55,27 @@ export default function AlertasFinanceiroPage() {
   }
   useEffect(() => carregar(), []);
 
+  // planilha: uma aba por alerta, com TODAS as linhas (a tela mostra no maximo 300 por aba)
+  function abasExcel(): AbaExcel[] {
+    if (!a) return [];
+    const notas = (nome: string, lista: Nota[], comPrazo: boolean): AbaExcel => ({
+      nome,
+      colunas: [{ titulo: "Nota", largura: 12 }, { titulo: "Série", largura: 7 }, { titulo: "Emitente", largura: 46 }, { titulo: "Emissão", tipo: "data" }, ...(comPrazo ? [{ titulo: "Vencimento", tipo: "data" as const }, { titulo: "Dias", tipo: "inteiro" as const }] : []), { titulo: "Valor", tipo: "moeda" }],
+      linhas: lista.map((n) => [n.numero, n.serie, n.emitente, n.emissao, ...(comPrazo ? [n.vencimento ?? "", n.dias ?? null] : []), n.valor]),
+      rodape: [ "", "", "TOTAL", "", ...(comPrazo ? ["", ""] : []), lista.reduce((s, n) => s + n.valor, 0)],
+    });
+    const titulos = (nome: string, lista: Titulo[]): AbaExcel => ({
+      nome,
+      colunas: [{ titulo: "Título", largura: 14 }, { titulo: "Fornecedor", largura: 46 }, { titulo: "Vencimento", tipo: "data" }, { titulo: "Dias", tipo: "inteiro" }, { titulo: "Valor em aberto", tipo: "moeda" }],
+      linhas: lista.map((t) => [t.numTit, t.fornecedorNome, t.vencimento, t.dias, t.valorAberto]),
+      rodape: ["", "TOTAL", "", "", lista.reduce((s, t) => s + t.valorAberto, 0)],
+    });
+    return [
+      notas("NF vencidas", a.notasVencidas, true), titulos("Títulos vencidos", a.titulosVencidos), notas("NF vencendo", a.notasVencendo, true),
+      titulos("Títulos vencendo", a.titulosVencendo), notas("NF novas (7 dias)", a.notasNovas, false), notas("NF já lançadas na Senior", a.notasLancadas, true),
+    ].filter((x) => x.linhas.length > 0);
+  }
+
   const tabelaNotas = (lista: Nota[], tom: Tom, comPrazo: boolean) => (
     <table className="w-full text-left text-sm">
       <tbody>
@@ -94,9 +117,12 @@ export default function AlertasFinanceiroPage() {
             pendente se ainda <strong>não estiver lançada na Senior</strong>. ADMIN e DIRETOR também recebem no sino.
           </p>
         </div>
-        <button onClick={() => carregar(true)} disabled={carregando} className="rounded-lg border border-brand px-3 py-1.5 text-sm font-medium text-brand disabled:opacity-50">
-          {carregando ? "Conferindo…" : "↻ Atualizar"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <BotaoExcel arquivo="alertas-do-financeiro" gerar={abasExcel} desabilitado={!a || carregando} />
+          <button onClick={() => carregar(true)} disabled={carregando} className="rounded-lg border border-brand px-3 py-1.5 text-sm font-medium text-brand disabled:opacity-50">
+            {carregando ? "Conferindo…" : "↻ Atualizar"}
+          </button>
+        </div>
       </div>
 
       {erro && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erro}</p>}

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import BotaoExcel from "@/components/BotaoExcel";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 type Mes = { mes: string; previsto: number; realizado: number };
 type Grupo = {
@@ -57,6 +59,24 @@ export default function DespesasRecorrentesPage() {
     );
   }, [grupos, busca, tipo, periodo, soAtencao]);
   const comAtencao = grupos.filter((g) => g.vencidasSemRealizado > 0).length;
+  // planilha: as despesas da tela, com realizado e previsto de cada mes lado a lado
+  function abasExcel(): AbaExcel[] {
+    const meses = filtrados[0]?.meses ?? [];
+    return [{
+      nome: "Despesas recorrentes",
+      observacao: `Previsões (PRV) lançadas no Senior x o que foi lançado do mesmo fornecedor · gerado em ${new Date().toLocaleString("pt-BR")} · ${filtrados.length} de ${grupos.length} despesas`,
+      colunas: [
+        { titulo: "Despesa", largura: 44 }, { titulo: "Valor", largura: 11 }, { titulo: "Periodicidade", largura: 16 }, { titulo: "Vencimento", largura: 16 },
+        { titulo: "Próxima previsão", tipo: "data" }, { titulo: "Valor da próxima", tipo: "moeda" },
+        ...meses.flatMap((m) => [{ titulo: `Realizado ${nomeMes(m.mes)}`, tipo: "moeda" as const }, { titulo: `Previsto ${nomeMes(m.mes)}`, tipo: "moeda" as const }]),
+        { titulo: "Vencidas sem lançamento", tipo: "inteiro" as const }, { titulo: "Previsões antigas", tipo: "inteiro" as const },
+      ],
+      linhas: filtrados.map((g) => [
+        g.fornecedor, TIPO[g.tipoValor].rotulo, g.periodicidade, g.regraDia, g.proxima?.vencimento ?? "", g.proxima?.valor ?? null,
+        ...g.meses.flatMap((m) => [m.realizado || null, m.previsto || null]), g.vencidasSemRealizado, g.vencidasComRealizado,
+      ]),
+    }];
+  }
   const mesAtual = hoje.slice(0, 7);
 
   return (
@@ -84,6 +104,7 @@ export default function DespesasRecorrentesPage() {
         <label className="flex items-center gap-1.5 text-sm text-gray-600">
           <input type="checkbox" checked={soAtencao} onChange={(e) => setSoAtencao(e.target.checked)} /> Só com previsão vencida
         </label>
+        <BotaoExcel arquivo="despesas-recorrentes" gerar={abasExcel} desabilitado={carregando || filtrados.length === 0} />
         <span className="ml-auto text-sm text-gray-500">{filtrados.length} de {grupos.length} · <span className="text-red-700">{comAtencao} com previsão vencida sem lançamento</span></span>
       </div>
 
