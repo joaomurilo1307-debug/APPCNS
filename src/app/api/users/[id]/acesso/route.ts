@@ -33,6 +33,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       vinculosSenior: { select: { codigo: true } },
       nucleosGerenciados: { select: { id: true } },
       nucleosCoordenados: { select: { id: true } },
+      nucleosDirigidos: { select: { id: true } },
     },
   });
   if (!alvo) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
@@ -77,6 +78,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       membroDe: alvo.nucleoId,
       gerente: alvo.nucleosGerenciados.map((n) => n.id),
       coordenador: alvo.nucleosCoordenados.map((n) => n.id),
+      diretor: alvo.nucleosDirigidos.map((n) => n.id),
     },
     senior: {
       // so' o vinculo MANUAL conta; o de-para automatico aparece como sugestao para o admin confirmar
@@ -98,7 +100,7 @@ const putSchema = z.object({
     verTodos: z.boolean(),
     itens: z.array(z.object({ codccu: z.string().regex(/^\d+$/), area: z.enum(["PROJETOS", "FINANCEIRO", "AMBOS"]) })).max(500),
   }),
-  nucleos: z.object({ membroDe: z.string().nullable(), gerente: z.array(z.string()).max(100), coordenador: z.array(z.string()).max(100) }),
+  nucleos: z.object({ membroDe: z.string().nullable(), gerente: z.array(z.string()).max(100), coordenador: z.array(z.string()).max(100), diretor: z.array(z.string()).max(100).optional() }),
   senior: z.array(z.string().regex(/^\d+$/)).max(20),
 });
 
@@ -147,19 +149,22 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     await tx.vinculoSenior.deleteMany({ where: { userId: alvo.id } });
     if (codigosSenior.length) await tx.vinculoSenior.createMany({ data: codigosSenior.map((codigo) => ({ userId: alvo.id, codigo, criadoPor: quem })), skipDuplicates: true });
 
-    // gerente / coordenador: ajusta so' o que mudou em cada nucleo
-    const todos = await tx.nucleo.findMany({ select: { id: true, gerentes: { select: { id: true } }, coordenadores: { select: { id: true } } } });
+    // gerente / coordenador / diretor: ajusta so' o que mudou em cada nucleo (diretor so' muda se a tela mandou a lista)
+    const todos = await tx.nucleo.findMany({ select: { id: true, gerentes: { select: { id: true } }, coordenadores: { select: { id: true } }, diretores: { select: { id: true } } } });
     for (const n of todos) {
       const eraGerente = n.gerentes.some((g) => g.id === alvo.id);
       const eraCoord = n.coordenadores.some((g) => g.id === alvo.id);
+      const eraDiretor = n.diretores.some((g) => g.id === alvo.id);
       const querGerente = d.nucleos.gerente.includes(n.id);
       const querCoord = d.nucleos.coordenador.includes(n.id);
-      if (eraGerente === querGerente && eraCoord === querCoord) continue;
+      const querDiretor = d.nucleos.diretor === undefined ? eraDiretor : d.nucleos.diretor.includes(n.id);
+      if (eraGerente === querGerente && eraCoord === querCoord && eraDiretor === querDiretor) continue;
       await tx.nucleo.update({
         where: { id: n.id },
         data: {
           ...(eraGerente !== querGerente ? { gerentes: querGerente ? { connect: { id: alvo.id } } : { disconnect: { id: alvo.id } } } : {}),
           ...(eraCoord !== querCoord ? { coordenadores: querCoord ? { connect: { id: alvo.id } } : { disconnect: { id: alvo.id } } } : {}),
+          ...(eraDiretor !== querDiretor ? { diretores: querDiretor ? { connect: { id: alvo.id } } : { disconnect: { id: alvo.id } } } : {}),
         },
       });
     }

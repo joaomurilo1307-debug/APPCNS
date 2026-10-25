@@ -39,3 +39,12 @@ test("nucleo (visao NUCLEO): soma os projetos das pessoas do nucleo ao filtro ba
   assert.ok(f.OR.some((c: any) => c.tasks?.some?.assigneeId?.in?.includes("a")));
   assert.ok(f.OR.some((c: any) => c.team?.members?.some?.userId?.in?.includes("b")));
 });
+
+test("diretor do nucleo enxerga os projetos do nucleo (como gerente e coordenador) e gere o nucleo", async () => {
+  const { filtroNucleosQueGere } = await import("../src/lib/permissions");
+  const f = filtroProjetosDaPessoa("d1", []);
+  assert.ok(f.OR.some((c: any) => c.nucleos?.some?.diretores?.some?.id === "d1"), "diretor do nucleo");
+  const g = filtroNucleosQueGere("d1");
+  assert.ok(g.OR.some((c: any) => c.diretores?.some?.id === "d1"), "gere o nucleo onde e' diretor");
+  assert.ok(g.OR.some((c: any) => c.gerentes?.some?.id === "d1") && g.OR.some((c: any) => c.coordenadores?.some?.id === "d1"), "gerente e coordenador continuam");
+});

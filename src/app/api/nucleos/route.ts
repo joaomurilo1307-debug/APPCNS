@@ -17,6 +17,9 @@ export async function GET() {
         membros: {
           select: { id: true, name: true, avatarColor: true, avatarUrl: true, cargo: true, nivelHierarquico: true },
         },
+        diretores: {
+          select: { id: true, name: true, avatarColor: true, avatarUrl: true },
+        },
         gerentes: {
           select: { id: true, name: true, avatarColor: true, avatarUrl: true },
         },
@@ -38,6 +41,7 @@ export async function GET() {
 const createNucleoSchema = z.object({
   name: z.string().min(2).max(100),
   description: z.string().optional(),
+  tipo: z.enum(["SETOR", "CONTRATO"]).optional(),
 });
 
 export async function POST(req: Request) {

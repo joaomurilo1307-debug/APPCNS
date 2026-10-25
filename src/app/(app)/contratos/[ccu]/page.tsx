@@ -9,6 +9,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import CustoPorContratoView from "@/components/custos/CustoPorContratoView";
 import { AbaP0, AbaPessoal, AbaPrevisao, AbaVisaoGeral } from "@/components/contratos/AbasContrato";
 import FichaEditor, { type FichaContrato } from "@/components/contratos/FichaEditor";
+import BotaoDossie from "@/components/contratos/BotaoDossie";
 
 const ABAS = [
   { id: "visao", nome: "Visão geral" },
@@ -71,7 +72,10 @@ function Pagina() {
             {[ficha.cliente, ficha.numero && `contrato ${ficha.numero}`, ficha.vigenciaFim && `vigência até ${dataBr(ficha.vigenciaFim)}`].filter(Boolean).join(" · ") || "Ficha do contrato ainda não preenchida"}
           </p>
         </div>
-        {podeEditar && <button onClick={() => setEditando(true)} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Editar ficha</button>}
+        <div className="flex flex-wrap items-center gap-2">
+          <BotaoDossie ficha={ficha} />
+          {podeEditar && <button onClick={() => setEditando(true)} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Editar ficha</button>}
+        </div>
       </header>
 
       <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-gray-200" aria-label="Seções do contrato">

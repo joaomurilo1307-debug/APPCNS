@@ -8,7 +8,7 @@ import { escopoAprovacoesOC, idsDeOcsEnvolvidas } from "@/lib/acesso/aprovacoesO
 // Relatorio de Aprovacoes. Desde 22/10/2026 (pedido do Joao): quem tem o modulo "Aprovacoes de OC: ver todas" (time financeiro) ve
 // todas; as demais pessoas veem so' as OCs em que estao envolvidas (emitiu, falta aprovar, ja assinou ou esta na alcada) --
 // src/lib/acesso/envolvimentoOc.ts. Sem acesso ao modulo: 403.
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
@@ -17,7 +17,10 @@ export async function GET() {
   if (!escopo.modulo) {
     return NextResponse.json({ error: "Sem permissão para ver aprovações do Senior" }, { status: 403 });
   }
-  const meusIds = escopo.todas ? null : Array.from(await idsDeOcsEnvolvidas(user.id, escopo.codigos));
+  // quem ve TODAS pode pedir so' as dela (?visao=minhas): as em que esta envolvida, pelo vinculo ao Senior
+  const soMinhasPedido = new URL(req.url).searchParams.get("visao") === "minhas";
+  const verTodas = escopo.todas && !soMinhasPedido;
+  const meusIds = verTodas ? null : Array.from(await idsDeOcsEnvolvidas(user.id, escopo.codigos));
   const soMinhas = meusIds ? { id: { in: meusIds } } : {};
 
   // Pedido do João 14/09/2026: "todas", buscável igual no Senior -- não
@@ -97,7 +100,8 @@ export async function GET() {
     codToNome,
     sincronizadoEm: ultimaSinc?.ultimaSincEm ?? null,
     // Para a tela explicar por que a lista esta curta/vazia
-    escopo: escopo.todas ? "TODAS" : "ENVOLVIDO",
-    semVinculoSenior: !escopo.todas && escopo.codigos.length === 0,
+    escopo: verTodas ? "TODAS" : "ENVOLVIDO",
+    podeVerTodas: escopo.todas,
+    semVinculoSenior: !verTodas && escopo.codigos.length === 0,
   });
 }

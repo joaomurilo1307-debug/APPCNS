@@ -12,7 +12,7 @@ import { BarrasPorMes, ConsumoPorLinha, Gauge, LinhasAvanco } from "./GraficosMe
 import ReceitaContrato from "./ReceitaContrato";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 import BotaoExcel from "@/components/BotaoExcel";
-import { abaDeLinhas } from "@/lib/exportarExcel";
+import { abaMedicaoPorLinha } from "@/lib/medicao/excel";
 
 type Cel = { qtd: number; valor: number };
 type Linha = {
@@ -132,9 +132,7 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
 
   // Excel: as mesmas colunas do CSV com numeros de verdade; os dois % entram como fracao e saem formatados como percentual
   function abasExcel() {
-    const cab = ["Linha", "Unidade", "Preço unitário (R$)", "Vendido (qtd)", "Vendido (R$)", "Antes do período (R$)", ...d.meses.map((m) => `${mesLongo(m)} (R$)`), ...d.meses.map((m) => `${mesLongo(m)} (qtd)`), "Consumido (qtd)", "Consumido (R$)", "Saldo (qtd)", "Saldo (R$)", "Consumo qtd (%)", "Consumo valor (%)"];
-    const linhas = d.linhas.map((l) => [l.descricao, l.unidade ?? "", l.precoUnit, l.qtdContratada, l.valorContratado, l.antes.valor, ...d.meses.map((m) => l.porMes[m]?.valor ?? 0), ...d.meses.map((m) => l.porMes[m]?.qtd ?? 0), l.qtdFaturada, l.valorFaturado, l.saldoQtd, l.saldoValor, l.pctQtd, l.pctValor]);
-    return [abaDeLinhas("Medição por linha", [cab, ...linhas], `Contrato ${d.contrato.codccu ?? d.contrato.numCtr} · período ${per.de} a ${per.ate}`, false, { "Consumo qtd (%)": "percentual", "Consumo valor (%)": "percentual", "Unidade": "texto" })];
+    return [abaMedicaoPorLinha(d, per)];
   }
 
   function baixarCsv() {

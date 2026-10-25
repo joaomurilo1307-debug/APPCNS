@@ -8,9 +8,9 @@ export async function getUserTeamIds(userId: string): Promise<string[]> {
   return memberships.map((m) => m.teamId);
 }
 
-/** Núcleos que a pessoa gere: ela é gerente (Nucleo.gerentes) ou coordenadora (Nucleo.coordenadores) do núcleo. */
+/** Núcleos que a pessoa gere: ela é gerente (Nucleo.gerentes), coordenadora (Nucleo.coordenadores) ou diretora (Nucleo.diretores) do núcleo. */
 export function filtroNucleosQueGere(userId: string) {
-  return { OR: [{ gerentes: { some: { id: userId } } }, { coordenadores: { some: { id: userId } } }] };
+  return { OR: [{ gerentes: { some: { id: userId } } }, { coordenadores: { some: { id: userId } } }, { diretores: { some: { id: userId } } }] };
 }
 
 /** IDs de pessoas que pertencem a núcleos geridos por este usuário (gerente ou coordenador). */
@@ -77,6 +77,7 @@ export function filtroProjetosDaPessoa(userId: string, teamIds: string[]) {
       { coordenadores: { some: { id: userId } } },
       { nucleos: { some: { gerentes: { some: { id: userId } } } } },
       { nucleos: { some: { coordenadores: { some: { id: userId } } } } },
+      { nucleos: { some: { diretores: { some: { id: userId } } } } },
       { tasks: { some: { assigneeId: userId } } },
       { approverId: userId },
       { acessos: { some: { userId } } },
@@ -134,7 +135,7 @@ export async function manageablePdiUserIds(userId: string): Promise<string[]> {
   }
 
   const nucleosGeridos = await prisma.nucleo.findMany({
-    where: { gerentes: { some: { id: userId } } },
+    where: { OR: [{ gerentes: { some: { id: userId } } }, { diretores: { some: { id: userId } } }] },
     select: { membros: { select: { id: true } } },
   });
   nucleosGeridos.forEach((n) => n.membros.forEach((m) => idSet.add(m.id)));

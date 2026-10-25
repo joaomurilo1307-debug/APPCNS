@@ -20,13 +20,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   const n = await prisma.nucleo.findUnique({
     where: { id: params.id },
-    select: { name: true, membros: { select: { id: true } }, gerentes: { select: { id: true } }, coordenadores: { select: { id: true } } },
+    select: { name: true, membros: { select: { id: true } }, gerentes: { select: { id: true } }, coordenadores: { select: { id: true } }, diretores: { select: { id: true } } },
   });
   if (!n) return NextResponse.json({ error: "Núcleo não encontrado" }, { status: 404 });
 
   const nome = parsed.data.nome ?? `Equipe ${n.name}`;
   if (await prisma.team.findUnique({ where: { name: nome }, select: { id: true } })) return NextResponse.json({ error: `Já existe uma equipe chamada “${nome}”. Escolha outro nome.` }, { status: 409 });
-  const gestores = new Set([u.id, ...n.gerentes.map((g) => g.id), ...n.coordenadores.map((c) => c.id)]);
+  const gestores = new Set([u.id, ...n.gerentes.map((g) => g.id), ...n.coordenadores.map((c) => c.id), ...n.diretores.map((d) => d.id)]);
   const todos = new Set([...gestores, ...n.membros.map((m) => m.id)]);
   const ativos = new Set((await prisma.user.findMany({ where: { id: { in: Array.from(todos) }, active: true, anonymizedAt: null, role: { not: "CLIENTE" } }, select: { id: true } })).map((x) => x.id));
   const equipe = await prisma.team.create({

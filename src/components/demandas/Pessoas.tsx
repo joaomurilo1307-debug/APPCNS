@@ -8,8 +8,8 @@ import { agruparPessoas, type PessoaOpcao } from "@/lib/agruparPessoas";
 export type { PessoaOpcao };
 
 export default function EscolhaDePessoas({
-  pessoas, valor, onChange, max = 30, vazio = "Ninguém escolhido.",
-}: { pessoas: PessoaOpcao[]; valor: string[]; onChange: (ids: string[]) => void; max?: number; vazio?: string }) {
+  pessoas, valor, onChange, max = 30, vazio = "Ninguém escolhido.", placeholder = "Clique para escolher ou digite o nome, cargo ou núcleo…",
+}: { pessoas: PessoaOpcao[]; valor: string[]; onChange: (ids: string[]) => void; max?: number; vazio?: string; placeholder?: string }) {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(false);
   const campo = useRef<HTMLInputElement>(null);
@@ -52,7 +52,7 @@ export default function EscolhaDePessoas({
             if (e.key === "Enter") { e.preventDefault(); const primeira = grupos[0]?.pessoas[0]; if (primeira && !cheio) adicionar([primeira.id]); }
           }}
           disabled={cheio}
-          placeholder={cheio ? `Máximo de ${max} pessoas` : "Clique para escolher ou digite o nome, cargo ou núcleo…"}
+          placeholder={cheio ? `Máximo de ${max} itens` : placeholder}
           className="w-full rounded-lg border border-gray-200 py-2 pl-3 pr-9 text-sm focus:border-brand focus:outline-none disabled:bg-gray-50"
           autoComplete="off"
           role="combobox"

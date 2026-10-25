@@ -21,7 +21,7 @@ type Dados = {
   acessos: { modulo: string; nivel: Nivel }[];
   projetos: { disponiveis: { id: string; name: string; status: string; equipe: string | null }[]; liberados: string[] };
   contratos: { disponiveis: { codccu: string; nome: string }[]; liberados: { codccu: string; area: Area }[]; verTodos: boolean; verTodosPeloPapel: boolean };
-  nucleos: { todos: { id: string; name: string }[]; membroDe: string | null; gerente: string[]; coordenador: string[] };
+  nucleos: { todos: { id: string; name: string }[]; membroDe: string | null; gerente: string[]; coordenador: string[]; diretor?: string[] };
   senior: { vinculos: { codigo: string; nome: string; tambemUsam: string[] }[]; sugestoes: { codigo: string; nome: string }[] };
 };
 
@@ -89,6 +89,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
   const [erroNucleo, setErroNucleo] = useState("");
   const [gerente, setGerente] = useState<Set<string>>(new Set());
   const [coordenador, setCoordenador] = useState<Set<string>>(new Set());
+  const [diretor, setDiretor] = useState<Set<string>>(new Set());
   const [senior, setSenior] = useState<{ codigo: string; nome: string; tambemUsam: string[] }[]>([]);
   const [buscaProjeto, setBuscaProjeto] = useState("");
   const [buscaContrato, setBuscaContrato] = useState("");
@@ -117,6 +118,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
       setNucleosLista(d.nucleos.todos);
       setGerente(new Set(d.nucleos.gerente));
       setCoordenador(new Set(d.nucleos.coordenador));
+      setDiretor(new Set(d.nucleos.diretor ?? []));
       setSenior(d.senior.vinculos);
     });
     return () => { vivo = false; };
@@ -263,7 +265,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
           role: papel !== dados.usuario.role || eraCriacao ? papel : undefined,
           acessos, escopoProjetos: escopo, projetos: Array.from(projetos),
           contratos: { verTodos, itens: Object.entries(contratos).map(([codccu, area]) => ({ codccu, area })) },
-          nucleos: { membroDe, gerente: Array.from(gerente), coordenador: Array.from(coordenador) },
+          nucleos: { membroDe, gerente: Array.from(gerente), coordenador: Array.from(coordenador), diretor: Array.from(diretor) },
           senior: senior.map((s) => s.codigo),
         }),
       });
@@ -484,7 +486,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <Secao titulo="Núcleos" ajuda="O coordenador associa projetos, passa tarefas e controla as demandas do núcleo; o gerente enxerga tudo do núcleo.">
+              <Secao titulo="Núcleos" ajuda="O coordenador associa projetos, passa tarefas e controla as demandas do núcleo; o gerente e o diretor enxergam tudo do núcleo.">
                 <label className={rot}>Pertence ao núcleo</label>
                 <select className={campo} value={membroDe ?? ""} onChange={(e) => setMembroDe(e.target.value || null)}>
                   <option value="">Nenhum</option>
@@ -501,6 +503,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
                       <span className="flex-1 font-medium text-gray-800">{n.name}</span>
                       <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={coordenador.has(n.id)} onChange={() => setCoordenador(alternar(coordenador, n.id))} /> Coordenador</label>
                       <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={gerente.has(n.id)} onChange={() => setGerente(alternar(gerente, n.id))} /> Gerente</label>
+                      <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={diretor.has(n.id)} onChange={() => setDiretor(alternar(diretor, n.id))} /> Diretor</label>
                     </li>
                   ))}
                   {nucleosLista.length === 0 && <li className="px-3 py-2 text-xs text-gray-400">Quando houver núcleos, marque aqui quem coordena e quem gerencia cada um.</li>}
