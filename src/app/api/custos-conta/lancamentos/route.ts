@@ -38,7 +38,7 @@ export async function GET(req: Request) {
   const faixa = { gte: new Date(`${de}-01T00:00:00.000Z`), lte: new Date(`${ate}-01T00:00:00.000Z`) };
   const linhas = await prisma.custoFinanceiroDetalhe.findMany({
     where: {
-      ...(lista ? { codccu: { in: lista } } : {}),
+      ...(lista ? { codccu: { in: lista } } : escopo.ocultos.size > 0 ? { codccu: { notIn: Array.from(escopo.ocultos) } } : {}),
       ...(porCompetencia ? { OR: [{ competenciaNota: faixa }, { competenciaNota: null, competencia: faixa }] } : { competencia: faixa }),
     },
     orderBy: [{ codccu: "asc" }, { competencia: "asc" }, { contaFinanceira: "asc" }, { valorRateado: "desc" }],

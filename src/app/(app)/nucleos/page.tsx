@@ -54,8 +54,9 @@ function Fichas({ titulo, pessoas, cor }: { titulo: string; pessoas: Person[]; c
 export default function NucleosPage() {
   const { data: session } = useSession();
   const role = (session?.user as any)?.role;
-  const canManage = role === "ADMIN" || role === "DIRETOR";
+  // so' o administrador (Joao, Gabriel e Renata) cria, edita e exclui nucleos; os demais so' consultam
   const isAdmin = role === "ADMIN";
+  const canManage = isAdmin;
 
   const [nucleos, setNucleos] = useState<Nucleo[]>([]);
   const [pessoasApi, setPessoasApi] = useState<PessoaOpcao[]>([]);
@@ -420,7 +421,7 @@ export default function NucleosPage() {
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">Editar núcleo</h2>
-                <p className="text-xs text-gray-400">Escolha as pessoas na lista suspensa; elas podem ser de qualquer núcleo.</p>
+                <p className="text-xs text-gray-400">Escolha as pessoas na lista suspensa; elas podem ser de qualquer núcleo. Só administradores editam núcleos.</p>
               </div>
               <button onClick={() => setEditando(null)} aria-label="Fechar" className="rounded p-1 text-gray-400 hover:text-gray-700">✕</button>
             </div>

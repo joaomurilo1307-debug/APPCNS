@@ -650,6 +650,7 @@ model UserTeam {
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([userId, teamId])
+  @@index([teamId])
 }
 
 model Project {

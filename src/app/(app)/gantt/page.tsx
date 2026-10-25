@@ -11,7 +11,7 @@ import { ROTULO_SAUDE } from "@/lib/projetos/saude";
 import type { SaudeDoProjeto } from "@/components/projetos/SeloSaude";
 
 // dados de cada projeto (da lista de Projetos) que o Gantt geral usa para o semaforo e para filtrar por nucleo e contrato
-type MetaProjeto = { id: string; name: string; saude?: SaudeDoProjeto; nucleos?: { id: string; name: string }[]; contrato?: { codccu: string; nome: string | null } | null; startDate?: string | null };
+type MetaProjeto = { id: string; name: string; owner?: { id: string; name: string } | null; saude?: SaudeDoProjeto; nucleos?: { id: string; name: string }[]; contrato?: { codccu: string; nome: string | null } | null; startDate?: string | null };
 
 type Task = {
   id: string;
@@ -35,7 +35,7 @@ export default function GanttPage() {
   const [ordem, setOrdem] = useState<"nome" | "saude" | "inicio">("nome");
 
   async function load() {
-    const res = await fetch("/api/tasks");
+    const res = await fetch("/api/tarefas/resumo");
     const dados = await res.json().catch(() => null);
     if (res.ok && Array.isArray(dados)) setTasks(dados); // resposta de erro (ex.: sessao expirada) nao apaga o grafico
     const rp = await fetch("/api/projects");
@@ -48,9 +48,18 @@ export default function GanttPage() {
   }, []);
   useAtualizarAoVoltar(load);
 
+  // projetos de mesmo nome (ex.: o projeto de teste de cada pessoa) viram blocos separados: o nome ganha o responsavel
+  const nomesRepetidos = useMemo(() => {
+    const c = new Map<string, number>();
+    for (const m of Object.values(metas)) c.set(m.name, (c.get(m.name) ?? 0) + 1);
+    return new Set(Array.from(c).filter(([, n]) => n > 1).map(([nome]) => nome));
+  }, [metas]);
+  const rotulo = (p: { id: string; name: string } | null | undefined) =>
+    !p ? "Sem projeto" : nomesRepetidos.has(p.name) ? `${p.name} · ${metas[p.id]?.owner?.name ?? p.id.slice(-4)}` : p.name;
+
   const projects = Array.from(
     new Map(tasks.filter((t) => t.project).map((t) => [t.project!.id, t.project!])).values()
-  ).sort((a, b) => a.name.localeCompare(b.name));
+  ).sort((a, b) => rotulo(a).localeCompare(rotulo(b), "pt-BR"));
 
   // filtros do Gantt geral (so' mudam o que aparece): projeto, nucleo, contrato e saude
   const metasVisiveis = projects.map((p) => metas[p.id]).filter((m): m is MetaProjeto => !!m);
@@ -69,7 +78,7 @@ export default function GanttPage() {
   // ordem dos blocos: o grafico agrupa pela ordem em que os projetos aparecem nas tarefas
   const GRAVIDADE: Record<string, number> = { ATRASADO: 0, ATENCAO: 1, NO_PRAZO: 2, SEM_DADOS: 3, CONCLUIDO: 4 };
   const chaveDaOrdem = (t: Task) => {
-    const nome = t.project?.name ?? "Sem projeto";
+    const nome = rotulo(t.project);
     const m = t.project ? metas[t.project.id] : undefined;
     if (ordem === "saude") return `${GRAVIDADE[m?.saude?.nivel ?? "SEM_DADOS"] ?? 9}|${nome}`;
     if (ordem === "inicio") return `${m?.startDate ?? "9999"}|${nome}`;
@@ -80,15 +89,15 @@ export default function GanttPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filtered.length, tasks, metas, ordem, projectId, nucleoId, codccu, saude],
   );
-  const withGroupLabel = ordenadas.map((t) => ({ ...t, groupLabel: t.project?.name ?? "Sem projeto" }));
-  const groupMeta = Object.fromEntries(metasVisiveis.map((m) => [m.name, { saude: m.saude, href: `/projetos/${m.id}` }]));
+  const withGroupLabel = ordenadas.map((t) => ({ ...t, groupLabel: rotulo(t.project) }));
+  const groupMeta = Object.fromEntries(metasVisiveis.map((m) => [rotulo(m), { saude: m.saude, href: `/projetos/${m.id}` }]));
 
   const rotuloStatus: Record<string, string> = { A_FAZER: "A fazer", FAZENDO: "Fazendo", BLOQUEADO: "Bloqueado", FEITO: "Feito" };
   // planilha: uma aba com todas as tarefas do filtro (com a numeracao WBS de cada projeto) e uma aba-resumo por projeto
   function montarAbas(): AbaExcel[] {
     const porProjeto = new Map<string, Task[]>();
     for (const t of filtered) {
-      const k = t.project?.name ?? "Sem projeto";
+      const k = rotulo(t.project);
       if (!porProjeto.has(k)) porProjeto.set(k, []);
       porProjeto.get(k)!.push(t);
     }
@@ -147,7 +156,7 @@ export default function GanttPage() {
           >
             <option value="">Todos os projetos</option>
             {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>{rotulo(p)}</option>
             ))}
           </select>
         </label>

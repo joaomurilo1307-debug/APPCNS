@@ -15,7 +15,7 @@ const updateSchema = z.object({
   diretorIds: ids.optional(),
   gerenteIds: ids.optional(),
   coordenadorIds: ids.optional(),
-  // colaboradores (quem pertence ao nucleo): so' o admin troca, porque define o nucleo da pessoa (User.nucleoId)
+  // colaboradores (quem pertence ao nucleo): define o nucleo da pessoa (User.nucleoId)
   membroIds: ids.optional(),
 });
 
@@ -26,8 +26,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const u = session.user as any;
   const role = u.role;
-  if (role !== "ADMIN" && role !== "DIRETOR") {
-    return NextResponse.json({ error: "Só administradores ou diretores podem editar núcleos" }, { status: 403 });
+  if (role !== "ADMIN") {
+    return NextResponse.json({ error: "Só administradores editam núcleos" }, { status: 403 });
   }
 
   const nucleo = await prisma.nucleo.findUnique({
@@ -43,9 +43,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const parsed = updateSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
   const { gerenteIds, coordenadorIds, diretorIds, membroIds, ...rest } = parsed.data;
-  if (membroIds !== undefined && role !== "ADMIN") {
-    return NextResponse.json({ error: "Só administradores mudam as pessoas (colaboradores) de um núcleo" }, { status: 403 });
-  }
 
   // so' entra quem e' pessoa valida (ativa, nao contratante); quem ja estava no papel nao some sozinho
   const pedidos = Array.from(new Set([...(gerenteIds ?? []), ...(coordenadorIds ?? []), ...(diretorIds ?? []), ...(membroIds ?? [])]));
@@ -103,8 +100,8 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const role = (session.user as any).role;
-  if (role !== "ADMIN" && role !== "DIRETOR") {
-    return NextResponse.json({ error: "Só administradores ou diretores podem excluir núcleos" }, { status: 403 });
+  if (role !== "ADMIN") {
+    return NextResponse.json({ error: "Só administradores excluem núcleos" }, { status: 403 });
   }
 
   const nucleo = await prisma.nucleo.findUnique({ where: { id: params.id }, include: { membros: { select: { id: true } } } });

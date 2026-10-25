@@ -13,15 +13,6 @@ export function filtroNucleosQueGere(userId: string) {
   return { OR: [{ gerentes: { some: { id: userId } } }, { coordenadores: { some: { id: userId } } }, { diretores: { some: { id: userId } } }] };
 }
 
-/** IDs de pessoas que pertencem a núcleos geridos por este usuário (gerente ou coordenador). */
-async function nucleoManagedUserIds(userId: string): Promise<string[]> {
-  const nucleos = await prisma.nucleo.findMany({
-    where: filtroNucleosQueGere(userId),
-    select: { membros: { select: { id: true } } },
-  });
-  return nucleos.flatMap((n) => n.membros.map((m) => m.id));
-}
-
 /** Ids dos núcleos que a pessoa gere (gerente ou coordenadora). */
 export async function nucleoIdsQueGere(userId: string): Promise<string[]> {
   return (await prisma.nucleo.findMany({ where: filtroNucleosQueGere(userId), select: { id: true } })).map((n) => n.id);
@@ -33,7 +24,7 @@ export async function geroNucleoDoProjeto(userId: string, projectId: string): Pr
 }
 
 /**
- * Regra de visibilidade de PROJETOS (decisao do Joao, 19/10/2026): cada pessoa -- inclusive Diretoria e Gerencia --
+ * Regra de visibilidade de PROJETOS (decisao do Joao, 19/10/2026, reforcada em 25/10/2026): cada pessoa -- inclusive Diretoria e Gerencia --
  * so ve o projeto que CRIOU (ownerId) ou em que PARTICIPA: e' membro da equipe do projeto, foi convidada como
  * diretor/coordenador do projeto ou recebeu convite individual (tela Usuarios > Projetos), gerencia um nucleo vinculado ao projeto, tem tarefa atribuida ou e' o aprovador.
  * So' o ADMIN (administrador do sistema) ve todos. Cliente tem regra propria (ProjectClient) nas rotas.
@@ -41,16 +32,8 @@ export async function geroNucleoDoProjeto(userId: string, projectId: string): Pr
  */
 export async function visibleProjectWhere(userId: string, role: string): Promise<any> {
   if (role === "ADMIN") return {};
-
-  // Visao escolhida na tela Usuarios > Acesso (22/10/2026): PROPRIOS (padrao) = regra acima; NUCLEO = tambem o que e' das pessoas dos
-  // nucleos que a pessoa gere; TODOS = todos os projetos.
-  const eu = await prisma.user.findUnique({ where: { id: userId }, select: { escopoProjetos: true } });
-  if (eu?.escopoProjetos === "TODOS") return {};
-
-  const base = filtroProjetosDaPessoa(userId, await getUserTeamIds(userId));
-  if (eu?.escopoProjetos !== "NUCLEO") return base;
-  const pessoas = await nucleoManagedUserIds(userId);
-  return filtroProjetosComNucleo(base, pessoas);
+  // 25/10/2026 (Joao): projetos sao PARTICULARES. A antiga "visao de projetos" por pessoa (do nucleo / todos) deixou de valer: so' o administrador ve todos.
+  return filtroProjetosDaPessoa(userId, await getUserTeamIds(userId));
 }
 
 /** PURA: acrescenta ao filtro "criei ou participo" os projetos que sao das pessoas do(s) nucleo(s) geridos. Sem pessoas = o mesmo filtro. */
@@ -95,21 +78,14 @@ export async function canViewProject(userId: string, role: string, projectId: st
   return (await prisma.project.count({ where: { id: projectId, ...where } })) > 0;
 }
 
-/** Mesma regra de `visibleProjectWhere`, mas retorna um filtro para o modelo Team diretamente. */
+/**
+ * Equipes que a pessoa enxerga: so' as de que faz parte e as dos projetos que ela ve (mesma regra de `visibleProjectWhere`).
+ * So' o ADMIN ve todas. (Antes Diretoria e Gerencia viam todas as equipes e seus integrantes.)
+ */
 export async function visibleTeamWhere(userId: string, role: string): Promise<any> {
-  if (role === "ADMIN" || role === "DIRETOR") return {};
-
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { nivelHierarquico: true } });
-  if (user?.nivelHierarquico === "GERENCIA") return {};
-
+  if (role === "ADMIN") return {};
   const teamIds = await getUserTeamIds(userId);
-  const nucleoUserIds = await nucleoManagedUserIds(userId);
-
-  if (nucleoUserIds.length === 0) return { id: { in: teamIds } };
-
-  return {
-    OR: [{ id: { in: teamIds } }, { members: { some: { userId: { in: nucleoUserIds } } } }],
-  };
+  return { OR: [{ id: { in: teamIds } }, { projects: { some: filtroProjetosDaPessoa(userId, teamIds) } }] };
 }
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import ProgressBar from "@/components/ProgressBar";
 import EscolhaDePessoas, { type PessoaOpcao } from "@/components/demandas/Pessoas";
@@ -73,31 +73,49 @@ export default function ProjetosPage() {
   const [visao, setVisao] = useState<"cartoes" | "tabela">("cartoes");
   const [filtro, setFiltro] = useState<FiltroProjetos>(FILTRO_VAZIO);
 
+  const exemploPedido = useRef(false);
+  const [carregado, setCarregado] = useState(false);
+  const [preparando, setPreparando] = useState(false);
   async function load() {
-    const [p, t] = await Promise.all([
-      fetch("/api/projects").then((r) => r.json()),
-      fetch("/api/teams").then((r) => r.json()),
-    ]);
-    if (Array.isArray(p)) setProjects(p); // resposta de erro (ex.: sessao expirada) nao apaga a lista
-    if (Array.isArray(t)) setTeams(t);
+    const p = await fetch("/api/projects").then((r) => r.json()).catch(() => null);
+    if (!Array.isArray(p)) return; // resposta de erro (ex.: sessao expirada) nao apaga a lista
+    setProjects(p);
+    setCarregado(true);
+    // quem ainda nao tem nenhum projeto recebe, uma unica vez, o projeto de teste que ensina o fluxo (so' dele)
+    if (p.length === 0 && !exemploPedido.current) {
+      exemploPedido.current = true;
+      setPreparando(true);
+      const r = await fetch("/api/projects/exemplo", { method: "POST" }).then((x) => x.json()).catch(() => null);
+      if (r?.criado) {
+        const p2 = await fetch("/api/projects").then((x) => x.json()).catch(() => null);
+        if (Array.isArray(p2)) setProjects(p2);
+      }
+      setPreparando(false);
+    }
   }
 
   // contratos que a pessoa ve, pessoas que podem entrar no projeto e nucleos (para incluir as pessoas de um nucleo de uma vez)
+  // so' o formulario "Novo projeto" usa estas listas: carregam na primeira vez que ele abre (a lista de projetos abre mais rapido)
   async function loadOpcoes() {
-    const [o, n, ps] = await Promise.all([
+    const [o, n, ps, t] = await Promise.all([
       fetch("/api/demandas/opcoes").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/nucleos").then((r) => (r.ok ? r.json() : [])),
       fetch("/api/pessoas").then((r) => (r.ok ? r.json() : [])),
+      fetch("/api/teams").then((r) => (r.ok ? r.json() : [])),
     ]);
     if (o) setContratos(o.contratos ?? []);
     setOpcoesPessoas(Array.isArray(ps) ? ps : []);
     setNucleos(Array.isArray(n) ? n : []);
+    setTeams(Array.isArray(t) ? t : []);
   }
 
   useEffect(() => {
     load();
-    loadOpcoes();
   }, []);
+  const opcoesJaPedidas = useRef(false);
+  useEffect(() => {
+    if (showForm && !opcoesJaPedidas.current) { opcoesJaPedidas.current = true; void loadOpcoes(); }
+  }, [showForm]);
   useAtualizarAoVoltar(load);
 
   function incluirPessoasDoNucleo() {
@@ -118,7 +136,10 @@ export default function ProjetosPage() {
       const j = await r.json().catch(() => ({}));
       return setErro(typeof j.error === "string" ? j.error : "Não foi possível criar. Confira o nome (mínimo 2 letras).");
     }
+    // projeto novo: leva direto para a aba Equipe, para montar a equipe antes de criar as tarefas
+    const criado = await r.json().catch(() => null);
     setName(""); setTeamId(""); setCodccu(""); setPessoas([]); setNucleoId("");
+    if (criado?.id) { window.location.href = `/projetos/${criado.id}?aba=equipe`; return; }
     setShowForm(false);
     load();
   }
@@ -354,7 +375,9 @@ export default function ProjetosPage() {
                   </div>
                 </Link>
               ))}
-              {projects.length === 0 && <p className="text-sm text-gray-400">Nenhum projeto ainda.</p>}
+              {!carregado && <p className="text-sm text-gray-400">Carregando seus projetos…</p>}
+              {carregado && projects.length === 0 && preparando && <p className="text-sm text-gray-400">Preparando o seu projeto de teste, que mostra como o sistema funciona…</p>}
+              {carregado && projects.length === 0 && !preparando && <p className="text-sm text-gray-400">Nenhum projeto ainda. Os projetos são particulares: você vê os que criou e aqueles para os quais foi chamado(a) na equipe.</p>}
               {projects.length > 0 && visiveis.length === 0 && <p className="text-sm text-gray-400">Nenhum projeto com esses filtros.</p>}
             </div>
           )}

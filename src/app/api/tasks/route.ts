@@ -3,34 +3,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { negarSeSoConsulta } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
-import { visibleProjectWhere } from "@/lib/permissions";
+import { filtroDeTarefasVisiveis } from "@/lib/projetos/visibilidadeTarefas";
 import { reconcileTaskOutlook } from "@/lib/taskOutlookSync";
 import { rescheduleAndPersist } from "@/lib/reschedule";
 import { generateRotinaOccurrences } from "@/lib/rotina";
 import crypto from "crypto";
 import { z } from "zod";
-
-async function visibilityFilterFor(userId: string, role: string) {
-  if (role === "ADMIN") return {};
-
-  if (role === "CLIENTE") {
-    return { OR: [{ project: { clients: { some: { userId } } } }, { assigneeId: userId }] };
-  }
-
-  if (role === "APROVADOR") {
-    const base = await visibleProjectWhere(userId, role);
-    if (Object.keys(base).length === 0) return {};
-    return {
-      OR: [...(base.OR ?? [base]).map((clause: any) => ({ project: clause })), { project: { approverId: userId } }, { assigneeId: userId }],
-    };
-  }
-
-  const base = await visibleProjectWhere(userId, role);
-  if (Object.keys(base).length === 0) return {};
-  return {
-    OR: [...(base.OR ?? [base]).map((clause: any) => ({ project: clause })), { assigneeId: userId }],
-  };
-}
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -43,7 +21,7 @@ export async function GET(req: Request) {
   const assigneeId = searchParams.get("assigneeId") ?? undefined;
   const onlyTopLevel = searchParams.get("topLevel") === "true";
 
-  const visibility = await visibilityFilterFor(userId, role);
+  const visibility = await filtroDeTarefasVisiveis(userId, role);
 
   const tasks = await prisma.task.findMany({
     where: {

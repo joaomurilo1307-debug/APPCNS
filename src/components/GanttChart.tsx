@@ -32,12 +32,19 @@ const statusLabel: Record<string, string> = {
 };
 
 const ZOOM_LEVELS = { compacto: 18, médio: 28, largo: 44 } as const;
-const LABEL_WIDTHS = { estreita: 200, larga: 320 } as const;
+const LABEL_WIDTHS = { estreita: 280, larga: 400 } as const;
 const MONTH_ROW_H = 20;
 const MONTH_NAMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
+}
+
+// data curta para a coluna e para o lado da barra: dd/mm, e com o ano (aa) quando nao e' o ano de hoje
+function fmtCurta(d: Date) {
+  const dia = d.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
+  const ano = d.getUTCFullYear();
+  return ano === new Date().getUTCFullYear() ? dia : `${dia}/${String(ano).slice(2)}`;
 }
 
 export default function GanttChart({
@@ -185,14 +192,15 @@ export default function GanttChart({
         </div>
       )}
 
-      <div ref={rolagem} className="overflow-x-auto rounded-xl border border-gray-200 bg-white [scrollbar-width:auto] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:hover:bg-gray-400 [&::-webkit-scrollbar-track]:bg-gray-100">
+      <div ref={rolagem} style={{ maxHeight: "calc(100vh - 250px)", minHeight: 280 }} className="overflow-auto rounded-xl border border-gray-200 bg-white [scrollbar-width:auto] [&::-webkit-scrollbar]:w-3 [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:hover:bg-gray-400 [&::-webkit-scrollbar-track]:bg-gray-100">
         <div style={{ minWidth: totalDays * dayWidth + labelPx }}>
-          <div className="flex border-b border-gray-100" style={{ height: MONTH_ROW_H + 32 }}>
+          <div className="sticky top-0 z-30 flex border-b border-gray-200 bg-white shadow-[0_1px_0_rgba(0,0,0,0.04)]" style={{ height: MONTH_ROW_H + 32 }}>
             <div
               style={{ width: labelPx, height: MONTH_ROW_H + 32 }}
-              className="flex shrink-0 items-end border-r border-gray-100 px-3 pb-2 text-xs font-semibold text-gray-500"
+              className="sticky left-0 z-40 flex shrink-0 items-end justify-between border-r border-gray-100 bg-white px-3 pb-2 text-xs font-semibold text-gray-500"
             >
-              Projeto / Tarefa
+              <span>Projeto / Tarefa</span>
+              <span className="text-[10px] font-medium text-gray-400">Início – Prazo</span>
             </div>
             <div className="flex flex-col">
               <div className="flex" style={{ height: MONTH_ROW_H }}>
@@ -200,9 +208,9 @@ export default function GanttChart({
                   <div
                     key={i}
                     style={{ width: g.count * dayWidth }}
-                    className="shrink-0 truncate border-b border-r border-gray-100 px-1.5 text-center text-[10px] font-semibold capitalize text-gray-500"
+                    className="shrink-0 border-b border-r border-gray-100 text-left text-[10px] font-semibold capitalize text-gray-500"
                   >
-                    {g.label}
+                    <span className="sticky inline-block whitespace-nowrap px-1.5" style={{ left: labelPx }}>{g.label}</span>
                   </div>
                 ))}
               </div>
@@ -223,7 +231,7 @@ export default function GanttChart({
             <div key={group.label ?? "all"}>
               {groupByProject && group.label && (
                 <div className="flex cursor-pointer border-b border-gray-200 bg-gray-50 hover:bg-gray-100/80" onClick={() => alternar(group.label!)} role="button" aria-expanded={abertos.has(group.label)}>
-                  <div style={{ width: labelPx }} className="flex shrink-0 items-start gap-1.5 px-3 py-2 text-xs">
+                  <div style={{ width: labelPx }} className="sticky left-0 z-20 flex shrink-0 items-start gap-1.5 border-r border-gray-200 bg-inherit px-3 py-2 text-xs">
                     <span className="mt-0.5 inline-block w-3 text-gray-400">{abertos.has(group.label) ? "▾" : "▸"}</span>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
@@ -232,6 +240,11 @@ export default function GanttChart({
                           <a href={groupMeta[group.label].href} onClick={(e) => e.stopPropagation()} className="shrink-0 text-[11px] font-medium text-brand-dark hover:underline" title="Abrir a página do projeto">abrir ↗</a>
                         )}
                       </div>
+                      {group.resumo?.inicio && group.resumo.fim && (
+                        <div className="text-[11px] tabular-nums text-gray-500" title="Do início da primeira tarefa ao prazo da última">
+                          {fmtCurta(new Date(group.resumo.inicio))} – {fmtCurta(new Date(group.resumo.fim))}
+                        </div>
+                      )}
                       <div className="mt-0.5 flex items-center gap-1.5">
                         <SeloSaude saude={groupMeta?.[group.label]?.saude} />
                         {group.resumo && (
@@ -264,17 +277,22 @@ export default function GanttChart({
                 const end = hasDates ? offsetDays(t.dueDate!) : 0;
                 const width = Math.max(1, end - start + 1) * dayWidth;
                 return (
-                  <div key={t.id} className="flex border-b border-gray-50 hover:bg-gray-50/60">
-                    <div
-                      style={{ width: labelPx, paddingLeft: 12 + depth * 16 }}
-                      title={t.title}
-                      onClick={() => setOpenTaskId(t.id)}
-                      className="flex shrink-0 cursor-pointer items-center gap-1.5 truncate py-2 pr-2 text-xs hover:text-brand-dark hover:underline"
-                    >
-                      <span className="shrink-0 font-mono text-[10px] text-gray-400">{wbs}</span>
-                      {depth > 0 && <span className="shrink-0 text-gray-300">↳</span>}
-                      <span className="truncate">{t.title}</span>
-                      {t.isEntrega && <span className="shrink-0" title="Entrega">🏁</span>}
+                  <div key={t.id} className="flex border-b border-gray-50 bg-white hover:bg-gray-50">
+                    <div style={{ width: labelPx }} className="sticky left-0 z-20 flex shrink-0 items-center border-r border-gray-100 bg-inherit">
+                      <div
+                        style={{ paddingLeft: 12 + depth * 16 }}
+                        title={t.title}
+                        onClick={() => setOpenTaskId(t.id)}
+                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 truncate py-2 pr-2 text-xs hover:text-brand-dark hover:underline"
+                      >
+                        <span className="shrink-0 font-mono text-[10px] text-gray-400">{wbs}</span>
+                        {depth > 0 && <span className="shrink-0 text-gray-300">↳</span>}
+                        <span className="truncate">{t.title}</span>
+                        {t.isEntrega && <span className="shrink-0" title="Entrega">🏁</span>}
+                      </div>
+                      <span className="shrink-0 whitespace-nowrap px-2 text-[10px] tabular-nums text-gray-500" title="Início – prazo">
+                        {hasDates ? `${fmtCurta(new Date(t.startDate!))} – ${fmtCurta(new Date(t.dueDate!))}` : <span className="text-gray-300">sem data</span>}
+                      </span>
                     </div>
                     <div className="relative" style={{ width: totalDays * dayWidth, height: 32 }}>
                       {hojeOff >= 0 && hojeOff < totalDays && <div className="pointer-events-none absolute top-0 h-full w-px bg-rose-400/60" style={{ left: hojeOff * dayWidth + dayWidth / 2 }} title="Hoje" />}
@@ -284,7 +302,7 @@ export default function GanttChart({
                           className={`group absolute top-1.5 h-4 cursor-pointer rounded ${t.isEntrega ? "bg-violet-500" : statusColor[t.status]}`}
                           style={{ left: start * dayWidth, width }}
                         >
-                          <div className="pointer-events-none absolute -top-9 left-0 z-10 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                          <div className="pointer-events-none absolute -top-9 left-0 z-50 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
                             <span className="font-medium">{t.title}</span>
                             <span className="ml-1 text-gray-300">
                               · {fmtDate(new Date(t.startDate!))} – {fmtDate(new Date(t.dueDate!))} · {statusLabel[t.status]}
@@ -298,6 +316,14 @@ export default function GanttChart({
                           style={{ left: 4 }}
                         >
                           sem data
+                        </span>
+                      )}
+                      {hasDates && (
+                        <span
+                          className="pointer-events-none absolute top-2 whitespace-nowrap text-[10px] tabular-nums text-gray-500"
+                          style={(end + 1) * dayWidth + 100 > totalDays * dayWidth ? { right: (totalDays - start) * dayWidth + 6 } : { left: (end + 1) * dayWidth + 6 }}
+                        >
+                          {fmtCurta(new Date(t.startDate!))} – {fmtCurta(new Date(t.dueDate!))}
                         </span>
                       )}
                     </div>

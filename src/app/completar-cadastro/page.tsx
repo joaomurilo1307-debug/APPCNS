@@ -178,6 +178,7 @@ export default function CompletarCadastroPage() {
           ))}
         </select>
 
+        {projetos.length > 0 && (<>
         <label className="mb-1 block text-sm font-medium">
           Contratos em que você atua <span className="font-normal text-gray-400">({projetoIds.length} selecionados)</span>
         </label>
@@ -205,6 +206,7 @@ export default function CompletarCadastroPage() {
             </label>
           ))}
         </div>
+        </>)}
 
         {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 

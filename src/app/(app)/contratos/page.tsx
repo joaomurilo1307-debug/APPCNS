@@ -10,6 +10,7 @@ import { chaveMes, contratosNaBase, linhasDoContrato, type ContratoCusto } from 
 import { mesCurto, moedaCompacta, percentual } from "@/lib/custos/formato";
 import { Sparkline } from "@/components/custos/graficos";
 import BotaoExcel from "@/components/BotaoExcel";
+import GerenciarContratosAtivos from "@/components/contratos/GerenciarContratosAtivos";
 import type { AbaExcel } from "@/lib/exportarExcel";
 
 type Ficha = { id: string; codccu: string; nome: string; tipo: string; status: string; cliente: string | null; numero: string | null; vigenciaInicio: string | null; vigenciaFim: string | null; valor: number | null };
@@ -20,6 +21,8 @@ const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").revers
 
 export default function ContratosPage() {
   const [fichas, setFichas] = useState<Ficha[] | null>(null);
+  const [podeEditar, setPodeEditar] = useState(false);
+  const [gerenciando, setGerenciando] = useState(false);
   const [custos, setCustos] = useState<Resp | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -27,8 +30,13 @@ export default function ContratosPage() {
   const [status, setStatus] = useState<"ATIVO" | "ENCERRADO" | "todos">("ATIVO");
   const [ordem, setOrdem] = useState<"custo" | "nome" | "ccu">("custo");
 
+  async function carregarFichas() {
+    const r = await fetch("/api/contratos", { cache: "no-store" });
+    if (r.ok) { const j = await r.json(); setFichas(j.contratos); setPodeEditar(!!j.podeEditar); } else setErro((await r.json().catch(() => ({}))).error || "Erro ao carregar");
+  }
+
   useEffect(() => {
-    fetch("/api/contratos", { cache: "no-store" }).then(async (r) => (r.ok ? setFichas((await r.json()).contratos) : setErro((await r.json().catch(() => ({}))).error || "Erro ao carregar")));
+    void carregarFichas();
     fetch("/api/custos-conta", { cache: "no-store" }).then(async (r) => (r.ok ? setCustos(await r.json()) : null));
   }, []);
 
@@ -87,8 +95,16 @@ export default function ContratosPage() {
           <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Contratos</h1>
           <p className="mt-1 max-w-3xl text-[15px] text-gray-500">Cada contrato é um centro de custo do Senior. Abra um contrato para ver custos, equipe alocada, orçamento base (P0) e previsão. Os valores vêm do Senior.</p>
         </div>
-        <BotaoExcel arquivo="contratos" gerar={abasExcel} desabilitado={carregando || filtradas.length === 0} />
+        <div className="flex flex-wrap items-center gap-2">
+          {podeEditar && fichas && (
+            <button onClick={() => setGerenciando(true)} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-medium text-gray-700 transition hover:bg-gray-50" title="Escolher quais contratos estão ativos. Só os ativos aparecem para as pessoas.">
+              Contratos ativos ({fichas.filter((f) => f.status === "ATIVO").length}/{fichas.length})
+            </button>
+          )}
+          <BotaoExcel arquivo="contratos" gerar={abasExcel} desabilitado={carregando || filtradas.length === 0} />
+        </div>
       </header>
+      {gerenciando && fichas && <GerenciarContratosAtivos contratos={fichas} aoFechar={() => setGerenciando(false)} aoSalvar={() => { setGerenciando(false); void carregarFichas(); }} />}
 
       <div className="mb-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">
         <div className="min-w-[16rem] flex-1">

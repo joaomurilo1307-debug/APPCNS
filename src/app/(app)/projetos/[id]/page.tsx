@@ -86,7 +86,6 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [editCoordenadores, setEditCoordenadores] = useState<string[]>([]);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
-  const [showPessoas, setShowPessoas] = useState(false);
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -94,7 +93,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [frequencia, setFrequencia] = useState("SEMANAL");
   const [rotinaAte, setRotinaAte] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "cronograma" | "gantt" | "lista" | "recursos" | "atualizacoes" | "chat" | "arquivos">("kanban");
+  const [tab, setTab] = useState<"equipe" | "kanban" | "board" | "metas" | "cronograma" | "gantt" | "lista" | "recursos" | "atualizacoes" | "chat" | "arquivos">("kanban");
   const [ganttTasks, setGanttTasks] = useState<
     {
       id: string;
@@ -120,6 +119,13 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
   useEffect(() => {
     load();
+  }, [params.id]);
+  // ?aba=equipe (projeto recem-criado) abre direto na aba Equipe: monte a equipe antes de criar as tarefas
+  useEffect(() => {
+    try {
+      const a = new URLSearchParams(window.location.search).get("aba");
+      if (a === "equipe" || a === "atualizacoes" || a === "gantt" || a === "lista" || a === "kanban") setTab(a);
+    } catch { /* sem URL: fica no Kanban */ }
   }, [params.id]);
   // o andamento do cabecalho (% concluido) muda quando se mexe nas tarefas; recarrega ao voltar para a aba e ao trocar de aba do projeto
   useAtualizarAoVoltar(load);
@@ -243,10 +249,10 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => setShowPessoas((v) => !v)}
-            className={`rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50 ${showPessoas ? "border-brand text-brand-dark" : "border-gray-300"}`}
+            onClick={() => setTab("equipe")}
+            className={`rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50 ${tab === "equipe" ? "border-brand text-brand-dark" : "border-gray-300"}`}
           >
-            Pessoas ({project.team.members.length})
+            Equipe ({project.team.members.length})
           </button>
           {canManage && (
             <button
@@ -281,18 +287,6 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           )}
         </div>
       </div>
-
-      {showPessoas && (
-        <PessoasDoProjeto
-          projeto={project.name}
-          teamId={project.team.id}
-          teamName={project.team.name}
-          membros={project.team.members}
-          ownerId={project.owner.id}
-          podeGerir={canManage}
-          aoMudar={() => { load(); setRefreshKey((k) => k + 1); }}
-        />
-      )}
 
       {showEditForm && (
         <form onSubmit={handleEditProject} className="mb-6 mt-4 grid grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-white p-4 text-sm">
@@ -419,7 +413,15 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         </form>
       )}
 
-      <div className="mb-4 mt-6 flex gap-1 border-b border-gray-200">
+      <div className="mb-4 mt-6 flex gap-1 overflow-x-auto border-b border-gray-200">
+        <button
+          onClick={() => setTab("equipe")}
+          className={`whitespace-nowrap rounded-t-md px-4 py-2 text-sm font-medium ${
+            tab === "equipe" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
+          }`}
+        >
+          Equipe ({project.team.members.length})
+        </button>
         <button
           onClick={() => setTab("kanban")}
           className={`rounded-t-md px-4 py-2 text-sm font-medium ${
@@ -502,6 +504,17 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         </button>
       </div>
 
+      {tab === "equipe" && (
+        <PessoasDoProjeto
+          projeto={project.name}
+          teamId={project.team.id}
+          teamName={project.team.name}
+          membros={project.team.members}
+          ownerId={project.owner.id}
+          podeGerir={canManage}
+          aoMudar={() => { load(); setRefreshKey((k) => k + 1); }}
+        />
+      )}
       {tab === "kanban" && <KanbanBoard key={refreshKey} projectId={project.id} canManage={canManage} />}
       {tab === "board" && <Whiteboard projectId={project.id} />}
       {tab === "cronograma" && (

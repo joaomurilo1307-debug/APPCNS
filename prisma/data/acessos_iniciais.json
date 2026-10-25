@@ -204,7 +204,7 @@
       "chapa": "1231",
       "nome": "DENISE MARIA DE DEUS LOURENCO",
       "perfil": "visao_total",
-      "escopoProjetos": "TODOS",
+      "escopoProjetos": "PROPRIOS",
       "verTodosContratos": true
     },
     {
@@ -223,45 +223,45 @@
       "chapa": "23",
       "nome": "BRUNO DE LIMA E SOARES TEIXEIRA",
       "perfil": "gerente_nucleo",
-      "escopoProjetos": "NUCLEO"
+      "escopoProjetos": "PROPRIOS"
     },
     {
       "chapa": "25",
       "nome": "SAMARA HISSA NEIVA AGUIAR PERES",
       "perfil": "gerente_nucleo",
-      "escopoProjetos": "NUCLEO"
+      "escopoProjetos": "PROPRIOS"
     },
     {
       "chapa": "46",
       "nome": "CLAUDIA GUIMARAES MOREIRA",
       "perfil": "gerente_nucleo",
-      "escopoProjetos": "NUCLEO",
+      "escopoProjetos": "PROPRIOS",
       "marca": "nucleo"
     },
     {
       "chapa": "16",
       "nome": "BRENO DE LANA GONÇALVES",
       "perfil": "coordenador_nucleo",
-      "escopoProjetos": "NUCLEO"
+      "escopoProjetos": "PROPRIOS"
     },
     {
       "chapa": "22",
       "nome": "ELAINE MARIA RIBEIRO DE CARVALHO",
       "perfil": "coordenador_nucleo",
-      "escopoProjetos": "NUCLEO"
+      "escopoProjetos": "PROPRIOS"
     },
     {
       "chapa": "17",
       "nome": "DEBORA OLIVEIRA QUEIROZ",
       "perfil": "coordenador_nucleo",
-      "escopoProjetos": "NUCLEO"
+      "escopoProjetos": "PROPRIOS"
     },
     {
       "chapa": "2074",
       "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA",
       "perfil": "completo",
       "marca": "completo",
-      "escopoProjetos": "TODOS",
+      "escopoProjetos": "PROPRIOS",
       "verTodosContratos": true
     },
     {
@@ -269,7 +269,7 @@
       "nome": "RENATA REIS MARINHO",
       "perfil": "completo",
       "marca": "completo",
-      "escopoProjetos": "TODOS",
+      "escopoProjetos": "PROPRIOS",
       "verTodosContratos": true
     },
     {
@@ -277,7 +277,7 @@
       "nome": "GABRIEL FURST FARIA",
       "perfil": "completo",
       "marca": "completo",
-      "escopoProjetos": "TODOS",
+      "escopoProjetos": "PROPRIOS",
       "verTodosContratos": true
     },
     {
@@ -285,7 +285,7 @@
       "nome": "ANDRE SILVA PERES",
       "perfil": "completo",
       "marca": "completo",
-      "escopoProjetos": "TODOS",
+      "escopoProjetos": "PROPRIOS",
       "verTodosContratos": true
     },
     {
@@ -293,7 +293,7 @@
       "nome": "CAROLINA SILVA PERES DE CARVALHO",
       "perfil": "completo",
       "marca": "completo",
-      "escopoProjetos": "TODOS",
+      "escopoProjetos": "PROPRIOS",
       "verTodosContratos": true
     },
     {
@@ -301,7 +301,7 @@
       "nome": "CLAUDIA GUIMARAES MOREIRA",
       "perfil": "completo",
       "marca": "completo",
-      "escopoProjetos": "TODOS",
+      "escopoProjetos": "PROPRIOS",
       "verTodosContratos": true
     },
     {
@@ -309,7 +309,7 @@
       "nome": "BRENO DE LANA GONÇALVES",
       "perfil": "visao_total",
       "marca": "visao",
-      "escopoProjetos": "TODOS",
+      "escopoProjetos": "PROPRIOS",
       "verTodosContratos": true
     },
     {
@@ -317,14 +317,14 @@
       "nome": "BRUNO DE LIMA E SOARES TEIXEIRA",
       "perfil": "visao_total",
       "marca": "visao",
-      "escopoProjetos": "NUCLEO"
+      "escopoProjetos": "PROPRIOS"
     },
     {
       "chapa": "25",
       "nome": "SAMARA HISSA NEIVA AGUIAR PERES",
       "perfil": "visao_total",
       "marca": "visao",
-      "escopoProjetos": "NUCLEO"
+      "escopoProjetos": "PROPRIOS"
     },
     {
       "chapa": "JULIMAR",
