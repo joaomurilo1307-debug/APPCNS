@@ -33,16 +33,27 @@ test("Baixar: resposta incompleta, erroExecucao e fault nunca contam como OK", (
   assert.equal(lerRespostaBaixar("<faultstring>boom</faultstring>", lote).erroExecucao, "boom");
 });
 test("SENIOR_BAIXA_PORTA=padrao troca a URL e o envelope; sem a variavel segue o GerarBaixaPorLoteCP", async () => {
-  process.env.SENIOR_WS_SAPIENS_USER = "u"; process.env.SENIOR_WS_SAPIENS_PASSWORD = "s";
+  const variaveis = ["SENIOR_WS_SAPIENS_USER", "SENIOR_WS_SAPIENS_PASSWORD", "SENIOR_BAIXA_PORTA", "SENIOR_WS_BAIXA_URL", "SENIOR_WS_BAIXAR_URL"] as const;
+  const anteriores = new Map(variaveis.map((nome) => [nome, process.env[nome]]));
   const chamadas: { url: string; body: string }[] = [];
   const fetchImpl = (async (url: string, init: any) => { chamadas.push({ url, body: init.body }); return new Response(resposta("OK", "OK"), { status: 200 }); }) as any;
-  process.env.SENIOR_BAIXA_PORTA = "padrao";
   try {
+    process.env.SENIOR_WS_SAPIENS_USER = "u"; process.env.SENIOR_WS_SAPIENS_PASSWORD = "s";
+    // Este teste verifica as URLs padrao, independentemente dos overrides da homologacao.
+    delete process.env.SENIOR_WS_BAIXA_URL; delete process.env.SENIOR_WS_BAIXAR_URL;
+    process.env.SENIOR_BAIXA_PORTA = "padrao";
     const r = await gerarBaixaPorLoteCP(lote, { fetchImpl });
     assert.equal(r.ok, true); assert.match(chamadas[0].url, /int_padrao_titulos_contaspagar$/); assert.match(chamadas[0].body, /<ser:Baixar>/);
-  } finally { delete process.env.SENIOR_BAIXA_PORTA; }
-  await gerarBaixaPorLoteCP(lote, { fetchImpl });
-  assert.match(chamadas[1].url, /co_mfi_cpa_titulos$/); assert.match(chamadas[1].body, /GerarBaixaPorLoteCP/);
+    delete process.env.SENIOR_BAIXA_PORTA;
+    await gerarBaixaPorLoteCP(lote, { fetchImpl });
+    assert.match(chamadas[1].url, /co_mfi_cpa_titulos$/); assert.match(chamadas[1].body, /GerarBaixaPorLoteCP/);
+  } finally {
+    for (const nome of variaveis) {
+      const anterior = anteriores.get(nome);
+      if (anterior === undefined) delete process.env[nome];
+      else process.env[nome] = anterior;
+    }
+  }
 });
 
 test("liquidadoNaSenior decide pela leitura do titulo, nao pela resposta do webservice", () => {

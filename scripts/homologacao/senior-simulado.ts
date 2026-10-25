@@ -6,6 +6,8 @@ export function criarSeniorSimulado(porta = 3099) {
   let envios = 0;
   const consultas: string[] = [];
   const pagos = new Map<string, string>();
+  // Resposta perdida apos gravar: a primeira conferencia tambem falha; a seguinte encontra LQ.
+  const conferenciaIndisponivel = new Set<string>();
   // Situacao trocada pela porta PostDBInfoFinan (AB/PE); ausente = AB.
   const situacoes = new Map<string, string>();
   const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -42,6 +44,9 @@ export function criarSeniorSimulado(porta = 3099) {
         const titulo = /NUMTIT\s*=\s*'([^']+)'/i.exec(sql)?.[1];
         const lista = /NUMTIT\s+IN\s*\(([^)]+)\)/i.exec(sql)?.[1];
         const titulos = titulo ? [titulo] : lista ? [...lista.matchAll(/'([^']+)'/g)].map(m=>m[1]) : [];
+        if (titulos.filter(t => conferenciaIndisponivel.delete(t)).length) {
+          res.statusCode = 503; res.end("Conferencia simulada temporariamente indisponivel apos a baixa."); return;
+        }
         linhas = titulos.filter(t => !/SITTIT = 'AB'/.test(sql) || !pagos.has(t)).map(t => ({ NUMTIT: t, CODTPT: "DUP", CODFOR: "999999", CODFIL: "1", CODEMP: "1", DATEMI: "08/10/2026", SITTIT: pagos.has(t) ? "LQ" : situacoes.get(t) ?? "AB", VLRORI: "100,00", VLRABE: pagos.has(t) ? "0,00" : "100,00", ULTPGT: pagos.get(t) ?? "", CODFPG: modo === "CONFERENCIA_SEM_FORMA" ? "0" : "3", CODBAN:"0", CODAGE:"0", CCBFOR:"0" }));
         if (modo === "CONFERENCIA_OUTRO_TIPO" && linhas.length) linhas.push({ ...linhas[0], CODTPT: "OUT", CODFPG: "19" });
         if (modo === "CONFERENCIA_AMBIGUA" && linhas.length) linhas.push({...linhas[0],CCBFOR:"11111-1"});
@@ -66,7 +71,10 @@ export function criarSeniorSimulado(porta = 3099) {
         const numInt = /<numInt>(.*?)<\/numInt>/.exec(bloco)?.[1] ?? "";
         const numTit = /<numTit>(.*?)<\/numTit>/.exec(bloco)?.[1] ?? "";
         const erroItem = modo === "ERRO_ITEM" || (modo === "ERRO_ITEM_PARCIAL" && indice === 0);
-        if (["OK", "SEM_RESPOSTA_APOS_BAIXA", "ERRO_ITEM_PARCIAL"].includes(modo) && !erroItem) pagos.set(numTit, /<datBai>(.*?)<\/datBai>/.exec(corpo)?.[1] ?? "");
+        if (["OK", "SEM_RESPOSTA_APOS_BAIXA", "ERRO_ITEM_PARCIAL"].includes(modo) && !erroItem) {
+          pagos.set(numTit, /<datBai>(.*?)<\/datBai>/.exec(corpo)?.[1] ?? "");
+          if (modo === "SEM_RESPOSTA_APOS_BAIXA") conferenciaIndisponivel.add(numTit);
+        }
         return `<gridRetorno><numInt>${numInt}</numInt><numTit>${numTit}</numTit><msgErr>${erroItem ? "Permissao de baixa negada (SIMULACAO)" : ""}</msgErr></gridRetorno>`;
       }).join("");
       if (modo === "SEM_RESPOSTA_APOS_BAIXA") { req.socket.destroy(); return; }
