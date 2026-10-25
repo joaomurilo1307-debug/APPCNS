@@ -57,6 +57,10 @@ npx tsx prisma/seed-nucleos-adm.ts || true
 echo "Verificando nucleos de contratos (uma vez)..."
 npx tsx prisma/seed-nucleos-contratos.ts || true
 
+# Pessoas de cada nucleo (lotacao da planilha LISTAGEM DE ATIVOS, 25/10/2026): so' quem ainda nao tem nucleo; uma marca por pessoa, sem variavel de ambiente.
+echo "Ligando as pessoas aos nucleos (uma vez por pessoa)..."
+npx tsx prisma/seed-nucleos-pessoas.ts || true
+
 # Acessos iniciais do novo controle de acesso (financeiro por pessoa; Denise; Allan e Vitor): uma vez por pessoa, sem variavel de ambiente.
 echo "Aplicando acessos iniciais (uma vez por pessoa)..."
 npx tsx prisma/seed-acessos-iniciais.ts || true

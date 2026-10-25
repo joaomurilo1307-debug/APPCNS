@@ -5,6 +5,7 @@ import { negarSeSoConsulta } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam, canViewProject } from "@/lib/permissions";
 import { computePercentComplete } from "@/lib/progress";
+import { saudeDoProjeto } from "@/lib/projetos/saude";
 import { z } from "zod";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
@@ -33,7 +34,13 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   // contrato (centro de custo) do projeto, com o nome, para o cabecalho da pagina
   const contrato = project.codccu ? await prisma.contrato.findUnique({ where: { codccu: project.codccu }, select: { codccu: true, nome: true } }) : null;
-  return NextResponse.json({ ...project, percentComplete: computePercentComplete(project.tasks), contrato });
+  const agora = new Date();
+  const atrasadas = project.tasks.filter((t) => t.dueDate && t.status !== "FEITO" && new Date(t.dueDate) < agora).length;
+  const saude = saudeDoProjeto({
+    status: project.status, startDate: project.startDate, endDate: project.endDate, total: project.tasks.length, feitas: project.tasks.filter((t) => t.status === "FEITO").length,
+    atrasadas, bloqueadas: project.tasks.filter((t) => t.status === "BLOQUEADO").length,
+  }, agora);
+  return NextResponse.json({ ...project, percentComplete: computePercentComplete(project.tasks), contrato, saude });
 }
 
 const updateSchema = z.object({

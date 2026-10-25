@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import TaskDetailModal from "./TaskDetailModal";
 import { buildWbsHierarchy } from "@/lib/wbs";
 import { resumirGrupo, type ResumoGrupo } from "@/lib/ganttResumo";
+import SeloSaude, { type SaudeDoProjeto } from "@/components/projetos/SeloSaude";
 
 type Task = {
   id: string;
@@ -43,16 +44,35 @@ export default function GanttChart({
   tasks,
   onChanged,
   groupByProject,
+  groupMeta,
 }: {
   tasks: Task[];
   onChanged?: () => void;
   groupByProject?: boolean;
+  /** por nome do grupo (projeto): saude (semaforo) e link para abrir o projeto, mostrados no bloco do Gantt geral */
+  groupMeta?: Record<string, { saude?: SaudeDoProjeto | null; href?: string }>;
 }) {
   const [zoom, setZoom] = useState<keyof typeof ZOOM_LEVELS>("médio");
-  const [labelWidth, setLabelWidth] = useState<keyof typeof LABEL_WIDTHS>("estreita");
+  const [labelWidth, setLabelWidth] = useState<keyof typeof LABEL_WIDTHS>(groupByProject ? "larga" : "estreita");
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   // Gantt geral (todos os projetos): cada projeto e' um bloco que abre e fecha; comeca recolhido para nao ficar tudo embolado
   const [abertos, setAbertos] = useState<Set<string>>(new Set());
+  const rolagem = useRef<HTMLDivElement>(null);
+  const jaRolou = useRef(false);
+  const abertosLidos = useRef(false);
+  // lembra quais projetos estavam abertos (so' neste navegador; se nao der para ler ou gravar, segue sem lembrar)
+  useEffect(() => {
+    if (!groupByProject) return;
+    try {
+      const s = localStorage.getItem("gantt-geral-abertos");
+      if (s) { const l = JSON.parse(s); if (Array.isArray(l)) setAbertos(new Set(l.filter((x) => typeof x === "string"))); }
+    } catch { /* sem armazenamento: comeca recolhido */ }
+    abertosLidos.current = true;
+  }, [groupByProject]);
+  useEffect(() => {
+    if (!groupByProject || !abertosLidos.current) return;
+    try { localStorage.setItem("gantt-geral-abertos", JSON.stringify(Array.from(abertos))); } catch { /* ignora */ }
+  }, [abertos, groupByProject]);
   const dayWidth = ZOOM_LEVELS[zoom];
   const labelPx = LABEL_WIDTHS[labelWidth];
 
@@ -112,6 +132,16 @@ export default function GanttChart({
   const alternar = (label: string) => setAbertos((s) => { const n = new Set(s); if (n.has(label)) n.delete(label); else n.add(label); return n; });
   const nomesDosGrupos = groups.map((g) => g.label).filter((l): l is string => !!l);
   const hojeOff = offsetDays(new Date().toISOString());
+  function irParaHoje() {
+    const el = rolagem.current;
+    if (!el || hojeOff < 0 || hojeOff >= totalDays) return;
+    el.scrollTo({ left: Math.max(0, hojeOff * dayWidth - (el.clientWidth - labelPx) / 3), behavior: "smooth" });
+  }
+  // ao abrir, leva a barra de rolagem para a data de hoje (uma vez)
+  useEffect(() => {
+    if (jaRolou.current || !rolagem.current) return;
+    if (hojeOff >= 0 && hojeOff < totalDays) { jaRolou.current = true; irParaHoje(); }
+  });
   const totalRows = groups.reduce((sum, g) => sum + g.rows.length, 0);
   if (totalRows === 0) {
     return <p className="text-sm text-gray-400">Nenhuma tarefa neste projeto ainda.</p>;
@@ -132,6 +162,7 @@ export default function GanttChart({
             </button>
           ))}
         </div>
+        <button onClick={irParaHoje} className="rounded-md border border-rose-200 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50" title="Rola o gráfico até a data de hoje">Ir para hoje</button>
         <div className="flex items-center gap-1">
           <span>Nome da tarefa:</span>
           {(Object.keys(LABEL_WIDTHS) as (keyof typeof LABEL_WIDTHS)[]).map((w) => (
@@ -154,7 +185,7 @@ export default function GanttChart({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white [scrollbar-width:auto] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:hover:bg-gray-400 [&::-webkit-scrollbar-track]:bg-gray-100">
+      <div ref={rolagem} className="overflow-x-auto rounded-xl border border-gray-200 bg-white [scrollbar-width:auto] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:hover:bg-gray-400 [&::-webkit-scrollbar-track]:bg-gray-100">
         <div style={{ minWidth: totalDays * dayWidth + labelPx }}>
           <div className="flex border-b border-gray-100" style={{ height: MONTH_ROW_H + 32 }}>
             <div
@@ -195,14 +226,22 @@ export default function GanttChart({
                   <div style={{ width: labelPx }} className="flex shrink-0 items-start gap-1.5 px-3 py-2 text-xs">
                     <span className="mt-0.5 inline-block w-3 text-gray-400">{abertos.has(group.label) ? "▾" : "▸"}</span>
                     <div className="min-w-0">
-                      <div className="truncate font-semibold" title={group.label}>{group.label}</div>
-                      {group.resumo && (
-                        <div className="truncate text-[11px] text-gray-500">
-                          {group.resumo.pct}% · {group.resumo.feitas}/{group.resumo.total} tarefas
-                          {group.resumo.atrasadas > 0 && <b className="ml-1 text-rose-600">· {group.resumo.atrasadas} atrasada(s)</b>}
-                          {!group.resumo.inicio && <span className="ml-1 text-gray-400">· sem datas</span>}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        <span className="break-words font-semibold leading-tight" title={group.label}>{group.label}</span>
+                        {groupMeta?.[group.label]?.href && (
+                          <a href={groupMeta[group.label].href} onClick={(e) => e.stopPropagation()} className="shrink-0 text-[11px] font-medium text-brand-dark hover:underline" title="Abrir a página do projeto">abrir ↗</a>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <SeloSaude saude={groupMeta?.[group.label]?.saude} />
+                        {group.resumo && (
+                          <span className="truncate text-[11px] text-gray-500">
+                            {group.resumo.pct}% · {group.resumo.feitas}/{group.resumo.total} tarefas
+                            {group.resumo.atrasadas > 0 && <b className="ml-1 text-rose-600">· {group.resumo.atrasadas} atrasada(s)</b>}
+                            {!group.resumo.inicio && <span className="ml-1 text-gray-400">· sem datas</span>}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="relative" style={{ width: totalDays * dayWidth, minHeight: 44 }}>

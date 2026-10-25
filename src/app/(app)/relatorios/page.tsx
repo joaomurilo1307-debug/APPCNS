@@ -7,6 +7,7 @@ import ProgressBar from "@/components/ProgressBar";
 import AuditLogPanel from "@/components/AuditLogPanel";
 import BotaoExcel from "@/components/BotaoExcel";
 import { indicadoresDoNucleo } from "@/lib/relatorios/nucleos";
+import SeloSaude, { type SaudeDoProjeto } from "@/components/projetos/SeloSaude";
 
 type ProjectInsight = {
   id: string;
@@ -22,6 +23,7 @@ type ProjectInsight = {
   overdueCount: number;
   totalHours: number;
   totalCost: number;
+  saude?: SaudeDoProjeto;
 };
 
 const statusLabel: Record<string, string> = {
@@ -110,7 +112,10 @@ export default function RelatoriosPage() {
               <Link href={`/projetos/${p.id}`} className="font-semibold hover:text-brand-dark hover:underline">
                 {p.name}
               </Link>
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{statusLabel[p.status]}</span>
+              <span className="flex items-center gap-1.5">
+                <SeloSaude saude={p.saude} />
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{statusLabel[p.status]}</span>
+              </span>
             </div>
             <p className="mb-3 text-xs text-gray-400">
               {p.team.name}

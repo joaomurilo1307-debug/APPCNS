@@ -7,6 +7,7 @@ import { canManageTeam, nucleoIdsQueGere, visibleProjectWhere } from "@/lib/perm
 import { contratosDoUsuario } from "@/lib/demandas";
 import { nomeLivreDeEquipe, pessoasValidas } from "@/lib/pessoas";
 import { computePercentComplete } from "@/lib/progress";
+import { saudeDoProjeto } from "@/lib/projetos/saude";
 import { sendNotificationEmail } from "@/lib/mailer";
 import { z } from "zod";
 
@@ -33,6 +34,7 @@ export async function GET() {
       team: { select: { id: true, name: true } },
       owner: { select: { id: true, name: true } },
       approver: { select: { id: true, name: true } },
+      nucleos: { select: { id: true, name: true } },
       tasks: { select: { status: true, dueDate: true } },
       _count: { select: { tasks: true } },
     },
@@ -44,12 +46,19 @@ export async function GET() {
   const contratos = ccus.length ? await prisma.contrato.findMany({ where: { codccu: { in: ccus } }, select: { codccu: true, nome: true } }) : [];
 
   const now = new Date();
-  const result = projects.map(({ tasks, ...p }) => ({
-    ...p,
-    contrato: p.codccu ? { codccu: p.codccu, nome: contratos.find((c) => c.codccu === p.codccu)?.nome ?? null } : null,
-    percentComplete: computePercentComplete(tasks),
-    overdueCount: tasks.filter((t) => t.dueDate && t.status !== "FEITO" && new Date(t.dueDate) < now).length,
-  }));
+  const result = projects.map(({ tasks, ...p }) => {
+    const overdueCount = tasks.filter((t) => t.dueDate && t.status !== "FEITO" && new Date(t.dueDate) < now).length;
+    const blockedCount = tasks.filter((t) => t.status === "BLOQUEADO").length;
+    return {
+      ...p,
+      contrato: p.codccu ? { codccu: p.codccu, nome: contratos.find((c) => c.codccu === p.codccu)?.nome ?? null } : null,
+      percentComplete: computePercentComplete(tasks),
+      overdueCount,
+      blockedCount,
+      // semaforo calculado (src/lib/projetos/saude.ts): o mesmo na lista, no Gantt geral, nos Relatorios e no contrato
+      saude: saudeDoProjeto({ status: p.status, startDate: p.startDate, endDate: p.endDate, total: tasks.length, feitas: tasks.filter((t) => t.status === "FEITO").length, atrasadas: overdueCount, bloqueadas: blockedCount }, now),
+    };
+  });
 
   return NextResponse.json(result);
 }

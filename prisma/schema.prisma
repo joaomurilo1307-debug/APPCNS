@@ -248,6 +248,7 @@ model User {
   pdisAsGestor  PDI[] @relation("PDICriador")
   nucleosGerenciados Nucleo[] @relation("NucleoGerente")
   nucleosDirigidos   Nucleo[] @relation("NucleoDiretor")
+  atualizacoesDeProjeto AtualizacaoProjeto[] @relation("AtualizacaoProjetoAutor")
   projetosComoDiretor     Project[] @relation("ProjectDiretor")
   projetosComoCoordenador Project[] @relation("ProjectCoordenador")
   aprovacoesSeniorComoProximo AprovacaoSenior[] @relation("AprovacaoSeniorProximo")
@@ -691,6 +692,7 @@ model Project {
   diretores     User[]   @relation("ProjectDiretor")
   acessos       AcessoProjeto[] @relation("AcessosProjetoProject")
   demanda       Demanda?        @relation("DemandaProjeto")
+  atualizacoes  AtualizacaoProjeto[]
   coordenadores User[]   @relation("ProjectCoordenador")
   folders       Folder[]
   attachments   Attachment[]
@@ -1872,4 +1874,20 @@ model Configuracao {
   chave        String   @id
   valor        String   @db.Text
   atualizadoEm DateTime @updatedAt
+}
+
+// Atualizacao de status de um projeto (registro de comunicacao da equipe): quem escreveu avalia a saude (pode diferir do semaforo calculado
+// pelo sistema) e conta o que aconteceu. Fica em ordem cronologica na aba "Atualizacoes" do projeto.
+model AtualizacaoProjeto {
+  id        String   @id @default(cuid())
+  projectId String
+  autorId   String
+  saude     String // NO_PRAZO | ATENCAO | ATRASADO
+  texto     String   @db.Text
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  autor   User    @relation("AtualizacaoProjetoAutor", fields: [autorId], references: [id])
+
+  @@index([projectId, createdAt])
 }
