@@ -43,7 +43,7 @@ export default function FaturamentoGeral({ de, ate, mesAtual, atualizadoEm }: { 
       <header className="space-y-1">
         <h2 className="text-[15px] font-semibold text-gray-900">Faturamento mensal consolidado</h2>
         <p className="text-[13px] leading-relaxed text-gray-500">Notas fiscais e notas de débito, por competência, dos contratos selecionados no filtro de contratos. Cada centro de custo entra uma única vez.</p>
-        <p className="text-xs text-gray-400">A busca e “Só com saldo” filtram apenas a lista abaixo. O faturamento inclui também os contratos sem saldo a medir.</p>
+        <p className="text-xs text-gray-400">A busca e “Só com saldo”, na aba Por contrato, filtram apenas a tabela e sua exportação. O faturamento inclui também os contratos sem saldo a medir.</p>
       </header>
 
       {erro && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{erro}</p>}
