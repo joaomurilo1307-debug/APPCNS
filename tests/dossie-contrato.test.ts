@@ -45,6 +45,10 @@ const medicaoDetalhe = {
   linhas: [{ descricao: "Topografia", unidade: "dia", precoUnit: 100, qtdContratada: 10, valorContratado: 1000, antes: { valor: 0 }, porMes: { "2026-09": { valor: 100, qtd: 1 } }, qtdFaturada: 1, valorFaturado: 100, saldoQtd: 9, saldoValor: 900, pctQtd: 0.1, pctValor: 0.1 }],
 };
 const previsao = { planilha: { dim: "conta", filhoDim: "fornecedor", meses: ["2026-10"], truncadas: 0, totais: { chave: "t", rotulo: "TOTAL", total: 10, programado: 10, previsto: 0, qtd: 1, antes: 0, depois: 0, semData: 0, porMes: { "2026-10": 10 } }, linhas: [{ chave: "a", rotulo: "Combustível", total: 10, programado: 10, previsto: 0, qtd: 1, antes: 0, depois: 0, semData: 0, porMes: { "2026-10": 10 } }] } };
+const projetosApi = [
+  { id: "p1", name: "Plano de campo", status: "EM_ANDAMENTO", percentComplete: 40, overdueCount: 1, blockedCount: 0, startDate: null, endDate: "2026-12-01T00:00:00.000Z", owner: { name: "Bruno" }, team: { name: "Equipe 280" }, nucleos: [{ name: "SVPM CT 072 2024" }], saude: { rotulo: "Atenção", motivos: ["1 tarefa atrasada"] }, _count: { tasks: 5 }, contrato: { codccu: "280" } },
+  { id: "p2", name: "De outro contrato", status: "PLANEJADO", percentComplete: 0, overdueCount: 0, owner: { name: "Ana" }, contrato: { codccu: "70" } },
+];
 const times = [{ id: "t1", name: "Equipe 280", codccu: "280", members: [{ role: "GESTOR", user: { name: "Bruno" } }, { role: "MEMBRO", user: { name: "Ana" } }] }, { id: "t2", name: "Outra", codccu: "70", members: [] }];
 
 function buscarCom(respostas: Record<string, any>) {
@@ -52,13 +56,16 @@ function buscarCom(respostas: Record<string, any>) {
   return { chamadas, buscar: async (url: string) => { chamadas.push(url); const k = Object.keys(respostas).find((p) => url.startsWith(p)); return k ? respostas[k] : null; } };
 }
 
-test("dossie completo: Resumo + 6 abas, na ordem, com os indicadores certos", async () => {
+test("dossie completo: Resumo + 7 abas, na ordem, com os indicadores certos", async () => {
   const { buscar, chamadas } = buscarCom({
     "/api/custos-conta/lancamentos": lancamentos, "/api/custos-conta": { contratos: [contrato], meses: ["2026-08-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z"], mesCorrente: "2026-10-01T00:00:00.000Z" },
-    "/api/medicao/5001": medicaoDetalhe, "/api/medicao": medicaoLista, "/api/previsao/mensal": previsao, "/api/teams": times,
+    "/api/medicao/5001": medicaoDetalhe, "/api/medicao": medicaoLista, "/api/previsao/mensal": previsao, "/api/projects": projetosApi, "/api/teams": times,
   });
   const abas = await montarDossie(ficha, buscar, new Date("2026-10-25T12:00:00Z"));
-  assert.deepEqual(abas.map((a) => a.nome), ["Resumo", "Custo por conta x mês", "Lançamentos (Rel114)", "Medição por linha", "Previsão mês a mês", "Equipe"]);
+  assert.deepEqual(abas.map((a) => a.nome), ["Resumo", "Custo por conta x mês", "Lançamentos (Rel114)", "Medição por linha", "Previsão mês a mês", "Projetos", "Equipe"]);
+  const proj = abas.find((a) => a.nome === "Projetos")!;
+  assert.equal(proj.linhas.length, 1, "so' os projetos deste contrato");
+  assert.deepEqual([proj.linhas[0][0], proj.linhas[0][2], proj.linhas[0][3]], ["Plano de campo", "Atenção", "1 tarefa atrasada"]);
   const resumo = Object.fromEntries(abas[0].linhas.map((l) => [l[0], l[1] || l[2]]));
   assert.equal(resumo["Custo no período (R$)"], 5200);
   assert.equal(resumo["Contratado nas linhas do Senior (R$)"], 800000);
@@ -76,8 +83,8 @@ test("dossie: o que nao esta disponivel some, e o Resumo avisa (sem quebrar)", a
   const abas = await montarDossie(ficha, buscar, new Date());
   assert.deepEqual(abas.map((a) => a.nome), ["Resumo", "Custo por conta x mês"]);
   const avisos = abas[0].linhas.filter((l) => l[0] === "Aviso").map((l) => String(l[1]));
-  assert.equal(avisos.length, 4);
-  assert.ok(avisos.some((a) => a.startsWith("Lançamentos")) && avisos.some((a) => a.startsWith("Medição")) && avisos.some((a) => a.startsWith("Previsão")) && avisos.some((a) => a.startsWith("Equipe")));
+  assert.equal(avisos.length, 5);
+  assert.ok(avisos.some((a) => a.startsWith("Lançamentos")) && avisos.some((a) => a.startsWith("Medição")) && avisos.some((a) => a.startsWith("Previsão")) && avisos.some((a) => a.startsWith("Projetos")) && avisos.some((a) => a.startsWith("Equipe")));
 });
 
 test("dossie: sem permissao nos custos ou contrato sem custo, so' o que tem aparece", async () => {

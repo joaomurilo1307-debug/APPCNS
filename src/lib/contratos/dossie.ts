@@ -43,6 +43,27 @@ export function abaEquipe(equipeNome: string, membros: MembroEquipe[]): AbaExcel
   };
 }
 
+type ProjetoDoContrato = {
+  name: string; status: string; percentComplete: number; overdueCount: number; blockedCount?: number; startDate: string | null; endDate: string | null;
+  owner: { name: string }; team?: { name: string }; nucleos?: { name: string }[]; saude?: { rotulo: string; motivos: string[] }; _count?: { tasks: number };
+};
+const SITUACAO: Record<string, string> = { PLANEJADO: "Planejado", EM_ANDAMENTO: "Em andamento", PAUSADO: "Pausado", CONCLUIDO: "Concluído" };
+
+/** Projetos ligados ao contrato (Project.codccu), com a saude de cada um. */
+export function abaProjetos(projetos: ProjetoDoContrato[]): AbaExcel {
+  return {
+    nome: "Projetos",
+    colunas: [
+      { titulo: "Projeto", largura: 44 }, { titulo: "Situação", largura: 14 }, { titulo: "Saúde", largura: 12 }, { titulo: "Por quê", largura: 46 }, { titulo: "Responsável", largura: 26 }, { titulo: "Equipe", largura: 28 },
+      { titulo: "Núcleos", largura: 30 }, { titulo: "Início", tipo: "data" }, { titulo: "Fim previsto", tipo: "data" }, { titulo: "Tarefas", tipo: "inteiro" }, { titulo: "Atrasadas", tipo: "inteiro" }, { titulo: "Bloqueadas", tipo: "inteiro" }, { titulo: "Andamento", tipo: "percentual" },
+    ],
+    linhas: projetos.map((p) => [
+      p.name, SITUACAO[p.status] ?? p.status, p.saude?.rotulo ?? "", p.saude?.motivos.join("; ") ?? "", p.owner.name, p.team?.name ?? "", (p.nucleos ?? []).map((n) => n.name).join(", "),
+      p.startDate, p.endDate, p._count?.tasks ?? 0, p.overdueCount ?? 0, p.blockedCount ?? 0, (p.percentComplete ?? 0) / 100,
+    ]),
+  };
+}
+
 export type Indicadores = { custoTotal: number | null; periodoCusto: string | null; mesesComCusto: number; maiorConta: { nome: string; valor: number } | null; contratado: number | null; medido: number | null; saldo: number | null };
 
 export function abaResumo(ficha: FichaDossie, ind: Indicadores, equipe: { nome: string; pessoas: number } | null, avisos: string[], agora: Date): AbaExcel {
@@ -101,8 +122,8 @@ export async function montarDossie(ficha: FichaDossie, buscar: Buscar, agora: Da
 
       const qs = new URLSearchParams({ codccu: ficha.codccu, de: f.de, ate: f.ate, base: "pagamento" });
       const lanc = await buscar(`/api/custos-conta/lancamentos?${qs.toString()}`);
-      if (lanc && Array.isArray(lanc.linhas)) abas.push(abaDeLinhas("Lançamentos (Rel114)", linhasRel114(lanc), `${ficha.nome} · CCU ${ficha.codccu} · lançamentos de ${mesCurto(f.de)} a ${mesCurto(f.ate)}, no layout do Rel114 do Senior`, true));
-      else avisos.push("Lançamentos (Rel114): não foi possível ler.");
+      if (lanc && Array.isArray(lanc.linhas) && lanc.linhas.length > 0) abas.push(abaDeLinhas("Lançamentos (Rel114)", linhasRel114(lanc), `${ficha.nome} · CCU ${ficha.codccu} · lançamentos de ${mesCurto(f.de)} a ${mesCurto(f.ate)}, no layout do Rel114 do Senior`, true));
+      else avisos.push(lanc && Array.isArray(lanc.linhas) ? "Lançamentos (Rel114): nenhum lançamento no período." : "Lançamentos (Rel114): não foi possível ler.");
     }
   }
 
@@ -125,7 +146,13 @@ export async function montarDossie(ficha: FichaDossie, buscar: Buscar, agora: Da
   if (prev && prev.planilha && Array.isArray(prev.planilha.linhas) && prev.planilha.linhas.length > 0) abas.push(abaPrevisaoMesAMes(prev.planilha, "Linha de custo"));
   else avisos.push(prev ? "Previsão: sem previsão lançada para este contrato." : "Previsão: não foi possível ler.");
 
-  // 5) equipe do contrato (a equipe cujo centro de custo e' o do contrato)
+  // 5) projetos ligados ao contrato (a mesma lista da tela de Projetos: so' os que a pessoa ve)
+  const todosProjetos = await buscar("/api/projects");
+  const doContrato = Array.isArray(todosProjetos) ? todosProjetos.filter((p: any) => p.contrato?.codccu === ficha.codccu) : null;
+  if (doContrato && doContrato.length > 0) abas.push(abaProjetos(doContrato));
+  else avisos.push(doContrato ? "Projetos: nenhum projeto ligado a este contrato que você possa ver." : "Projetos: não foi possível ler.");
+
+  // 6) equipe do contrato (a equipe cujo centro de custo e' o do contrato)
   const times = await buscar("/api/teams");
   const equipe = Array.isArray(times) ? times.find((t: any) => t.codccu === ficha.codccu) : null;
   let equipeResumo: { nome: string; pessoas: number } | null = null;

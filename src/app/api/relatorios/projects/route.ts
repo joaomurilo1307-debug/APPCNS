@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { visibleProjectWhere } from "@/lib/permissions";
 import { computePercentComplete } from "@/lib/progress";
+import { saudeDoProjeto } from "@/lib/projetos/saude";
 
 function hoursSpent(actualStartedAt: Date | null, actualEndedAt: Date | null): number {
   if (!actualStartedAt) return 0;
@@ -64,6 +65,7 @@ export async function GET() {
       totalCost,
       startDate: p.startDate,
       endDate: p.endDate,
+      saude: saudeDoProjeto({ status: p.status, startDate: p.startDate, endDate: p.endDate, total: p.tasks.length, feitas: taskCounts.FEITO ?? 0, atrasadas: overdueCount, bloqueadas: taskCounts.BLOQUEADO ?? 0 }, now),
     };
   });
 

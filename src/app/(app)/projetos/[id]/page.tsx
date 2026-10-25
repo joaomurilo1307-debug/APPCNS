@@ -16,6 +16,8 @@ import TeamChatPanel from "@/components/TeamChatPanel";
 import FilesPanel from "@/components/FilesPanel";
 import PessoasDoProjeto from "@/components/projetos/PessoasDoProjeto";
 import EscolhaDePessoas from "@/components/demandas/Pessoas";
+import SeloSaude, { type SaudeDoProjeto } from "@/components/projetos/SeloSaude";
+import AtualizacoesProjeto from "@/components/projetos/AtualizacoesProjeto";
 import type { PessoaOpcao } from "@/lib/agruparPessoas";
 import { useAtualizarAoVoltar } from "@/lib/atualizarAoVoltar";
 
@@ -37,6 +39,7 @@ type ProjectDetail = {
   diretores: { id: string; name: string }[];
   coordenadores: { id: string; name: string }[];
   contrato?: { codccu: string; nome: string } | null;
+  saude?: SaudeDoProjeto;
 };
 
 function daysBetween(a: Date, b: Date) {
@@ -91,7 +94,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [frequencia, setFrequencia] = useState("SEMANAL");
   const [rotinaAte, setRotinaAte] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "cronograma" | "gantt" | "lista" | "recursos" | "chat" | "arquivos">("kanban");
+  const [tab, setTab] = useState<"kanban" | "board" | "metas" | "cronograma" | "gantt" | "lista" | "recursos" | "atualizacoes" | "chat" | "arquivos">("kanban");
   const [ganttTasks, setGanttTasks] = useState<
     {
       id: string;
@@ -222,6 +225,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             {project.contrato && ` · Contrato: CCU ${project.contrato.codccu} · ${project.contrato.nome}`}
           </p>
           <div className="mt-2 flex items-center gap-3">
+            <SeloSaude saude={project.saude} />
             <div className="w-40">
               <ProgressBar percent={project.percentComplete} />
             </div>
@@ -473,6 +477,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           Recursos
         </button>
         <button
+          onClick={() => setTab("atualizacoes")}
+          className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+            tab === "atualizacoes" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
+          }`}
+        >
+          Atualizações
+        </button>
+        <button
           onClick={() => setTab("chat")}
           className={`rounded-t-md px-4 py-2 text-sm font-medium ${
             tab === "chat" ? "border-b-2 border-brand text-brand-dark" : "text-gray-500"
@@ -513,6 +525,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         />
       )}
       {tab === "recursos" && <ResourcesPanel projectId={project.id} canManage={canManage} />}
+      {tab === "atualizacoes" && <AtualizacoesProjeto projectId={project.id} podeEscrever={!!canCreateTask} meuId={myUserId} podeGerir={canManage} />}
       {tab === "chat" && <TeamChatPanel teamId={project.team.id} />}
       {tab === "arquivos" && <FilesPanel scope={{ type: "project", id: project.id }} canManage={canManage} />}
     </div>

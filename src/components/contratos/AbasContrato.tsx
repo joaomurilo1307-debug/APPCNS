@@ -5,6 +5,7 @@
 // Previsao ja le o Senior (titulos em aberto por centro de custo), somente leitura. Visao geral mostra so' a ficha cadastral e a situacao do acompanhamento.
 
 import ClientesDoContrato from "./ClientesDoContrato";
+import ProjetosDoContrato from "./ProjetosDoContrato";
 import PrevisaoMensal from "./PrevisaoMensal";
 import { moeda } from "@/lib/custos/formato";
 import type { FichaContrato } from "./FichaEditor";
@@ -63,6 +64,7 @@ export function AbaVisaoGeral({ ficha, irParaAba }: { ficha: FichaContrato; irPa
           ))}
         </ul>
       </Cartao>
+      <ProjetosDoContrato codccu={ficha.codccu} />
       <ClientesDoContrato codccu={ficha.codccu} />
     </div>
   );
