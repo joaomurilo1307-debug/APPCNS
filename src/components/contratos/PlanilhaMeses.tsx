@@ -6,6 +6,8 @@
 
 import { useMemo, useState } from "react";
 import { mesCurto, mesLongo, moeda, moedaCompacta } from "@/lib/custos/formato";
+import BotaoExcel from "@/components/BotaoExcel";
+import { abaDeLinhas } from "@/lib/exportarExcel";
 
 export type LinhaPlan = {
   chave: string; rotulo: string; total: number; programado: number; previsto: number; qtd: number; antes: number; depois: number; semData: number;
@@ -46,6 +48,19 @@ export default function PlanilhaMeses({ dados, dim, onDim, onCelula, selecionada
     ...(temDepois ? [{ id: "depois" as const, titulo: "Depois", pega: (l: LinhaPlan) => l.depois }] : []),
     ...(temSemData ? [{ id: "sem_data" as const, titulo: "Sem data", pega: (l: LinhaPlan) => l.semData }] : []),
   ];
+
+  // Excel: as mesmas linhas do CSV, mas com os valores como NUMERO (o CSV leva texto formatado)
+  function abasExcel() {
+    const cab = [DIMS.find((d) => d.chave === dim)?.rotulo ?? "Linha", "Item", "Total no período", ...(temAntes ? ["Antes do período"] : []), ...dados.meses.map((m) => mesLongo(m)), ...(temDepois ? ["Depois do período"] : []), ...(temSemData ? ["Sem data"] : [])];
+    const linha = (rot: string, item: string, l: LinhaPlan) => [rot, item, l.total, ...(temAntes ? [l.antes] : []), ...dados.meses.map((m) => l.porMes[m] ?? 0), ...(temDepois ? [l.depois] : []), ...(temSemData ? [l.semData] : [])];
+    const corpo: (string | number)[][] = [];
+    for (const l of dados.linhas) {
+      corpo.push(linha(l.rotulo, "(total da linha)", l));
+      for (const c of l.filhos ?? []) corpo.push(linha(l.rotulo, c.rotulo + (c.tipoValor ? ` [${c.tipoValor === "FIXO" ? "valor fixo" : "valor variável"}]` : ""), c));
+    }
+    corpo.push(linha("TOTAL", "", dados.totais));
+    return [abaDeLinhas("Previsão mês a mês", [cab, ...corpo], "Cada linha traz o seu \"(total da linha)\" e, abaixo, o detalhe; some só um dos níveis.", true)];
+  }
 
   function baixarCsv() {
     const cab = [DIMS.find((d) => d.chave === dim)?.rotulo ?? "Linha", "Item", "Total no período", ...(temAntes ? ["Antes do período"] : []), ...dados.meses.map((m) => mesLongo(m)), ...(temDepois ? ["Depois do período"] : []), ...(temSemData ? ["Sem data"] : [])];
@@ -99,6 +114,7 @@ export default function PlanilhaMeses({ dados, dim, onDim, onCelula, selecionada
           </label>
           <button type="button" onClick={() => setAbertas(todasAbertas ? new Set() : new Set(dados.linhas.filter((l) => l.filhos?.length).map((l) => l.chave)))} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">{todasAbertas ? "Recolher tudo" : "Abrir tudo"}</button>
           <button type="button" onClick={baixarCsv} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">Baixar planilha (CSV)</button>
+          <BotaoExcel arquivo={`previsao-mes-a-mes-${dados.meses[0]}-a-${dados.meses[dados.meses.length - 1]}`} gerar={abasExcel} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[13px] font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50" />
         </div>
       </header>
 

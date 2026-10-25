@@ -7,6 +7,8 @@ import Link from "next/link";
 import FiltroContratos from "@/components/FiltroContratos";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { mesCurto, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
+import BotaoExcel from "@/components/BotaoExcel";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 type Contrato = {
   numCtr: string; numOfi: string; codccu: string | null; ccuNome: string | null; maisDeUmCcu: boolean;
@@ -101,6 +103,26 @@ export default function MedicaoLista() {
   const saldoTotal = dados.totais.contratado - dados.totais.medido;
   const pctTotal = dados.totais.contratado > 0 ? dados.totais.medido / dados.totais.contratado : 0;
 
+  // planilha da lista que esta na tela (busca, "so com saldo" e ordem): consumo por valor e por quantidade, saldo e os ultimos 12 meses
+  function abasExcel(): AbaExcel[] {
+    const meses = (lista[0] ?? dados!.contratos[0])?.serie.map((s) => s.mes) ?? [];
+    return [{
+      nome: "Medição por contrato",
+      observacao: `Receita e Medição · dados do Senior de ${hora(dados!.atualizacao.ultimaOk)}${soComSaldo ? " · só contratos com saldo a medir" : ""}${busca.trim() ? ` · busca: ${busca.trim()}` : ""}`,
+      colunas: [
+        { titulo: "Contrato", largura: 22 }, { titulo: "Centro de custo", largura: 36 }, { titulo: "CCU", largura: 8 }, { titulo: "Contratado", tipo: "moeda" }, { titulo: "Medido acumulado", tipo: "moeda" }, { titulo: "Saldo a medir", tipo: "moeda" },
+        { titulo: "Consumo por valor", tipo: "percentual" }, { titulo: "Consumo por quantidade", tipo: "percentual" }, { titulo: "Linhas", tipo: "inteiro" }, { titulo: "Linhas esgotadas", tipo: "inteiro" }, { titulo: "Linhas acima de 80%", tipo: "inteiro" },
+        { titulo: "Último mês medido", largura: 16 }, { titulo: "Valor do último mês", tipo: "moeda" },
+        ...meses.map((m) => ({ titulo: `Medido ${mesCurto(m)}`, tipo: "moeda" as const })),
+      ],
+      linhas: lista.map((c) => [
+        c.numOfi, c.ccuNome ?? "", c.codccu ?? "", c.valorContratado, c.valorMedido, c.saldo, c.pct, c.pctFisico, c.nLinhas, c.linhasEsgotadas, c.linhasAcima80,
+        c.ultimoMes ? mesCurto(c.ultimoMes.mes) : "", c.ultimoMes?.valor ?? null, ...meses.map((_, i) => c.serie[i]?.valor ?? 0),
+      ]),
+      rodape: ["TOTAL", "", "", lista.reduce((s, c) => s + c.valorContratado, 0), lista.reduce((s, c) => s + c.valorMedido, 0), lista.reduce((s, c) => s + c.saldo, 0)],
+    }];
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 text-[13px] text-gray-600 shadow-soft">
@@ -134,6 +156,7 @@ export default function MedicaoLista() {
             <header className="mb-3 flex flex-wrap items-center gap-2">
               <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar contrato, centro de custo ou número" className="min-w-[260px] flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" aria-label="Buscar contrato" />
               <FiltroContratos />
+              <BotaoExcel arquivo="receita-e-medicao" gerar={abasExcel} desabilitado={lista.length === 0} />
               <select value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm" aria-label="Ordenar">
                 <option value="saldo">Maior saldo primeiro</option>
                 <option value="valor">Mais consumido (valor)</option>

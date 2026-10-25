@@ -31,7 +31,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   });
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
-  return NextResponse.json({ ...project, percentComplete: computePercentComplete(project.tasks) });
+  // contrato (centro de custo) do projeto, com o nome, para o cabecalho da pagina
+  const contrato = project.codccu ? await prisma.contrato.findUnique({ where: { codccu: project.codccu }, select: { codccu: true, nome: true } }) : null;
+  return NextResponse.json({ ...project, percentComplete: computePercentComplete(project.tasks), contrato });
 }
 
 const updateSchema = z.object({
