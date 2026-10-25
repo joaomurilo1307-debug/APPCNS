@@ -12,6 +12,9 @@ import {
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import TaskDetailModal from "./TaskDetailModal";
 import Avatar from "./Avatar";
+import BotaoExcel from "./BotaoExcel";
+import { useAtualizarAoVoltar } from "@/lib/atualizarAoVoltar";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 type Task = {
   id: string;
@@ -116,7 +119,8 @@ export default function KanbanBoard({ projectId, canManage: canManageEquipeProp 
     const params = new URLSearchParams({ topLevel: "true" });
     if (projectId) params.set("projectId", projectId);
     const res = await fetch(`/api/tasks?${params.toString()}`);
-    setTasks(await res.json());
+    const dados = await res.json().catch(() => null);
+    if (res.ok && Array.isArray(dados)) setTasks(dados); // resposta de erro (ex.: sessao expirada) nao apaga o quadro
   }
 
   async function loadColumns() {
@@ -142,6 +146,7 @@ export default function KanbanBoard({ projectId, canManage: canManageEquipeProp 
     loadEquipesGestor();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, userId]);
+  useAtualizarAoVoltar(load);
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -200,18 +205,37 @@ export default function KanbanBoard({ projectId, canManage: canManageEquipeProp 
 
   const visibleColumns = columns.filter((c) => c.visible);
 
+  // planilha das tarefas do quadro (as mesmas dos cartoes), na ordem das colunas
+  function abasExcel(): AbaExcel[] {
+    const rotuloColuna = new Map(columns.map((c) => [c.key, c.label]));
+    const ordem = new Map(columns.map((c, i) => [c.key, i]));
+    const lista = [...tasks].sort((a, b) => (ordem.get(a.status) ?? 99) - (ordem.get(b.status) ?? 99));
+    return [{
+      nome: "Tarefas",
+      colunas: [
+        { titulo: "Tarefa", largura: 52 }, { titulo: "Projeto", largura: 34 }, { titulo: "Situação", largura: 14 }, { titulo: "Prioridade", largura: 12 }, { titulo: "Responsável", largura: 26 },
+        { titulo: "Prazo", tipo: "data" }, { titulo: "Subtarefas", tipo: "inteiro" }, { titulo: "Anexos", tipo: "inteiro" }, { titulo: "Comentários", tipo: "inteiro" },
+      ],
+      linhas: lista.map((t) => [
+        t.title, t.project?.name ?? "", rotuloColuna.get(t.status) ?? t.status, priorityLabel[t.priority] ?? t.priority, t.assignee?.name ?? "", t.dueDate,
+        t._count?.subtasks ?? 0, t._count?.attachments ?? 0, t._count?.comments ?? 0,
+      ]),
+    }];
+  }
+
   return (
     <>
-      {projectId && canManage && (
-        <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <BotaoExcel arquivo={projectId ? "tarefas-do-projeto" : "minhas-tarefas"} gerar={abasExcel} desabilitado={tasks.length === 0} />
+        {projectId && canManage && (
           <button
             onClick={openColumnEditor}
             className="rounded-full border border-gray-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-gray-500 shadow-sm hover:border-brand/30 hover:text-brand-dark"
           >
             ✏️ Editar colunas
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {editingColumns && (
         <div className="shadow-elevated mb-4 rounded-2xl border border-gray-100 bg-white p-4">

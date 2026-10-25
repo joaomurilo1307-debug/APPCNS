@@ -5,6 +5,7 @@ import ContestacoesDeCusto from "@/components/aprovacoes/ContestacoesDeCusto";
 import { useSession } from "next-auth/react";
 import Avatar from "@/components/Avatar";
 import { eventTypeLabel } from "@/lib/calendarColors";
+import BotaoExcel from "@/components/BotaoExcel";
 
 type Project = {
   id: string;
@@ -191,9 +192,20 @@ export default function AprovacoesPage() {
 
       {ocsSenior.length > 0 && (
         <div className="mb-8">
-          <h2 className="mb-3 text-sm font-semibold text-gray-600">
-            Ordens de compra do Senior aguardando você ({ocsSenior.length})
-          </h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-gray-600">
+              Ordens de compra do Senior aguardando você ({ocsSenior.length})
+            </h2>
+            <BotaoExcel
+              arquivo="ocs-aguardando-aprovacao"
+              gerar={() => [{
+                nome: "OCs aguardando",
+                colunas: [{ titulo: "OC", largura: 10 }, { titulo: "Fornecedor", largura: 40 }, { titulo: "Contrato", largura: 36 }, { titulo: "CCU", largura: 8 }, { titulo: "Nível de aprovação", tipo: "inteiro" }, { titulo: "Emissão", tipo: "data" }, { titulo: "Valor", tipo: "moeda" }],
+                linhas: ocsSenior.map((o) => [o.numOcp, o.fornecedorNome || o.fornecedorCodigo, o.contratoNome || o.contratoTexto || "", o.codccu ?? "", o.nivelAtual, o.dataEmissao, o.valor]),
+                rodape: ["", "TOTAL", "", "", "", "", ocsSenior.reduce((s, o) => s + o.valor, 0)],
+              }]}
+            />
+          </div>
           <div className="grid gap-2">
             {ocsSenior.map((o) => (
               <a

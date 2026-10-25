@@ -22,6 +22,8 @@ import {
 } from "@/lib/custos/agregacao";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 import { baixarCsv } from "@/lib/custos/csv";
+import BotaoExcel from "@/components/BotaoExcel";
+import { abaDeLinhas } from "@/lib/exportarExcel";
 import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, Sparkline, estiloCelulaCalor, type SerieEmpilhada } from "./graficos";
 import { BarrasVariacao, Cascata, LegendaLinha, LinhaAcompanhamento, TabelaMovimentos } from "./acompanhamento";
 import { Cartao, Kpi, Variacao, VazioPeriodo } from "./ui";
@@ -179,18 +181,23 @@ export default function VisaoGeral({
     return { inicio: soma(grupos2.map((g) => g.anterior)), fim: soma(grupos2.map((g) => g.atual)), passos: passosDaPonte(grupos2, 5), movimentos: maioresMovimentos(centros, 6) };
   }, [linhas, filtros, mesesAsc, iPonte]);
 
+  // linhas do Rel114 (cabecalho + lancamentos + TOTAL): alimentam o CSV e o Excel
+  async function buscarLancamentos(): Promise<(string | number)[][]> {
+    const qs = new URLSearchParams({ codccu: linhas.map((l) => l.contrato.codccu).join(","), de: filtros.de, ate: filtros.ate, base });
+    const res = await fetch(`/api/custos-conta/lancamentos?${qs.toString()}`);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao buscar os lançamentos");
+    const d = await res.json();
+    const br = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "");
+    const cab = ["Centro de Custo", "Descrição Centro de Custo", "Competência", "Conta Financeira", "Descrição Conta Financeira", "Número do Título", "Código do Fornecedor", "Descrição do Fornecedor", "Data de Entrada", "Data de Vencimento", "Valor Rateio", "Data de Pagamento", "Competência da nota", "Forma de baixa"];
+    const corpo = (d.linhas as any[]).map((l) => [l.codccu, l.centroDeCusto, l.competencia.split("-").reverse().join("/"), l.contaCodigo ?? "", l.contaFinanceira, l.numTit, l.codFor, l.fornecedor ?? "", br(l.dataEntrada), br(l.dataVencimento), l.valorRateado, br(l.dataPagamento), l.competenciaNota ? l.competenciaNota.split("-").reverse().join("/") : "", l.formaBaixa ?? ""]);
+    corpo.push(["", "TOTAL", "", "", "", "", "", "", "", "", d.total, "", "", ""]);
+    return [cab, ...corpo];
+  }
+
   async function exportarLancamentos() {
     setBaixando(true);
     try {
-      const qs = new URLSearchParams({ codccu: linhas.map((l) => l.contrato.codccu).join(","), de: filtros.de, ate: filtros.ate, base });
-      const res = await fetch(`/api/custos-conta/lancamentos?${qs.toString()}`);
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao buscar os lançamentos");
-      const d = await res.json();
-      const br = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "");
-      const cab = ["Centro de Custo", "Descrição Centro de Custo", "Competência", "Conta Financeira", "Descrição Conta Financeira", "Número do Título", "Código do Fornecedor", "Descrição do Fornecedor", "Data de Entrada", "Data de Vencimento", "Valor Rateio", "Data de Pagamento", "Competência da nota", "Forma de baixa"];
-      const corpo = (d.linhas as any[]).map((l) => [l.codccu, l.centroDeCusto, l.competencia.split("-").reverse().join("/"), l.contaCodigo ?? "", l.contaFinanceira, l.numTit, l.codFor, l.fornecedor ?? "", br(l.dataEntrada), br(l.dataVencimento), l.valorRateado, br(l.dataPagamento), l.competenciaNota ? l.competenciaNota.split("-").reverse().join("/") : "", l.formaBaixa ?? ""]);
-      corpo.push(["", "TOTAL", "", "", "", "", "", "", "", "", d.total, "", "", ""]);
-      baixarCsv(`lancamentos_${linhas.length}_centros_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
+      baixarCsv(`lancamentos_${linhas.length}_centros_${filtros.de}_a_${filtros.ate}.csv`, await buscarLancamentos());
     } catch (e: any) {
       alert(e?.message || "Não foi possível exportar os lançamentos.");
     } finally {
@@ -206,11 +213,15 @@ export default function VisaoGeral({
     }
   }
 
-  function exportar() {
+  function linhasQuadro(): (string | number)[][] {
     const cab = ["CCU", "Centro de custo", "Equipe", ...mesesP.map(mesCurto), "Total do período", "Média mensal"];
     const corpo = ordenadas.map((l) => [l.contrato.codccu, l.contrato.nome, l.contrato.teamName ?? "", ...l.serieP, l.totalP, l.media]);
     corpo.push(["", "TOTAL", "", ...mesesP.map((_, i) => soma(ordenadas.map((l) => l.serieP[i]))), totalP, mesesP.length ? totalP / mesesP.length : 0]);
-    baixarCsv(`custo-por-centro-de-custo_${filtros.de}_a_${filtros.ate}.csv`, [cab, ...corpo]);
+    return [cab, ...corpo];
+  }
+
+  function exportar() {
+    baixarCsv(`custo-por-centro-de-custo_${filtros.de}_a_${filtros.ate}.csv`, linhasQuadro());
   }
 
   if (linhas.length === 0) return <VazioPeriodo />;
@@ -357,6 +368,15 @@ export default function VisaoGeral({
             <button type="button" onClick={exportar} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-gray-600 transition hover:bg-gray-50">
               Exportar quadro (CSV)
             </button>
+            <BotaoExcel
+              arquivo={`custo-por-centro-de-custo_${filtros.de}_a_${filtros.ate}`}
+              rotulo="Exportar Excel"
+              className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[13px] font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
+              gerar={async () => [
+                abaDeLinhas("Centros de custo x meses", linhasQuadro(), `Centros de custo · período ${filtros.de} a ${filtros.ate}`, true),
+                abaDeLinhas("Lançamentos (Rel114)", await buscarLancamentos(), `Centros de custo · período ${filtros.de} a ${filtros.ate}`, true),
+              ]}
+            />
             <button
               type="button"
               onClick={exportarLancamentos}

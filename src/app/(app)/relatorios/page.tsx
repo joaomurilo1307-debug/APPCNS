@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import ProgressBar from "@/components/ProgressBar";
 import AuditLogPanel from "@/components/AuditLogPanel";
+import BotaoExcel from "@/components/BotaoExcel";
 
 type ProjectInsight = {
   id: string;
@@ -63,7 +64,25 @@ export default function RelatoriosPage() {
         <p className="text-sm text-gray-500">Indicadores de cada projeto e, para diretoria, dos núcleos.</p>
       </div>
 
-      <h2 className="mb-3 text-sm font-semibold text-gray-600">Projetos</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-gray-600">Projetos</h2>
+        <BotaoExcel
+          arquivo="relatorio-projetos"
+          desabilitado={projects.length === 0}
+          gerar={() => [{
+            nome: "Projetos",
+            colunas: [
+              { titulo: "Projeto", largura: 44 }, { titulo: "Situação", largura: 14 }, { titulo: "Equipe", largura: 28 }, { titulo: "Núcleos", largura: 30 }, { titulo: "Diretores", largura: 30 }, { titulo: "Coordenadores", largura: 30 },
+              { titulo: "Andamento", tipo: "percentual" }, { titulo: "Tarefas", tipo: "inteiro" }, { titulo: "A fazer", tipo: "inteiro" }, { titulo: "Fazendo", tipo: "inteiro" }, { titulo: "Bloqueadas", tipo: "inteiro" },
+              { titulo: "Feitas", tipo: "inteiro" }, { titulo: "Atrasadas", tipo: "inteiro" }, { titulo: "Horas", tipo: "numero" }, { titulo: "Custo (R$)", tipo: "moeda" },
+            ],
+            linhas: projects.map((p) => [
+              p.name, statusLabel[p.status] ?? p.status, p.team.name, p.nucleos.map((n) => n.name).join(", "), p.diretores.map((d) => d.name).join(", "), p.coordenadores.map((c) => c.name).join(", "),
+              p.percentComplete / 100, p.taskCount, p.taskCounts.A_FAZER ?? 0, p.taskCounts.FAZENDO ?? 0, p.taskCounts.BLOQUEADO ?? 0, p.taskCounts.FEITO ?? 0, p.overdueCount, p.totalHours, p.totalCost,
+            ]),
+          }]}
+        />
+      </div>
       <div className="mb-10 grid gap-4 md:grid-cols-2">
         {projects.map((p) => (
           <div key={p.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">

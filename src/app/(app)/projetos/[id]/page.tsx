@@ -14,6 +14,8 @@ import ResourcesPanel from "@/components/ResourcesPanel";
 import ProgressBar from "@/components/ProgressBar";
 import TeamChatPanel from "@/components/TeamChatPanel";
 import FilesPanel from "@/components/FilesPanel";
+import PessoasDoProjeto from "@/components/projetos/PessoasDoProjeto";
+import { useAtualizarAoVoltar } from "@/lib/atualizarAoVoltar";
 
 type ProjectDetail = {
   id: string;
@@ -32,6 +34,7 @@ type ProjectDetail = {
   nucleos: { id: string; name: string }[];
   diretores: { id: string; name: string }[];
   coordenadores: { id: string; name: string }[];
+  contrato?: { codccu: string; nome: string } | null;
 };
 
 function daysBetween(a: Date, b: Date) {
@@ -74,6 +77,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [peopleList, setPeopleList] = useState<{ id: string; name: string; nivelHierarquico: string | null }[]>([]);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [showPessoas, setShowPessoas] = useState(false);
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -108,6 +112,12 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   useEffect(() => {
     load();
   }, [params.id]);
+  // o andamento do cabecalho (% concluido) muda quando se mexe nas tarefas; recarrega ao voltar para a aba e ao trocar de aba do projeto
+  useAtualizarAoVoltar(load);
+  useEffect(() => {
+    if (project) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   useEffect(() => {
     if (!showEditForm) return;
@@ -203,6 +213,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           <p className="text-sm text-gray-500">
             {project.team.name} · Responsável: {project.owner.name}
             {project.approver && ` · Aprovador: ${project.approver.name} (${project.approvalStatus})`}
+            {project.contrato && ` · Contrato: CCU ${project.contrato.codccu} · ${project.contrato.nome}`}
           </p>
           <div className="mt-2 flex items-center gap-3">
             <div className="w-40">
@@ -221,6 +232,12 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           )}
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowPessoas((v) => !v)}
+            className={`rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50 ${showPessoas ? "border-brand text-brand-dark" : "border-gray-300"}`}
+          >
+            Pessoas ({project.team.members.length})
+          </button>
           {canManage && (
             <button
               onClick={() => setShowEditForm((v) => !v)}
@@ -247,6 +264,18 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           )}
         </div>
       </div>
+
+      {showPessoas && (
+        <PessoasDoProjeto
+          projeto={project.name}
+          teamId={project.team.id}
+          teamName={project.team.name}
+          membros={project.team.members}
+          ownerId={project.owner.id}
+          podeGerir={canManage}
+          aoMudar={() => { load(); setRefreshKey((k) => k + 1); }}
+        />
+      )}
 
       {showEditForm && (
         <form onSubmit={handleEditProject} className="mb-6 mt-4 grid grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-white p-4 text-sm">

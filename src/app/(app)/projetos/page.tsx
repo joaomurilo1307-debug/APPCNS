@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import ProgressBar from "@/components/ProgressBar";
 import EscolhaDePessoas, { type PessoaOpcao } from "@/components/demandas/Pessoas";
+import BotaoExcel from "@/components/BotaoExcel";
+import { useAtualizarAoVoltar } from "@/lib/atualizarAoVoltar";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 type Project = {
   id: string;
@@ -65,14 +68,19 @@ export default function ProjetosPage() {
       fetch("/api/projects").then((r) => r.json()),
       fetch("/api/teams").then((r) => r.json()),
     ]);
-    setProjects(p);
-    setTeams(t);
+    if (Array.isArray(p)) setProjects(p); // resposta de erro (ex.: sessao expirada) nao apaga a lista
+    if (Array.isArray(t)) setTeams(t);
   }
 
   // contratos que a pessoa ve, pessoas que podem entrar no projeto e nucleos (para incluir as pessoas de um nucleo de uma vez)
   async function loadOpcoes() {
-    const [o, n] = await Promise.all([fetch("/api/demandas/opcoes").then((r) => (r.ok ? r.json() : null)), fetch("/api/nucleos").then((r) => (r.ok ? r.json() : []))]);
-    if (o) { setContratos(o.contratos ?? []); setOpcoesPessoas(o.pessoas ?? []); }
+    const [o, n, ps] = await Promise.all([
+      fetch("/api/demandas/opcoes").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/nucleos").then((r) => (r.ok ? r.json() : [])),
+      fetch("/api/pessoas").then((r) => (r.ok ? r.json() : [])),
+    ]);
+    if (o) setContratos(o.contratos ?? []);
+    setOpcoesPessoas(Array.isArray(ps) ? ps : []);
     setNucleos(Array.isArray(n) ? n : []);
   }
 
@@ -80,6 +88,7 @@ export default function ProjetosPage() {
     load();
     loadOpcoes();
   }, []);
+  useAtualizarAoVoltar(load);
 
   function incluirPessoasDoNucleo() {
     const n = nucleos.find((x) => x.id === nucleoId);
@@ -104,11 +113,28 @@ export default function ProjetosPage() {
     load();
   }
 
+  // planilha dos projetos que a pessoa enxerga (os mesmos dos cartoes), com contrato, andamento e atrasos
+  function abasExcel(): AbaExcel[] {
+    return [{
+      nome: "Projetos",
+      colunas: [
+        { titulo: "Projeto", largura: 44 }, { titulo: "Situação", largura: 14 }, { titulo: "Equipe", largura: 28 }, { titulo: "Contrato (CCU)", largura: 10 }, { titulo: "Contrato", largura: 30 },
+        { titulo: "Responsável", largura: 26 }, { titulo: "Aprovador", largura: 26 }, { titulo: "Situação da aprovação", largura: 18 }, { titulo: "Início", tipo: "data" }, { titulo: "Fim previsto", tipo: "data" },
+        { titulo: "Tarefas", tipo: "inteiro" }, { titulo: "Atrasadas", tipo: "inteiro" }, { titulo: "Andamento", tipo: "percentual" },
+      ],
+      linhas: projects.map((p) => [
+        p.name, statusLabel[p.status] ?? p.status, p.team?.name ?? "", p.contrato?.codccu ?? "", p.contrato?.nome ?? "", p.owner?.name ?? "", p.approver?.name ?? "", p.approver ? p.approvalStatus : "",
+        p.startDate, p.endDate, p._count?.tasks ?? 0, p.overdueCount ?? 0, (p.percentComplete ?? 0) / 100,
+      ]),
+    }];
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Projetos</h1>
         <div className="flex items-center gap-2">
+          <BotaoExcel arquivo="projetos" gerar={abasExcel} desabilitado={projects.length === 0} />
           <a href="/projetos/demandas" className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             Demandas de projetos
           </a>

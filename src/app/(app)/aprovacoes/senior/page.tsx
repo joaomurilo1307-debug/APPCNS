@@ -10,6 +10,8 @@ import MapaOC, {
   contratoDe,
   aprovadorDe,
 } from "@/components/MapaOC";
+import BotaoExcel from "@/components/BotaoExcel";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 function formatMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -260,6 +262,39 @@ export default function AprovacoesSeniorPage() {
   const valorTotalPendente = pendentesFiltradas.reduce((s, a) => s + a.valor, 0);
   const filtrosAtivos = busca.trim() || situacoesAtivas.size > 0 || somenteRateio || filtrosColunaAtivos;
 
+  // planilha com o que esta na tela: as pendentes e as resolvidas que passam nos filtros (as resolvidas vao TODAS, nao so' as 500 da tela)
+  function abasExcel(): AbaExcel[] {
+    const obs = `Aprovações de OC (Senior) · ${filtrosAtivos ? "com os filtros da tela" : "sem filtros"} · gerado em ${new Date().toLocaleString("pt-BR")}`;
+    return [
+      {
+        nome: "Pendentes", observacao: obs,
+        colunas: [
+          { titulo: "OC", largura: 10 }, { titulo: "Emissão", tipo: "data" }, { titulo: "Fornecedor", largura: 40 }, { titulo: "Contrato / CC", largura: 36 }, { titulo: "Valor", tipo: "moeda" },
+          { titulo: "Situação", largura: 14 }, { titulo: "Quem falta aprovar", largura: 34 }, { titulo: "Níveis", largura: 16 }, { titulo: "Criada por", largura: 26 }, { titulo: "Dias parada", tipo: "inteiro" },
+          { titulo: "Previsão de pagamento", tipo: "data" }, { titulo: "Título", largura: 14 }, { titulo: "Descrição", largura: 50 },
+        ],
+        linhas: pendentesFiltradas.map((a) => [
+          a.numOcp, a.dataEmissao, a.fornecedorNome || a.fornecedorCodigo, contratoDe(a), a.valor, situacaoLabel[a.situacaoAtual] ?? a.situacaoAtual, aprovadorDe(a), niveisLabel(a),
+          a.criadorNome ?? "", diasParado(a.dataEmissao), a.previsaoPagamento, a.usuNumTit ?? "", a.descricao ?? "",
+        ]),
+        rodape: ["", "", "TOTAL", "", valorTotalPendente],
+      },
+      {
+        nome: "Resolvidas", observacao: obs,
+        colunas: [
+          { titulo: "OC", largura: 10 }, { titulo: "Fornecedor", largura: 40 }, { titulo: "Contrato / CC", largura: 36 }, { titulo: "Valor", tipo: "moeda" }, { titulo: "Resultado", largura: 14 },
+          { titulo: "Detectada em", tipo: "data" }, { titulo: "Resolvida em", tipo: "data" }, { titulo: "Dias até a decisão", tipo: "inteiro" }, { titulo: "Descrição", largura: 50 },
+        ],
+        linhas: resolvidasFiltradas.map((a) => [
+          a.numOcp, a.fornecedorNome || a.fornecedorCodigo, a.contratoNome || a.contratoTexto || (a.codccu ? `CC ${a.codccu}` : ""), a.valor,
+          situacaoLabel[a.resolvidoComo || a.situacaoAtual] ?? "Resolvido", a.primeiraDeteccaoEm, a.resolvidoEm,
+          a.resolvidoEm ? Math.max(0, Math.round((new Date(a.resolvidoEm).getTime() - new Date(a.primeiraDeteccaoEm).getTime()) / 86400000)) : null, a.descricao ?? "",
+        ]),
+        rodape: ["", "TOTAL", "", resolvidasFiltradas.reduce((s, a) => s + a.valor, 0)],
+      },
+    ];
+  }
+
   return (
     <div className="p-6">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -370,6 +405,10 @@ export default function AprovacoesSeniorPage() {
             limpar filtros
           </button>
         )}
+      </div>
+
+      <div className="mb-3 flex justify-end">
+        <BotaoExcel arquivo="aprovacoes-oc-senior" gerar={abasExcel} desabilitado={pendentesFiltradas.length + resolvidasFiltradas.length === 0} />
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">

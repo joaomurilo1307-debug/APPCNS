@@ -11,6 +11,8 @@ import SeletorPeriodo, { type Atalho } from "@/components/contratos/SeletorPerio
 import { BarrasPorMes, ConsumoPorLinha, Gauge, LinhasAvanco } from "./GraficosMedicao";
 import ReceitaContrato from "./ReceitaContrato";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
+import BotaoExcel from "@/components/BotaoExcel";
+import { abaDeLinhas } from "@/lib/exportarExcel";
 
 type Cel = { qtd: number; valor: number };
 type Linha = {
@@ -128,6 +130,13 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
   const mostraValor = modo !== "qtd", mostraQtd = modo !== "valor";
   const consumoLinhas = [...d.linhas].filter((l) => l.qtdContratada > 0 || l.valorContratado > 0).sort((a, b) => Math.max(b.pctQtd, b.pctValor) - Math.max(a.pctQtd, a.pctValor));
 
+  // Excel: as mesmas colunas do CSV com numeros de verdade; os dois % entram como fracao e saem formatados como percentual
+  function abasExcel() {
+    const cab = ["Linha", "Unidade", "Preço unitário (R$)", "Vendido (qtd)", "Vendido (R$)", "Antes do período (R$)", ...d.meses.map((m) => `${mesLongo(m)} (R$)`), ...d.meses.map((m) => `${mesLongo(m)} (qtd)`), "Consumido (qtd)", "Consumido (R$)", "Saldo (qtd)", "Saldo (R$)", "Consumo qtd (%)", "Consumo valor (%)"];
+    const linhas = d.linhas.map((l) => [l.descricao, l.unidade ?? "", l.precoUnit, l.qtdContratada, l.valorContratado, l.antes.valor, ...d.meses.map((m) => l.porMes[m]?.valor ?? 0), ...d.meses.map((m) => l.porMes[m]?.qtd ?? 0), l.qtdFaturada, l.valorFaturado, l.saldoQtd, l.saldoValor, l.pctQtd, l.pctValor]);
+    return [abaDeLinhas("Medição por linha", [cab, ...linhas], `Contrato ${d.contrato.codccu ?? d.contrato.numCtr} · período ${per.de} a ${per.ate}`, false, { "Consumo qtd (%)": "percentual", "Consumo valor (%)": "percentual", "Unidade": "texto" })];
+  }
+
   function baixarCsv() {
     const cab = ["Linha", "Unidade", "Preço unitário (R$)", "Vendido (qtd)", "Vendido (R$)", "Antes do período (R$)", ...d.meses.map((m) => `${mesLongo(m)} (R$)`), ...d.meses.map((m) => `${mesLongo(m)} (qtd)`), "Consumido (qtd)", "Consumido (R$)", "Saldo (qtd)", "Saldo (R$)", "Consumo qtd (%)", "Consumo valor (%)"];
     const linhas = d.linhas.map((l) => [csvTxt(l.descricao), csvTxt(l.unidade ?? ""), csvNum(l.precoUnit), csvNum(l.qtdContratada), csvNum(l.valorContratado), csvNum(l.antes.valor), ...d.meses.map((m) => csvNum(l.porMes[m]?.valor ?? 0)), ...d.meses.map((m) => csvNum(l.porMes[m]?.qtd ?? 0)), csvNum(l.qtdFaturada), csvNum(l.valorFaturado), csvNum(l.saldoQtd), csvNum(l.saldoValor), csvNum(l.pctQtd * 100), csvNum(l.pctValor * 100)].join(";"));
@@ -206,6 +215,7 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar linha" className="w-44 rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-brand" aria-label="Buscar linha" />
             <button type="button" onClick={baixarCsv} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">Baixar (CSV)</button>
+            <BotaoExcel arquivo={`medicao-${d.contrato.codccu ?? d.contrato.numCtr}-${per.de}-a-${per.ate}`} gerar={abasExcel} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[13px] font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50" />
           </div>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[13px] text-gray-600">

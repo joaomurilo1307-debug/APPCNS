@@ -9,6 +9,8 @@ import { useEffect, useMemo, useState } from "react";
 import { chaveMes, contratosNaBase, linhasDoContrato, type ContratoCusto } from "@/lib/custos/agregacao";
 import { mesCurto, moedaCompacta, percentual } from "@/lib/custos/formato";
 import { Sparkline } from "@/components/custos/graficos";
+import BotaoExcel from "@/components/BotaoExcel";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 type Ficha = { id: string; codccu: string; nome: string; tipo: string; status: string; cliente: string | null; numero: string | null; vigenciaInicio: string | null; vigenciaFim: string | null; valor: number | null };
 type Resp = { contratos: ContratoCusto[]; meses: string[]; mesCorrente: string };
@@ -59,13 +61,33 @@ export default function ContratosPage() {
   const totalAno = soma(filtradas.map((l) => l.total));
   const hoje = Date.now();
 
+  // planilha da lista que esta na tela (respeita busca, tipo, situacao e ordem): ficha do contrato + custo mes a mes lido do Senior
+  function abasExcel(): AbaExcel[] {
+    return [{
+      nome: "Contratos",
+      observacao: `Contratos · tipo: ${tipo === "todos" ? "todos" : tipo === "CONTRATO" ? "contratos" : "administrativos"} · situação: ${status === "todos" ? "todas" : status === "ATIVO" ? "ativos" : "encerrados"}${busca.trim() ? ` · busca: ${busca.trim()}` : ""}`,
+      colunas: [
+        { titulo: "CCU", largura: 8 }, { titulo: "Contrato", largura: 40 }, { titulo: "Tipo", largura: 16 }, { titulo: "Situação", largura: 12 }, { titulo: "Cliente", largura: 30 }, { titulo: "Número", largura: 16 },
+        { titulo: "Vigência início", tipo: "data" }, { titulo: "Vigência fim", tipo: "data" }, { titulo: "Valor do contrato", tipo: "moeda" }, { titulo: "Custo total no período", tipo: "moeda" },
+        ...mesesAsc.map((m) => ({ titulo: mesCurto(m), tipo: "moeda" as const })),
+      ],
+      linhas: filtradas.map(({ ficha: f, total, serie }) => [
+        f.codccu, f.nome, f.tipo === "CONTRATO" ? "Contrato" : "Administrativo", f.status === "ATIVO" ? "Ativo" : "Encerrado", f.cliente ?? "", f.numero ?? "",
+        f.vigenciaInicio, f.vigenciaFim, f.valor, total, ...mesesAsc.map((_, i) => serie[i] ?? 0),
+      ]),
+    }];
+  }
+
   const seg = (ativo: boolean) => `px-3.5 py-1.5 text-[13px] font-medium transition ${ativo ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`;
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <header className="mb-5">
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Contratos</h1>
-        <p className="mt-1 max-w-3xl text-[15px] text-gray-500">Cada contrato é um centro de custo do Senior. Abra um contrato para ver custos, equipe alocada, orçamento base (P0) e previsão. Os valores vêm do Senior.</p>
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Contratos</h1>
+          <p className="mt-1 max-w-3xl text-[15px] text-gray-500">Cada contrato é um centro de custo do Senior. Abra um contrato para ver custos, equipe alocada, orçamento base (P0) e previsão. Os valores vêm do Senior.</p>
+        </div>
+        <BotaoExcel arquivo="contratos" gerar={abasExcel} desabilitado={carregando || filtradas.length === 0} />
       </header>
 
       <div className="mb-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">

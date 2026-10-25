@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import TaskDetailModal from "./TaskDetailModal";
 import { buildWbsHierarchy } from "@/lib/wbs";
+import { resumirGrupo, type ResumoGrupo } from "@/lib/ganttResumo";
 
 type Task = {
   id: string;
@@ -50,6 +51,8 @@ export default function GanttChart({
   const [zoom, setZoom] = useState<keyof typeof ZOOM_LEVELS>("médio");
   const [labelWidth, setLabelWidth] = useState<keyof typeof LABEL_WIDTHS>("estreita");
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // Gantt geral (todos os projetos): cada projeto e' um bloco que abre e fecha; comeca recolhido para nao ficar tudo embolado
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
   const dayWidth = ZOOM_LEVELS[zoom];
   const labelPx = LABEL_WIDTHS[labelWidth];
 
@@ -59,14 +62,14 @@ export default function GanttChart({
   // com data — senão subtarefa sem data some da lista inteira, não só perde a barra. A barra
   // em si continua só desenhada pra quem tem início+prazo (ver render abaixo).
   const groups = useMemo(() => {
-    if (!groupByProject) return [{ label: null as string | null, rows: buildWbsHierarchy(tasks) }];
+    if (!groupByProject) return [{ label: null as string | null, rows: buildWbsHierarchy(tasks), resumo: null as ResumoGrupo | null }];
     const map = new Map<string, Task[]>();
     tasks.forEach((t) => {
       const key = t.groupLabel ?? "Sem projeto";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
     });
-    return Array.from(map.entries()).map(([label, ts]) => ({ label, rows: buildWbsHierarchy(ts) }));
+    return Array.from(map.entries()).map(([label, ts]) => ({ label: label as string | null, rows: buildWbsHierarchy(ts), resumo: resumirGrupo(ts) as ResumoGrupo | null }));
   }, [tasks, groupByProject]);
 
   const { rangeStart, totalDays } = useMemo(() => {
@@ -106,6 +109,9 @@ export default function GanttChart({
     else monthGroups.push({ label, count: 1 });
   }
 
+  const alternar = (label: string) => setAbertos((s) => { const n = new Set(s); if (n.has(label)) n.delete(label); else n.add(label); return n; });
+  const nomesDosGrupos = groups.map((g) => g.label).filter((l): l is string => !!l);
+  const hojeOff = offsetDays(new Date().toISOString());
   const totalRows = groups.reduce((sum, g) => sum + g.rows.length, 0);
   if (totalRows === 0) {
     return <p className="text-sm text-gray-400">Nenhuma tarefa neste projeto ainda.</p>;
@@ -139,6 +145,14 @@ export default function GanttChart({
           ))}
         </div>
       </div>
+
+      {groupByProject && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <button onClick={() => setAbertos(new Set(nomesDosGrupos))} className="rounded-md border border-gray-300 px-2 py-1 hover:bg-gray-50">Expandir todos os projetos</button>
+          <button onClick={() => setAbertos(new Set())} className="rounded-md border border-gray-300 px-2 py-1 hover:bg-gray-50">Recolher todos</button>
+          <span className="text-gray-400">{nomesDosGrupos.length} projeto(s). Clique no nome do projeto para abrir as tarefas dele.</span>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white [scrollbar-width:auto] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:hover:bg-gray-400 [&::-webkit-scrollbar-track]:bg-gray-100">
         <div style={{ minWidth: totalDays * dayWidth + labelPx }}>
@@ -176,15 +190,36 @@ export default function GanttChart({
           </div>
           {groups.map((group) => (
             <div key={group.label ?? "all"}>
-              {groupByProject && (
-                <div className="flex border-b border-gray-100 bg-gray-50">
-                  <div style={{ width: labelPx }} className="shrink-0 px-3 py-2 text-xs font-semibold">
-                    {group.label}
+              {groupByProject && group.label && (
+                <div className="flex cursor-pointer border-b border-gray-200 bg-gray-50 hover:bg-gray-100/80" onClick={() => alternar(group.label!)} role="button" aria-expanded={abertos.has(group.label)}>
+                  <div style={{ width: labelPx }} className="flex shrink-0 items-start gap-1.5 px-3 py-2 text-xs">
+                    <span className="mt-0.5 inline-block w-3 text-gray-400">{abertos.has(group.label) ? "▾" : "▸"}</span>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold" title={group.label}>{group.label}</div>
+                      {group.resumo && (
+                        <div className="truncate text-[11px] text-gray-500">
+                          {group.resumo.pct}% · {group.resumo.feitas}/{group.resumo.total} tarefas
+                          {group.resumo.atrasadas > 0 && <b className="ml-1 text-rose-600">· {group.resumo.atrasadas} atrasada(s)</b>}
+                          {!group.resumo.inicio && <span className="ml-1 text-gray-400">· sem datas</span>}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ width: totalDays * dayWidth }} />
+                  <div className="relative" style={{ width: totalDays * dayWidth, minHeight: 44 }}>
+                    {hojeOff >= 0 && hojeOff < totalDays && <div className="pointer-events-none absolute top-0 h-full w-px bg-rose-400/60" style={{ left: hojeOff * dayWidth + dayWidth / 2 }} title="Hoje" />}
+                    {group.resumo && group.resumo.inicio && group.resumo.fim && (
+                      <div
+                        className="absolute top-3.5 h-4 overflow-hidden rounded bg-slate-300"
+                        title={`${group.resumo.pct}% concluído`}
+                        style={{ left: offsetDays(group.resumo.inicio) * dayWidth, width: Math.max(1, offsetDays(group.resumo.fim) - offsetDays(group.resumo.inicio) + 1) * dayWidth }}
+                      >
+                        <div className="h-full bg-emerald-500" style={{ width: `${group.resumo.pct}%` }} />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
-              {group.rows.map(({ task: t, depth, wbs }) => {
+              {(!groupByProject || (group.label && abertos.has(group.label))) && group.rows.map(({ task: t, depth, wbs }) => {
                 const hasDates = !!(t.startDate && t.dueDate);
                 const start = hasDates ? offsetDays(t.startDate!) : 0;
                 const end = hasDates ? offsetDays(t.dueDate!) : 0;
@@ -203,6 +238,7 @@ export default function GanttChart({
                       {t.isEntrega && <span className="shrink-0" title="Entrega">🏁</span>}
                     </div>
                     <div className="relative" style={{ width: totalDays * dayWidth, height: 32 }}>
+                      {hojeOff >= 0 && hojeOff < totalDays && <div className="pointer-events-none absolute top-0 h-full w-px bg-rose-400/60" style={{ left: hojeOff * dayWidth + dayWidth / 2 }} title="Hoje" />}
                       {hasDates ? (
                         <div
                           onClick={() => setOpenTaskId(t.id)}
