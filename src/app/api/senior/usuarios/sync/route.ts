@@ -83,10 +83,12 @@ export async function POST(req: Request) {
     // nome de exibicao: o que veio, mas se for so o login "nome.sobrenome"
     // deixa mais apresentavel
     const nomeExib = item.nome.includes(".") && !item.nome.includes(" ") ? nomeDeLogin(item.nome) : item.nome;
+    // e-mail do usuario no Senior: base do vinculo automatico por e-mail igual (src/lib/acesso/vinculoSenior.ts)
+    const emailSenior = (item.email || "").trim().toLowerCase() || null;
     await prisma.usuarioSenior.upsert({
       where: { codigo: item.codigo },
-      update: { nome: nomeExib, userId },
-      create: { codigo: item.codigo, nome: nomeExib, userId },
+      update: { nome: nomeExib, userId, email: emailSenior },
+      create: { codigo: item.codigo, nome: nomeExib, userId, email: emailSenior },
     });
     upserts++;
   }

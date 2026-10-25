@@ -16,13 +16,29 @@ export function chaveLogin(bruto: string): string {
 }
 
 export type UsuarioSeniorLinha = { codigo: string; nome: string };
+export type UsuarioSeniorComEmail = UsuarioSeniorLinha & { email?: string | null };
 
-/** PURA: o unico usuario do Senior cujo login e' igual ao do e-mail, ou null. */
-export function acharSeniorPorEmail(email: string, usuarios: UsuarioSeniorLinha[]): UsuarioSeniorLinha | null {
-  const alvo = chaveLogin((email.split("@")[0] ?? "").trim());
-  if (alvo.length < 3) return null;
-  const iguais = usuarios.filter((u) => chaveLogin(u.nome) === alvo);
-  return iguais.length === 1 ? iguais[0] : null;
+/**
+ * PURA: o usuario do Senior que corresponde a um e-mail do sistema, ou null (na duvida nunca chuta).
+ *  1) e-mail IGUAL ao e-mail cadastrado no Senior (E099USU.INTNET): vale se so' um usuario do Senior tem esse e-mail;
+ *  2) se varios usuarios do Senior tem o mesmo e-mail (caixa de grupo ou de chefia), vale so' o que tem o login igual a parte antes do @;
+ *  3) sem e-mail igual: o unico usuario do Senior cujo login e' igual a parte do e-mail antes do @.
+ */
+export function acharSeniorPorEmail(email: string, usuarios: UsuarioSeniorComEmail[]): UsuarioSeniorLinha | null {
+  const completo = email.trim().toLowerCase();
+  const alvoLogin = chaveLogin((completo.split("@")[0] ?? "").trim());
+  const limpo = (u: UsuarioSeniorComEmail): UsuarioSeniorLinha => ({ codigo: u.codigo, nome: u.nome });
+  if (completo.includes("@")) {
+    const iguais = usuarios.filter((u) => (u.email ?? "").trim().toLowerCase() === completo);
+    if (iguais.length === 1) return limpo(iguais[0]);
+    if (iguais.length > 1 && alvoLogin.length >= 3) {
+      const peloLogin = iguais.filter((u) => chaveLogin(u.nome) === alvoLogin);
+      if (peloLogin.length === 1) return limpo(peloLogin[0]);
+    }
+  }
+  if (alvoLogin.length < 3) return null;
+  const porLogin = usuarios.filter((u) => chaveLogin(u.nome) === alvoLogin);
+  return porLogin.length === 1 ? limpo(porLogin[0]) : null;
 }
 
 /** Vincula (manualmente, como o admin faria) o login do Senior achado pelo e-mail. Devolve o login vinculado ou null. */
@@ -32,7 +48,7 @@ export async function vincularSeniorPorEmail(
   email: string,
   criadoPor: string
 ): Promise<UsuarioSeniorLinha | null> {
-  const achado = acharSeniorPorEmail(email, await prisma.usuarioSenior.findMany({ select: { codigo: true, nome: true } }));
+  const achado = acharSeniorPorEmail(email, await prisma.usuarioSenior.findMany({ select: { codigo: true, nome: true, email: true } }));
   if (!achado) return null;
   await prisma.vinculoSenior.upsert({
     where: { userId_codigo: { userId, codigo: achado.codigo } },

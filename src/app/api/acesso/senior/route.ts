@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   // ?email=: o login do Senior igual a parte do e-mail antes do @ (so' quando ha exatamente um)
   const email = (params.get("email") ?? "").trim();
   if (email) {
-    const achado = acharSeniorPorEmail(email, await prisma.usuarioSenior.findMany({ select: { codigo: true, nome: true } }));
+    const achado = acharSeniorPorEmail(email, await prisma.usuarioSenior.findMany({ select: { codigo: true, nome: true, email: true } }));
     if (!achado) return NextResponse.json({ porEmail: null });
     const usados = await prisma.vinculoSenior.findMany({ where: { codigo: achado.codigo }, select: { user: { select: { name: true, email: true } } } });
     return NextResponse.json({ porEmail: { ...achado, usadoPor: usados.filter((v) => v.user.email.toLowerCase() !== email.toLowerCase()).map((v) => v.user.name) } });

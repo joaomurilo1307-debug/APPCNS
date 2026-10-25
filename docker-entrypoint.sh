@@ -65,9 +65,8 @@ npx tsx prisma/seed-nucleos-pessoas.ts || true
 echo "Aplicando acessos iniciais (uma vez por pessoa)..."
 npx tsx prisma/seed-acessos-iniciais.ts || true
 
-# Vincula ao login do Senior (igual a parte do e-mail antes do @) quem ainda nao tem vinculo: uma vez por pessoa, sem variavel de ambiente.
-echo "Vinculando usuarios ao login do Senior pelo e-mail (uma vez por pessoa)..."
-npx tsx prisma/seed-vinculos-senior-email.ts || true
+# (25/10/2026) O vinculo ao Senior por e-mail igual agora e' AUTOMATICO e dinamico (src/lib/acesso/vinculoSenior.ts), sem gravar nada: o vinculo
+# gravado fica so' para o que o administrador escolhe. O seed antigo (prisma/seed-vinculos-senior-email.ts) nao roda mais no boot.
 
 # Projeto de exemplo (ligado a um contrato) para o Bruno e o Breno: uma vez por pessoa, sem variavel de ambiente.
 echo "Criando projetos de exemplo (uma vez por pessoa)..."

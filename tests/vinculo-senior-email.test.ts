@@ -31,3 +31,32 @@ test("e-mail -> usuario do Senior: na duvida devolve null (nao chuta)", () => {
   assert.equal(acharSeniorPorEmail("ab@x.com", senior), null, "login curto demais");
   assert.equal(acharSeniorPorEmail("", senior), null);
 });
+
+// ---- e-mail IGUAL ao e-mail do usuario no Senior (E099USU.INTNET), 25/10/2026
+const comEmail = [
+  { codigo: "10", nome: "reinaldo.a", email: "reinaldo.almeida@consominas.com.br" }, // login diferente do e-mail, mas e-mail igual e unico
+  { codigo: "28", nome: "alexandre.paiva", email: "diretoria@consominas.com.br" }, // caixa compartilhada por varios logins
+  { codigo: "80", nome: "inacio.maia", email: "diretoria@consominas.com.br" },
+  { codigo: "193", nome: "anna.silva", email: "anna.silva@consominas.com.br" }, // e-mail compartilhado, mas o login e' o dono
+  { codigo: "206", nome: "anna.dantas", email: "anna.silva@consominas.com.br" },
+  { codigo: "300", nome: "carlos.souza", email: null }, // sem e-mail no Senior: vale o login
+];
+
+test("e-mail igual ao do Senior vincula, mesmo com o login diferente da parte antes do @", () => {
+  assert.deepEqual(acharSeniorPorEmail("Reinaldo.Almeida@consominas.com.br", comEmail), { codigo: "10", nome: "reinaldo.a" });
+  assert.deepEqual(acharSeniorPorEmail("  reinaldo.almeida@consominas.com.br ", comEmail), { codigo: "10", nome: "reinaldo.a" }, "espacos e maiusculas nao atrapalham");
+});
+
+test("e-mail compartilhado por varios logins: so' vale o de login igual; senao nao vincula ninguem", () => {
+  assert.deepEqual(acharSeniorPorEmail("anna.silva@consominas.com.br", comEmail), { codigo: "193", nome: "anna.silva" });
+  assert.equal(acharSeniorPorEmail("diretoria@consominas.com.br", comEmail), null, "caixa de grupo: ambiguo");
+});
+
+test("sem e-mail igual, cai no login igual a parte antes do @", () => {
+  assert.deepEqual(acharSeniorPorEmail("carlos.souza@consominas.com.br", comEmail), { codigo: "300", nome: "carlos.souza" });
+  assert.equal(acharSeniorPorEmail("outra.pessoa@consominas.com.br", comEmail), null);
+});
+
+test("o resultado nunca expoe o e-mail do Senior (so' codigo e nome)", () => {
+  assert.deepEqual(Object.keys(acharSeniorPorEmail("reinaldo.almeida@consominas.com.br", comEmail)!).sort(), ["codigo", "nome"]);
+});
