@@ -4,13 +4,15 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Barra, dataBr, Pill, PRIORIDADE_COR, PRIORIDADE_ROTULO, STATUS_COR, STATUS_ROTULO } from "./comum";
+import EscolhaDePessoas, { type PessoaOpcao } from "./Pessoas";
 
 type Demanda = {
   id: string; titulo: string; status: string; prioridade: string; prazoDesejado: string | null; createdAt: string; projectId: string | null;
   contrato: { codccu: string; nome: string }; nucleo?: { id: string; name: string } | null; solicitante: { id: string; name: string; role: string };
   itensTotal: number; itensFeitos: number; andamento: number | null; projetoStatus: string | null;
+  atendentes?: { id: string; name: string }[]; paraMim?: boolean; anexadaProjectId?: string | null;
 };
-type Opcoes = { contratos: { codccu: string; nome: string; cliente: string | null }[]; equipes: { id: string; name: string }[]; nucleos?: { id: string; name: string }[]; podeGerir: boolean };
+type Opcoes = { contratos: { codccu: string; nome: string; cliente: string | null }[]; equipes: { id: string; name: string }[]; nucleos?: { id: string; name: string }[]; pessoas?: PessoaOpcao[]; podeGerir: boolean };
 
 export default function DemandasView({ base, modo }: { base: string; modo: "gestor" | "cliente" }) {
   const [lista, setLista] = useState<Demanda[] | null>(null);
@@ -34,15 +36,15 @@ export default function DemandasView({ base, modo }: { base: string; modo: "gest
 
   const contagem = useMemo(() => {
     const c: Record<string, number> = { todas: lista?.length ?? 0 };
-    for (const d of lista ?? []) c[d.status] = (c[d.status] ?? 0) + 1;
+    for (const d of lista ?? []) { c[d.status] = (c[d.status] ?? 0) + 1; if (d.paraMim) c.paraMim = (c.paraMim ?? 0) + 1; }
     return c;
   }, [lista]);
   const filtradas = useMemo(() => {
     const t = busca.trim().toLowerCase();
-    return (lista ?? []).filter((d) => (status === "todas" || d.status === status) && (!contrato || d.contrato.codccu === contrato) && (!nucleo || d.nucleo?.id === nucleo) && (!t || `${d.titulo} ${d.contrato.nome} ${d.solicitante.name}`.toLowerCase().includes(t)));
+    return (lista ?? []).filter((d) => (status === "todas" || (status === "paraMim" ? !!d.paraMim : d.status === status)) && (!contrato || d.contrato.codccu === contrato) && (!nucleo || d.nucleo?.id === nucleo) && (!t || `${d.titulo} ${d.contrato.nome} ${d.solicitante.name}`.toLowerCase().includes(t)));
   }, [lista, status, contrato, nucleo, busca]);
 
-  const abas: [string, string][] = [["todas", "Todas"], ["NOVA", "Novas"], ["EM_ANALISE", "Em análise"], ["EM_PROJETO", "Em projeto"], ["CONCLUIDA", "Concluídas"], ["RECUSADA", "Recusadas"]];
+  const abas: [string, string][] = [["todas", "Todas"], ...(modo === "gestor" ? ([["paraMim", "Pedidas para mim"]] as [string, string][]) : []), ["NOVA", "Novas"], ["EM_ANALISE", "Em análise"], ["EM_PROJETO", "Em projeto"], ["CONCLUIDA", "Concluídas"], ["RECUSADA", "Recusadas"]];
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -58,7 +60,7 @@ export default function DemandasView({ base, modo }: { base: string; modo: "gest
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {abas.map(([k, n]) => (
-          <button key={k} onClick={() => setStatus(k)} className={`rounded-full border px-3 py-1 text-[13px] font-medium transition ${status === k ? "border-brand bg-brand text-white" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}>
+          <button key={k} onClick={() => setStatus(k)} className={`rounded-full border px-3 py-1 text-[13px] font-medium transition ${status === k ? "border-brand bg-brand text-white" : k === "paraMim" && (contagem.paraMim ?? 0) > 0 ? "border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}>
             {n} <span className="opacity-70">{contagem[k] ?? 0}</span>
           </button>
         ))}
@@ -95,10 +97,11 @@ export default function DemandasView({ base, modo }: { base: string; modo: "gest
                   {d.prioridade !== "NORMAL" && <Pill cor={PRIORIDADE_COR[d.prioridade]}>{PRIORIDADE_ROTULO[d.prioridade]}</Pill>}
                   <span className="rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">CCU {d.contrato.codccu}</span>
                   {d.nucleo && <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">Núcleo {d.nucleo.name}</span>}
+                  {d.paraMim && <span className="rounded-md bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800">Para você</span>}
                   <span className="ml-auto text-xs text-gray-400">{dataBr(d.createdAt)}</span>
                 </div>
                 <h2 className="mt-2 text-base font-semibold text-gray-900">{d.titulo}</h2>
-                <p className="text-[13px] text-gray-500">{d.contrato.nome} · pedido por {d.solicitante.name}{d.prazoDesejado ? ` · prazo desejado ${dataBr(d.prazoDesejado)}` : ""}</p>
+                <p className="text-[13px] text-gray-500">{d.contrato.nome} · pedido por {d.solicitante.name}{d.atendentes && d.atendentes.length > 0 && modo === "gestor" ? ` · para ${d.atendentes.map((a) => a.name).join(", ")}` : ""}{d.prazoDesejado ? ` · prazo desejado ${dataBr(d.prazoDesejado)}` : ""}</p>
                 <div className="mt-3 flex items-center gap-3">
                   {d.andamento !== null ? (
                     <><div className="flex-1"><Barra pct={d.andamento} /></div><span className="text-xs tabular-nums text-gray-500">{d.andamento}% do projeto</span></>
@@ -121,6 +124,7 @@ export default function DemandasView({ base, modo }: { base: string; modo: "gest
 function NovaDemanda({ opcoes, onFechar, onCriada }: { opcoes: Opcoes; onFechar: () => void; onCriada: (id: string) => void }) {
   const [f, setF] = useState({ contrato: opcoes.contratos.length === 1 ? opcoes.contratos[0].codccu : "", titulo: "", descricao: "", prioridade: "NORMAL", prazo: "", nucleoId: "" });
   const [itens, setItens] = useState<string[]>([]);
+  const [atendentes, setAtendentes] = useState<string[]>([]);
   const [novoItem, setNovoItem] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -133,7 +137,7 @@ function NovaDemanda({ opcoes, onFechar, onCriada }: { opcoes: Opcoes; onFechar:
     if (!f.contrato) return setErro("Escolha o contrato.");
     setSalvando(true); setErro("");
     const pendente = novoItem.trim();
-    const r = await fetch("/api/demandas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contrato: f.contrato, titulo: f.titulo, descricao: f.descricao || undefined, prioridade: f.prioridade, prazoDesejado: f.prazo || null, nucleoId: f.nucleoId || undefined, itens: pendente ? [...itens, pendente] : itens }) });
+    const r = await fetch("/api/demandas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contrato: f.contrato, titulo: f.titulo, descricao: f.descricao || undefined, prioridade: f.prioridade, prazoDesejado: f.prazo || null, nucleoId: f.nucleoId || undefined, atendentes: atendentes.length ? atendentes : undefined, itens: pendente ? [...itens, pendente] : itens }) });
     setSalvando(false);
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return setErro(typeof d.error === "string" ? d.error : "Confira os campos (o título precisa ter pelo menos 3 letras).");
@@ -162,6 +166,13 @@ function NovaDemanda({ opcoes, onFechar, onCriada }: { opcoes: Opcoes; onFechar:
                 {opcoes.nucleos!.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
               </select>
               <p className="mt-1 text-xs text-gray-400">O coordenador e o gerente do núcleo escolhido passam a ver e controlar esta demanda.</p>
+            </div>
+          )}
+          {(opcoes.pessoas?.length ?? 0) > 0 && (
+            <div className="sm:col-span-2">
+              <label className={rot}>Quem vai atender (opcional)</label>
+              <EscolhaDePessoas pessoas={opcoes.pessoas!} valor={atendentes} onChange={setAtendentes} max={10} vazio="Ninguém em particular: a gestão distribui." />
+              <p className="mt-1 text-xs text-gray-400">Cada pessoa escolhida recebe um aviso, vê a demanda em “Pedidas para mim” e pode aceitá-la: anexar a um projeto que já existe ou criar um projeto novo.</p>
             </div>
           )}
           <div className="sm:col-span-2"><label className={rot}>Título</label><input className={campo} value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} required maxLength={160} /></div>
