@@ -7,7 +7,7 @@
 import { useMemo, useState } from "react";
 import { mesCurto, mesLongo, moeda, moedaCompacta } from "@/lib/custos/formato";
 import BotaoExcel from "@/components/BotaoExcel";
-import { abaDeLinhas } from "@/lib/exportarExcel";
+import { abaPrevisaoMesAMes } from "@/lib/contratos/planilhaExcel";
 
 export type LinhaPlan = {
   chave: string; rotulo: string; total: number; programado: number; previsto: number; qtd: number; antes: number; depois: number; semData: number;
@@ -51,15 +51,7 @@ export default function PlanilhaMeses({ dados, dim, onDim, onCelula, selecionada
 
   // Excel: as mesmas linhas do CSV, mas com os valores como NUMERO (o CSV leva texto formatado)
   function abasExcel() {
-    const cab = [DIMS.find((d) => d.chave === dim)?.rotulo ?? "Linha", "Item", "Total no período", ...(temAntes ? ["Antes do período"] : []), ...dados.meses.map((m) => mesLongo(m)), ...(temDepois ? ["Depois do período"] : []), ...(temSemData ? ["Sem data"] : [])];
-    const linha = (rot: string, item: string, l: LinhaPlan) => [rot, item, l.total, ...(temAntes ? [l.antes] : []), ...dados.meses.map((m) => l.porMes[m] ?? 0), ...(temDepois ? [l.depois] : []), ...(temSemData ? [l.semData] : [])];
-    const corpo: (string | number)[][] = [];
-    for (const l of dados.linhas) {
-      corpo.push(linha(l.rotulo, "(total da linha)", l));
-      for (const c of l.filhos ?? []) corpo.push(linha(l.rotulo, c.rotulo + (c.tipoValor ? ` [${c.tipoValor === "FIXO" ? "valor fixo" : "valor variável"}]` : ""), c));
-    }
-    corpo.push(linha("TOTAL", "", dados.totais));
-    return [abaDeLinhas("Previsão mês a mês", [cab, ...corpo], "Cada linha traz o seu \"(total da linha)\" e, abaixo, o detalhe; some só um dos níveis.", true)];
+    return [abaPrevisaoMesAMes(dados, DIMS.find((d) => d.chave === dim)?.rotulo ?? "Linha")];
   }
 
   function baixarCsv() {

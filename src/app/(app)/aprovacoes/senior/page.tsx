@@ -12,6 +12,9 @@ import MapaOC, {
 } from "@/components/MapaOC";
 import BotaoExcel from "@/components/BotaoExcel";
 import type { AbaExcel } from "@/lib/exportarExcel";
+import FiltroContratos from "@/components/FiltroContratos";
+import { selecaoDoCookie } from "@/lib/areas";
+import { ccusDaOc, dentroDoPeriodo, dentroDoValor, ROTULO_PERIODO, type PeriodoOc } from "@/lib/filtroOc";
 
 function formatMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -123,6 +126,16 @@ export default function AprovacoesSeniorPage() {
   const [sincronizadoEm, setSincronizadoEm] = useState<string | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
   const [msgSincronizacao, setMsgSincronizacao] = useState<string | null>(null);
+  // filtros novos (pedido do Joao, 25/10/2026: a tela mostrava todas as OCs de tudo)
+  const [visao, setVisao] = useState<"todas" | "minhas">("todas");
+  const [podeVerTodas, setPodeVerTodas] = useState(false);
+  const [periodo, setPeriodo] = useState<PeriodoOc>("90");
+  const [de, setDe] = useState("");
+  const [ate, setAte] = useState("");
+  const [valorMin, setValorMin] = useState("");
+  const [valorMax, setValorMax] = useState("");
+  const [selecaoContratos, setSelecaoContratos] = useState<string[] | null>(null);
+  useEffect(() => setSelecaoContratos(selecaoDoCookie()), []);
 
   function atualizarFiltroResolvidas<K extends keyof FiltrosResolvidas>(campo: K, valor: FiltrosResolvidas[K]) {
     setFiltrosResolvidas((prev) => ({ ...prev, [campo]: valor }));
@@ -152,8 +165,8 @@ export default function AprovacoesSeniorPage() {
       .finally(() => setCarregandoResolvida(null));
   }
 
-  function carregar() {
-    return fetch("/api/senior/aprovacoes")
+  function carregar(visaoPedida: "todas" | "minhas" = visao) {
+    return fetch(`/api/senior/aprovacoes${visaoPedida === "minhas" ? "?visao=minhas" : ""}`)
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -167,15 +180,17 @@ export default function AprovacoesSeniorPage() {
         setCodToNome(data.codToNome ?? {});
         setSincronizadoEm(data.sincronizadoEm ?? null);
         setEscopo(data.escopo === "ENVOLVIDO" ? "ENVOLVIDO" : "TODAS");
+        setPodeVerTodas(!!data.podeVerTodas);
         setSemVinculoSenior(!!data.semVinculoSenior);
       });
   }
 
   useEffect(() => {
-    carregar()
+    carregar(visao)
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visao]);
 
   // Botão "Atualizar agora" -- dispara o webhook do n8n (mesma ação do
   // cron de 10 em 10 minutos) e reconsulta a lista depois de um tempo,
@@ -219,6 +234,9 @@ export default function AprovacoesSeniorPage() {
     }
     if (situacoesAtivas.size > 0 && !situacoesAtivas.has(a.situacaoAtual)) return false;
     if (somenteRateio && !a.temRateio) return false;
+    if (!dentroDoPeriodo(a.dataEmissao, periodo, de, ate)) return false;
+    if (!dentroDoValor(a.valor, valorMin, valorMax)) return false;
+    if (selecaoContratos && !ccusDaOc("rateioDetalhe" in a ? a.rateioDetalhe : null, a.codccu).some((c) => selecaoContratos.includes(c))) return false;
     return true;
   }
 
@@ -236,7 +254,7 @@ export default function AprovacoesSeniorPage() {
         if (!textoContem(aprovadorDe(a), f.aprovador)) return false;
         return true;
       }),
-    [pendentes, busca, situacoesAtivas, somenteRateio, filtrosPendentes]
+    [pendentes, busca, situacoesAtivas, somenteRateio, filtrosPendentes, periodo, de, ate, valorMin, valorMax, selecaoContratos]
   );
   const resolvidasFiltradas = useMemo(
     () =>
@@ -250,7 +268,7 @@ export default function AprovacoesSeniorPage() {
         if (!dataIgual(a.resolvidoEm, f.resolvidaEm)) return false;
         return true;
       }),
-    [resolvidas, busca, situacoesAtivas, somenteRateio, filtrosResolvidas]
+    [resolvidas, busca, situacoesAtivas, somenteRateio, filtrosResolvidas, periodo, de, ate, valorMin, valorMax, selecaoContratos]
   );
   const resolvidasMostradas = resolvidasFiltradas.slice(0, LIMITE_LINHAS);
   const filtrosColunaAtivos =
@@ -260,7 +278,7 @@ export default function AprovacoesSeniorPage() {
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
 
   const valorTotalPendente = pendentesFiltradas.reduce((s, a) => s + a.valor, 0);
-  const filtrosAtivos = busca.trim() || situacoesAtivas.size > 0 || somenteRateio || filtrosColunaAtivos;
+  const filtrosAtivos = busca.trim() || situacoesAtivas.size > 0 || somenteRateio || filtrosColunaAtivos || periodo !== "90" || valorMin.trim() || valorMax.trim() || selecaoContratos || visao === "minhas";
 
   // planilha com o que esta na tela: as pendentes e as resolvidas que passam nos filtros (as resolvidas vao TODAS, nao so' as 500 da tela)
   function abasExcel(): AbaExcel[] {
@@ -399,12 +417,60 @@ export default function AprovacoesSeniorPage() {
               setSomenteRateio(false);
               setFiltrosPendentes(FILTROS_PENDENTES_VAZIOS);
               setFiltrosResolvidas(FILTROS_RESOLVIDAS_VAZIOS);
+              setPeriodo("90");
+              setDe("");
+              setAte("");
+              setValorMin("");
+              setValorMax("");
+              setVisao("todas");
             }}
             className="text-xs text-gray-400 underline hover:text-gray-600"
           >
             limpar filtros
           </button>
         )}
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-end gap-x-5 gap-y-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+        {podeVerTodas && (
+          <label className="text-xs text-gray-500">
+            <span className="mb-1 block font-medium">Mostrar</span>
+            <select value={visao} onChange={(e) => setVisao(e.target.value as "todas" | "minhas")} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm text-gray-800">
+              <option value="todas">Todas as OCs</option>
+              <option value="minhas">Só as minhas (em que estou envolvido)</option>
+            </select>
+          </label>
+        )}
+        <label className="text-xs text-gray-500">
+          <span className="mb-1 block font-medium">Emitidas</span>
+          <select value={periodo} onChange={(e) => setPeriodo(e.target.value as PeriodoOc)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm text-gray-800">
+            {(Object.keys(ROTULO_PERIODO) as PeriodoOc[]).map((p) => <option key={p} value={p}>{ROTULO_PERIODO[p]}</option>)}
+          </select>
+        </label>
+        {periodo === "datas" && (
+          <>
+            <label className="text-xs text-gray-500"><span className="mb-1 block font-medium">De</span><input type="date" value={de} onChange={(e) => setDe(e.target.value)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm text-gray-800" /></label>
+            <label className="text-xs text-gray-500"><span className="mb-1 block font-medium">Até</span><input type="date" value={ate} onChange={(e) => setAte(e.target.value)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm text-gray-800" /></label>
+          </>
+        )}
+        <div className="text-xs text-gray-500">
+          <span className="mb-1 block font-medium">Contratos</span>
+          <FiltroContratos />
+        </div>
+        <div className="text-xs text-gray-500">
+          <span className="mb-1 block font-medium">Valor (R$)</span>
+          <div className="flex items-center gap-1.5">
+            <input value={valorMin} onChange={(e) => setValorMin(e.target.value)} inputMode="decimal" placeholder="mínimo" aria-label="Valor mínimo" className="w-24 rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm text-gray-800" />
+            <span>a</span>
+            <input value={valorMax} onChange={(e) => setValorMax(e.target.value)} inputMode="decimal" placeholder="máximo" aria-label="Valor máximo" className="w-24 rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm text-gray-800" />
+          </div>
+        </div>
+        <p className="ml-auto self-center text-xs text-gray-400">
+          {periodo === "todos" ? "Todo o período" : periodo === "datas" ? "Período escolhido" : ROTULO_PERIODO[periodo].toLowerCase()} · {pendentesFiltradas.length} pendente(s) e {resolvidasFiltradas.length} resolvida(s)
+          {periodo !== "todos" && (
+            <> · <button onClick={() => setPeriodo("todos")} className="underline hover:text-gray-600">ver todo o período</button></>
+          )}
+        </p>
       </div>
 
       <div className="mb-3 flex justify-end">

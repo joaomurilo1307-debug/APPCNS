@@ -246,6 +246,7 @@ model User {
   pdisAsPessoa  PDI[] @relation("PDIPessoa")
   pdisAsGestor  PDI[] @relation("PDICriador")
   nucleosGerenciados Nucleo[] @relation("NucleoGerente")
+  nucleosDirigidos   Nucleo[] @relation("NucleoDiretor")
   projetosComoDiretor     Project[] @relation("ProjectDiretor")
   projetosComoCoordenador Project[] @relation("ProjectCoordenador")
   aprovacoesSeniorComoProximo AprovacaoSenior[] @relation("AprovacaoSeniorProximo")
@@ -629,6 +630,10 @@ model Nucleo {
   gerentes User[]    @relation("NucleoGerente")
   // coordenadores do nucleo: associam projetos, passam tarefas/subtarefas para o pessoal do nucleo e controlam as demandas dele
   coordenadores User[] @relation("NucleoCoordenador")
+  // diretores do nucleo: mesmo alcance do gerente (veem e gerem os projetos e as demandas do nucleo)
+  diretores User[] @relation("NucleoDiretor")
+  // SETOR = setor administrativo (ADM ...); CONTRATO = grupo de pessoas de um contrato (MRN CT 3748/2023...). So' organiza a lista; nao muda acesso.
+  tipo     String    @default("SETOR")
   projetos Project[] @relation("ProjectNucleo")
   demandas Demanda[]
 }

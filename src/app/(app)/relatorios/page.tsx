@@ -6,6 +6,7 @@ import Link from "next/link";
 import ProgressBar from "@/components/ProgressBar";
 import AuditLogPanel from "@/components/AuditLogPanel";
 import BotaoExcel from "@/components/BotaoExcel";
+import { indicadoresDoNucleo } from "@/lib/relatorios/nucleos";
 
 type ProjectInsight = {
   id: string;
@@ -43,6 +44,8 @@ export default function RelatoriosPage() {
 
   const [projects, setProjects] = useState<ProjectInsight[]>([]);
   const [nucleoNames, setNucleoNames] = useState<string[]>([]);
+  const [nucleosInfo, setNucleosInfo] = useState<{ id: string; name: string; tipo: string; pessoas: number }[]>([]);
+  const [mostrarSemProjetos, setMostrarSemProjetos] = useState(false);
   const [nivel, setNivel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,7 +57,11 @@ export default function RelatoriosPage() {
 
   useEffect(() => {
     if (!isDiretoria) return;
-    fetch("/api/nucleos").then((r) => r.json()).then((data) => setNucleoNames(data.map((n: any) => n.name))).catch(() => {});
+    fetch("/api/nucleos").then((r) => r.json()).then((data) => {
+      if (!Array.isArray(data)) return;
+      setNucleoNames(data.map((n: any) => n.name));
+      setNucleosInfo(data.map((n: any) => ({ id: n.id, name: n.name, tipo: n.tipo ?? "SETOR", pessoas: Array.isArray(n.membros) ? n.membros.length : 0 })));
+    }).catch(() => {});
   }, [isDiretoria]);
 
   return (
@@ -80,7 +87,20 @@ export default function RelatoriosPage() {
               p.name, statusLabel[p.status] ?? p.status, p.team.name, p.nucleos.map((n) => n.name).join(", "), p.diretores.map((d) => d.name).join(", "), p.coordenadores.map((c) => c.name).join(", "),
               p.percentComplete / 100, p.taskCount, p.taskCounts.A_FAZER ?? 0, p.taskCounts.FAZENDO ?? 0, p.taskCounts.BLOQUEADO ?? 0, p.taskCounts.FEITO ?? 0, p.overdueCount, p.totalHours, p.totalCost,
             ]),
-          }]}
+          },
+          ...(nucleosInfo.length > 0 ? [{
+            nome: "Núcleos",
+            colunas: [
+              { titulo: "Núcleo", largura: 40 }, { titulo: "Tipo", largura: 10 }, { titulo: "Pessoas", tipo: "inteiro" as const }, { titulo: "Projetos", tipo: "inteiro" as const }, { titulo: "Em andamento", tipo: "inteiro" as const },
+              { titulo: "Tarefas", tipo: "inteiro" as const }, { titulo: "Feitas", tipo: "inteiro" as const }, { titulo: "Bloqueadas", tipo: "inteiro" as const }, { titulo: "Atrasadas", tipo: "inteiro" as const },
+              { titulo: "Andamento", tipo: "percentual" as const }, { titulo: "Horas", tipo: "numero" as const },
+            ],
+            linhas: nucleosInfo.map((n) => {
+              const i = indicadoresDoNucleo(n.id, projects);
+              return [n.name, n.tipo === "CONTRATO" ? "Contrato" : "Setor", n.pessoas, i.projetos, i.emAndamento, i.tarefas, i.feitas, i.bloqueadas, i.atrasadas, i.andamento, i.horas];
+            }),
+          }] : []),
+        ]}
         />
       </div>
       <div className="mb-10 grid gap-4 md:grid-cols-2">
@@ -141,15 +161,44 @@ export default function RelatoriosPage() {
 
       {isDiretoria && (
         <>
-          <h2 className="mb-3 text-sm font-semibold text-gray-600">Núcleos</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-gray-600">Núcleos</h2>
+            <label className="flex items-center gap-1.5 text-xs text-gray-500">
+              <input type="checkbox" checked={mostrarSemProjetos} onChange={(e) => setMostrarSemProjetos(e.target.checked)} />
+              mostrar também os núcleos sem projetos
+            </label>
+          </div>
           <div className="mb-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {nucleoNames.map((name) => (
-              <div key={name} className="rounded-xl border border-dashed border-gray-300 bg-white p-5 text-center">
-                <p className="mb-2 text-sm font-medium">{name}</p>
-                <p className="text-xs text-gray-400">Indicadores via Power BI — em breve.</p>
-              </div>
-            ))}
-            {nucleoNames.length === 0 && <p className="text-sm text-gray-400">Nenhum núcleo cadastrado.</p>}
+            {nucleosInfo
+              .map((n) => ({ n, i: indicadoresDoNucleo(n.id, projects) }))
+              .filter(({ i }) => mostrarSemProjetos || i.projetos > 0)
+              .sort((a, b) => b.i.projetos - a.i.projetos || a.n.name.localeCompare(b.n.name, "pt-BR"))
+              .map(({ n, i }) => (
+                <div key={n.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold leading-tight">{n.name}</p>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${n.tipo === "CONTRATO" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{n.tipo === "CONTRATO" ? "Contrato" : "Setor"}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">{n.pessoas} pessoa(s) · {i.projetos} projeto(s){i.emAndamento > 0 ? ` (${i.emAndamento} em andamento)` : ""}</p>
+                  {i.tarefas > 0 ? (
+                    <>
+                      <div className="mt-3"><ProgressBar percent={Math.round(i.andamento * 100)} /></div>
+                      <p className="mt-1 text-xs text-gray-500">{i.feitas} de {i.tarefas} tarefas feitas</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        {i.atrasadas > 0 && <span className="rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-600">{i.atrasadas} atrasada(s)</span>}
+                        {i.bloqueadas > 0 && <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">{i.bloqueadas} bloqueada(s)</span>}
+                        {i.horas > 0 && <span className="text-gray-500">⏱ {fmtHours(i.horas)}</span>}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="mt-3 text-xs text-gray-400">{i.projetos > 0 ? "Projetos sem tarefas ainda." : "Nenhum projeto ligado a este núcleo."}</p>
+                  )}
+                </div>
+              ))}
+            {nucleosInfo.length === 0 && <p className="text-sm text-gray-400">Nenhum núcleo cadastrado.</p>}
+            {nucleosInfo.length > 0 && !mostrarSemProjetos && nucleosInfo.every((n) => indicadoresDoNucleo(n.id, projects).projetos === 0) && (
+              <p className="text-sm text-gray-400">Nenhum núcleo tem projeto ligado ainda. Associe projetos aos núcleos na tela Núcleos.</p>
+            )}
           </div>
 
           <div className="mb-3 border-t border-gray-200 pt-6">

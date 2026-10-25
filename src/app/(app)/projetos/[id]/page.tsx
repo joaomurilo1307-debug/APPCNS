@@ -15,6 +15,8 @@ import ProgressBar from "@/components/ProgressBar";
 import TeamChatPanel from "@/components/TeamChatPanel";
 import FilesPanel from "@/components/FilesPanel";
 import PessoasDoProjeto from "@/components/projetos/PessoasDoProjeto";
+import EscolhaDePessoas from "@/components/demandas/Pessoas";
+import type { PessoaOpcao } from "@/lib/agruparPessoas";
 import { useAtualizarAoVoltar } from "@/lib/atualizarAoVoltar";
 
 type ProjectDetail = {
@@ -74,7 +76,11 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const canManage = role === "ADMIN" || role === "GESTOR_PROJETO" || souGestorDaEquipe;
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [nucleosList, setNucleosList] = useState<{ id: string; name: string }[]>([]);
-  const [peopleList, setPeopleList] = useState<{ id: string; name: string; nivelHierarquico: string | null }[]>([]);
+  const [peopleList, setPeopleList] = useState<PessoaOpcao[]>([]);
+  // Editar projeto: nucleos, diretores e coordenadores escolhidos na lista suspensa
+  const [editNucleos, setEditNucleos] = useState<string[]>([]);
+  const [editDiretores, setEditDiretores] = useState<string[]>([]);
+  const [editCoordenadores, setEditCoordenadores] = useState<string[]>([]);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [showPessoas, setShowPessoas] = useState(false);
@@ -126,9 +132,9 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       .then((r) => r.json())
       .then((data) => setNucleosList(data.map((n: any) => ({ id: n.id, name: n.name }))))
       .catch(() => {});
-    fetch("/api/organograma")
-      .then((r) => r.json())
-      .then((data) => setPeopleList(data.map((p: any) => ({ id: p.id, name: p.name, nivelHierarquico: p.nivelHierarquico }))))
+    fetch("/api/pessoas")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setPeopleList(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, [showEditForm]);
 
@@ -176,9 +182,9 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         teamId: form.get("teamId") || undefined,
         startDate: form.get("startDate") ? new Date(form.get("startDate") as string).toISOString() : null,
         endDate: form.get("endDate") ? new Date(form.get("endDate") as string).toISOString() : null,
-        nucleoIds: form.getAll("nucleoIds"),
-        diretorIds: form.getAll("diretorIds"),
-        coordenadorIds: form.getAll("coordenadorIds"),
+        nucleoIds: editNucleos,
+        diretorIds: editDiretores,
+        coordenadorIds: editCoordenadores,
       }),
     });
     setShowEditForm(false);
@@ -240,7 +246,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           </button>
           {canManage && (
             <button
-              onClick={() => setShowEditForm((v) => !v)}
+              onClick={() => {
+                if (!showEditForm && project) {
+                  setEditNucleos(project.nucleos.map((n) => n.id));
+                  setEditDiretores(project.diretores.map((d) => d.id));
+                  setEditCoordenadores(project.coordenadores.map((c) => c.id));
+                }
+                setShowEditForm((v) => !v);
+              }}
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               Editar projeto
@@ -326,34 +339,25 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             </label>
           </div>
 
-          <label className="col-span-2 flex flex-col gap-1">
-            Núcleo(s) associado(s) — segure Ctrl/Cmd para selecionar mais de um
-            <select name="nucleoIds" multiple defaultValue={project.nucleos.map((n) => n.id)} className="h-28 rounded-md border border-gray-300 px-2 py-1.5">
-              {nucleosList.map((n) => (
-                <option key={n.id} value={n.id}>{n.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
+          <div className="col-span-2 flex flex-col gap-1">
+            Núcleo(s) associado(s)
+            <EscolhaDePessoas
+              pessoas={nucleosList.map((n) => ({ id: n.id, name: n.name }))}
+              valor={editNucleos}
+              onChange={setEditNucleos}
+              max={50}
+              vazio="Nenhum núcleo."
+              placeholder="Clique para escolher o núcleo ou digite o nome…"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
             Diretor(es) responsável(is)
-            <select name="diretorIds" multiple defaultValue={project.diretores.map((d) => d.id)} className="h-28 rounded-md border border-gray-300 px-2 py-1.5">
-              {peopleList.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}{p.nivelHierarquico === "DIRETORIA" ? " · Diretoria" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
+            <EscolhaDePessoas pessoas={peopleList} valor={editDiretores} onChange={setEditDiretores} max={50} vazio="Nenhum diretor." />
+          </div>
+          <div className="flex flex-col gap-1">
             Coordenador(es) responsável(is)
-            <select name="coordenadorIds" multiple defaultValue={project.coordenadores.map((c) => c.id)} className="h-28 rounded-md border border-gray-300 px-2 py-1.5">
-              {peopleList.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}{p.nivelHierarquico === "COORDENACAO" ? " · Coordenação" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
+            <EscolhaDePessoas pessoas={peopleList} valor={editCoordenadores} onChange={setEditCoordenadores} max={50} vazio="Nenhum coordenador." />
+          </div>
 
           <button className="col-span-2 rounded-md bg-brand px-4 py-2 font-medium text-white hover:bg-brand-dark">
             Salvar
