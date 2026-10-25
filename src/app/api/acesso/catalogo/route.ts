@@ -36,6 +36,6 @@ export async function GET() {
       verTodosPeloPapel: false,
     },
     nucleos: { todos: nucleos, membroDe: null, gerente: [], coordenador: [] },
-    senior: { vinculos: [], sugestoes: [] },
+    senior: { vinculos: [], sugestoes: [], automatico: null },
   });
 }

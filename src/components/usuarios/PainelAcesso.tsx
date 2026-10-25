@@ -22,7 +22,7 @@ type Dados = {
   projetos: { disponiveis: { id: string; name: string; status: string; equipe: string | null }[]; liberados: string[] };
   contratos: { disponiveis: { codccu: string; nome: string }[]; liberados: { codccu: string; area: Area }[]; verTodos: boolean; verTodosPeloPapel: boolean };
   nucleos: { todos: { id: string; name: string }[]; membroDe: string | null; gerente: string[]; coordenador: string[]; diretor?: string[] };
-  senior: { vinculos: { codigo: string; nome: string; tambemUsam: string[] }[]; sugestoes: { codigo: string; nome: string }[] };
+  senior: { vinculos: { codigo: string; nome: string; tambemUsam: string[] }[]; sugestoes: { codigo: string; nome: string }[]; automatico?: { codigo: string; nome: string } | null };
 };
 
 const PAPEL_ROTULO: Record<string, string> = {
@@ -506,7 +506,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
                 </ul>
               </Secao>
 
-              <Secao titulo="Usuário do Senior" ajuda="Define quais OCs a pessoa vê em Aprovações de OC. Busque o login do Senior e vincule; o mesmo login pode valer para mais de uma pessoa.">
+              <Secao titulo="Usuário do Senior" ajuda="Define quais OCs a pessoa vê em Aprovações de OC. Se o e-mail dela for igual ao do usuário no Senior, o vínculo é automático. Se escolher um login aqui, ele vale no lugar do automático; o mesmo login pode valer para mais de uma pessoa.">
                 <div className="flex flex-wrap gap-2">
                   {senior.map((s) => (
                     <span key={s.codigo} className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-xs text-brand-dark">
@@ -515,8 +515,15 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
                       <button type="button" onClick={() => setSenior(senior.filter((x) => x.codigo !== s.codigo))} aria-label={`Remover ${s.nome}`} className="ml-1 text-gray-500 hover:text-red-600">×</button>
                     </span>
                   ))}
-                  {senior.length === 0 && <p className="text-xs text-gray-400">Nenhum usuário do Senior vinculado: a pessoa não verá OCs em Aprovações de OC.</p>}
+                  {senior.length === 0 && !dados.senior.automatico && <p className="text-xs text-gray-400">Nenhum usuário do Senior vinculado e nenhum com o mesmo e-mail: a pessoa não verá OCs em Aprovações de OC.</p>}
                 </div>
+                {dados.senior.automatico && (
+                  <p className={`mt-2 rounded-md px-2.5 py-1.5 text-xs ${senior.length === 0 ? "bg-emerald-50 text-emerald-800" : "bg-gray-50 text-gray-500"}`}>
+                    {senior.length === 0
+                      ? <>Vínculo automático pelo e-mail: <b>{dados.senior.automatico.nome}</b> #{dados.senior.automatico.codigo}. Vale enquanto você não escolher outro login aqui.</>
+                      : <>O vínculo automático pelo e-mail (<b>{dados.senior.automatico.nome}</b> #{dados.senior.automatico.codigo}) não vale enquanto houver login escolhido aqui.</>}
+                  </p>
+                )}
                 {dados.senior.sugestoes.filter((s) => !senior.some((x) => x.codigo === s.codigo)).map((s) => (
                   <p key={s.codigo} className="mt-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
                     O sistema tem este vínculo automático: <b>{s.nome}</b> #{s.codigo}. Confira antes de usar.{" "}
@@ -525,7 +532,7 @@ export default function PainelAcesso({ userId, usuarios, onFechar, onSalvo }: { 
                 ))}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button type="button" onClick={() => vincularPelaEmail(false)} className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark">Vincular pelo e-mail</button>
-                  <span className="text-xs text-gray-500">{msgSenior || "Procura o login do Senior igual ao e-mail da pessoa (a parte antes do @)."}</span>
+                  <span className="text-xs text-gray-500">{msgSenior || "Procura o usuário do Senior com o mesmo e-mail (ou o login igual à parte antes do @)."}</span>
                 </div>
                 <label className={`${rot} mt-4`}>Buscar no Senior (login ou código)</label>
                 <input className={campo} placeholder="Ex.: julimar ou 26" value={buscaSenior} onChange={(e) => setBuscaSenior(e.target.value)} />

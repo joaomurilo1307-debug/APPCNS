@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { acharSeniorPorEmail } from "../../../../../../prisma/achar-senior";
 import { logAudit } from "@/lib/auditLog";
 import { GRUPOS, MODULOS, PAPEIS_DO_SISTEMA, PERFIS_PRONTOS, acessosEfetivos, lerNiveis, lerSobreposicoes, sobreposicoesParaGravar, type NivelAcesso } from "@/lib/acesso/catalogo";
 import { limparCacheDeAcesso } from "@/lib/acesso/servidor";
@@ -42,7 +43,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     prisma.project.findMany({ select: { id: true, name: true, status: true, team: { select: { name: true } } }, orderBy: { name: "asc" } }),
     prisma.custoContaFinanceira.groupBy({ by: ["codccu", "contrato"], _sum: { valor: true } }),
     prisma.nucleo.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.usuarioSenior.findMany({ select: { codigo: true, nome: true, userId: true } }),
+    prisma.usuarioSenior.findMany({ select: { codigo: true, nome: true, userId: true, email: true } }),
     prisma.vinculoSenior.findMany({ select: { codigo: true, user: { select: { id: true, name: true } } } }),
   ]);
 
@@ -81,7 +82,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       diretor: alvo.nucleosDirigidos.map((n) => n.id),
     },
     senior: {
-      // so' o vinculo MANUAL conta; o de-para automatico aparece como sugestao para o admin confirmar
+      // vale o vinculo MANUAL; sem nenhum manual, vale o automatico por e-mail igual (src/lib/acesso/vinculoSenior.ts). O de-para por nome
+      // continua so' como sugestao para o admin confirmar.
+      automatico: acharSeniorPorEmail(alvo.email, usuariosSenior),
       vinculos: alvo.vinculosSenior.map((v) => ({ codigo: v.codigo, nome: porCodigo.get(v.codigo)?.nome ?? `#${v.codigo}`, tambemUsam: outrosPorCodigo.get(v.codigo) ?? [] })),
       sugestoes: usuariosSenior
         .filter((u) => u.userId === alvo.id && !alvo.vinculosSenior.some((v) => v.codigo === u.codigo))

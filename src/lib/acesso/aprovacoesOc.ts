@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { envolvidoNaOC, filtroGrosseiroDeEnvolvimento } from "./envolvimentoOc";
 import { podeAcessarModulo, type UsuarioDaSessao } from "./servidor";
+import { codigosDoSenior } from "./vinculoSenior";
 
 export type EscopoOC = {
   /** a pessoa tem o modulo Aprovacoes de OC (ver todas ou as dela) */
@@ -27,7 +28,7 @@ export function limparCacheDeOcs(userId?: string) {
 }
 
 export async function codigosSeniorDe(userId: string): Promise<string[]> {
-  return (await prisma.vinculoSenior.findMany({ where: { userId }, select: { codigo: true } })).map((v) => v.codigo);
+  return codigosDoSenior(userId);
 }
 
 export async function escopoAprovacoesOC(usuario: UsuarioDaSessao): Promise<EscopoOC> {

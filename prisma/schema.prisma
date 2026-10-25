@@ -894,6 +894,7 @@ model AprovacaoSenior {
 model UsuarioSenior {
   codigo       String   @id // CODUSU do Senior (ex: "177")
   nome         String
+  email        String? // E099USU.INTNET em minusculas; so' serve para o vinculo automatico por e-mail igual
   userId       String?
   user         User?    @relation("UsuarioSeniorConta", fields: [userId], references: [id], onDelete: SetNull)
   atualizadoEm DateTime @updatedAt
