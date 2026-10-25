@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AREAS, AREA_POR_CCU, CENTROS, areaDoCentro, ccusDaArea, filtrarTitulosPorSelecao, lerArea, lerSelecao } from "../src/lib/areas";
-import { aplicarSelecaoAoEscopo, escopoDeCustos, escopoDeVisao, montarEscopo, podeVerCcu } from "../src/lib/custos/acesso";
+import { AREAS, AREA_POR_CCU, CENTROS, areaDoCentro, ccusDaArea, filtrarTitulosPorSelecao, gravarSelecao, lerArea, lerSelecao } from "../src/lib/areas";
+import { aplicarSelecaoAoEscopo, escopoDeCustos, escopoDeVisao, limparCacheDeAcompanhamento, montarEscopo, podeVerCcu } from "../src/lib/custos/acesso";
 
 const todos = (codigos: string[], area: string) => codigos.forEach((c) => assert.equal(areaDoCentro(c), area, `CC ${c} deveria ser ${area}`));
 
@@ -62,15 +62,33 @@ test("filtro de contratos no escopo: quem ve tudo passa a ver so' os escolhidos;
 });
 
 test("o acesso NAO muda: escopoDeCustos continua igual; a escolha so' estreita a visao de uma lista", async () => {
-  const banco = { user: { findUnique: async () => null } } as never;
+  limparCacheDeAcompanhamento();
+  const banco = { user: { findUnique: async () => null }, contrato: { findMany: async () => [] } } as never;
   const admin = await escopoDeCustos(banco, { id: "1", role: "ADMIN" });
   assert.equal(admin.tipo, "todos"); // permissao, detalhe, exportacao e demanda seguem usando este escopo
   assert.equal(admin.todos, true);
-  assert.equal(await escopoDeVisao(admin), admin); // fora de uma requisicao nao ha cookie: a visao e' a mesma
+  assert.equal(await escopoDeVisao(admin, { ignorarSelecao: true }, banco), admin);
   const visao = aplicarSelecaoAoEscopo(admin, ["190"]);
   assert.equal(podeVerCcu(visao, "190"), true);
   assert.equal(podeVerCcu(visao, "102185"), false);
   assert.equal(admin.todos, true); // o escopo original nao foi alterado
+});
+
+test("selecao dinamica preserva mais centros do que o catalogo inicial e limpa ao escolher todos", () => {
+  const anterior = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const documento = { cookie: "" };
+  Object.defineProperty(globalThis, "document", { configurable: true, value: documento });
+  try {
+    const selecao = Array.from({ length: CENTROS.length + 2 }, (_, i) => String(i + 1));
+    gravarSelecao(selecao);
+    const valor = decodeURIComponent(documento.cookie.split(";")[0].split("=")[1]);
+    assert.deepEqual(lerSelecao(valor), selecao, "catalogo estatico nao converte uma selecao dinamica em todos");
+    gravarSelecao(null);
+    assert.match(documento.cookie, /max-age=0/);
+  } finally {
+    if (anterior) Object.defineProperty(globalThis, "document", anterior);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
 });
 
 test("programacao de pagamento: filtra os titulos pelos centros escolhidos e refaz as somas; sem escolha nada muda; sem centro de custo some quando ha filtro", () => {

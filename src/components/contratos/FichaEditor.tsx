@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 export type FichaContrato = {
-  codccu: string; nome: string; tipo: string; status: string; cliente: string | null; numero: string | null; objeto: string | null;
+  codccu: string; nome: string; tipo: string; status: string; acompanharResultados: boolean; cliente: string | null; numero: string | null; objeto: string | null;
   vigenciaInicio: string | null; vigenciaFim: string | null; valor: number | null; observacoes: string | null;
 };
 

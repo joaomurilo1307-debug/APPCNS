@@ -152,7 +152,8 @@ export function selecaoDoCookie(): string[] | null {
 
 /** Grava a selecao no cookie da sessao (null ou vazia = todos). So' no navegador. Ao fechar o navegador volta para "todos": o sistema segue como sempre. */
 export function gravarSelecao(selecao: readonly string[] | null): void {
-  const l = selecao && selecao.length > 0 && selecao.length < CENTROS.length ? lerSelecao(selecao.join(",")) : null;
+  // O chamador informa null ao selecionar todas as opcoes disponiveis, que agora sao dinamicas.
+  const l = selecao && selecao.length > 0 ? lerSelecao(selecao.join(",")) : null;
   document.cookie = l ? `${COOKIE_VISAO}=${encodeURIComponent(l.join(","))}; path=/; SameSite=Lax` : `${COOKIE_VISAO}=; path=/; max-age=0; SameSite=Lax`;
 }
 

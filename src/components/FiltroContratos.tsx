@@ -1,19 +1,30 @@
 "use client";
 
-// Filtro "Contratos" ao lado do Buscar: uma lista suspensa com TODOS os centros de custo (inclusive os administrativos), separados em Engenharia, Ambiental e Administrativo,
+// Filtro "Contratos" ao lado do Buscar: contratos incluidos e permitidos nos relatorios; lista completa nas obrigacoes financeiras.
+// Os centros de custo (inclusive os administrativos) sao separados em Engenharia, Ambiental e Administrativo,
 // para marcar quais ver. Atalhos "so' Engenharia / so' Ambiental / so' Administrativo" marcam o grupo inteiro; cada grupo e cada centro tem a sua caixinha, entao da' para
 // comparar qualquer combinacao. A escolha vai para um cookie da sessao (o servidor le o mesmo cookie para filtrar as listas) e a pagina recarrega ao aplicar.
 // So' visao: o acesso de cada pessoa continua valendo por cima, e sem escolha tudo fica como sempre (todos).
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AREAS, CENTROS, gravarSelecao, selecaoDoCookie, type Area } from "@/lib/areas";
+import { AREAS as AREAS_BASE, CENTROS as CENTROS_FINANCEIROS, areaDoCentro, gravarSelecao, selecaoDoCookie, type Area as AreaConhecida } from "@/lib/areas";
 
-const TOTAL = CENTROS.length;
-const POR_AREA: Record<Area, string[]> = { ENGENHARIA: [], AMBIENTAL: [], ADMINISTRATIVO: [] };
-for (const c of CENTROS) POR_AREA[c.area].push(c.ccu);
+type Area = AreaConhecida | "SEM_AREA";
+type Centro = { ccu: string; nome: string; area: Area };
+const AREAS: ReadonlyArray<{ valor: Area; rotulo: string }> = [...AREAS_BASE, { valor: "SEM_AREA", rotulo: "Outros centros de custo" }];
 const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export default function FiltroContratos({ className = "" }: { className?: string }) {
+export default function FiltroContratos({ className = "", obrigacoesFinanceiras = false, incluirForaDosResultados = false }: { className?: string; obrigacoesFinanceiras?: boolean; incluirForaDosResultados?: boolean }) {
+  const [opcoes, setOpcoes] = useState<Centro[] | null>(obrigacoesFinanceiras ? [...CENTROS_FINANCEIROS] : null);
+  const [erro, setErro] = useState("");
+  const [tentativa, setTentativa] = useState(0);
+  const CENTROS = useMemo(() => opcoes ?? [], [opcoes]);
+  const TOTAL = CENTROS.length;
+  const POR_AREA = useMemo(() => {
+    const grupos: Record<Area, string[]> = { ENGENHARIA: [], AMBIENTAL: [], ADMINISTRATIVO: [], SEM_AREA: [] };
+    for (const c of CENTROS) grupos[c.area].push(c.ccu);
+    return grupos;
+  }, [CENTROS]);
   const [aplicado, setAplicado] = useState<string[] | null | undefined>(undefined); // undefined = ainda nao leu o cookie (evita piscar)
   const [aberto, setAberto] = useState(false);
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
@@ -21,6 +32,17 @@ export default function FiltroContratos({ className = "" }: { className?: string
   const raiz = useRef<HTMLDivElement>(null);
 
   useEffect(() => setAplicado(selecaoDoCookie()), []);
+  useEffect(() => {
+    if (obrigacoesFinanceiras) return;
+    const controller = new AbortController();
+    setErro("");
+    fetch(incluirForaDosResultados ? "/api/contratos?acompanhamento=todos&ignorarSelecao=1" : "/api/contratos?opcoes=1", { cache: "no-store", signal: controller.signal }).then(async (r) => {
+      const j = await r.json();
+      if (!r.ok || !Array.isArray(j.contratos)) throw new Error("Falha ao carregar os contratos.");
+      setOpcoes(j.contratos.map((c: { codccu: string; nome: string }) => ({ ccu: c.codccu, nome: c.nome, area: areaDoCentro(c.codccu) ?? "SEM_AREA" })));
+    }).catch((e) => { if (e.name !== "AbortError") setErro("Não foi possível carregar os contratos."); });
+    return () => controller.abort();
+  }, [obrigacoesFinanceiras, incluirForaDosResultados, tentativa]);
   useEffect(() => {
     if (!aberto) return;
     const fora = (e: MouseEvent) => { if (raiz.current && !raiz.current.contains(e.target as Node)) setAberto(false); };
@@ -31,17 +53,17 @@ export default function FiltroContratos({ className = "" }: { className?: string
   }, [aberto]);
 
   const rotulo = useMemo(() => {
-    if (!aplicado) return "Todos os contratos";
-    const set = new Set(aplicado);
-    for (const a of AREAS) if (POR_AREA[a.valor].length === set.size && POR_AREA[a.valor].every((c) => set.has(c))) return a.rotulo;
-    return `${aplicado.length} de ${TOTAL} contratos`;
-  }, [aplicado]);
+    if (!aplicado) return obrigacoesFinanceiras || incluirForaDosResultados ? "Todos os contratos" : "Contratos incluídos";
+    const set = new Set(aplicado.filter((c) => CENTROS.some((o) => o.ccu === c)));
+    for (const a of AREAS) if (POR_AREA[a.valor].length > 0 && POR_AREA[a.valor].length === set.size && POR_AREA[a.valor].every((c) => set.has(c))) return a.rotulo;
+    return `${set.size} de ${TOTAL} contratos`;
+  }, [aplicado, CENTROS, POR_AREA, TOTAL, obrigacoesFinanceiras, incluirForaDosResultados]);
 
   const termo = semAcento(busca.trim());
   const visiveis = (area: Area) => CENTROS.filter((c) => c.area === area && (!termo || semAcento(`${c.nome} ${c.ccu}`).includes(termo)));
 
   function abrir() {
-    setMarcados(new Set(aplicado ?? CENTROS.map((c) => c.ccu))); // sem filtro = tudo marcado (o usuario desmarca o que nao quer ver)
+    setMarcados(new Set(aplicado ? aplicado.filter((c) => CENTROS.some((o) => o.ccu === c)) : CENTROS.map((c) => c.ccu)));
     setBusca("");
     setAberto((v) => !v);
   }
@@ -77,11 +99,13 @@ export default function FiltroContratos({ className = "" }: { className?: string
 
       {aberto && (
         <div role="dialog" aria-label="Escolher contratos" className="absolute left-0 top-11 z-50 w-[25rem] max-w-[92vw] rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+          {erro ? <div role="alert" className="p-3 text-sm text-red-700">{erro}<button type="button" onClick={() => setTentativa((t) => t + 1)} className="mt-2 block text-xs font-medium underline">Tentar novamente</button></div> : opcoes === null ? <p className="p-3 text-sm text-gray-500">Carregando contratos…</p> : <>
+          {!obrigacoesFinanceiras && <p className="mb-2 text-xs text-gray-500">{incluirForaDosResultados ? "Contratos liberados para você, incluindo o histórico." : "Contratos incluídos nos resultados e liberados para você."}</p>}
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar na lista…" autoFocus className="mb-2 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm outline-none focus:border-brand" />
 
           <div className="mb-2 flex flex-wrap items-center gap-1.5">
             <button type="button" onClick={() => setMarcados(new Set(CENTROS.map((c) => c.ccu)))} className="rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50">Todos</button>
-            {AREAS.map((a) => (
+            {AREAS.filter((a) => POR_AREA[a.valor].length > 0).map((a) => (
               <button key={a.valor} type="button" onClick={() => soArea(a.valor)} className="rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50" title={`Ver só ${a.rotulo.toLowerCase()} (${POR_AREA[a.valor].length})`}>
                 Só {a.rotulo.toLowerCase()} <span className="text-gray-400">{POR_AREA[a.valor].length}</span>
               </button>
@@ -120,6 +144,7 @@ export default function FiltroContratos({ className = "" }: { className?: string
               <button type="button" onClick={aplicar} disabled={marcados.size === 0} className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40">Aplicar</button>
             </div>
           </div>
+          </>}
         </div>
       )}
     </div>

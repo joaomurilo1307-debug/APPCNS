@@ -16,12 +16,13 @@ export async function GET() {
     ? {}
     : { OR: [{ assignedUsers: { some: { id: u.id } } }, { assignedTeam: { members: { some: { userId: u.id } } } }, { project: await visibleProjectWhere(u.id, u.role) }] };
   const goals = await prisma.goal.findMany({
-    where: { parentGoalId: null, ...visiveis },
+    where: { parentGoalId: null, contractGoalId: null, ...visiveis },
     include: {
       project: { select: { id: true, name: true } },
       assignedUsers: { select: { id: true, name: true, avatarColor: true } },
       assignedTeam: { select: { id: true, name: true } },
       subGoals: {
+        where: { contractGoalId: null },
         include: {
           project: { select: { id: true, name: true } },
           assignedUsers: { select: { id: true, name: true, avatarColor: true } },

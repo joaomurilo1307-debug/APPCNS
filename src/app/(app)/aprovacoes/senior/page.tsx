@@ -468,7 +468,7 @@ export default function AprovacoesSeniorPage() {
         )}
         <div className="text-xs text-gray-500">
           <span className="mb-1 block font-medium">Contratos</span>
-          <FiltroContratos />
+          <FiltroContratos obrigacoesFinanceiras />
         </div>
         <div className="text-xs text-gray-500">
           <span className="mb-1 block font-medium">Valor (R$)</span>

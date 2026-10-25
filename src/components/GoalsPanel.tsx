@@ -2,8 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Avatar from "@/components/Avatar";
+import { AssociarMetaProjeto, MetaVinculadaProjeto } from "@/components/contractGoals/VinculosMetas";
+import type { MetaContrato } from "@/lib/contractGoals/tipos";
 
 type Goal = {
+  contractGoalId?: string | null;
+  contractGoal?: MetaContrato | null;
   id: string;
   title: string;
   description: string | null;
@@ -164,6 +168,7 @@ export default function GoalsPanel({
 
   return (
     <div>
+      {canManage && <AssociarMetaProjeto projectId={projectId} associadas={goals.flatMap((g) => g.contractGoalId ? [g.contractGoalId] : [])} onLinked={load} />}
       {canManage && (
         <div className="mb-4">
           <button
@@ -261,6 +266,7 @@ export default function GoalsPanel({
 
       <div className="flex flex-col gap-3">
         {goals.map((g) => {
+          if (g.contractGoal) return <MetaVinculadaProjeto key={g.id} meta={g.contractGoal} onChanged={load} />;
           const auto = g.autoFromProjectProgress;
           const pct = auto ? Math.round(g.fraction * 100) : g.targetValue ? Math.min(100, Math.round((g.currentValue / g.targetValue) * 100)) : 0;
           return (

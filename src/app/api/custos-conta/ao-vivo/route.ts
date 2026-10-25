@@ -15,11 +15,11 @@ export async function GET(req: Request) {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const escopo = await escopoDeCustos(prisma, session.user as any);
   if (escopo.tipo === "nenhum") return NextResponse.json({ error: "Sem centros de custo liberados para você" }, { status: 403 });
-  const visao = await escopoDeVisao(escopo); // filtro de area do topo das telas: so' estreita a lista
 
   const sp = new URL(req.url).searchParams;
   const ccu = sp.get("ccu");
   if (ccu && !podeVerCcu(escopo, ccu)) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
+  const visao = ccu ? escopo : await escopoDeVisao(escopo);
   const situacaoParam = sp.get("situacao") as FiltroSituacao | null;
   const situacao: FiltroSituacao = FILTROS_SITUACAO.some((f) => f.chave === situacaoParam) ? (situacaoParam as FiltroSituacao) : "todas";
 

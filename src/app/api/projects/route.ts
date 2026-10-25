@@ -10,6 +10,9 @@ import { computePercentComplete } from "@/lib/progress";
 import { saudeDoProjeto } from "@/lib/projetos/saude";
 import { sendNotificationEmail } from "@/lib/mailer";
 import { z } from "zod";
+import { contextoMetas } from "@/lib/contractGoals/server";
+import { validarVinculosMetas } from "@/lib/contractGoals/calculo";
+import { vincularMetasProjeto } from "@/lib/contractGoals/vinculos";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -64,6 +67,7 @@ export async function GET() {
 }
 
 const createProjectSchema = z.object({
+  contractGoalIds: z.array(z.string()).max(50).optional(),
   name: z.string().min(2).max(150),
   description: z.string().optional(),
   // uma equipe que ja existe; sem ela, o projeto nasce com uma equipe nova feita das pessoas escolhidas (voce entra como responsavel)
@@ -89,19 +93,27 @@ export async function POST(req: Request) {
   const body = await req.json();
   const parsed = createProjectSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
-  const { pessoas, codccu, nucleoId, teamId: teamIdPedido, ...resto } = parsed.data;
+  const { pessoas, codccu, nucleoId, contractGoalIds = [], teamId: teamIdPedido, ...resto } = parsed.data;
 
   if (teamIdPedido && !(await canManageTeam(userId, role, teamIdPedido))) {
     return NextResponse.json({ error: "Só o gestor da equipe ou um admin pode criar projetos nela" }, { status: 403 });
   }
   if (codccu) {
-    const contrato = await prisma.contrato.findUnique({ where: { codccu }, select: { codccu: true } });
+    const contrato = await prisma.contrato.findUnique({ where: { codccu }, select: { codccu: true, acompanharResultados: true } });
     if (!contrato) return NextResponse.json({ error: "Contrato não encontrado" }, { status: 404 });
+    if (!contrato.acompanharResultados) return NextResponse.json({ error: "Este contrato está fora do acompanhamento para novas iniciativas." }, { status: 422 });
     const alvo = await contratosDoUsuario({ id: userId, role });
     if (!alvo.todos && !alvo.ccus.has(codccu)) return NextResponse.json({ error: "Você não tem acesso a este contrato" }, { status: 403 });
   }
   if (nucleoId && role !== "ADMIN" && !(await nucleoIdsQueGere(userId)).includes(nucleoId)) {
     return NextResponse.json({ error: "Só quem gere o núcleo associa projetos a ele" }, { status: 403 });
+  }
+  if (contractGoalIds.length) {
+    const acessoMetas = await contextoMetas({ id: userId, role });
+    if (!codccu || !acessoMetas.podeVer(codccu)) return NextResponse.json({ error: "Sem acesso às metas deste contrato" }, { status: 403 });
+    const metas = await prisma.contractGoal.findMany({ where: { id: { in: contractGoalIds } }, include: { contrato: { select: { codccu: true } } } });
+    try { validarVinculosMetas(contractGoalIds, metas.map((m) => ({ ...m, codccu: m.contrato.codccu })), codccu); }
+    catch { return NextResponse.json({ error: "Selecione somente metas ativas do mesmo contrato do projeto" }, { status: 422 }); }
   }
   const membros = (await pessoasValidas(pessoas ?? [])).filter((id) => id !== userId);
 
@@ -117,7 +129,7 @@ export async function POST(req: Request) {
       });
       teamId = equipe.id;
     }
-    return tx.project.create({
+    const criado = await tx.project.create({
       data: {
         name: resto.name, description: resto.description, status: resto.status, approverId: resto.approverId,
         teamId, codccu: codccu ?? null,
@@ -128,6 +140,8 @@ export async function POST(req: Request) {
         ...(nucleoId ? { nucleos: { connect: { id: nucleoId } } } : {}),
       },
     });
+    await vincularMetasProjeto(tx, criado, contractGoalIds);
+    return criado;
   });
 
   if (parsed.data.approverId) {

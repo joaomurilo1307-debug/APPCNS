@@ -22,7 +22,6 @@ export async function GET(req: Request) {
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const escopo = await escopoDeCustos(prisma, session.user as any);
   if (escopo.tipo === "nenhum") return NextResponse.json({ error: "Sem centros de custo liberados para você" }, { status: 403 });
-  const visao = await escopoDeVisao(escopo); // filtro de area do topo das telas: so' estreita a lista; as checagens de acesso usam o escopo
 
   const sp = new URL(req.url).searchParams;
   const hoje = hojeBR();
@@ -36,6 +35,7 @@ export async function GET(req: Request) {
 
   const ccu = sp.get("ccu") || null;
   if (ccu && (ccu === SEM_CCU ? !escopo.todos : !podeVerCcu(escopo, ccu))) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
+  const visao = ccu ? escopo : await escopoDeVisao(escopo);
   const categoriaParam = sp.get("categoria");
   const categoria = categoriaParam && CATEGORIA.has(categoriaParam) ? (categoriaParam as CategoriaPrevisao) : null;
   const naturezaParam = sp.get("natureza");

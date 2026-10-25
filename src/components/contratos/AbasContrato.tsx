@@ -9,6 +9,7 @@ import ProjetosDoContrato from "./ProjetosDoContrato";
 import PrevisaoMensal from "./PrevisaoMensal";
 import { moeda } from "@/lib/custos/formato";
 import type { FichaContrato } from "./FichaEditor";
+import { ResumoMedicaoDoContrato, type EstadoMedicaoContrato } from "./MedicaoDoContrato";
 
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : null);
 
@@ -32,7 +33,7 @@ function Vazio({ titulo, texto, extra }: { titulo: string; texto: string; extra?
 }
 
 // ---------------------------------------------------------------- Visao geral (ficha + situacao, sem numeros de custo)
-export function AbaVisaoGeral({ ficha, irParaAba }: { ficha: FichaContrato; irParaAba: (a: string) => void }) {
+export function AbaVisaoGeral({ ficha, irParaAba, medicao }: { ficha: FichaContrato; irParaAba: (a: string) => void; medicao: EstadoMedicaoContrato }) {
   const fichaCompleta = !!(ficha.cliente && ficha.numero && ficha.vigenciaFim && ficha.valor);
   const itens: [string, boolean | null, string | null][] = [
     ["Custos do Senior (aba Custos)", true, "custos"],
@@ -40,6 +41,8 @@ export function AbaVisaoGeral({ ficha, irParaAba }: { ficha: FichaContrato; irPa
     ["Custo de pessoal", null, "pessoal"],
     ["Orçamento base (P0)", null, "p0"],
     ["Previsão do Senior por contrato (títulos em aberto)", true, "previsao"],
+    ["Metas do contrato", true, "metas"],
+    ["Planos de Ação do contrato", true, "acoes"],
   ];
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -64,6 +67,7 @@ export function AbaVisaoGeral({ ficha, irParaAba }: { ficha: FichaContrato; irPa
           ))}
         </ul>
       </Cartao>
+      <ResumoMedicaoDoContrato key={ficha.codccu} estado={medicao} abrirDetalhe={() => irParaAba("medicao")} />
       <ProjetosDoContrato codccu={ficha.codccu} />
       <ClientesDoContrato codccu={ficha.codccu} />
     </div>

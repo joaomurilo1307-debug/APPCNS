@@ -72,10 +72,11 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
   const d = parsed.data;
 
-  const contrato = await prisma.contrato.findUnique({ where: { codccu: d.contrato }, select: { id: true, codccu: true, nome: true } });
+  const contrato = await prisma.contrato.findUnique({ where: { codccu: d.contrato }, select: { id: true, codccu: true, nome: true, acompanharResultados: true } });
   if (!contrato) return NextResponse.json({ error: "Contrato não encontrado" }, { status: 404 });
   const alvo = await contratosDoUsuario(u);
   if (!alvo.todos && !alvo.ccus.has(contrato.codccu)) return NextResponse.json({ error: ehCliente(u) ? "Você não está ligado a este contrato" : "Sem acesso a este contrato" }, { status: 403 });
+  if (!contrato.acompanharResultados) return NextResponse.json({ error: "Este contrato está fora dos resultados. Um administrador pode incluí-lo novamente antes de abrir uma nova demanda." }, { status: 422 });
 
   if (d.nucleoId) {
     if (ehCliente(u)) return NextResponse.json({ error: "O contratante não escolhe o núcleo" }, { status: 403 });

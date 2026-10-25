@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import FiltroContratos from "@/components/FiltroContratos";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { chaveMes, contratosNaBase, linhasDoContrato, type ContratoCusto } from "@/lib/custos/agregacao";
 import { mesCurto, moedaCompacta, percentual } from "@/lib/custos/formato";
 import { Sparkline } from "@/components/custos/graficos";
@@ -13,7 +13,7 @@ import BotaoExcel from "@/components/BotaoExcel";
 import GerenciarContratosAtivos from "@/components/contratos/GerenciarContratosAtivos";
 import type { AbaExcel } from "@/lib/exportarExcel";
 
-type Ficha = { id: string; codccu: string; nome: string; tipo: string; status: string; cliente: string | null; numero: string | null; vigenciaInicio: string | null; vigenciaFim: string | null; valor: number | null };
+type Ficha = { id: string; codccu: string; nome: string; tipo: string; status: string; acompanharResultados: boolean; cliente: string | null; numero: string | null; vigenciaInicio: string | null; vigenciaFim: string | null; valor: number | null };
 type Resp = { contratos: ContratoCusto[]; meses: string[]; mesCorrente: string };
 
 const soma = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -23,22 +23,45 @@ export default function ContratosPage() {
   const [fichas, setFichas] = useState<Ficha[] | null>(null);
   const [podeEditar, setPodeEditar] = useState(false);
   const [gerenciando, setGerenciando] = useState(false);
+  const [paraGerenciar, setParaGerenciar] = useState<Ficha[]>([]);
   const [custos, setCustos] = useState<Resp | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [tipo, setTipo] = useState<"CONTRATO" | "ADMINISTRATIVO" | "todos">("CONTRATO");
-  const [status, setStatus] = useState<"ATIVO" | "ENCERRADO" | "todos">("ATIVO");
+  const [status, setStatus] = useState<"ATIVO" | "ENCERRADO" | "todos">("todos");
+  const [acompanhamento, setAcompanhamento] = useState<"incluidos" | "fora" | "todos">("incluidos");
   const [ordem, setOrdem] = useState<"custo" | "nome" | "ccu">("custo");
+  const requisicao = useRef(0);
 
-  async function carregarFichas() {
-    const r = await fetch("/api/contratos", { cache: "no-store" });
-    if (r.ok) { const j = await r.json(); setFichas(j.contratos); setPodeEditar(!!j.podeEditar); } else setErro((await r.json().catch(() => ({}))).error || "Erro ao carregar");
+  const carregarFichas = useCallback(async (signal?: AbortSignal) => {
+    const sequencia = ++requisicao.current;
+    setFichas(null); setCustos(null); setErro(null);
+    try {
+      const [r, custo] = await Promise.all([
+        fetch(`/api/contratos?acompanhamento=${acompanhamento}`, { cache: "no-store", signal }),
+        fetch(`/api/custos-conta${acompanhamento === "incluidos" ? "" : "?acompanhamento=todos"}`, { cache: "no-store", signal }),
+      ]);
+      const [j, c] = await Promise.all([r.json(), custo.json()]);
+      if (!r.ok || !custo.ok) throw new Error(typeof j.error === "string" ? j.error : typeof c.error === "string" ? c.error : "Erro ao carregar os contratos.");
+      if (signal?.aborted || sequencia !== requisicao.current) return;
+      setFichas(j.contratos); setPodeEditar(!!j.podeEditar); setCustos(c);
+    } catch (e) { if (!signal?.aborted && sequencia === requisicao.current) setErro(e instanceof Error ? e.message : "Erro ao carregar os contratos."); }
+  }, [acompanhamento]);
+
+  async function abrirGerenciamento() {
+    try {
+      const r = await fetch("/api/contratos?acompanhamento=todos&ignorarSelecao=1", { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error("Não foi possível carregar o gerenciamento dos contratos.");
+      setParaGerenciar(j.contratos); setGerenciando(true);
+    } catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível carregar o gerenciamento dos contratos."); }
   }
 
   useEffect(() => {
-    void carregarFichas();
-    fetch("/api/custos-conta", { cache: "no-store" }).then(async (r) => (r.ok ? setCustos(await r.json()) : null));
-  }, []);
+    const controller = new AbortController();
+    void carregarFichas(controller.signal);
+    return () => controller.abort();
+  }, [carregarFichas]);
 
   const mesesAsc = useMemo(() => (custos ? custos.meses.map(chaveMes).sort() : []), [custos]);
   const mesCorrente = custos ? chaveMes(custos.mesCorrente) : "";
@@ -64,7 +87,7 @@ export default function ContratosPage() {
     return l.sort((a, b) => (ordem === "custo" ? b.total - a.total : ordem === "nome" ? a.ficha.nome.localeCompare(b.ficha.nome, "pt-BR") : a.ficha.codccu.localeCompare(b.ficha.codccu, undefined, { numeric: true })));
   }, [linhas, busca, tipo, status, ordem]);
 
-  if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
+  if (erro) return <div role="alert" className="p-6 text-sm text-red-600">{erro}<button onClick={() => void carregarFichas()} className="ml-3 underline">Tentar novamente</button></div>;
   const carregando = !fichas || !custos;
   const totalAno = soma(filtradas.map((l) => l.total));
   const hoje = Date.now();
@@ -73,14 +96,14 @@ export default function ContratosPage() {
   function abasExcel(): AbaExcel[] {
     return [{
       nome: "Contratos",
-      observacao: `Contratos · tipo: ${tipo === "todos" ? "todos" : tipo === "CONTRATO" ? "contratos" : "administrativos"} · situação: ${status === "todos" ? "todas" : status === "ATIVO" ? "ativos" : "encerrados"}${busca.trim() ? ` · busca: ${busca.trim()}` : ""}`,
+      observacao: `Contratos · acompanhamento: ${acompanhamento} · tipo: ${tipo === "todos" ? "todos" : tipo === "CONTRATO" ? "contratos" : "administrativos"} · situação: ${status === "todos" ? "todas" : status === "ATIVO" ? "ativos" : "encerrados"}${busca.trim() ? ` · busca: ${busca.trim()}` : ""}`,
       colunas: [
-        { titulo: "CCU", largura: 8 }, { titulo: "Contrato", largura: 40 }, { titulo: "Tipo", largura: 16 }, { titulo: "Situação", largura: 12 }, { titulo: "Cliente", largura: 30 }, { titulo: "Número", largura: 16 },
+        { titulo: "CCU", largura: 8 }, { titulo: "Contrato", largura: 40 }, { titulo: "Tipo", largura: 16 }, { titulo: "Situação", largura: 12 }, { titulo: "Resultados", largura: 20 }, { titulo: "Cliente", largura: 30 }, { titulo: "Número", largura: 16 },
         { titulo: "Vigência início", tipo: "data" }, { titulo: "Vigência fim", tipo: "data" }, { titulo: "Valor do contrato", tipo: "moeda" }, { titulo: "Custo total no período", tipo: "moeda" },
         ...mesesAsc.map((m) => ({ titulo: mesCurto(m), tipo: "moeda" as const })),
       ],
       linhas: filtradas.map(({ ficha: f, total, serie }) => [
-        f.codccu, f.nome, f.tipo === "CONTRATO" ? "Contrato" : "Administrativo", f.status === "ATIVO" ? "Ativo" : "Encerrado", f.cliente ?? "", f.numero ?? "",
+        f.codccu, f.nome, f.tipo === "CONTRATO" ? "Contrato" : "Administrativo", f.status === "ATIVO" ? "Ativo" : "Encerrado", f.acompanharResultados ? "Incluído" : "Fora dos resultados", f.cliente ?? "", f.numero ?? "",
         f.vigenciaInicio, f.vigenciaFim, f.valor, total, ...mesesAsc.map((_, i) => serie[i] ?? 0),
       ]),
     }];
@@ -97,22 +120,28 @@ export default function ContratosPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {podeEditar && fichas && (
-            <button onClick={() => setGerenciando(true)} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-medium text-gray-700 transition hover:bg-gray-50" title="Escolher quais contratos estão ativos. Só os ativos aparecem para as pessoas.">
-              Contratos ativos ({fichas.filter((f) => f.status === "ATIVO").length}/{fichas.length})
+            <button onClick={() => void abrirGerenciamento()} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-medium text-gray-700 transition hover:bg-gray-50" title="Escolher os contratos incluídos nos resultados, independentemente da situação operacional.">
+              Gerenciar inclusão nos resultados
             </button>
           )}
           <BotaoExcel arquivo="contratos" gerar={abasExcel} desabilitado={carregando || filtradas.length === 0} />
         </div>
       </header>
-      {gerenciando && fichas && <GerenciarContratosAtivos contratos={fichas} aoFechar={() => setGerenciando(false)} aoSalvar={() => { setGerenciando(false); void carregarFichas(); }} />}
+      {gerenciando && <GerenciarContratosAtivos contratos={paraGerenciar} aoFechar={() => setGerenciando(false)} aoSalvar={() => { setGerenciando(false); void carregarFichas(); }} />}
 
       <div className="mb-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">
         <div className="min-w-[16rem] flex-1">
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Buscar</label>
           <div className="flex items-center gap-2">
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, CCU, cliente ou número…" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-brand focus:outline-none" />
-            <FiltroContratos />
+            <FiltroContratos key={acompanhamento} incluirForaDosResultados={acompanhamento !== "incluidos"} />
           </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Resultados</label>
+          <select value={acompanhamento} onChange={(e) => setAcompanhamento(e.target.value as typeof acompanhamento)} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+            <option value="incluidos">Incluídos nos resultados</option><option value="fora">Fora dos resultados</option><option value="todos">Todos · com histórico</option>
+          </select>
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Tipo</label>
@@ -158,6 +187,7 @@ export default function ContratosPage() {
                       <span className="rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-teal-800">CCU {f.codccu}</span>
                       {f.tipo === "ADMINISTRATIVO" && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">Administrativo</span>}
                       {f.status === "ENCERRADO" && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700">Encerrado</span>}
+                      {!f.acompanharResultados && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">Fora dos resultados</span>}
                       <span className="ml-auto text-gray-300 transition group-hover:text-brand">→</span>
                     </div>
                     <h2 className="mt-2 truncate text-lg font-semibold text-gray-900" title={f.nome}>{f.nome}</h2>

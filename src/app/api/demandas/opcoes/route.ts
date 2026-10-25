@@ -12,7 +12,7 @@ export async function GET() {
   const u = session.user as any;
   const alvo = await contratosDoUsuario(u);
   const contratos = await prisma.contrato.findMany({
-    where: { status: "ATIVO", ...(alvo.todos ? {} : { codccu: { in: Array.from(alvo.ccus) } }) },
+    where: { acompanharResultados: true, ...(alvo.todos ? {} : { codccu: { in: Array.from(alvo.ccus) } }) },
     select: { codccu: true, nome: true, cliente: true },
     orderBy: { nome: "asc" },
   });

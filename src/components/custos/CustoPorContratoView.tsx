@@ -32,7 +32,7 @@ export default function CustoPorContratoView({ ccuFixo }: { ccuFixo?: string }) 
 
   const carregar = useCallback(async () => {
     try {
-      const res = await fetch("/api/custos-conta", { cache: "no-store" });
+      const res = await fetch(ccuFixo ? `/api/custos-conta?ccu=${encodeURIComponent(ccuFixo)}` : "/api/custos-conta", { cache: "no-store" });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
         throw new Error(e.error || "Erro ao carregar");
@@ -42,7 +42,7 @@ export default function CustoPorContratoView({ ccuFixo }: { ccuFixo?: string }) 
     } catch (e: any) {
       setErro(e?.message || "Erro ao carregar");
     }
-  }, []);
+  }, [ccuFixo]);
 
   useEffect(() => {
     void carregar();

@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { canManageTeam, canViewProject } from "@/lib/permissions";
 import { computeGoalFraction } from "@/lib/goals";
 import { z } from "zod";
+import { apresentarMetas, contextoMetas, incluirMetaContrato } from "@/lib/contractGoals/server";
+import { vincularMetasProjeto } from "@/lib/contractGoals/vinculos";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -17,16 +20,25 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       assignedUsers: { select: { id: true, name: true, avatarColor: true } },
       assignedTeam: { select: { id: true, name: true } },
       parentGoal: { select: { id: true, title: true } },
+      contractGoal: { include: incluirMetaContrato },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  const withFraction = await Promise.all(goals.map(async (g) => ({ ...g, fraction: await computeGoalFraction(g.id) })));
+  const usuario = session.user as any;
+  const canonicas = await apresentarMetas(goals.flatMap((g) => g.contractGoal ? [g.contractGoal] : []), usuario);
+  const porId = new Map(canonicas.map((g) => [g.id, g]));
+  const permitidas = goals.filter((g) => !g.contractGoalId || porId.has(g.contractGoalId));
+  const withFraction = await Promise.all(permitidas.map(async (g) => {
+    const canonical = g.contractGoalId ? porId.get(g.contractGoalId) : null;
+    return { ...g, ...(canonical ? { contractGoal: canonical, title: canonical.title, description: canonical.description, targetValue: canonical.targetValue, currentValue: canonical.currentValue, unit: canonical.unit, dueDate: canonical.dueDate } : {}), fraction: canonical ? canonical.fraction : await computeGoalFraction(g.id) };
+  }));
 
   return NextResponse.json(withFraction);
 }
 
 const createGoalSchema = z.object({
+  contractGoalId: z.string().optional(),
   title: z.string().min(2).max(200),
   description: z.string().optional(),
   targetValue: z.number().nullable().optional(),
@@ -55,7 +67,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const parsed = createGoalSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
-  const { assignedUserIds, ...rest } = parsed.data;
+  if (parsed.data.contractGoalId) {
+    if (["CLIENTE", "VISUALIZADOR"].includes(role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    const somenteConsulta = await negarSemEdicao({ id: userId, role }, "projetos"); if (somenteConsulta) return somenteConsulta;
+    const contexto = await contextoMetas({ id: userId, role });
+    if (!project.codccu || !contexto.podeVer(project.codccu)) return NextResponse.json({ error: "Sem acesso às metas do contrato" }, { status: 403 });
+    try {
+      await prisma.$transaction((tx) => vincularMetasProjeto(tx, project, [parsed.data.contractGoalId!]));
+      return NextResponse.json({ ok: true }, { status: 201 });
+    } catch { return NextResponse.json({ error: "A meta deve estar ativa e pertencer ao mesmo contrato deste projeto" }, { status: 422 }); }
+  }
+  if (parsed.data.parentGoalId && (await prisma.goal.findUnique({ where: { id: parsed.data.parentGoalId }, select: { contractGoalId: true } }))?.contractGoalId) return NextResponse.json({ error: "A meta canônica é vinculada pelo contrato, sem somar outra medição" }, { status: 422 });
+  const { assignedUserIds, contractGoalId, ...rest } = parsed.data;
   const goal = await prisma.goal.create({
     data: {
       ...rest,
