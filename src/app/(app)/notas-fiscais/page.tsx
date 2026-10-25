@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import BotaoExcel from "@/components/BotaoExcel";
+import type { AbaExcel } from "@/lib/exportarExcel";
 
 type Nota = {
   chave: string; numero: string; serie: string; emitente: string; cnpj: string; valor: number; emissao: string | null;
@@ -97,6 +99,21 @@ export default function NotasFiscaisPage() {
     const f = [...new Set(n.formasPag)].map((c) => FORMA[c] ?? `Código ${c}`);
     return f.length ? f.join(", ") : "—";
   }
+  // planilha: as notas da tela (respeita busca e periodo de emissao), com a chave de acesso
+  function abasExcel(): AbaExcel[] {
+    const lido = (n: Nota, v: string) => (n.lido ? v : "ainda lendo o XML");
+    return [{
+      nome: "Notas fiscais recebidas",
+      observacao: `NF-e emitidas contra a Consominas (eDocs X)${de || ate ? ` · emissão ${de ? `de ${data(de)} ` : ""}${ate ? `até ${data(ate)}` : ""}` : ""}${busca.trim() ? ` · busca: ${busca.trim()}` : ""}`,
+      colunas: [
+        { titulo: "Nº da nota", largura: 12 }, { titulo: "Série", largura: 7 }, { titulo: "Fornecedor", largura: 46 }, { titulo: "CNPJ", largura: 20 }, { titulo: "Emissão", tipo: "data" },
+        { titulo: "1º vencimento", tipo: "data" }, { titulo: "Vencimentos", largura: 26 }, { titulo: "Forma de pagamento", largura: 26 }, { titulo: "Valor", tipo: "moeda" }, { titulo: "Chave de acesso", largura: 48 },
+      ],
+      linhas: filtradas.map((n) => [n.numero, n.serie, n.emitente, n.cnpj, n.emissao, n.vencimentos[0] ?? "", lido(n, vencTexto(n)), lido(n, formaTexto(n)), n.valor, n.chave]),
+      rodape: ["", "", `${filtradas.length} nota(s)`, "", "", "", "", "", total, ""],
+    }];
+  }
+
   function vencTexto(n: Nota) {
     if (!n.lido) return "lendo…";
     if (n.vencimentos.length) return n.vencimentos.map(data).join(", ");
@@ -119,9 +136,12 @@ export default function NotasFiscaisPage() {
         <input type="date" value={de} onChange={(e) => setDe(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
         <span className="text-sm text-gray-500">até</span>
         <input type="date" value={ate} onChange={(e) => setAte(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
-        <button onClick={() => { anterior.current = null; carregar(true); }} disabled={carregando} className="ml-auto rounded-lg border border-brand px-3 py-1.5 text-sm font-medium text-brand disabled:opacity-50">
-          {carregando ? "Consultando…" : "↻ Atualizar do eDocs"}
-        </button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <BotaoExcel arquivo="notas-fiscais-recebidas" gerar={abasExcel} desabilitado={carregando || filtradas.length === 0} />
+          <button onClick={() => { anterior.current = null; carregar(true); }} disabled={carregando} className="rounded-lg border border-brand px-3 py-1.5 text-sm font-medium text-brand disabled:opacity-50">
+            {carregando ? "Consultando…" : "↻ Atualizar do eDocs"}
+          </button>
+        </div>
       </div>
 
       {erro && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erro}</p>}

@@ -135,6 +135,19 @@ export default function AprovacoesSeniorPage() {
   const [valorMin, setValorMin] = useState("");
   const [valorMax, setValorMax] = useState("");
   const [selecaoContratos, setSelecaoContratos] = useState<string[] | null>(null);
+  // lembra o periodo escolhido neste navegador (so' a visao; nada e' alterado no Senior)
+  const [periodoLido, setPeriodoLido] = useState(false);
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("aprovacoes-oc-senior-periodo") ?? "null");
+      if (s && s.periodo in ROTULO_PERIODO) { setPeriodo(s.periodo); setDe(s.de ?? ""); setAte(s.ate ?? ""); }
+    } catch { /* sem armazenamento: fica no padrao */ }
+    setPeriodoLido(true);
+  }, []);
+  useEffect(() => {
+    if (!periodoLido) return; // so' grava depois de ler o que estava gravado (senao o padrao apagaria a escolha)
+    try { localStorage.setItem("aprovacoes-oc-senior-periodo", JSON.stringify({ periodo, de, ate })); } catch { /* ignora */ }
+  }, [periodoLido, periodo, de, ate]);
   useEffect(() => setSelecaoContratos(selecaoDoCookie()), []);
 
   function atualizarFiltroResolvidas<K extends keyof FiltrosResolvidas>(campo: K, valor: FiltrosResolvidas[K]) {
