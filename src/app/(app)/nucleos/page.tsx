@@ -288,8 +288,8 @@ export default function NucleosPage() {
         </div>
       </div>
       <p className="mb-5 max-w-3xl text-sm text-gray-500">
-        Os núcleos são os <b>setores</b> da empresa e os grupos de pessoas de cada <b>contrato</b>. Cada núcleo tem diretores, gerentes e coordenadores (que enxergam e gerem os
-        projetos dele) e os colaboradores. Cada pessoa é colaboradora de um núcleo; diretores, gerentes e coordenadores podem estar em mais de um.
+        Os núcleos são os <b>setores</b> da empresa e os grupos de pessoas de cada <b>contrato</b>. Cada núcleo tem diretores, gerentes e coordenadores (que gerem os
+        projetos vinculados a ele) e os colaboradores. Cada pessoa é colaboradora de um núcleo; diretores, gerentes e coordenadores podem estar em mais de um.
       </p>
 
       {canManage && criando && (
@@ -471,8 +471,8 @@ export default function NucleosPage() {
             </div>
 
             <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
-              Diretores, gerentes e coordenadores enxergam e gerem os projetos do núcleo (associam projetos e controlam as demandas dele). Colaboradores só ganham essa visão se
-              tiverem a visão de projetos “do núcleo” liberada em Usuários.
+              Diretores, gerentes e coordenadores gerem os projetos vinculados ao núcleo (associam projetos e controlam as demandas dele). Os projetos são particulares: colaboradores
+              do núcleo não ganham visão dos projetos dele; cada pessoa só vê os projetos que criou ou para os quais foi chamada na aba Equipe.
             </p>
 
             {erroEdicao && <p className="mt-3 text-sm text-red-600">{erroEdicao}</p>}
