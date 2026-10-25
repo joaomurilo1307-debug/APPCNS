@@ -1093,7 +1093,7 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
             onChange={(e) => setBusca(e.target.value)}
             className="w-64 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
           />
-          <FiltroContratos />
+          <FiltroContratos obrigacoesFinanceiras />
           {(busca || dataDe || dataAte || somenteComOC || filtrosPorColunaAtivos) && (
             <button onClick={limparFiltros} className="text-xs text-gray-400 underline hover:text-gray-600">
               limpar todos os filtros

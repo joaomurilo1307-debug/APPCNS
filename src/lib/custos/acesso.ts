@@ -10,7 +10,7 @@ import { COOKIE_VISAO, lerSelecao } from "../areas";
 export type EscopoCustos = {
   todos: boolean;
   ccus: ReadonlySet<string>; // so' vale quando todos = false
-  /** contratos ENCERRADOS (o administrador desativou): ninguem alem do ADMIN os ve, mesmo com acesso liberado ou vendo tudo */
+  /** Centros retirados desta visao. Nao altera a permissao de consultar o historico. */
   ocultos: ReadonlySet<string>;
   tipo: "todos" | "varios" | "um" | "nenhum";
   quantidade: number | null; // null = todos
@@ -29,22 +29,16 @@ export function podeVerCcu(escopo: EscopoCustos, codccu: string): boolean {
   return escopo.todos || escopo.ccus.has(codccu);
 }
 
-// ---------------------------------------------------------------- contratos encerrados (guardados, sem aparecer para ninguem alem do ADMIN)
-let guardadoOcultos: { ate: number; ccus: Set<string> } | null = null;
-const VALIDADE_OCULTOS_MS = 30_000;
-
-/** Limpar quando o administrador ativa ou encerra contratos, para a mudanca valer na hora. */
-export function limparCacheDeContratosEncerrados() {
-  guardadoOcultos = null;
+// ---------------------------------------------------------------- escolha de acompanhamento (independente da situacao operacional)
+/** Mantido para os chamadores de alteracao; as consultas agora sempre leem a escolha atual do banco. */
+export function limparCacheDeAcompanhamento() {
+  // Sem cache entre requisicoes, inclusive quando houver mais de uma replica da aplicacao.
 }
 
-/** CCUs dos contratos com situacao ENCERRADO (so' os que tem ficha em Contrato). Guardado por 30 s. */
-export async function ccusDeContratosEncerrados(db: typeof prismaReal): Promise<Set<string>> {
-  const agora = Date.now();
-  if (guardadoOcultos && guardadoOcultos.ate > agora) return guardadoOcultos.ccus;
-  const lista = await db.contrato.findMany({ where: { status: "ENCERRADO" }, select: { codccu: true } });
-  guardadoOcultos = { ate: agora + VALIDADE_OCULTOS_MS, ccus: new Set(lista.map((c) => c.codccu)) };
-  return guardadoOcultos.ccus;
+/** CCUs fora dos resultados. Contrato novo/sem ficha participa por padrao. */
+export async function ccusForaDosResultados(db: typeof prismaReal): Promise<Set<string>> {
+  const lista = await db.contrato.findMany({ where: { acompanharResultados: false }, select: { codccu: true } });
+  return new Set(lista.map((c) => c.codccu));
 }
 
 /**
@@ -52,9 +46,8 @@ export async function ccusDeContratosEncerrados(db: typeof prismaReal): Promise<
  * contrato). O acesso liberado na tela Usuarios > Acesso vale na area escolhida ou nas duas (AMBOS, o que ja existia).
  */
 export async function escopoDeCustos(db: typeof prismaReal, usuario: { id: string; role?: string }, area: "FINANCEIRO" | "PROJETOS" = "FINANCEIRO"): Promise<EscopoCustos> {
-  if (usuario.role === "ADMIN") return montarEscopo(true, []); // so' o administrador ve tambem os contratos encerrados
-  const ocultos = await ccusDeContratosEncerrados(db);
-  if (usuario.role === "DIRETOR") return montarEscopo(true, [], ocultos);
+  // Situacao e acompanhamento sao escolhas de gestao, nunca concessoes/revogacoes de acesso.
+  if (usuario.role === "ADMIN" || usuario.role === "DIRETOR") return montarEscopo(true, []);
   const eu = await db.user.findUnique({
     where: { id: usuario.id },
     select: {
@@ -63,13 +56,13 @@ export async function escopoDeCustos(db: typeof prismaReal, usuario: { id: strin
       teams: { select: { team: { select: { codccu: true } } } },
     },
   });
-  if (!eu) return montarEscopo(false, [], ocultos);
-  if (eu.verTodosCustos) return montarEscopo(true, [], ocultos);
+  if (!eu) return montarEscopo(false, []);
+  if (eu.verTodosCustos) return montarEscopo(true, []);
   const ccus = new Set<string>();
   // area ausente (registro antigo ou de teste) = AMBOS, o padrao do banco
   for (const a of eu.acessosCentroCusto) if (!a.area || a.area === "AMBOS" || a.area === area) ccus.add(a.codccu);
   for (const t of eu.teams) if (t.team.codccu) ccus.add(t.team.codccu);
-  return montarEscopo(false, ccus, ocultos);
+  return montarEscopo(false, ccus);
 }
 
 // ---------------------------------------------------------------- importacao em lote ("email;190, 230, 102235")
@@ -126,7 +119,23 @@ export async function selecaoEscolhida(): Promise<string[] | null> {
   }
 }
 
-/** O escopo de VISAO de uma lista: o acesso da pessoa estreitado pelos centros de custo escolhidos ao lado do Buscar. */
-export async function escopoDeVisao(escopo: EscopoCustos): Promise<EscopoCustos> {
-  return aplicarSelecaoAoEscopo(escopo, await selecaoEscolhida());
+/** PURA: retira dos resultados sem conceder acesso a centros que a pessoa nao pode consultar. */
+export function aplicarAcompanhamentoAoEscopo(escopo: EscopoCustos, fora: Iterable<string>): EscopoCustos {
+  const ocultos = new Set([...escopo.ocultos, ...fora]);
+  if (ocultos.size === 0) return escopo;
+  return montarEscopo(escopo.todos, escopo.ccus, ocultos);
+}
+
+/** Visao analitica: permissao + escolha de acompanhamento + selecao temporaria.
+ * Detalhes e obrigacoes financeiras usam escopoDeCustos, sem essa exclusao.
+ */
+export async function escopoDeVisao(
+  escopo: EscopoCustos,
+  opcoes: { incluirForaDosResultados?: boolean; ignorarSelecao?: boolean } = {},
+  db?: typeof prismaReal,
+): Promise<EscopoCustos> {
+  const acompanhado = opcoes.incluirForaDosResultados
+    ? escopo
+    : aplicarAcompanhamentoAoEscopo(escopo, await ccusForaDosResultados(db ?? (await import("@/lib/prisma")).prisma));
+  return opcoes.ignorarSelecao ? acompanhado : aplicarSelecaoAoEscopo(acompanhado, await selecaoEscolhida());
 }

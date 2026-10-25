@@ -1,5 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { computePercentComplete } from "@/lib/progress";
+import { canViewProject } from "@/lib/permissions";
+import { apresentarMetas, incluirMetaContrato } from "@/lib/contractGoals/server";
+import type { UsuarioDaSessao } from "@/lib/acesso/servidor";
+
+/** Metas vinculadas sao lidas da fonte canonica, com acesso ao projeto E ao contrato. Nao entram no roll-up legado. */
+export async function computeContractGoalForProject(goal: { projectId: string | null; contractGoalId: string | null }, usuario: UsuarioDaSessao) {
+  if (!goal.projectId || !goal.contractGoalId || !(await canViewProject(usuario.id, usuario.role, goal.projectId))) return null;
+  const meta = await prisma.contractGoal.findUnique({ where: { id: goal.contractGoalId }, include: incluirMetaContrato });
+  if (!meta) return null;
+  const [permitida] = await apresentarMetas([meta], usuario);
+  return permitida ?? null;
+}
 
 /** Fração (0-1) de conclusão de uma meta, considerando progresso automático do projeto ou subMetas. */
 export async function computeGoalFraction(goalId: string): Promise<number> {

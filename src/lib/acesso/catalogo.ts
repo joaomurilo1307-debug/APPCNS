@@ -46,7 +46,7 @@ export const MODULOS: ReadonlyArray<ModuloDef> = [
   { id: "chat", href: "/chat", label: "Chat", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Conversas e equipes" },
   { id: "equipes", href: "/equipes", label: "Equipes", grupo: "gestao", restrito: false, padraoPapeis: GESTAO, descricao: "Equipes e pessoas dos projetos" },
   { id: "nucleos", href: "/nucleos", label: "Núcleos", grupo: "gestao", restrito: false, padraoPapeis: GESTAO, descricao: "Núcleos, coordenadores e demandas" },
-  { id: "metas", href: "/metas", label: "Metas", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Metas e indicadores" },
+  { id: "metas", href: "/metas", label: "Metas e Planos de Ação", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Metas gerais e de contratos, indicadores e planos de ação vinculados aos projetos" },
   { id: "relatorios", href: "/relatorios", label: "Relatórios", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Relatórios de projetos" },
   { id: "pdi", href: "/pdi", label: "PDI", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Desenvolvimento individual" },
   { id: "aprovacoes_projetos", href: "/aprovacoes", label: "Aprovações de projetos", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Pedidos de aprovação dentro do sistema" },

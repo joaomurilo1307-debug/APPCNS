@@ -1,4 +1,5 @@
 "use client";
+import { SeletorMetasContrato } from "@/components/contractGoals/VinculosMetas";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -61,6 +62,8 @@ export default function ProjetosPage() {
   const [name, setName] = useState("");
   const [teamId, setTeamId] = useState("");
   const [codccu, setCodccu] = useState("");
+  const [contractGoalIds, setContractGoalIds] = useState<string[]>([]);
+  useEffect(() => { setContractGoalIds([]); }, [codccu]);
   const [pessoas, setPessoas] = useState<string[]>([]);
   const [nucleoId, setNucleoId] = useState("");
   const [contratos, setContratos] = useState<Contrato[]>([]);
@@ -129,7 +132,7 @@ export default function ProjetosPage() {
     const r = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(teamId ? { name, teamId, codccu: codccu || null, nucleoId: nucleoId || null } : { name, pessoas, codccu: codccu || null, nucleoId: nucleoId || null }),
+      body: JSON.stringify(teamId ? { name, teamId, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds } : { name, pessoas, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds }),
     });
     setCriando(false);
     if (!r.ok) {
@@ -236,6 +239,7 @@ export default function ProjetosPage() {
               </select>
             </div>
           )}
+          <div className="sm:col-span-2"><SeletorMetasContrato codccu={codccu} selecionadas={contractGoalIds} onChange={setContractGoalIds} /></div>
           {erro && <p className="text-sm text-red-600 sm:col-span-2">{erro}</p>}
           <div className="sm:col-span-2">
             <button disabled={criando} className="rounded-md bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60">{criando ? "Criando…" : "Criar projeto"}</button>

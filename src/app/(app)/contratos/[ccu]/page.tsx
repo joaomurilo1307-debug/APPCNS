@@ -10,9 +10,15 @@ import CustoPorContratoView from "@/components/custos/CustoPorContratoView";
 import { AbaP0, AbaPessoal, AbaPrevisao, AbaVisaoGeral } from "@/components/contratos/AbasContrato";
 import FichaEditor, { type FichaContrato } from "@/components/contratos/FichaEditor";
 import BotaoDossie from "@/components/contratos/BotaoDossie";
+import { AbaMedicaoDoContrato, useMedicaoDoContrato } from "@/components/contratos/MedicaoDoContrato";
+import ControleAcompanhamentoContrato from "@/components/contratos/ControleAcompanhamentoContrato";
+import PainelMetasContrato from "@/components/contractGoals/PainelMetasContrato";
 
 const ABAS = [
   { id: "visao", nome: "Visão geral" },
+  { id: "metas", nome: "Metas" },
+  { id: "acoes", nome: "Planos de Ação" },
+  { id: "medicao", nome: "Receita e Medição" },
   { id: "custos", nome: "Custos" },
   { id: "pessoal", nome: "Custo de pessoal" },
   { id: "p0", nome: "P0" },
@@ -32,13 +38,18 @@ function Pagina() {
   const [podeEditar, setPodeEditar] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
+  const medicao = useMedicaoDoContrato(ccu);
 
   useEffect(() => {
-    fetch(`/api/contratos/${ccu}`, { cache: "no-store" }).then(async (r) => {
+    const controller = new AbortController();
+    setFicha(null); setErro(null); setEditando(false);
+    fetch(`/api/contratos/${encodeURIComponent(ccu)}`, { cache: "no-store", signal: controller.signal }).then(async (r) => {
       const d = await r.json().catch(() => ({}));
+      if (controller.signal.aborted) return;
       if (!r.ok) return setErro(d.error || "Contrato não encontrado");
       setFicha(d.contrato); setPodeEditar(!!d.podeEditar);
-    });
+    }).catch(() => { if (!controller.signal.aborted) setErro("Não foi possível carregar a ficha do contrato."); });
+    return () => controller.abort();
   }, [ccu]);
 
   const irParaAba = useCallback((a: string) => {
@@ -78,7 +89,9 @@ function Pagina() {
         </div>
       </header>
 
-      <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-gray-200" aria-label="Seções do contrato">
+      {podeEditar && <ControleAcompanhamentoContrato ficha={ficha} onSalvo={setFicha} />}
+
+      <nav className="mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-gray-200" aria-label="Seções do contrato">
         {ABAS.map((a) => (
           <button key={a.id} onClick={() => irParaAba(a.id)} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-[14px] font-medium transition ${aba === a.id ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-800"}`}>
             {a.nome}
@@ -86,7 +99,10 @@ function Pagina() {
         ))}
       </nav>
 
-      {aba === "visao" && <AbaVisaoGeral ficha={ficha} irParaAba={irParaAba} />}
+      {aba === "visao" && <AbaVisaoGeral ficha={ficha} irParaAba={irParaAba} medicao={medicao} />}
+      {aba === "metas" && <PainelMetasContrato key={`metas:${ficha.codccu}`} codccu={ficha.codccu} modo="metas" />}
+      {aba === "acoes" && <PainelMetasContrato key={`acoes:${ficha.codccu}`} codccu={ficha.codccu} modo="acoes" />}
+      {aba === "medicao" && <AbaMedicaoDoContrato key={ficha.codccu} estado={medicao} />}
       {aba === "custos" && <CustoPorContratoView ccuFixo={ficha.codccu} />}
       {aba === "pessoal" && <AbaPessoal />}
       {aba === "p0" && <AbaP0 />}

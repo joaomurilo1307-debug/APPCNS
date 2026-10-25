@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Avatar from "@/components/Avatar";
+import PainelMetasContrato from "@/components/contractGoals/PainelMetasContrato";
 
 type SubGoal = {
   id: string;
@@ -31,7 +32,7 @@ type Goal = {
   subGoals: SubGoal[];
 };
 
-export default function MetasPage() {
+function MetasGerais() {
   const { data: session } = useSession();
   const role = (session?.user as any)?.role;
   const canCreate = role === "ADMIN" || role === "DIRETOR";
@@ -270,4 +271,9 @@ export default function MetasPage() {
       </div>
     </div>
   );
+}
+
+export default function MetasPage() {
+  const [aba, setAba] = useState<"contratos" | "gerais">("contratos");
+  return <div className="space-y-5"><nav className="flex gap-2 border-b border-gray-200" aria-label="Tipos de metas">{([["contratos", "Metas e Planos de Ação por contrato"], ["gerais", "Metas gerais e projetos"]] as const).map(([id, nome]) => <button key={id} onClick={() => setAba(id)} className={`border-b-2 px-4 py-3 text-sm font-medium ${aba === id ? "border-brand text-brand" : "border-transparent text-gray-500"}`}>{nome}</button>)}</nav>{aba === "contratos" ? <PainelMetasContrato /> : <MetasGerais />}</div>;
 }

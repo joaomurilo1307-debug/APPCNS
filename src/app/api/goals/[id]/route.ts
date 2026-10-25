@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam, isTeamManager } from "@/lib/permissions";
-import { computeGoalFraction, computeGoalCurrentValue } from "@/lib/goals";
+import { negarSemEdicao } from "@/lib/acesso/servidor";
+import { computeGoalFraction, computeGoalCurrentValue, computeContractGoalForProject } from "@/lib/goals";
 import { z } from "zod";
 
 async function canManageGoal(userId: string, role: string, goal: { projectId: string | null; project: { teamId: string } | null }) {
@@ -32,6 +33,13 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     },
   });
   if (!goal) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
+
+  if (goal.contractGoalId) {
+    const usuario = session.user as any;
+    const canonical = await computeContractGoalForProject(goal, usuario);
+    if (!canonical) return NextResponse.json({ error: "Sem acesso à meta deste contrato" }, { status: 403 });
+    return NextResponse.json({ ...goal, title: canonical.title, description: canonical.description, targetValue: canonical.targetValue, currentValue: canonical.currentValue, unit: canonical.unit, dueDate: canonical.dueDate, contractGoal: canonical, fraction: canonical.fraction, computedCurrentValue: canonical.currentValue });
+  }
 
   const computedCurrentValue = await computeGoalCurrentValue(goal.id);
   const subGoalsWithFraction = await Promise.all(
@@ -73,6 +81,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
   const canManage = await canManageGoal(userId, role, goal);
+  if (goal.contractGoalId) {
+    if (!(await computeContractGoalForProject(goal, session.user as any))) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    return NextResponse.json({ error: "Edite a meta e as medições no contrato; o projeto acompanha a mesma fonte." }, { status: 422 });
+  }
+  if (parsed.data.parentGoalId && (await prisma.goal.findUnique({ where: { id: parsed.data.parentGoalId }, select: { contractGoalId: true } }))?.contractGoalId) return NextResponse.json({ error: "A meta canônica é vinculada pelo contrato, sem somar outra medição" }, { status: 422 });
   const isAssignedUser = goal.assignedUsers.some((u) => u.id === userId);
   const isAssignedTeamMember = goal.assignedTeamId
     ? await isTeamManager(userId, goal.assignedTeamId).then(async (isMgr) => {
@@ -114,6 +127,10 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const role = (session.user as any).role;
   const allowed = await canManageGoal(userId, role, goal);
   if (!allowed) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  if (goal.contractGoalId) {
+    if (!(await computeContractGoalForProject(goal, session.user as any)) || !(await canManageTeam(userId, role, goal.project!.teamId))) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    const somenteConsulta = await negarSemEdicao({ id: userId, role }, "projetos"); if (somenteConsulta) return somenteConsulta;
+  }
 
   await prisma.goal.delete({ where: { id: params.id } });
   return NextResponse.json({ ok: true });

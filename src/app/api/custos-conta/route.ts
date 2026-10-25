@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { COMPETENCIA_FISCAL_ATIVA } from "@/lib/custos/competenciaDaPlanilha";
-import { escopoDeCustos, escopoDeVisao } from "@/lib/custos/acesso";
+import { aplicarSelecaoAoEscopo, escopoDeCustos, escopoDeVisao, podeVerCcu } from "@/lib/custos/acesso";
 import { estadoAtualizacao } from "@/lib/custos/atualizacaoCusto";
 import { COMPETENCIA_PISO } from "@/lib/custos/motorCustoContrato";
 import { codigoPeloNome, contaInativa, eReembolsavel, grupoDaConta } from "@/lib/custos/planoContas";
@@ -35,7 +35,7 @@ function mesesDoPisoAteHoje(): { meses: string[]; mesCorrente: string } {
   return { meses: meses.reverse(), mesCorrente: `${mesCorrente}-01T00:00:00.000Z` };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
@@ -45,7 +45,11 @@ export async function GET() {
 
   // quem ve o que: ADMIN/DIRETOR/verTodosCustos veem todos; os demais, os centros de custo que o admin liberou + os das equipes deles
   const escopo = await escopoDeCustos(prisma, user);
-  const visao = await escopoDeVisao(escopo); // filtro de area do topo das telas: so' estreita o que a lista mostra; o acesso (escopo) e a mensagem de acesso nao mudam
+  const sp = new URL(req.url).searchParams;
+  const ccu = sp.get("ccu");
+  if (ccu && !podeVerCcu(escopo, ccu)) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
+  // Consulta explicita de um contrato preserva seu historico, mesmo fora do consolidado.
+  const visao = ccu ? aplicarSelecaoAoEscopo(escopo, [ccu]) : await escopoDeVisao(escopo, { incluirForaDosResultados: sp.get("acompanhamento") === "todos" });
   const ccusPermitidos: string[] | null = visao.todos ? null : Array.from(visao.ccus);
   // quem ve todos tambem nao recebe os contratos ENCERRADOS (so' o administrador os ve)
   const filtroCcu = ccusPermitidos ? { in: ccusPermitidos } : visao.ocultos.size > 0 ? { notIn: Array.from(visao.ocultos) } : undefined;

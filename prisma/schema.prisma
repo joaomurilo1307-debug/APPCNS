@@ -226,6 +226,9 @@ model User {
   attachments     Attachment[]
   taskComments    TaskComment[]
   assignedGoals   Goal[]         @relation("GoalAssignees")
+  ownedContractGoals ContractGoal[] @relation("ContractGoalOwner")
+  contractGoalMeasurements ContractGoalMeasurement[] @relation("ContractGoalMeasurementAuthor")
+  assignedContractGoalActions ContractGoalAction[] @relation("ContractGoalActionOwner")
   createdEvents   CalendarEvent[]         @relation("EventCreator")
   eventInvites    CalendarEventAttendee[]
   outlookAccount  OutlookAccount?
@@ -967,6 +970,7 @@ model Goal {
   parentGoalId  String?
   contributionValue Float?
   autoFromProjectProgress Boolean @default(false)
+  contractGoalId String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -975,10 +979,71 @@ model Goal {
   assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
   parentGoal   Goal?   @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: SetNull)
   subGoals     Goal[]  @relation("GoalHierarchy")
+  contractGoal ContractGoal? @relation(fields: [contractGoalId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([parentGoalId])
   @@index([assignedTeamId])
+  @@unique([projectId, contractGoalId])
+}
+
+// Indicador canonico do contrato. Projetos referenciam a mesma meta, sem repetir suas medicoes.
+model ContractGoal {
+  id String @id @default(cuid())
+  contratoId String
+  title String
+  description String? @db.Text
+  category String @default("GERAL")
+  kind String @default("INDICADOR")
+  unit String?
+  baselineValue Float?
+  targetValue Float?
+  direction String?
+  source String @default("MANUAL")
+  sourceAccount String?
+  periodStart String?
+  periodEnd String?
+  dueDate DateTime?
+  ownerId String?
+  status String @default("ATIVA")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Restrict)
+  owner User? @relation("ContractGoalOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  measurements ContractGoalMeasurement[]
+  actions ContractGoalAction[]
+  projectGoals Goal[]
+  @@index([contratoId, status])
+}
+
+model ContractGoalMeasurement {
+  id String @id @default(cuid())
+  goalId String
+  value Float
+  measuredAt DateTime @default(now())
+  period String?
+  note String? @db.Text
+  createdById String
+  createdAt DateTime @default(now())
+  goal ContractGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  createdBy User @relation("ContractGoalMeasurementAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  @@index([goalId, measuredAt])
+}
+
+model ContractGoalAction {
+  id String @id @default(cuid())
+  goalId String
+  title String
+  description String? @db.Text
+  ownerId String?
+  dueDate DateTime?
+  status String @default("A_FAZER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  goal ContractGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  owner User? @relation("ContractGoalActionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  @@index([goalId, status])
+  @@index([ownerId, dueDate])
 }
 
 model PDI {
@@ -1593,6 +1658,7 @@ model Contrato {
   nome           String
   tipo           String    @default("CONTRATO") // CONTRATO | ADMINISTRATIVO
   status         String    @default("ATIVO") // ATIVO | ENCERRADO
+  acompanharResultados Boolean @default(true)
   cliente        String?
   numero         String?
   objeto         String?   @db.Text
@@ -1605,6 +1671,7 @@ model Contrato {
 
   demandas Demanda[]
   clientes ContratoUsuario[]
+  goals ContractGoal[]
 }
 
 // Contratante (usuario CLIENTE) que acompanha um contrato: pode registrar demandas para ele e ver o andamento do que for aberto.

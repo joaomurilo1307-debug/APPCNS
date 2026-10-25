@@ -20,7 +20,7 @@ export default function P0Page() {
     fetch("/api/contratos", { cache: "no-store" }).then(async (r) => {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) return setErro(j.error || "Não foi possível carregar os contratos.");
-      setContratos((j.contratos as Contrato[]).filter((c) => c.tipo === "CONTRATO" && c.status === "ATIVO"));
+      setContratos((j.contratos as Contrato[]).filter((c) => c.tipo === "CONTRATO"));
     });
   }, []);
 
@@ -50,7 +50,7 @@ export default function P0Page() {
               desabilitado={!contratos || filtrados.length === 0}
               gerar={() => [{
                 nome: "Situação do P0",
-                observacao: "O P0 (orçamento base) de cada contrato ativo; nenhum foi cadastrado ainda",
+                observacao: "O P0 (orçamento base) de cada contrato incluído nos resultados; nenhum foi cadastrado ainda",
                 colunas: [{ titulo: "CCU", largura: 8 }, { titulo: "Contrato", largura: 44 }, { titulo: "Cliente", largura: 30 }, { titulo: "P0", largura: 16 }],
                 linhas: filtrados.map((c) => [c.codccu, c.nome, c.cliente ?? "", "não cadastrado"]),
               }]}

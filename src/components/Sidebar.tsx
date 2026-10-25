@@ -43,7 +43,7 @@ const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: 
   // entrou em 22/10/2026 (coordenador e gerente de nucleo).
   { href: "/equipes", module: "gestao", label: "Equipes", icon: IconUsers, modulos: ["equipes"] },
   { href: "/nucleos", module: "gestao", label: "Núcleos", icon: IconUsers, modulos: ["nucleos"] },
-  { href: "/metas", module: "gestao", label: "Metas", icon: IconTarget, modulos: ["metas"] },
+  { href: "/metas", module: "comum", label: "Metas e Planos de Ação", icon: IconTarget, modulos: ["metas"] },
   { href: "/relatorios", module: "gestao", label: "Relatórios", icon: IconReport, modulos: ["relatorios"] },
   { href: "/pdi", module: "gestao", label: "PDI", icon: IconTrendingUp, modulos: ["pdi"] },
   { href: "/aprovacoes", module: "gestao", label: "Aprovações", icon: IconCheckCircle, modulos: ["aprovacoes_projetos"] },
@@ -73,6 +73,8 @@ export default function Sidebar() {
   const [modulo, setModulo] = useState<Modulo | null>(null);
   useEffect(() => {
     if (pathname === "/inicio") return setModulo(null);
+    // Metas atende contratos e projetos: conserva o contexto de quem abriu a tela.
+    if (pathname === "/metas") return setModulo((atual) => atual ?? "gestao");
     const match = baseLinks
       .filter((l) => l.module !== "comum" && pathname?.startsWith(l.href))
       .sort((a, b) => b.href.length - a.href.length)[0];

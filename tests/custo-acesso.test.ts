@@ -1,11 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aplicarSelecaoAoEscopo, escopoDeCustos, lerListaDeAcessos, limparCacheDeContratosEncerrados, montarEscopo, podeVerCcu } from "../src/lib/custos/acesso";
+import { aplicarAcompanhamentoAoEscopo, aplicarSelecaoAoEscopo, ccusForaDosResultados, escopoDeCustos, escopoDeVisao, lerListaDeAcessos, limparCacheDeAcompanhamento, montarEscopo, podeVerCcu } from "../src/lib/custos/acesso";
 
-// `encerrados` = CCUs dos contratos que o administrador encerrou; o cache de 30 s do escopo e' limpo a cada banco falso para os casos nao se misturarem
-const bancoFalso = (usuario: any, encerrados: string[] = []) => {
-  limparCacheDeContratosEncerrados();
-  return { user: { findUnique: async () => usuario }, contrato: { findMany: async () => encerrados.map((codccu) => ({ codccu })) } } as any;
+const bancoFalso = (usuario: any, fora: string[] = []) => {
+  limparCacheDeAcompanhamento();
+  return { user: { findUnique: async () => usuario }, contrato: { findMany: async () => fora.map((codccu) => ({ codccu })) } } as any;
 };
 
 test("escopo: todos, varios, um e nenhum", () => {
@@ -60,36 +59,56 @@ bruno@consominas.com.br;abc
   assert.match(r.erros[1], /não é um número/);
 });
 
-test("contratos encerrados: so' o ADMIN ve; quem ve todos, quem tem acesso liberado e quem esta na equipe deixam de ver", async () => {
+test("situacao e acompanhamento nao retiram permissoes de consulta do historico", async () => {
   const admin = await escopoDeCustos(bancoFalso(null, ["190"]), { id: "1", role: "ADMIN" });
   assert.ok(podeVerCcu(admin, "190"), "admin continua vendo o encerrado");
   const diretor = await escopoDeCustos(bancoFalso(null, ["190"]), { id: "2", role: "DIRETOR" });
-  assert.ok(!podeVerCcu(diretor, "190") && podeVerCcu(diretor, "230"), "diretor ve todos, menos o encerrado");
+  assert.ok(podeVerCcu(diretor, "190") && podeVerCcu(diretor, "230"), "diretor continua consultando o historico");
   assert.equal(diretor.tipo, "todos");
   const todosCustos = await escopoDeCustos(bancoFalso({ verTodosCustos: true, acessosCentroCusto: [], teams: [] }, ["190"]), { id: "3", role: "APROVADOR" });
-  assert.ok(!podeVerCcu(todosCustos, "190") && podeVerCcu(todosCustos, "270"));
+  assert.ok(podeVerCcu(todosCustos, "190") && podeVerCcu(todosCustos, "270"));
   const liberado = await escopoDeCustos(bancoFalso({ verTodosCustos: false, acessosCentroCusto: [{ codccu: "190", area: "AMBOS" }, { codccu: "230", area: "AMBOS" }], teams: [{ team: { codccu: "270" } }] }, ["190", "270"]), { id: "4", role: "COLABORADOR" });
-  assert.deepEqual(Array.from(liberado.ccus).sort(), ["230"], "o liberado e o da equipe, ambos encerrados, somem; fica o 230");
-  assert.equal(liberado.tipo, "um");
+  assert.deepEqual(Array.from(liberado.ccus).sort(), ["190", "230", "270"], "acessos explicitos e equipes continuam valendo");
+  assert.equal(liberado.tipo, "varios");
+  assert.ok(!podeVerCcu(liberado, "999"), "historico nao concede acesso a outro contrato");
 });
 
-test("contratos encerrados: a selecao do topo das telas nao traz o encerrado de volta", () => {
-  const e = montarEscopo(true, [], ["190"]);
+test("acompanhamento: selecao temporaria nao traz excluido de volta nem altera a ACL", () => {
+  const acl = montarEscopo(true, []);
+  const e = aplicarAcompanhamentoAoEscopo(acl, ["190"]);
   assert.ok(!podeVerCcu(aplicarSelecaoAoEscopo(e, ["190", "230"]), "190"));
   assert.ok(podeVerCcu(aplicarSelecaoAoEscopo(e, ["190", "230"]), "230"));
   assert.deepEqual(Array.from(aplicarSelecaoAoEscopo(e, ["190", "230"]).ccus), ["230"]);
   assert.equal(aplicarSelecaoAoEscopo(e, null), e, "sem selecao: o mesmo escopo");
+  assert.ok(podeVerCcu(acl, "190"), "a permissao de consulta nao foi alterada");
+  const restrito = aplicarSelecaoAoEscopo(aplicarAcompanhamentoAoEscopo(montarEscopo(false, ["190", "230"]), ["190"]), ["190", "230", "999"]);
+  assert.deepEqual([...restrito.ccus], ["230"], "selecao nao amplia permissao");
 });
 
-test("contratos encerrados: o cache de 30 s vale e e' limpo quando o administrador muda a situacao", async () => {
+test("acompanhamento: cada requisicao reflete a escolha atual sem depender do processo", async () => {
   const db1 = bancoFalso(null, []);
-  assert.equal((await escopoDeCustos(db1, { id: "2", role: "DIRETOR" })).ocultos.size, 0);
+  assert.equal((await ccusForaDosResultados(db1)).size, 0);
   let consultas = 0;
   const db2 = { user: { findUnique: async () => null }, contrato: { findMany: async () => { consultas++; return [{ codccu: "190" }]; } } } as any;
-  assert.equal((await escopoDeCustos(db2, { id: "2", role: "DIRETOR" })).ocultos.size, 0, "ainda no cache (vazio)");
-  assert.equal(consultas, 0);
-  limparCacheDeContratosEncerrados();
-  assert.equal((await escopoDeCustos(db2, { id: "2", role: "DIRETOR" })).ocultos.size, 1);
-  await escopoDeCustos(db2, { id: "2", role: "DIRETOR" });
-  assert.equal(consultas, 1, "segunda chamada usa o cache");
+  assert.equal((await ccusForaDosResultados(db2)).size, 1, "a escolha atual nao depende de um cache anterior");
+  assert.equal(consultas, 1);
+  limparCacheDeAcompanhamento();
+  assert.equal((await ccusForaDosResultados(db2)).size, 1);
+  await ccusForaDosResultados(db2);
+  assert.equal(consultas, 3, "cada chamada consulta o estado atual");
+});
+
+test("relatorios incluem encerrado acompanhado e excluem ativo nao acompanhado", async () => {
+  limparCacheDeAcompanhamento();
+  const contratos = [
+    { codccu: "1", status: "ATIVO", acompanharResultados: true },
+    { codccu: "2", status: "ENCERRADO", acompanharResultados: true },
+    { codccu: "3", status: "ATIVO", acompanharResultados: false },
+    { codccu: "4", status: "ENCERRADO", acompanharResultados: false },
+  ];
+  const db = { contrato: { findMany: async ({ where }: any) => contratos.filter((c) => c.acompanharResultados === where.acompanharResultados) } } as any;
+  const relatorio = await escopoDeVisao(montarEscopo(true, []), { ignorarSelecao: true }, db);
+  assert.deepEqual(contratos.filter((c) => podeVerCcu(relatorio, c.codccu)).map((c) => c.codccu), ["1", "2"]);
+  const historico = await escopoDeVisao(montarEscopo(false, ["2", "3"]), { incluirForaDosResultados: true, ignorarSelecao: true }, db);
+  assert.deepEqual(contratos.filter((c) => podeVerCcu(historico, c.codccu)).map((c) => c.codccu), ["2", "3"]);
 });

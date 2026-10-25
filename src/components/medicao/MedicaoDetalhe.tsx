@@ -63,7 +63,7 @@ const Titulo = ({ children, sub }: { children: React.ReactNode; sub?: string }) 
   </header>
 );
 
-export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
+export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: string; embutido?: boolean }) {
   const [dados, setDados] = useState<Resposta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState<{ de: string; ate: string } | null>(null);
@@ -163,8 +163,8 @@ export default function MedicaoDetalhe({ numCtr }: { numCtr: string }) {
       {/* ---------------- cabecalho */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <nav className="text-[13px] text-gray-500"><Link href="/medicao" className="font-medium text-brand hover:text-brand-dark">Receita e Medição</Link> <span className="text-gray-300">/</span> {d.contrato.ccuNome ?? d.contrato.numOfi}</nav>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-gray-900">{d.contrato.ccuNome ?? d.contrato.numOfi}</h1>
+          {!embutido && <><nav className="text-[13px] text-gray-500"><Link href="/medicao" className="font-medium text-brand hover:text-brand-dark">Receita e Medição</Link> <span className="text-gray-300">/</span> {d.contrato.ccuNome ?? d.contrato.numOfi}</nav>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-gray-900">{d.contrato.ccuNome ?? d.contrato.numOfi}</h1></>}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             {d.contrato.codccu && <span className="rounded-md bg-gray-100 px-2 py-1 font-medium text-gray-700">CCU {d.contrato.codccu}</span>}
             <span className="rounded-md bg-gray-100 px-2 py-1 text-gray-600">Senior: {d.contrato.numOfi} · nº {d.contrato.numCtr}</span>
