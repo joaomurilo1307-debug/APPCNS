@@ -59,6 +59,7 @@ export default function PainelMetasContrato({ codccu, modo = "metas", goalId, on
     finally { setCarregando(false); }
   }, [codccu]);
   useEffect(() => { void carregar(); }, [carregar]);
+  useEffect(() => { setAbertaId(null); }, [filtro, categoria, responsavel, situacao, tipoFiltro, metasArquivadas]);
 
   async function carregarPessoas() {
     if (pessoas.length) return;
@@ -135,10 +136,10 @@ export default function PainelMetasContrato({ codccu, modo = "metas", goalId, on
       <input aria-label="Buscar metas e ações" value={pesquisa} onChange={(e) => { setPesquisa(e.target.value); setAbertaId(null); }} placeholder="Buscar meta, ação ou contrato…" className={`${campo} min-w-52 flex-1`} />
       {!codccu && <select aria-label="Filtrar contrato" value={filtro} onChange={(e) => setFiltro(e.target.value)} className={campo}><option value="">Todos os contratos acompanhados</option>{contratos.map((c) => <option key={c.id} value={c.codccu}>CCU {c.codccu} · {c.nome}</option>)}</select>}
       <select aria-label="Filtrar categoria" value={categoria} onChange={(e) => setCategoria(e.target.value)} className={campo}><option value="">Todas as categorias</option>{Object.entries(CATEGORIAS).map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}</select>
-      <select aria-label="Filtrar responsável" value={responsavel} onChange={(e) => setResponsavel(e.target.value)} className={campo}><option value="">Todos os responsáveis</option>{responsaveis.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+      <select aria-label="Filtrar pessoa envolvida" value={responsavel} onChange={(e) => setResponsavel(e.target.value)} className={campo}><option value="">Todas as pessoas envolvidas</option>{responsaveis.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
       <select aria-label="Filtrar tipo de iniciativa" value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)} className={campo}><option value="">Metas e planos</option><option value="INDICADOR">Com indicador</option><option value="PLANO">Planos livres</option></select>
       <select aria-label="Filtrar situação da iniciativa" value={situacao} onChange={(e) => setSituacao(e.target.value)} className={campo}><option value="">Todas as situações</option>{Object.entries(STATUS_META).filter(([id]) => id !== "ARQUIVADA" || metasArquivadas).map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}</select>
-      <label className="flex items-center gap-2 text-sm text-gray-600"><input type="checkbox" checked={metasArquivadas} onChange={(e) => setMetasArquivadas(e.target.checked)} />Incluir arquivadas</label>
+      <label className="flex items-center gap-2 text-sm text-gray-600"><input type="checkbox" checked={metasArquivadas} onChange={(e) => { setMetasArquivadas(e.target.checked); if (!e.target.checked && situacao === "ARQUIVADA") setSituacao(""); }} />Incluir arquivadas</label>
       <button onClick={() => void carregar()} disabled={carregando} className={`${secundario} ml-auto`}>Recarregar</button>
       {(pesquisa || filtro || categoria || responsavel || situacao || tipoFiltro || foco !== "todas") && <button onClick={limparFiltros} className="text-xs font-medium text-teal-700 hover:underline">Limpar filtros</button>}
     </div>

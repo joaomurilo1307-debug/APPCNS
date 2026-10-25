@@ -11,6 +11,7 @@ import BotaoExcel from "@/components/BotaoExcel";
 import type { AbaExcel } from "@/lib/exportarExcel";
 import SeletorPeriodo, { atalhosDePeriodo } from "@/components/contratos/SeletorPeriodo";
 import { somaMes } from "@/lib/medicao/competencia";
+import { normalizarPeriodoConsolidado } from "@/lib/medicao/consolidado";
 import FaturamentoGeral from "./FaturamentoGeral";
 
 type Contrato = {
@@ -63,13 +64,28 @@ export default function MedicaoLista() {
   const [incluirSem, setIncluirSem] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
   const [periodo, setPeriodo] = useState<{ de: string; ate: string } | null>(null);
+  const [urlPronta, setUrlPronta] = useState(false);
   const requisicao = useRef(0);
 
   useEffect(() => {
-    const lerAba = () => setAba(new URLSearchParams(window.location.search).get("aba") === "contratos" ? "contratos" : "geral");
-    lerAba();
-    window.addEventListener("popstate", lerAba);
-    return () => window.removeEventListener("popstate", lerAba);
+    const lerSelecao = () => {
+      const url = new URL(window.location.href);
+      setAba(url.searchParams.get("aba") === "contratos" ? "contratos" : "geral");
+      if (url.searchParams.has("de") || url.searchParams.has("ate")) {
+        const mesAtualBR = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+        const proximo = normalizarPeriodoConsolidado(url.searchParams.get("de"), url.searchParams.get("ate"), mesAtualBR);
+        setPeriodo((atual) => atual?.de === proximo.de && atual.ate === proximo.ate ? atual : proximo);
+        url.searchParams.set("de", proximo.de);
+        url.searchParams.set("ate", proximo.ate);
+        window.history.replaceState(window.history.state, "", url);
+      } else {
+        setPeriodo(null);
+      }
+      setUrlPronta(true);
+    };
+    lerSelecao();
+    window.addEventListener("popstate", lerSelecao);
+    return () => window.removeEventListener("popstate", lerSelecao);
   }, []);
 
   function mudarAba(proxima: "geral" | "contratos") {
@@ -96,7 +112,7 @@ export default function MedicaoLista() {
     }
   }, [incluirSem, periodo]);
 
-  useEffect(() => { void carregar(); }, [carregar]);
+  useEffect(() => { if (urlPronta) void carregar(); }, [carregar, urlPronta]);
   useEffect(() => {
     if (!dados?.atualizacao.emCurso && !atualizando) return;
     const t = setInterval(async () => { const j = await carregar(); if (j && !j.atualizacao.emCurso) setAtualizando(false); }, 5000);
@@ -172,10 +188,12 @@ export default function MedicaoLista() {
           <FiltroContratos />
         </header>
         <SeletorPeriodo de={per.de} ate={per.ate} mesAtual={dados.mesAtual} modo="passado" atalhos={atalhos} onMudar={(de, ate) => {
-          ate = ate > dados.mesAtual ? dados.mesAtual : ate;
-          de = de > ate ? ate : de;
-          if (somaMes(de, 47) < ate) de = somaMes(ate, -47);
-          setPeriodo({ de, ate });
+          const proximo = normalizarPeriodoConsolidado(de, ate, dados.mesAtual);
+          setPeriodo(proximo);
+          const url = new URL(window.location.href);
+          url.searchParams.set("de", proximo.de);
+          url.searchParams.set("ate", proximo.ate);
+          window.history.replaceState(window.history.state, "", url);
         }} />
         <p className="text-xs text-gray-500">A seleção de contratos e o período valem para as duas abas. O período recorta o acompanhamento mensal; contratado, medido acumulado e saldo continuam considerando todo o contrato.</p>
         {dados.semMedicao > 0 && <label className="flex items-center gap-2 text-[13px] text-gray-600"><input type="checkbox" checked={incluirSem} onChange={(e) => setIncluirSem(e.target.checked)} /> Incluir os {dados.semMedicao} contratos com linhas, ainda sem medição</label>}
