@@ -7,6 +7,7 @@ import Avatar from "@/components/Avatar";
 import { eventTypeLabel } from "@/lib/calendarColors";
 import BotaoExcel from "@/components/BotaoExcel";
 import { dentroDoPeriodo, ROTULO_PERIODO, type PeriodoOc } from "@/lib/filtroOc";
+import { useAtualizarAoVoltar } from "@/lib/atualizarAoVoltar";
 
 type Project = {
   id: string;
@@ -90,9 +91,36 @@ export default function AprovacoesPage() {
   const ocsNoPeriodo = useMemo(() => ocsSenior.filter((o) => dentroDoPeriodo(o.dataEmissao, periodoOc, deOc, ateOc)), [ocsSenior, periodoOc, deOc, ateOc]);
   const ocsOcultas = ocsSenior.length - ocsNoPeriodo.length;
 
+  // a lista vem do Senior (so' leitura): quando a sincronizacao foi feita, se falta o vinculo e o botao "Atualizar agora"
+  const [ocSincEm, setOcSincEm] = useState<string | null>(null);
+  const [ocSemVinculo, setOcSemVinculo] = useState(false);
+  const [ocSincronizando, setOcSincronizando] = useState(false);
+  const [ocMsgSinc, setOcMsgSinc] = useState<string | null>(null);
+
   async function loadOcsSenior() {
-    const res = await fetch("/api/senior/aprovacoes/minhas");
-    if (res.ok) setOcsSenior((await res.json()).ocs ?? []);
+    const res = await fetch("/api/senior/aprovacoes/minhas", { cache: "no-store" });
+    if (!res.ok) return;
+    const d = await res.json();
+    setOcsSenior(d.ocs ?? []);
+    setOcSincEm(d.sincronizadoEm ?? null);
+    setOcSemVinculo(!!d.semVinculoSenior);
+  }
+  // quem aprova no Senior volta para esta aba e a lista ja acompanha
+  useAtualizarAoVoltar(loadOcsSenior);
+
+  // mesmo "Atualizar agora" da tela Aprovacoes (OC Senior): antecipa a proxima sincronizacao (que roda sozinha de 10 em 10 minutos)
+  function sincronizarOcAgora() {
+    setOcSincronizando(true);
+    setOcMsgSinc(null);
+    fetch("/api/senior/aprovacoes/sincronizar-agora", { method: "POST" })
+      .then(async (res) => {
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || "Erro ao disparar a sincronização");
+        setOcMsgSinc("Sincronização disparada, atualizando em instantes…");
+        setTimeout(() => loadOcsSenior().then(() => setOcMsgSinc("Lista atualizada com o retrato mais recente do Senior.")), 15000);
+      })
+      .catch((e) => setOcMsgSinc(e.message))
+      .finally(() => setOcSincronizando(false));
   }
 
   async function loadProjects() {
@@ -208,6 +236,12 @@ export default function AprovacoesPage() {
 
       <ContestacoesDeCusto />
 
+      {ocSemVinculo && ocsSenior.length === 0 && (
+        <p className="mb-8 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+          Para ver aqui as ordens de compra do Senior que aguardam você, o seu usuário precisa estar vinculado a um usuário do Senior. Peça ao administrador para fazer o vínculo (Usuários › Acesso).
+        </p>
+      )}
+
       {ocsSenior.length > 0 && (
         <div className="mb-8">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -225,6 +259,14 @@ export default function AprovacoesPage() {
                 rodape: ["", "TOTAL", "", "", "", "", ocsNoPeriodo.reduce((s, o) => s + o.valor, 0)],
               }]}
             />
+          </div>
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+            <span>Só visualização: aprove no Senior. Esta lista acompanha sozinha, a partir da sincronização com o Senior.</span>
+            {ocSincEm && <span title="Atualiza sozinho a cada 10 minutos">Sincronizado em {new Date(ocSincEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}.</span>}
+            <button type="button" onClick={sincronizarOcAgora} disabled={ocSincronizando} className="rounded-md border border-gray-200 px-2 py-0.5 font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+              {ocSincronizando ? "Sincronizando…" : "↻ Atualizar agora"}
+            </button>
+            {ocMsgSinc && <span className="text-gray-500">{ocMsgSinc}</span>}
           </div>
           <div className="mb-3 flex flex-wrap items-end gap-3 text-xs text-gray-500">
             <label>
