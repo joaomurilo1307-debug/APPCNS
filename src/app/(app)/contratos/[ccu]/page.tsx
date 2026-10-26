@@ -5,17 +5,20 @@
 
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import CustoPorContratoView from "@/components/custos/CustoPorContratoView";
-import { AbaP0, AbaPessoal, AbaPrevisao, AbaVisaoGeral } from "@/components/contratos/AbasContrato";
+import { AbaP0, AbaPessoal, AbaPrevisao, AbaFichaContrato } from "@/components/contratos/AbasContrato";
 import FichaEditor, { type FichaContrato } from "@/components/contratos/FichaEditor";
 import BotaoDossie from "@/components/contratos/BotaoDossie";
 import { AbaMedicaoDoContrato, useMedicaoDoContrato } from "@/components/contratos/MedicaoDoContrato";
 import ControleAcompanhamentoContrato from "@/components/contratos/ControleAcompanhamentoContrato";
 import PainelMetasContrato from "@/components/contractGoals/PainelMetasContrato";
+import GraficosDoContrato from "@/components/contratos/GraficosDoContrato";
+import { normalizarPeriodoConsolidado } from "@/lib/medicao/consolidado";
 
 const ABAS = [
   { id: "visao", nome: "Visão geral" },
+  { id: "ficha", nome: "Ficha e projetos" },
   { id: "metas", nome: "Metas" },
   { id: "acoes", nome: "Planos de Ação" },
   { id: "medicao", nome: "Receita e Medição" },
@@ -39,6 +42,15 @@ function Pagina() {
   const [erro, setErro] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const medicao = useMedicaoDoContrato(ccu);
+  const mesAtual = medicao.estado === "ok" ? medicao.dados.mesAtual : new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+  const de = params.get("de"), ate = params.get("ate");
+  const periodo = useMemo(() => normalizarPeriodoConsolidado(de, ate, mesAtual), [de, ate, mesAtual]);
+  const mudarPeriodo = useCallback((de: string, ate: string) => {
+    const n = new URLSearchParams(params.toString());
+    const p = normalizarPeriodoConsolidado(de, ate, mesAtual);
+    n.set("de", p.de); n.set("ate", p.ate);
+    router.replace(`${pathname}?${n}`, { scroll: false });
+  }, [mesAtual, params, pathname, router]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -99,10 +111,11 @@ function Pagina() {
         ))}
       </nav>
 
-      {aba === "visao" && <AbaVisaoGeral ficha={ficha} irParaAba={irParaAba} medicao={medicao} />}
+      {aba === "visao" && <GraficosDoContrato key={ficha.codccu} codccu={ficha.codccu} medicao={medicao} periodo={periodo} onPeriodo={mudarPeriodo} />}
+      {aba === "ficha" && <AbaFichaContrato ficha={ficha} irParaAba={irParaAba} />}
       {aba === "metas" && <PainelMetasContrato key={`metas:${ficha.codccu}`} codccu={ficha.codccu} modo="metas" />}
       {aba === "acoes" && <PainelMetasContrato key={`acoes:${ficha.codccu}`} codccu={ficha.codccu} modo="acoes" />}
-      {aba === "medicao" && <AbaMedicaoDoContrato key={ficha.codccu} estado={medicao} />}
+      {aba === "medicao" && <AbaMedicaoDoContrato key={ficha.codccu} estado={medicao} periodo={periodo} onPeriodo={mudarPeriodo} />}
       {aba === "custos" && <CustoPorContratoView ccuFixo={ficha.codccu} />}
       {aba === "pessoal" && <AbaPessoal />}
       {aba === "p0" && <AbaP0 />}

@@ -1,15 +1,14 @@
 "use client";
 
-// Abas do contrato alem de Custos (que e' a propria tela de custos por centro de custo, sem alteracao): Visao geral, Custo de pessoal, P0 e Previsao.
+// A Visao geral recebe apenas as curvas; ficha e projetos ficam em uma secao propria.
 // Por decisao do Joao (19/10/2026): Custo de pessoal e P0 sao ESTRUTURA/BASE (ainda sem dados; o P0 so' sera feito depois que todos os contratos tiverem o seu).
-// Previsao ja le o Senior (titulos em aberto por centro de custo), somente leitura. Visao geral mostra so' a ficha cadastral e a situacao do acompanhamento.
+// Previsao le os titulos em aberto do Senior, somente leitura.
 
 import ClientesDoContrato from "./ClientesDoContrato";
 import ProjetosDoContrato from "./ProjetosDoContrato";
 import PrevisaoMensal from "./PrevisaoMensal";
 import { moeda } from "@/lib/custos/formato";
 import type { FichaContrato } from "./FichaEditor";
-import { ResumoMedicaoDoContrato, type EstadoMedicaoContrato } from "./MedicaoDoContrato";
 
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : null);
 
@@ -32,8 +31,8 @@ function Vazio({ titulo, texto, extra }: { titulo: string; texto: string; extra?
   );
 }
 
-// ---------------------------------------------------------------- Visao geral (ficha + situacao, sem numeros de custo)
-export function AbaVisaoGeral({ ficha, irParaAba, medicao }: { ficha: FichaContrato; irParaAba: (a: string) => void; medicao: EstadoMedicaoContrato }) {
+// ---------------------------------------------------------------- Ficha e projetos (cadastro e vinculos preservados)
+export function AbaFichaContrato({ ficha, irParaAba }: { ficha: FichaContrato; irParaAba: (a: string) => void }) {
   const fichaCompleta = !!(ficha.cliente && ficha.numero && ficha.vigenciaFim && ficha.valor);
   const itens: [string, boolean | null, string | null][] = [
     ["Custos do Senior (aba Custos)", true, "custos"],
@@ -67,7 +66,6 @@ export function AbaVisaoGeral({ ficha, irParaAba, medicao }: { ficha: FichaContr
           ))}
         </ul>
       </Cartao>
-      <ResumoMedicaoDoContrato key={ficha.codccu} estado={medicao} abrirDetalhe={() => irParaAba("medicao")} />
       <ProjetosDoContrato codccu={ficha.codccu} />
       <ClientesDoContrato codccu={ficha.codccu} />
     </div>
