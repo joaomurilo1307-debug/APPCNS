@@ -185,7 +185,7 @@ export default function MedicaoLista() {
       <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-label="Filtros gerais de receita e medição">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-[15px] font-semibold text-gray-900">Contratos e período</h2>
-          <FiltroContratos />
+          <FiltroContratos origemMedicao />
         </header>
         <SeletorPeriodo de={per.de} ate={per.ate} mesAtual={dados.mesAtual} modo="passado" atalhos={atalhos} onMudar={(de, ate) => {
           const proximo = normalizarPeriodoConsolidado(de, ate, dados.mesAtual);
