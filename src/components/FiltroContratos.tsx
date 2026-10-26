@@ -14,7 +14,7 @@ type Centro = { ccu: string; nome: string; area: Area };
 const AREAS: ReadonlyArray<{ valor: Area; rotulo: string }> = [...AREAS_BASE, { valor: "SEM_AREA", rotulo: "Outros centros de custo" }];
 const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export default function FiltroContratos({ className = "", obrigacoesFinanceiras = false, incluirForaDosResultados = false }: { className?: string; obrigacoesFinanceiras?: boolean; incluirForaDosResultados?: boolean }) {
+export default function FiltroContratos({ className = "", obrigacoesFinanceiras = false, incluirForaDosResultados = false, origemMedicao = false }: { className?: string; obrigacoesFinanceiras?: boolean; incluirForaDosResultados?: boolean; origemMedicao?: boolean }) {
   const [opcoes, setOpcoes] = useState<Centro[] | null>(obrigacoesFinanceiras ? [...CENTROS_FINANCEIROS] : null);
   const [erro, setErro] = useState("");
   const [tentativa, setTentativa] = useState(0);
@@ -36,13 +36,13 @@ export default function FiltroContratos({ className = "", obrigacoesFinanceiras 
     if (obrigacoesFinanceiras) return;
     const controller = new AbortController();
     setErro("");
-    fetch(incluirForaDosResultados ? "/api/contratos?acompanhamento=todos&ignorarSelecao=1" : "/api/contratos?opcoes=1", { cache: "no-store", signal: controller.signal }).then(async (r) => {
+    fetch(origemMedicao ? "/api/medicao?opcoes=1" : incluirForaDosResultados ? "/api/contratos?acompanhamento=todos&ignorarSelecao=1" : "/api/contratos?opcoes=1", { cache: "no-store", signal: controller.signal }).then(async (r) => {
       const j = await r.json();
       if (!r.ok || !Array.isArray(j.contratos)) throw new Error("Falha ao carregar os contratos.");
       setOpcoes(j.contratos.map((c: { codccu: string; nome: string }) => ({ ccu: c.codccu, nome: c.nome, area: areaDoCentro(c.codccu) ?? "SEM_AREA" })));
     }).catch((e) => { if (e.name !== "AbortError") setErro("Não foi possível carregar os contratos."); });
     return () => controller.abort();
-  }, [obrigacoesFinanceiras, incluirForaDosResultados, tentativa]);
+  }, [obrigacoesFinanceiras, incluirForaDosResultados, origemMedicao, tentativa]);
   useEffect(() => {
     if (!aberto) return;
     const fora = (e: MouseEvent) => { if (raiz.current && !raiz.current.contains(e.target as Node)) setAberto(false); };

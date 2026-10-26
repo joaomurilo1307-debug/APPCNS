@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, escopoDeVisao, podeVerCcu } from "@/lib/custos/acesso";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 import { hojeBR } from "@/lib/financeiro/alertas";
 import { nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
 import { dispararMedicao, estadoMedicao } from "@/lib/medicao/sincronizar";
@@ -15,11 +16,30 @@ import { normalizarPeriodoConsolidado } from "@/lib/medicao/consolidado";
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  const params = new URL(req.url).searchParams;
+  if (params.get("opcoes") === "1") {
+    const negado = await negarSemModulo(session.user as any, "medicao");
+    if (negado) return negado;
+    const visao = await escopoDeVisao(await escopoDeCustos(prisma, session.user as any), { ignorarSelecao: true }, prisma);
+    // MedicaoContrato ja' contem somente referencias com linhas contratadas no Senior.
+    // As opcoes usam a copia local e ignoram o filtro temporario, sem iniciar sincronizacao.
+    const centros = new Map<string, string>();
+    const referencias = await prisma.medicaoContrato.findMany({
+      where: { codccu: { not: null } }, select: { codccu: true, numOfi: true }, orderBy: { numOfi: "asc" },
+    });
+    for (const c of referencias) {
+      if (!c.codccu || !podeVerCcu(visao, c.codccu)) continue;
+      if (!centros.get(c.codccu)) centros.set(c.codccu, c.numOfi.trim());
+    }
+    const nomes = await nomesDosCentros(prisma, [...centros.keys()]);
+    const contratos = [...centros].map(([codccu, numOfi]) => ({ codccu, nome: nomes.get(codccu)?.trim() || numOfi || `CC ${codccu}` }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    return NextResponse.json({ contratos }, { headers: { "Cache-Control": "private, no-store" } });
+  }
   const escopo = await escopoDeCustos(prisma, session.user as any);
   const visao = await escopoDeVisao(escopo); // filtro de area do topo das telas: so' estreita a lista
   const hoje = hojeBR();
   const mesAtual = hoje.slice(0, 7);
-  const params = new URL(req.url).searchParams;
   const { de, ate } = normalizarPeriodoConsolidado(params.get("de"), params.get("ate"), mesAtual);
 
   const estado = await estadoMedicao();

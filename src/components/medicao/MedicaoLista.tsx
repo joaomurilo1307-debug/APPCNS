@@ -11,6 +11,7 @@ import BotaoExcel from "@/components/BotaoExcel";
 import type { AbaExcel } from "@/lib/exportarExcel";
 import SeletorPeriodo, { atalhosDePeriodo } from "@/components/contratos/SeletorPeriodo";
 import { somaMes } from "@/lib/medicao/competencia";
+import { normalizarPeriodoConsolidado } from "@/lib/medicao/consolidado";
 import FaturamentoGeral from "./FaturamentoGeral";
 
 type Contrato = {
@@ -54,6 +55,7 @@ function Consumo({ valor, fisico }: { valor: number; fisico: number }) {
 }
 
 export default function MedicaoLista() {
+  const [aba, setAba] = useState<"geral" | "contratos">("geral");
   const [dados, setDados] = useState<Resposta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -62,7 +64,36 @@ export default function MedicaoLista() {
   const [incluirSem, setIncluirSem] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
   const [periodo, setPeriodo] = useState<{ de: string; ate: string } | null>(null);
+  const [urlPronta, setUrlPronta] = useState(false);
   const requisicao = useRef(0);
+
+  useEffect(() => {
+    const lerSelecao = () => {
+      const url = new URL(window.location.href);
+      setAba(url.searchParams.get("aba") === "contratos" ? "contratos" : "geral");
+      if (url.searchParams.has("de") || url.searchParams.has("ate")) {
+        const mesAtualBR = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+        const proximo = normalizarPeriodoConsolidado(url.searchParams.get("de"), url.searchParams.get("ate"), mesAtualBR);
+        setPeriodo((atual) => atual?.de === proximo.de && atual.ate === proximo.ate ? atual : proximo);
+        url.searchParams.set("de", proximo.de);
+        url.searchParams.set("ate", proximo.ate);
+        window.history.replaceState(window.history.state, "", url);
+      } else {
+        setPeriodo(null);
+      }
+      setUrlPronta(true);
+    };
+    lerSelecao();
+    window.addEventListener("popstate", lerSelecao);
+    return () => window.removeEventListener("popstate", lerSelecao);
+  }, []);
+
+  function mudarAba(proxima: "geral" | "contratos") {
+    setAba(proxima);
+    const url = new URL(window.location.href);
+    if (proxima === "geral") url.searchParams.delete("aba"); else url.searchParams.set("aba", proxima);
+    window.history.replaceState(window.history.state, "", url);
+  }
 
   const carregar = useCallback(async () => {
     const id = ++requisicao.current;
@@ -81,7 +112,7 @@ export default function MedicaoLista() {
     }
   }, [incluirSem, periodo]);
 
-  useEffect(() => { void carregar(); }, [carregar]);
+  useEffect(() => { if (urlPronta) void carregar(); }, [carregar, urlPronta]);
   useEffect(() => {
     if (!dados?.atualizacao.emCurso && !atualizando) return;
     const t = setInterval(async () => { const j = await carregar(); if (j && !j.atualizacao.emCurso) setAtualizando(false); }, 5000);
@@ -151,22 +182,32 @@ export default function MedicaoLista() {
         <button type="button" onClick={atualizar} disabled={!!em || atualizando} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{em || atualizando ? "Atualizando…" : "Atualizar do Senior"}</button>
       </div>
 
-      <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-label="Período da análise geral">
-        <h2 className="text-[15px] font-semibold text-gray-900">Período da análise</h2>
+      <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-label="Filtros gerais de receita e medição">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-[15px] font-semibold text-gray-900">Contratos e período</h2>
+          <FiltroContratos origemMedicao />
+        </header>
         <SeletorPeriodo de={per.de} ate={per.ate} mesAtual={dados.mesAtual} modo="passado" atalhos={atalhos} onMudar={(de, ate) => {
-          ate = ate > dados.mesAtual ? dados.mesAtual : ate;
-          de = de > ate ? ate : de;
-          if (somaMes(de, 47) < ate) de = somaMes(ate, -47);
-          setPeriodo({ de, ate });
+          const proximo = normalizarPeriodoConsolidado(de, ate, dados.mesAtual);
+          setPeriodo(proximo);
+          const url = new URL(window.location.href);
+          url.searchParams.set("de", proximo.de);
+          url.searchParams.set("ate", proximo.ate);
+          window.history.replaceState(window.history.state, "", url);
         }} />
-        <p className="text-xs text-gray-500">O período vale para o acompanhamento mensal. Contratado, medido acumulado e saldo continuam considerando todo o contrato.</p>
+        <p className="text-xs text-gray-500">A seleção de contratos e o período valem para as duas abas. O período recorta o acompanhamento mensal; contratado, medido acumulado e saldo continuam considerando todo o contrato.</p>
+        {dados.semMedicao > 0 && <label className="flex items-center gap-2 text-[13px] text-gray-600"><input type="checkbox" checked={incluirSem} onChange={(e) => setIncluirSem(e.target.checked)} /> Incluir os {dados.semMedicao} contratos com linhas, ainda sem medição</label>}
       </section>
+      <nav className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-gray-200" aria-label="Visões de receita e medição">
+        {([['geral', 'Geral'], ['contratos', 'Por contrato']] as const).map(([id, nome]) => <button key={id} type="button" onClick={() => mudarAba(id)} aria-pressed={aba === id} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-[14px] font-medium transition ${aba === id ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-800"}`}>{nome}</button>)}
+      </nav>
       {erro && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{erro}</p>}
 
       {dados.contratos.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 px-5 py-10 text-center text-sm text-gray-600">{em ? "A primeira leitura da medição está em andamento. Esta tela se atualiza sozinha." : "Nenhum contrato com medição nos centros de custo que você acompanha ainda."}</div>
       ) : (
         <>
+          <div className="space-y-5" aria-label="Visão geral da medição" hidden={aba !== "geral"}>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { t: "Contratos com medição", v: String(dados.contratos.length), s: dados.semMedicao > 0 ? `mais ${dados.semMedicao} com linhas, ainda sem medição` : "com linhas contratadas no Senior" },
@@ -183,11 +224,13 @@ export default function MedicaoLista() {
           </div>
 
           <FaturamentoGeral de={per.de} ate={per.ate} mesAtual={dados.mesAtual} atualizadoEm={dados.atualizacao.ultimaOk} />
+          </div>
 
-          <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-busy={!periodoCarregado && !erro}>
+          <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-label="Medição por contrato" aria-busy={!periodoCarregado && !erro} hidden={aba !== "contratos"}>
+            <h2 className="text-[15px] font-semibold text-gray-900">Medição por contrato</h2>
+            <p className="mb-3 mt-1 text-xs text-gray-500">A busca, a ordem e “Só com saldo” filtram apenas esta tabela e sua exportação. Os indicadores e o gráfico da aba Geral seguem a seleção de contratos no topo.</p>
             <header className="mb-3 flex flex-wrap items-center gap-2">
               <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar contrato, centro de custo ou número" className="min-w-[260px] flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand" aria-label="Buscar contrato" />
-              <FiltroContratos />
               <BotaoExcel arquivo="receita-e-medicao" gerar={abasExcel} desabilitado={lista.length === 0 || !periodoCarregado} />
               <select value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm" aria-label="Ordenar">
                 <option value="saldo">Maior saldo primeiro</option>
@@ -198,7 +241,6 @@ export default function MedicaoLista() {
                 <option value="nome">Nome</option>
               </select>
               <label className="flex items-center gap-2 text-[13px] text-gray-600"><input type="checkbox" checked={soComSaldo} onChange={(e) => setSoComSaldo(e.target.checked)} /> Só com saldo</label>
-              {dados.semMedicao > 0 && <label className="flex items-center gap-2 text-[13px] text-gray-600"><input type="checkbox" checked={incluirSem} onChange={(e) => setIncluirSem(e.target.checked)} /> Incluir os {dados.semMedicao} sem medição</label>}
             </header>
             <div className="overflow-x-auto rounded-xl border border-gray-100">
               <table className="w-full min-w-[1080px] text-[13.5px] tabular-nums">
