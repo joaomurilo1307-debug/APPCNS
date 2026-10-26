@@ -63,10 +63,11 @@ const Titulo = ({ children, sub }: { children: React.ReactNode; sub?: string }) 
   </header>
 );
 
-export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: string; embutido?: boolean }) {
-  const [dados, setDados] = useState<Resposta | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [periodo, setPeriodo] = useState<{ de: string; ate: string } | null>(null);
+export default function MedicaoDetalhe({ numCtr, embutido = false, periodoControlado, onPeriodoMudar }: { numCtr: string; embutido?: boolean; periodoControlado?: { de: string; ate: string }; onPeriodoMudar?: (de: string, ate: string) => void }) {
+  const [resposta, setResposta] = useState<{ numCtr: string; chave: string; dados: Resposta } | null>(null);
+  const [falha, setFalha] = useState<{ chave: string; mensagem: string } | null>(null);
+  const [periodoLocal, setPeriodo] = useState<{ de: string; ate: string } | null>(null);
+  const periodo = periodoControlado ?? periodoLocal;
   const [modo, setModo] = useState<Modo>("ambos");
   const [busca, setBusca] = useState("");
   const [soComMedicao, setSoComMedicao] = useState(false);
@@ -74,7 +75,6 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
   const [sel, setSel] = useState<{ seq: number | null; mes: string | null } | null>(null);
   const [pagina, setPagina] = useState(1);
   const [verTodasLinhas, setVerTodasLinhas] = useState(false);
-  const ultima = useRef("");
   const detalheRef = useRef<HTMLElement | null>(null);
 
   const consulta = useCallback(() => {
@@ -84,17 +84,31 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
     if (pagina > 1) p.set("pagina", String(pagina));
     return p.toString();
   }, [periodo, sel, pagina]);
+  const chaveConsulta = `${numCtr}?${consulta()}`;
+  const dados = resposta?.numCtr === numCtr ? resposta.dados : null;
+  const erro = falha?.chave === chaveConsulta ? falha.mensagem : null;
+  const dadosCarregados = resposta?.chave === chaveConsulta && !erro
+    && (!periodo || (dados?.periodo.de === periodo.de && dados?.periodo.ate === periodo.ate));
 
   useEffect(() => {
     const qs = consulta();
-    ultima.current = qs;
-    fetch(`/api/medicao/${encodeURIComponent(numCtr)}${qs ? `?${qs}` : ""}`, { cache: "no-store" })
-      .then(async (r) => { const j = await r.json().catch(() => ({})); if (ultima.current !== qs) return; if (!r.ok) throw new Error(j.error || "Não foi possível carregar a medição."); setDados(j); setErro(null); if (!periodo) setPeriodo(j.periodo); })
-      .catch((e) => { if (ultima.current === qs) setErro(e.message); });
+    const chave = `${numCtr}?${qs}`;
+    const controller = new AbortController();
+    fetch(`/api/medicao/${encodeURIComponent(numCtr)}${qs ? `?${qs}` : ""}`, { cache: "no-store", signal: controller.signal })
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (controller.signal.aborted) return;
+        if (!r.ok) throw new Error(j.error || "Não foi possível carregar a medição.");
+        setResposta({ numCtr, chave, dados: j });
+        setFalha(null);
+        if (!periodo) setPeriodo(j.periodo);
+      })
+      .catch((e) => { if (!controller.signal.aborted) setFalha({ chave, mensagem: e.message }); });
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consulta, numCtr]);
 
-  useEffect(() => { if (sel && dados?.drill) detalheRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sel?.seq, sel?.mes, dados?.drill?.qtdItens]);
+  useEffect(() => { if (dadosCarregados && sel && dados?.drill) detalheRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sel?.seq, sel?.mes, dados?.drill?.qtdItens, dadosCarregados]);
 
   const linhasVisiveis = useMemo(() => {
     if (!dados) return [];
@@ -105,12 +119,21 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
       );
   }, [dados, busca, soComMedicao, soComSaldo]);
 
-  if (erro && !dados) return <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro} <Link href="/medicao" className="ml-2 font-medium underline">Voltar para a lista</Link></div>;
+  const mudarPeriodo = (de: string, ate: string) => { setPeriodo({ de, ate }); onPeriodoMudar?.(de, ate); setSel(null); setPagina(1); };
+  const filtrosLinhas = <>
+    <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar linha" className="w-44 rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-brand" aria-label="Buscar linha" />
+    <label className="flex items-center gap-1.5"><input type="checkbox" checked={soComMedicao} onChange={(e) => setSoComMedicao(e.target.checked)} /> Só com medição no período</label>
+    <label className="flex items-center gap-1.5"><input type="checkbox" checked={soComSaldo} onChange={(e) => setSoComSaldo(e.target.checked)} /> Só com saldo</label>
+  </>;
   if (!dados) return (
-    <div className="space-y-4" aria-busy>
-      <div className="h-8 w-80 animate-pulse rounded-lg bg-gray-200" />
-      <div className="grid gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-36 animate-pulse rounded-2xl bg-gray-200/70" />)}</div>
-      <div className="h-72 animate-pulse rounded-2xl bg-gray-200/70" />
+    <div className="space-y-4" aria-busy={!erro}>
+      {periodo && <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-soft"><SeletorPeriodo de={periodo.de} ate={periodo.ate} mesAtual={new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7)} modo="passado" onMudar={mudarPeriodo} /></section>}
+      <div className="flex flex-wrap items-center gap-3 text-[13px] text-gray-600">{filtrosLinhas}</div>
+      {erro ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro} <Link href="/medicao" className="ml-2 font-medium underline">Voltar para a lista</Link></div> : <>
+        <div className="h-8 w-80 animate-pulse rounded-lg bg-gray-200" />
+        <div className="grid gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-36 animate-pulse rounded-2xl bg-gray-200/70" />)}</div>
+        <div className="h-72 animate-pulse rounded-2xl bg-gray-200/70" />
+      </>}
     </div>
   );
 
@@ -132,10 +155,12 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
 
   // Excel: as mesmas colunas do CSV com numeros de verdade; os dois % entram como fracao e saem formatados como percentual
   function abasExcel() {
+    if (!dadosCarregados) return [];
     return [abaMedicaoPorLinha(d, per)];
   }
 
   function baixarCsv() {
+    if (!dadosCarregados) return;
     const cab = ["Linha", "Unidade", "Preço unitário (R$)", "Vendido (qtd)", "Vendido (R$)", "Antes do período (R$)", ...d.meses.map((m) => `${mesLongo(m)} (R$)`), ...d.meses.map((m) => `${mesLongo(m)} (qtd)`), "Consumido (qtd)", "Consumido (R$)", "Saldo (qtd)", "Saldo (R$)", "Consumo qtd (%)", "Consumo valor (%)"];
     const linhas = d.linhas.map((l) => [csvTxt(l.descricao), csvTxt(l.unidade ?? ""), csvNum(l.precoUnit), csvNum(l.qtdContratada), csvNum(l.valorContratado), csvNum(l.antes.valor), ...d.meses.map((m) => csvNum(l.porMes[m]?.valor ?? 0)), ...d.meses.map((m) => csvNum(l.porMes[m]?.qtd ?? 0)), csvNum(l.qtdFaturada), csvNum(l.valorFaturado), csvNum(l.saldoQtd), csvNum(l.saldoValor), csvNum(l.pctQtd * 100), csvNum(l.pctValor * 100)].join(";"));
     const blob = new Blob(["﻿" + [cab.map(csvTxt).join(";"), ...linhas].join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -159,7 +184,7 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={!dadosCarregados && !erro}>
       {/* ---------------- cabecalho */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -172,13 +197,13 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
           </div>
         </div>
         <div className="flex flex-col items-end gap-1.5 text-xs text-gray-500">
-          <span>Dados do Senior de {horaBr(d.atualizadoEm)}</span>
+          {dadosCarregados && <span>Dados do Senior de {horaBr(d.atualizadoEm)}</span>}
         </div>
       </header>
 
       {/* ---------------- controles */}
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">
-        <SeletorPeriodo de={per.de} ate={per.ate} mesAtual={d.mesAtual} modo="passado" atalhos={atalhos} onMudar={(de, ate) => { setPeriodo({ de, ate }); setSel(null); setPagina(1); }} />
+        <SeletorPeriodo de={per.de} ate={per.ate} mesAtual={d.mesAtual} modo="passado" atalhos={atalhos} onMudar={mudarPeriodo} />
         <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5" role="group" aria-label="Como ver a medição">
           {([["ambos", "Valor e quantidade"], ["valor", "Valor (R$)"], ["qtd", "Quantidade"]] as const).map(([k, r]) => (
             <button key={k} type="button" onClick={() => setModo(k)} aria-pressed={modo === k} className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition ${modo === k ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-200" : "text-gray-500 hover:text-gray-800"}`}>{r}</button>
@@ -186,8 +211,13 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
         </div>
       </section>
 
+      {!dadosCarregados && <div role={erro ? "alert" : "status"} className={`rounded-xl border px-4 py-3 text-sm ${erro ? "border-red-200 bg-red-50 text-red-800" : "border-gray-200 bg-gray-50 text-gray-600"}`}>
+        {erro ?? "Carregando a medição do período selecionado…"}
+        {sel && <button type="button" onClick={() => { setSel(null); setPagina(1); }} className="ml-2 font-medium underline">Fechar detalhe dos pedidos</button>}
+      </div>}
+
       {/* ---------------- indicadores */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      {dadosCarregados && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
           { t: "Vendido (budget)", v: moeda(d.totais.contratado), s: `${d.linhas.length} linhas no contrato` },
           { t: "Medido acumulado", v: moeda(d.totais.medido), s: `${percentual(d.totais.pct, 1)} do vendido (por valor)` },
@@ -201,7 +231,7 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
             <p className="text-xs text-gray-400">{k.s}</p>
           </div>
         ))}
-      </div>
+      </div>}
 
       {/* ---------------- receita x faturamento (NF e ND do Senior) */}
       <ReceitaContrato numCtr={numCtr} de={per.de} ate={per.ate} />
@@ -211,17 +241,16 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
         <div className="flex flex-wrap items-start justify-between gap-3">
           <Titulo sub="Cada linha do contrato: preço unitário, o que foi vendido (o budget), quanto foi medido em cada mês em quantidade e em valor, o consumido acumulado, o % do budget já consumido e o saldo. Clique num mês para ver os pedidos, e no nome da linha para ver todos os dela.">Medição por linha do contrato</Titulo>
           <div className="flex flex-wrap items-center gap-2">
-            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar linha" className="w-44 rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] outline-none focus:border-brand" aria-label="Buscar linha" />
-            <button type="button" onClick={baixarCsv} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">Baixar (CSV)</button>
+            {dadosCarregados && <><button type="button" onClick={baixarCsv} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] text-gray-600 hover:bg-gray-50">Baixar (CSV)</button>
             <BotaoExcel arquivo={`medicao-${d.contrato.codccu ?? d.contrato.numCtr}-${per.de}-a-${per.ate}`} gerar={abasExcel} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[13px] font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50" />
+            </>}
           </div>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[13px] text-gray-600">
-          <label className="flex items-center gap-1.5"><input type="checkbox" checked={soComMedicao} onChange={(e) => setSoComMedicao(e.target.checked)} /> Só com medição no período</label>
-          <label className="flex items-center gap-1.5"><input type="checkbox" checked={soComSaldo} onChange={(e) => setSoComSaldo(e.target.checked)} /> Só com saldo</label>
-          <span className="ml-auto text-xs text-gray-400">{linhasVisiveis.length} de {d.linhas.length} linhas</span>
+          {filtrosLinhas}
+          {dadosCarregados && <span className="ml-auto text-xs text-gray-400">{linhasVisiveis.length} de {d.linhas.length} linhas</span>}
         </div>
-        <div className="max-h-[75vh] overflow-auto rounded-xl border border-gray-100">
+        {dadosCarregados && <div className="max-h-[75vh] overflow-auto rounded-xl border border-gray-100">
           <table className="w-full border-separate border-spacing-0 text-[12.5px] tabular-nums">
             <thead>
               <tr>
@@ -305,11 +334,11 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
               {linhasVisiveis.length === 0 && <tr><td colSpan={3 + cols * (4 + d.meses.length)} className="px-3 py-10 text-center text-gray-400">Nenhuma linha com esses filtros.</td></tr>}
             </tbody>
           </table>
-        </div>
+        </div>}
       </section>
 
       {/* ---------------- detalhe dos pedidos */}
-      {sel && d.drill && (
+      {dadosCarregados && sel && d.drill && (
         <section ref={detalheRef} className="scroll-mt-4 rounded-2xl border border-teal-200 bg-white p-5 shadow-soft">
           <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -350,7 +379,7 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
       )}
 
       {/* ---------------- graficos (recolhido) */}
-      <details className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
+      {dadosCarregados && <details className="rounded-2xl border border-gray-100 bg-white p-5 shadow-soft">
         <summary className="cursor-pointer text-sm font-medium text-gray-800">Gráficos: avanço acumulado e consumo por linha</summary>
         <div className="mt-4 grid gap-6 lg:grid-cols-2">
           <div>
@@ -366,7 +395,7 @@ export default function MedicaoDetalhe({ numCtr, embutido = false }: { numCtr: s
               itens={(verTodasLinhas ? consumoLinhas : consumoLinhas.slice(0, 12)).map((l) => ({ seq: l.seqCvs, rotulo: l.descricao, unidade: l.unidade, pctQtd: l.pctQtd, pctValor: l.pctValor, divergenciaPp: null, detalhe: `${qtdFmt(l.qtdFaturada)} de ${qtdFmt(l.qtdContratada)} ${l.unidade ?? ""} · ${moeda(l.valorFaturado)} de ${moeda(l.valorContratado)}` }))} />
           </div>
         </div>
-      </details>
+      </details>}
 
       {/* ---------------- como ler */}
       <details className="rounded-2xl border border-gray-100 bg-white/80 p-5 text-[13.5px] leading-relaxed text-gray-600">

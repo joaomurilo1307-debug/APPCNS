@@ -8,10 +8,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { Conciliacao, MesConc, Vinculo } from "@/lib/medicao/conciliacao";
 import { origemNoSenior } from "@/lib/medicao/origem";
 import { mesCurto, mesLongo, moeda, moedaCompacta } from "@/lib/custos/formato";
+import CurvaFaturamentoContrato from "./CurvaFaturamentoContrato";
 
 type Resposta = {
   ccu: string | null; ccuNome?: string; conciliacao: Conciliacao | null; contratos: string[];
   atualizadoEm: string | null; faturamentoErro: string | null; semFaturamento: boolean;
+  de?: string; ate?: string; mesAtual?: string;
 };
 
 const vc = (v: number) => moedaCompacta(v).replace("R$ ", "");
@@ -73,18 +75,21 @@ function BarrasReceita({ meses, selecionado, onSelecionar }: { meses: MesConc[];
   );
 }
 
-export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; de: string; ate: string }) {
-  const [dados, setDados] = useState<Resposta | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
+export default function ReceitaContrato({ numCtr, de, ate, somenteCurva = false, className = "" }: { numCtr: string; de: string; ate: string; somenteCurva?: boolean; className?: string }) {
+  const consulta = `${numCtr}:${de}:${ate}`;
+  const [resposta, setResposta] = useState<{ consulta: string; dados: Resposta } | null>(null);
+  const [falha, setFalha] = useState<{ consulta: string; mensagem: string } | null>(null);
   const [mes, setMes] = useState<string | null>(null);
+  const dados = resposta?.consulta === consulta ? resposta.dados : null;
+  const erro = falha?.consulta === consulta ? falha.mensagem : null;
 
   useEffect(() => {
-    let vivo = true;
-    fetch(`/api/medicao/${encodeURIComponent(numCtr)}/faturamento?${new URLSearchParams({ de, ate })}`, { cache: "no-store" })
-      .then(async (r) => { const j = await r.json().catch(() => ({})); if (!vivo) return; if (!r.ok) throw new Error(j.error || "Não foi possível carregar a receita."); setDados(j); setErro(null); })
-      .catch((e) => { if (vivo) setErro(e.message); });
-    return () => { vivo = false; };
-  }, [numCtr, de, ate]);
+    const controller = new AbortController();
+    fetch(`/api/medicao/${encodeURIComponent(numCtr)}/faturamento?${new URLSearchParams({ de, ate })}`, { cache: "no-store", signal: controller.signal })
+      .then(async (r) => { const j = await r.json().catch(() => ({})); if (controller.signal.aborted) return; if (!r.ok) throw new Error(j.error || "Não foi possível carregar a receita."); setResposta({ consulta, dados: j }); setFalha(null); })
+      .catch((e) => { if (!controller.signal.aborted) setFalha({ consulta, mensagem: e.message }); });
+    return () => controller.abort();
+  }, [numCtr, de, ate, consulta]);
 
   const c = dados?.conciliacao ?? null;
   const pedidosMes = useMemo(() => (c ? c.pedidos.filter((p) => p.competencia === mes) : []), [c, mes]);
@@ -92,9 +97,22 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
   const notaAcimaNoMes = !!c && !!mes && (c.meses.find((x) => x.mes === mes)?.dif ?? 0) < -0.05; // mes em que a nota passou do pedido: pedido sem nota ligada nao quer dizer "nota nao entrada"
   const origem = useMemo(() => (c && mes ? origemNoSenior(c, mes) : null), [c, mes]); // fatos do Senior quando o mes nao fecha (nota sem pedido lancado, pedido sem nota)
 
-  if (erro && !dados) return <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro}</div>;
-  if (!dados) return <div className="h-72 animate-pulse rounded-2xl bg-gray-200/70" aria-busy />;
-  if (!c) return <section className="rounded-2xl border border-gray-100 bg-white p-5 text-sm text-gray-500 shadow-soft">Este contrato ainda não tem pedido de medição no Senior; a receita aparece quando houver.</section>;
+  if (erro && !dados) return <div className={`rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 ${className}`} role="alert">{erro}</div>;
+  if (!dados) return <div className={`h-72 animate-pulse rounded-2xl bg-gray-200/70 ${className}`} aria-busy />;
+  if (!c) return <section className={`rounded-2xl border border-gray-100 bg-white p-5 text-sm text-gray-500 shadow-soft ${className}`}>Este contrato ainda não tem pedido de medição no Senior; a receita aparece quando houver.</section>;
+
+  const avisoFaturamento = (dados.faturamentoErro || dados.semFaturamento) && <p className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-2.5 text-[13px] text-amber-950">
+    {dados.semFaturamento ? "As notas ainda não foram lidas do Senior; a leitura acontece na próxima atualização." : `A última leitura das notas falhou (${dados.faturamentoErro}); o que aparece é a leitura anterior.`}
+  </p>;
+  const mesAtual = dados.mesAtual ?? new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+  const curva = dados.semFaturamento
+    ? <p className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">A curva de faturamento fica disponível quando as notas forem sincronizadas.</p>
+    : <CurvaFaturamentoContrato meses={c.meses} de={dados.de ?? de} ate={dados.ate ?? ate} mesAtual={mesAtual} />;
+  if (somenteCurva) return <section className={`space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft ${className}`} aria-label="Faturamento mensal do contrato">
+    <header><h2 className="text-[15px] font-semibold text-gray-900">Faturamento mensal</h2><p className="mt-1 text-[13px] text-gray-500">Notas fiscais e notas de débito por competência, no período selecionado.</p></header>
+    {avisoFaturamento}
+    {curva}
+  </section>;
 
   const th = "border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500";
   const td = "border-b border-gray-100 px-2.5 py-1.5";
@@ -118,7 +136,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
   };
 
   return (
-    <section className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-label="Composição da receita">
+    <section className={`space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft ${className}`} aria-label="Composição da receita">
       <header>
         <h2 className="text-[15px] font-semibold text-gray-900">Composição da receita, mês a mês</h2>
         <p className="mt-0.5 max-w-3xl text-[13px] leading-relaxed text-gray-500">
@@ -126,11 +144,7 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
         </p>
       </header>
 
-      {(dados.faturamentoErro || dados.semFaturamento) && (
-        <p className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-2.5 text-[13px] text-amber-950">
-          {dados.semFaturamento ? "As notas ainda não foram lidas do Senior; a leitura acontece na próxima atualização." : `A última leitura das notas falhou (${dados.faturamentoErro}); o que aparece é a leitura anterior.`}
-        </p>
-      )}
+      {avisoFaturamento}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
@@ -147,6 +161,8 @@ export default function ReceitaContrato({ numCtr, de, ate }: { numCtr: string; d
           </div>
         ))}
       </div>
+
+      <div className="space-y-3 border-t border-gray-100 pt-4"><h3 className="text-[15px] font-semibold text-gray-900">Faturamento mensal</h3>{curva}</div>
 
       <BarrasReceita meses={c.meses} selecionado={mes} onSelecionar={(m) => setMes(mes === m ? null : m)} />
 
