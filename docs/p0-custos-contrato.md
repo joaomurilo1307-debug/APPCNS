@@ -11,7 +11,7 @@ A planilha traz tudo. O sistema separa, na carga, em dois tipos (`P0Linha.tipo`)
 | Tipo | O que é | Onde aparece |
 |---|---|---|
 | `CUSTO_CONTRATO` | o que entra no custo de contrato — **a mesma regra da aba Custos** (`src/lib/custos/planoContas.ts`): PJ, assistência médica, seguro, EPI/EPC, VA/VR, uniformes, contas “R - …” etc. | aba P0 > Custos de contrato e comparativo da aba Custos |
-| `CUSTO_PESSOAL` | salário CLT, INSS, FGTS, férias, 13º e **provisões** (as contas que a regra tira do custo, mais a provisão por decisão do João, 27/10/2026) | guardado; aba P0 > Custos pessoais (vem depois). **Nunca é somado ao custo de contrato** |
+| `CUSTO_PESSOAL` | salário CLT, INSS, FGTS, férias, 13º e **provisões** (as contas que a regra tira do custo, mais a provisão por decisão do João, 27/10/2026) | aba P0 > Custos pessoais (só o **previsto**, por conta e mês; o realizado de pessoal entra quando a aba Custo de pessoal estiver validada com o Senior). **Nunca é somado ao custo de contrato** |
 
 Observação: a conta 77 “Provisões” **não** está na lista de contas excluídas do sistema (`CONTAS_EXCLUIDAS_BASE`). No P0 ela foi para `CUSTO_PESSOAL`
 por decisão do João. Se o Senior lançar algo na conta 77 de um contrato, o realizado conta como custo e o P0 não conta — a diferença aparece no comparativo.
@@ -51,6 +51,8 @@ O 4337 é diferente dos demais: o previsto vem em **parcelas lineares** (1/36 po
 - **/p0**: lista dos contratos e se o P0 já está cadastrado.
 
 **Filtros e mês em andamento (27/10/2026).** Na aba P0 > Custos de contrato, além do período, dá para filtrar por tipo de custo (todos, custo próprio, reembolsável), por grupo de contas e por conta (busca). Os filtros valem para os cards, a faixa, os gráficos, o comparativo e a tabela ao mesmo tempo (`FiltrosP0.tsx`). O mês em andamento é acompanhado ao vivo: o realizado dele é só o que o Senior já pagou, comparado com o previsto do mês. Quando o P0 começa no mês atual (como o do 210 e do 230, que começam em out/26), nenhum mês fechou ainda e o medidor "Realizado × previsto" mostra o mês em andamento em azul, sem chamar de desvio; o "Maior diferença" do mês em andamento diz "do previsto ainda não pago", porque a conta ainda pode ser paga no mês.
+
+**Custos pessoais e ponte com o P0 inteiro (27/10/2026).** A aba P0 > Custos pessoais (`P0PessoaisContrato.tsx`) mostra o previsto de pessoal do P0 (KPIs, gráfico mês a mês e tabela conta × mês, com período). A API é a mesma do custo de contrato, com `?tipo=pessoal` (`/api/p0/custos`), e vale a mesma permissão (quem vê os custos do centro de custo). A aba de custos de contrato mostra a ponte: **P0 inteiro = custo de contrato + custos pessoais**, para bater com a soma da planilha. Exemplo, 4337 (CCU 102335) em jun/2026: planilha R$ 832.067,61 (68 linhas) = custo de contrato R$ 326.994,20 (66 linhas) + pessoais R$ 505.073,41 (Salários R$ 305.891,40 + Provisões R$ 199.182,01).
 
 ## Reembolsáveis (regra do comparativo — `src/lib/p0/comparar.ts`)
 

@@ -7,7 +7,7 @@
 // So' o P0 de custo de contrato: salario CLT, encargos, ferias, 13o e provisoes ficam guardados a' parte (aba "Custos pessoais", que vem depois).
 
 import { Fragment, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { COR_DEMAIS, agruparPorGrupo, contaPassa, coresDosGrupos, linhasDoContrato, soma, variacao, type ContaDoContrato, type ContratoCusto, type Filtros } from "@/lib/custos/agregacao";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 import { baixarCsv } from "@/lib/custos/csv";
@@ -64,6 +64,13 @@ export default function P0CustosContrato({ codccu, nomeContrato }: { codccu: str
 
 function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
   const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const irParaPessoal = () => {
+    const n = new URLSearchParams(params.toString());
+    n.set("p0", "pessoal");
+    router.replace(`${pathname}?${n}`, { scroll: false });
+  };
   const realizado = useRealizadoDoContrato(p0.codccu, params.get("base") === "competencia" ? "competencia" : "pagamento");
 
   const [agrupar, setAgrupar] = useState(true);
@@ -220,6 +227,15 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
   return (
     <div className="space-y-5">
       <HeroP0 rotulo={p0.rotulo} origem={p0.origem} rotuloNaPlanilha={p0.rotuloNaPlanilha} meses={mesesP} previsto={totaisMes} realizado={realizadoMes} mesCorrente={mesCorrente} />
+
+      {p0.totalPessoal !== undefined && p0.totalPessoal > 0.005 && (
+        <p className="rounded-xl border border-gray-100 bg-white px-5 py-3 text-[13.5px] leading-snug text-gray-600 shadow-soft">
+          O P0 inteiro deste contrato é <b className="font-semibold text-gray-900">{moedaCompacta(p0.totalCusto + p0.totalPessoal)}</b>:{" "}
+          <b className="font-semibold text-gray-900">{moedaCompacta(p0.totalCusto)}</b> de custo de contrato (esta aba) +{" "}
+          <b className="font-semibold text-gray-900">{moedaCompacta(p0.totalPessoal)}</b> de custos pessoais (salários, encargos, férias, 13º e provisões), que ficam à parte na subaba{" "}
+          <button type="button" onClick={irParaPessoal} className="font-medium text-brand underline hover:text-brand-dark">Custos pessoais</button>.
+        </p>
+      )}
 
       <NavSecoesP0
         itens={[
