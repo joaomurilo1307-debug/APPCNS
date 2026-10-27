@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { podeAcessarModulo, podeEditarModulo } from "@/lib/acesso/servidor";
 import { atividadesDoPlano, estadoEfetivoDaAprovacao, execucaoDoPlano, selecionarProjetoParaAprovacao } from "@/lib/contractGoals/planApproval";
 
-// Caixa do responsável designado: nenhum valor financeiro faz parte desta resposta.
+// Caixa do responsável designado: inclui o contexto informado no plano, sem leituras financeiras automáticas.
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
@@ -19,7 +19,7 @@ export async function GET() {
       id: true, title: true, description: true, planTitle: true, planDescription: true, planApprovalStatus: true, planApprovalFingerprint: true,
       planSubmittedAt: true, planApprovedAt: true, planDecidedAt: true, planApprovalNote: true,
       owner: { select: { name: true } }, creator: { select: { name: true } },
-      actions: { select: { id: true, title: true, description: true, ownerId: true, owner: { select: { name: true } }, dueDate: true, status: true, migratedAt: true, task: { select: { id: true } } } },
+      actions: { select: { id: true, title: true, description: true, planDetails: true, ownerId: true, owner: { select: { name: true } }, dueDate: true, status: true, migratedAt: true, task: { select: { id: true } } } },
       actionPlan: { select: selecionarProjetoParaAprovacao },
     },
     orderBy: { planSubmittedAt: "desc" }, take: 100,
@@ -27,6 +27,6 @@ export async function GET() {
   return NextResponse.json({ plans: planos.map((plano) => {
     const status = estadoEfetivoDaAprovacao(plano);
     const responsaveis = new Map([...plano.actions.flatMap((a) => a.ownerId && a.owner ? [[a.ownerId, a.owner.name] as const] : []), ...(plano.actionPlan?.tasks ?? []).flatMap((t) => t.assigneeId && t.assignee ? [[t.assigneeId, t.assignee.name] as const] : [])]);
-    return { id: plano.id, title: plano.title, planName: plano.planTitle || plano.actionPlan?.name || plano.title, description: plano.planDescription || plano.actionPlan?.description || plano.description, activities: atividadesDoPlano(plano).map((a) => ({ id: a.id, title: a.title, description: a.description, ownerName: a.ownerId ? responsaveis.get(a.ownerId) || "Responsável designado" : "Sem responsável", dueDate: a.dueDate, status: a.status })), status, submittedAt: plano.planSubmittedAt, decidedAt: plano.planDecidedAt, note: plano.planApprovalNote, requestedBy: plano.owner?.name || plano.creator?.name || "Responsável da meta", execution: execucaoDoPlano(plano), canDecide: podeDecidir && status === "PENDENTE" };
+    return { id: plano.id, title: plano.title, planName: plano.planTitle || plano.actionPlan?.name || plano.title, description: plano.planDescription || plano.actionPlan?.description || plano.description, activities: atividadesDoPlano(plano).map((a) => ({ id: a.id, taskId: plano.actionPlan?.tasks.some((task) => task.id === a.id) ? a.id : null, title: a.title, description: a.description, planDetails: a.planDetails ?? null, startDate: "startDate" in a ? a.startDate : null, actualEndedAt: "actualEndedAt" in a ? a.actualEndedAt : null, ownerName: a.ownerId ? responsaveis.get(a.ownerId) || "Responsável designado" : "Sem responsável", dueDate: a.dueDate, status: a.status })), status, submittedAt: plano.planSubmittedAt, decidedAt: plano.planDecidedAt, note: plano.planApprovalNote, requestedBy: plano.owner?.name || plano.creator?.name || "Responsável da meta", execution: execucaoDoPlano(plano), canDecide: podeDecidir && status === "PENDENTE" };
   }) });
 }

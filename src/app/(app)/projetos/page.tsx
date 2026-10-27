@@ -1,8 +1,9 @@
 "use client";
 import { SeletorMetasContrato } from "@/components/contractGoals/VinculosMetas";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import ProgressBar from "@/components/ProgressBar";
 import EscolhaDePessoas, { type PessoaOpcao } from "@/components/demandas/Pessoas";
 import BotaoExcel from "@/components/BotaoExcel";
@@ -12,6 +13,7 @@ import SeloSaude, { type SaudeDoProjeto } from "@/components/projetos/SeloSaude"
 import CargaEquipe from "@/components/projetos/CargaEquipe";
 import { FILTRO_VAZIO, filtrarProjetos, opcoesDosFiltros, type FiltroProjetos, type OrdemProjetos } from "@/lib/projetos/filtro";
 import { ROTULO_SAUDE } from "@/lib/projetos/saude";
+import type { MetaContrato } from "@/lib/contractGoals/tipos";
 
 type Project = {
   id: string;
@@ -56,7 +58,13 @@ function fmtDate(iso: string | null) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
 }
 
-export default function ProjetosPage() {
+function ConteudoProjetosPage() {
+  const params = useSearchParams();
+  const modoPlano = params.has("planoMeta");
+  const planoPedido = params.get("planoMeta")?.trim() ?? "";
+  const [planoMeta, setPlanoMeta] = useState<MetaContrato | null>(null);
+  const [carregandoPlano, setCarregandoPlano] = useState(false);
+  const [prazoPlano, setPrazoPlano] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [name, setName] = useState("");
@@ -85,7 +93,7 @@ export default function ProjetosPage() {
     setProjects(p);
     setCarregado(true);
     // quem ainda nao tem nenhum projeto recebe, uma unica vez, o projeto de teste que ensina o fluxo (so' dele)
-    if (p.length === 0 && !exemploPedido.current) {
+    if (p.length === 0 && !exemploPedido.current && !modoPlano) {
       exemploPedido.current = true;
       setPreparando(true);
       const r = await fetch("/api/projects/exemplo", { method: "POST" }).then((x) => x.json()).catch(() => null);
@@ -115,6 +123,27 @@ export default function ProjetosPage() {
   useEffect(() => {
     load();
   }, []);
+  useEffect(() => {
+    if (!modoPlano) { setPlanoMeta(null); setCarregandoPlano(false); return; }
+    const controller = new AbortController();
+    setShowForm(true); setErro(""); setPlanoMeta(null); setTeamId(""); setNucleoId("");
+    if (!planoPedido) { setErro("Selecione um plano de ação para iniciar o projeto."); return; }
+    setCarregandoPlano(true);
+    fetch(`/api/contract-goals/${encodeURIComponent(planoPedido)}`, { cache: "no-store", signal: controller.signal }).then(async (r) => {
+      const meta = await r.json();
+      if (!r.ok) throw new Error(meta.error || "Não foi possível consultar o plano de ação.");
+      if (!meta.hasPlan) throw new Error("Prepare o plano de ação na meta antes de criar seu projeto.");
+      setPlanoMeta(meta);
+      if (meta.actionPlan) { setErro("Este plano já está associado a um projeto. Abra o projeto para continuar."); return; }
+      if (!meta.canConvertPlan) throw new Error("Você não tem permissão para criar o projeto deste plano.");
+      const titulo = meta.standalonePlan?.name || meta.title;
+      setName((/^plano de ação\b/i.test(titulo) ? titulo : `Plano de ação — ${titulo}`).slice(0, 150));
+      setCodccu(meta.contrato?.codccu || "");
+      setPessoas(Array.from(new Set<string>(meta.actions.flatMap((a: { ownerId: string | null; status: string }) => a.ownerId && a.status !== "CANCELADA" ? [a.ownerId] : []))));
+      setPrazoPlano(meta.dueDate?.slice(0, 10) || "");
+    }).catch((e) => { if (e.name !== "AbortError") setErro(e.message); }).finally(() => { if (!controller.signal.aborted) setCarregandoPlano(false); });
+    return () => controller.abort();
+  }, [modoPlano, planoPedido]);
   const opcoesJaPedidas = useRef(false);
   useEffect(() => {
     if (showForm && !opcoesJaPedidas.current) { opcoesJaPedidas.current = true; void loadOpcoes(); }
@@ -128,23 +157,25 @@ export default function ProjetosPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (modoPlano && (!planoMeta?.canConvertPlan || carregandoPlano)) return;
     setErro(""); setCriando(true);
-    const r = await fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(teamId ? { name, teamId, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds } : { name, pessoas, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds }),
-    });
-    setCriando(false);
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      return setErro(typeof j.error === "string" ? j.error : "Não foi possível criar. Confira o nome (mínimo 2 letras).");
+    try {
+      const r = await fetch(modoPlano ? `/api/contract-goals/${encodeURIComponent(planoPedido)}/plan` : "/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(modoPlano ? { mode: "create", name, peopleIds: pessoas, dueDate: prazoPlano ? `${prazoPlano}T12:00:00.000Z` : null } : teamId ? { name, teamId, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds } : { name, pessoas, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds }),
+      });
+      const criado = await r.json().catch(() => ({}));
+      if (!r.ok) return setErro(typeof criado.error === "string" ? criado.error : "Não foi possível criar. Confira o nome (mínimo 2 letras).");
+      // A criação só acontece neste envio; abrir o formulário preserva o plano independente.
+      if (criado?.id) { window.location.href = `/projetos/${criado.id}?aba=equipe`; return; }
+      setName(""); setTeamId(""); setCodccu(""); setPessoas([]); setNucleoId(""); setShowForm(false);
+      await load();
+    } catch {
+      setErro("Não foi possível confirmar a criação. Recarregue para conferir o plano antes de tentar novamente.");
+    } finally {
+      setCriando(false);
     }
-    // projeto novo: leva direto para a aba Equipe, para montar a equipe antes de criar as tarefas
-    const criado = await r.json().catch(() => null);
-    setName(""); setTeamId(""); setCodccu(""); setPessoas([]); setNucleoId("");
-    if (criado?.id) { window.location.href = `/projetos/${criado.id}?aba=equipe`; return; }
-    setShowForm(false);
-    load();
   }
 
   // visao de portfolio: filtros e ordem so' mexem no que aparece (nenhum projeto e' alterado)
@@ -196,18 +227,24 @@ export default function ProjetosPage() {
 
       {showForm && (
         <form onSubmit={handleCreate} className="mb-8 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2">
+          {modoPlano && <div className="rounded-lg border border-teal-100 bg-teal-50 p-4 text-sm text-teal-900 sm:col-span-2">
+            <h2 className="font-semibold">Criar projeto a partir do plano de ação</h2>
+            {carregandoPlano ? <p role="status" className="mt-1">Carregando o plano e seus vínculos…</p> : planoMeta ? <><p className="mt-1">Plano: {planoMeta.standalonePlan?.name || planoMeta.title}</p><p className="mt-1">Meta vinculada: {planoMeta.title}</p><p className="mt-2 text-xs">As ações já registradas serão incorporadas uma única vez. Depois de criar, você poderá organizar a equipe e continuar adicionando atividades dentro do projeto.</p>{planoMeta.actionPlan && <Link href={`/projetos/${planoMeta.actionPlan.id}`} className="mt-2 inline-block font-medium underline">Abrir projeto vinculado</Link>}</> : <p className="mt-1">O vínculo será validado antes de permitir a criação.</p>}
+            {planoMeta && <Link href={planoMeta.contrato ? `/contratos/${planoMeta.contrato.codccu}?aba=acoes&meta=${planoMeta.id}` : "/contratos"} className="mt-3 inline-block text-xs font-medium underline">Voltar ao plano de ação</Link>}
+          </div>}
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Nome do projeto</label>
-            <input required placeholder="Ex.: Medição de dados do contrato" value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            <label htmlFor="novo-projeto-nome" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Nome do projeto</label>
+            <input id="novo-projeto-nome" required minLength={2} maxLength={modoPlano ? 150 : undefined} disabled={carregandoPlano} placeholder="Ex.: Medição de dados do contrato" value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Contrato</label>
-            <select value={codccu} onChange={(e) => setCodccu(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+            <label htmlFor="novo-projeto-contrato" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Contrato</label>
+            {modoPlano ? <input id="novo-projeto-contrato" readOnly value={planoMeta?.contrato ? `${planoMeta.contrato.codccu} · ${planoMeta.contrato.nome || "Contrato"}` : "Sem contrato (projeto interno)"} className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm" /> : <select id="novo-projeto-contrato" value={codccu} onChange={(e) => setCodccu(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
               <option value="">Sem contrato (projeto interno)</option>
               {contratos.map((c) => <option key={c.codccu} value={c.codccu}>{c.codccu} · {c.nome}</option>)}
-            </select>
+            </select>}
           </div>
-          {nucleos.length > 0 && (
+          {modoPlano && <div><label htmlFor="novo-projeto-prazo" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Prazo do projeto (opcional)</label><input id="novo-projeto-prazo" type="date" value={prazoPlano} onChange={(e) => setPrazoPlano(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" /></div>}
+          {!modoPlano && nucleos.length > 0 && (
             <div>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Núcleo (opcional)</label>
               <div className="flex gap-2">
@@ -230,7 +267,7 @@ export default function ProjetosPage() {
               <p className="text-xs text-gray-500">Usando a equipe escolhida abaixo; as pessoas dela já estão no projeto.</p>
             )}
           </div>
-          {teams.length > 0 && (
+          {!modoPlano && teams.length > 0 && (
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Ou use uma equipe que já existe (opcional)</label>
               <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
@@ -239,10 +276,10 @@ export default function ProjetosPage() {
               </select>
             </div>
           )}
-          <div className="sm:col-span-2"><SeletorMetasContrato codccu={codccu} selecionadas={contractGoalIds} onChange={setContractGoalIds} /></div>
-          {erro && <p className="text-sm text-red-600 sm:col-span-2">{erro}</p>}
+          {!modoPlano && <div className="sm:col-span-2"><SeletorMetasContrato codccu={codccu} selecionadas={contractGoalIds} onChange={setContractGoalIds} /></div>}
+          {erro && <p role="alert" className="text-sm text-red-600 sm:col-span-2">{erro}</p>}
           <div className="sm:col-span-2">
-            <button disabled={criando} className="rounded-md bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60">{criando ? "Criando…" : "Criar projeto"}</button>
+            <button disabled={criando || (modoPlano && (carregandoPlano || !planoMeta?.canConvertPlan))} className="rounded-md bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60">{criando ? "Criando…" : "Criar projeto"}</button>
           </div>
         </form>
       )}
@@ -389,4 +426,8 @@ export default function ProjetosPage() {
       )}
     </div>
   );
+}
+
+export default function ProjetosPage() {
+  return <Suspense fallback={<p className="text-sm text-gray-400">Carregando projetos…</p>}><ConteudoProjetosPage /></Suspense>;
 }

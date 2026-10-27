@@ -21,12 +21,13 @@ function addDays(date: Date, days: number): Date {
   return d;
 }
 
+export function duracaoEntreDatas(startDate: Date | null, dueDate: Date | null): number | null {
+  return startDate && dueDate ? Math.max(0, Math.round((dueDate.getTime() - startDate.getTime()) / 86400000)) : null;
+}
+
 function derivedDuration(t: RescheduleTaskInput): number | null {
   if (t.durationDays !== null && t.durationDays !== undefined) return t.durationDays;
-  if (t.startDate && t.dueDate) {
-    return Math.max(0, Math.round((t.dueDate.getTime() - t.startDate.getTime()) / 86400000));
-  }
-  return null;
+  return duracaoEntreDatas(t.startDate, t.dueDate);
 }
 
 /**

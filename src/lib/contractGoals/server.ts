@@ -6,6 +6,7 @@ import { lerAcompanhamentoMetas } from "./acompanhamento";
 import { podeAlterarMeta } from "./calculo";
 import { estadoEfetivoDaAprovacao, execucaoDoPlano, selecionarProjetoParaAprovacao } from "./planApproval";
 import { lerVinculoSetor } from "./sectorGoals";
+import { dataDoItem, lerDetalhesDoPlano } from "./planDetails";
 import type { Prisma } from "@prisma/client";
 
 export const incluirMetaContrato = {
@@ -97,11 +98,13 @@ export async function apresentarMetas(metas: MetaCompleta[], usuario: UsuarioDaS
     const planoParaRevisao = planoVisivel ?? (meta.planApproverId === usuario.id ? actionPlan : null);
     const tarefas = planoParaRevisao ? await Promise.all(planoParaRevisao.tasks.map(async (task) => ({
       id: task.id, taskId: task.id, projectId: planoParaRevisao.id, title: task.title, description: task.description,
+      planDetails: lerDetalhesDoPlano(legadas.find((action) => action.id === task.sourceGoalActionId)?.planDetails),
+      startDate: task.startDate, actualEndedAt: task.actualEndedAt,
       ownerId: task.assigneeId, owner: task.assignee, dueDate: task.dueDate, status: statusAcaoDaTarefa(task.status),
       canUpdate: !!planoVisivel && editaTarefas && contexto.escrita && await canModifyTaskScoped(usuario.id, usuario.role, task.assigneeId === usuario.id, task.locked, planoVisivel.teamId, planoVisivel.id),
     }))) : [];
     const actions = [
-      ...legadas.filter((action) => !action.task && !action.migratedAt).map(({ task, ...action }) => ({ ...action, taskId: null, projectId: null, canUpdate: podeGerir || contexto.escrita && action.ownerId === usuario.id })),
+      ...legadas.filter((action) => !action.task && !action.migratedAt).map(({ task, ...action }) => ({ ...action, planDetails: lerDetalhesDoPlano(action.planDetails), startDate: dataDoItem(lerDetalhesDoPlano(action.planDetails)?.plannedStart), actualEndedAt: dataDoItem(lerDetalhesDoPlano(action.planDetails)?.actualCompletion), taskId: null, projectId: null, canUpdate: podeGerir || contexto.escrita && action.ownerId === usuario.id })),
       ...tarefas,
     ];
     return {
@@ -119,7 +122,7 @@ export async function apresentarMetas(metas: MetaCompleta[], usuario: UsuarioDaS
       sectorGoal: await lerVinculoSetor(meta.parentGoalId, meta.contributionWeight, usuario),
       canCreatePlan: podeGerir && contexto.escrita && !hasPlan,
       canConvertPlan: podeGerir && hasPlan && editaProjetos && contexto.escrita && !actionPlan,
-      canAddAction: planoVisivel ? gerePlano && editaTarefas : !actionPlan && hasPlan && podeGerir,
+      canAddAction: planoVisivel ? podeGerir && gerePlano && editaTarefas : !actionPlan && hasPlan && podeGerir,
       canRecord: meta.kind === "INDICADOR" && meta.source === "MANUAL" && podeGerir,
       sourceUpdatedAt: evaluation.sourceUpdatedAt, sourceError: evaluation.sourceError,
       actions,

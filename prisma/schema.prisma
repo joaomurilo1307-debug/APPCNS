@@ -1068,6 +1068,7 @@ model ContractGoalAction {
   goalId String
   title String
   description String? @db.Text
+  planDetails Json?
   ownerId String?
   dueDate DateTime?
   status String @default("A_FAZER")

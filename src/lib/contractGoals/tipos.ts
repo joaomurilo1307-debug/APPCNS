@@ -1,6 +1,11 @@
 export type PessoaMeta = { id: string; name: string };
 export type MedicaoMeta = { id: string; value: number; measuredAt: string; period: string | null; note: string | null; createdBy: PessoaMeta };
-export type AcaoMeta = { id: string; title: string; description: string | null; ownerId: string | null; owner: PessoaMeta | null; dueDate: string | null; status: string; canUpdate: boolean; taskId?: string | null; projectId?: string | null };
+export type DetalhesItemPlano = {
+  competence?: string | null; item?: string | null; account?: string | null; fact?: string | null;
+  correctiveMeasure?: string | null; correctiveHow?: string | null; preventiveMeasure?: string | null; preventiveHow?: string | null;
+  plannedStart?: string | null; originalDueDate?: string | null; replannedDueDate?: string | null; actualCompletion?: string | null; notes?: string | null;
+};
+export type AcaoMeta = { id: string; title: string; description: string | null; ownerId: string | null; owner: PessoaMeta | null; dueDate: string | null; status: string; canUpdate: boolean; taskId?: string | null; projectId?: string | null; planDetails?: DetalhesItemPlano | null; startDate?: string | null; actualEndedAt?: string | null };
 export type PeriodoMeta = { period: string; start: string; end: string; value: number | null; target: number | null; progress: number | null; state: "FUTURO" | "ABERTO" | "FECHADO"; updatedAt: string | null; error?: string | null; changePercent?: number | null; partial?: boolean };
 export type PlanoMeta = { id: string; name: string; canManage: boolean; taskCount: number; completedCount: number };
 export type PlanoSemProjeto = { name: string; description: string | null; createdAt: string | null };

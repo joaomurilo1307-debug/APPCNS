@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { alvoPorVariacao, configuracaoCoerente } from "./calculo";
+import { detalhesDoPlano } from "./planDetails";
 
 const mes = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const data = z.string().datetime().nullable();
@@ -52,5 +53,8 @@ export function erroConfiguracao(meta: z.infer<typeof dadosMeta>): string | null
 }
 export const novaMeta = dadosMeta.extend({ codccu: z.string().regex(/^\d+$/).nullable().optional() });
 export const medicaoMeta = z.object({ operation: z.literal("measurement"), value: z.number().finite(), measuredAt: z.string().datetime(), period: mes.nullable().optional(), note: z.string().max(4000).nullable().optional() });
-export const acaoMeta = z.object({ operation: z.literal("action"), title: z.string().trim().min(2).max(250), description: z.string().max(4000).nullable().optional(), ownerId: z.string().nullable().optional(), dueDate: data.optional(), status: z.enum(["A_FAZER", "EM_ANDAMENTO", "BLOQUEADA", "CONCLUIDA", "CANCELADA"]).default("A_FAZER") });
-export const alterarAcao = z.object({ operation: z.literal("updateAction"), actionId: z.string(), title: z.string().trim().min(2).max(250).optional(), description: z.string().max(4000).nullable().optional(), ownerId: z.string().nullable().optional(), dueDate: data.optional(), status: z.enum(["A_FAZER", "EM_ANDAMENTO", "BLOQUEADA", "CONCLUIDA", "CANCELADA"]) });
+const coerenciaDoRealizado = (value: { planDetails?: { actualCompletion?: string | null } | null; status: string }, ctx: z.RefinementCtx) => {
+  if (value.planDetails?.actualCompletion && value.status !== "CONCLUIDA") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["planDetails", "actualCompletion"], message: "Informe o prazo realizado somente para uma ação concluída." });
+};
+export const acaoMeta = z.object({ operation: z.literal("action"), title: z.string().trim().min(2).max(250), description: z.string().max(4000).nullable().optional(), planDetails: detalhesDoPlano.nullable().optional(), ownerId: z.string().nullable().optional(), dueDate: data.optional(), status: z.enum(["A_FAZER", "EM_ANDAMENTO", "BLOQUEADA", "CONCLUIDA", "CANCELADA"]).default("A_FAZER") }).superRefine(coerenciaDoRealizado);
+export const alterarAcao = z.object({ operation: z.literal("updateAction"), actionId: z.string(), title: z.string().trim().min(2).max(250).optional(), description: z.string().max(4000).nullable().optional(), planDetails: detalhesDoPlano.nullable().optional(), ownerId: z.string().nullable().optional(), dueDate: data.optional(), status: z.enum(["A_FAZER", "EM_ANDAMENTO", "BLOQUEADA", "CONCLUIDA", "CANCELADA"]) }).superRefine(coerenciaDoRealizado);
