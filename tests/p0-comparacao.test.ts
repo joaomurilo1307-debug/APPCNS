@@ -96,6 +96,27 @@ test("reembolsavel ja nas contas R: compara linha a linha; o que sobra na conta 
   assert.equal(c.grupos.find((g) => g.grupoCodigo === "reemb")!.linhas.length, 1);
 });
 
+test("P0 com reembolsavel MISTO (conta antiga + contas R): em mes de conta unica soma tudo; com contas R no Senior compara linha a linha, a conta antiga por codigo", () => {
+  const misto = [
+    conta("Despesas Reembolsáveis", 67, "reemb", "Reembolsáveis · conta antiga", true, { "2026-09": 40 }),
+    conta("R - Locacao de Veículos", 218, "reembR", "Reembolsáveis · contas R", true, { "2026-09": 50, "2026-10": 50 }),
+  ];
+  const unica = [conta("Despesas Reembolsáveis", 67, "reemb", "Reembolsáveis · conta antiga", true, { "2026-09": 100 })];
+  const c1 = compararMes({ p0: misto, realizado: unica, mes: "2026-09", periodo: { mesIni: "2026-09", mesFim: "2026-10" }, filtros: SEM_FILTRO });
+  assert.equal(c1.modoReembolsavel, "agregado");
+  assert.equal(c1.grupos.flatMap((g) => g.linhas).length, 1);
+  assert.equal(c1.previsto, 90); // 40 (antiga) + 50 (R)
+  assert.equal(c1.realizado, 100);
+  const comR = [
+    conta("R - Locacao de Veículos", 218, "reembR", "Reembolsáveis · contas R", true, { "2026-10": 45 }),
+    conta("Despesas Reembolsáveis", 67, "reemb", "Reembolsáveis · conta antiga", true, { "2026-10": 5 }),
+  ];
+  const c2 = compararMes({ p0: misto, realizado: comR, mes: "2026-10", periodo: { mesIni: "2026-09", mesFim: "2026-10" }, filtros: SEM_FILTRO });
+  assert.equal(c2.modoReembolsavel, "linha");
+  const linhaR = c2.grupos.flatMap((g) => g.linhas).find((l) => l.nome === "R - Locacao de Veículos")!;
+  assert.deepEqual([linhaR.previsto, linhaR.realizado], [50, 45]);
+});
+
 test("situacoes: sem previsao, nao realizado, igual, acima e abaixo; contagem fecha com o numero de linhas", () => {
   const real = [
     conta("Serviços Terceiros PJ", 84, "206", "Pessoal", false, { "2026-08": 100 }), // igual
