@@ -23,6 +23,7 @@ import DetalheP0, { type AlvoP0 } from "./DetalheP0";
 import GraficoPrevistoRealizado, { LegendaPrevistoRealizado } from "./GraficoPrevistoRealizado";
 import HeroP0 from "./HeroP0";
 import NavSecoesP0 from "./NavSecoesP0";
+import PeriodoP0 from "./PeriodoP0";
 import TiposDeCustoPorMes from "./TiposDeCustoPorMes";
 import { useP0Custos } from "./useP0Custos";
 import { useRealizadoDoContrato } from "./useRealizadoDoContrato";
@@ -66,8 +67,10 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
 
   const [agrupar, setAgrupar] = useState(true);
   const [fechados, setFechados] = useState<Set<string>>(new Set());
-  const [modo, setModo] = useState<"mensal" | "acumulado">("mensal");
-  const [janelaEscolhida, setJanelaEscolhida] = useState<"realizado" | "todo" | null>(null);
+  const [modo, setModo] = useState<"linha" | "acumulado">("linha");
+  const [modoCol, setModoCol] = useState<"mensal" | "acumulado">("mensal");
+  const [deEsc, setDeEsc] = useState<string | null>(null);
+  const [ateEsc, setAteEsc] = useState<string | null>(null);
   const [mesCmp, setMesCmp] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<AlvoP0 | null>(null);
 
@@ -96,8 +99,34 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
   const iUltimoReal = realizadoMes ? realizadoMes.reduce<number>((u, v, i) => (v !== null ? i : u), -1) : -1;
   const temRealizado = iUltimoReal >= 0;
 
-  // comparativo conta a conta (mes padrao: o ultimo mes FECHADO do P0 que ja' tem realizado)
-  const mesesComRealizado = mesesP.filter((m) => !!mesCorrente && m <= mesCorrente);
+  // periodo de analise (vale para todos os graficos e tabelas): padrao = do inicio do P0 ate 3 meses depois do ultimo realizado
+  const iFimPadrao = temRealizado ? Math.min(mesesP.length - 1, iUltimoReal + 3) : mesesP.length - 1;
+  const de = deEsc && mesesP.includes(deEsc) ? deEsc : mesesP[0];
+  const ateBruto = ateEsc && mesesP.includes(ateEsc) ? ateEsc : mesesP[iFimPadrao];
+  const ate = ateBruto < de ? de : ateBruto;
+  const iDe = mesesP.indexOf(de);
+  const iAte = mesesP.indexOf(ate);
+  const mesesJ = mesesP.slice(iDe, iAte + 1);
+  const previstoJ = totaisMes.slice(iDe, iAte + 1);
+  const realizadoJ = realizadoMes ? realizadoMes.slice(iDe, iAte + 1) : mesesJ.map(() => null);
+  const iParcialJ = iParcial >= iDe && iParcial <= iAte ? iParcial - iDe : null;
+  const desviosJ = temRealizado ? desviosContraP0(realizadoJ.map((v) => v ?? 0), previstoJ, iParcialJ).map((d, i) => (realizadoJ[i] === null ? null : d)) : null;
+  const totalJ = soma(previstoJ);
+  const linhasJ = useMemo(
+    () =>
+      todas
+        .map((l) => {
+          const serieP = l.serie.slice(iDe, iAte + 1);
+          return { ...l, serieP, totalP: soma(serieP) };
+        })
+        .filter((l) => l.totalP !== 0)
+        .sort((a, b) => b.totalP - a.totalP),
+    [todas, iDe, iAte]
+  );
+  const gruposJ = useMemo(() => agruparPorGrupo(linhasJ.map((l) => ({ conta: l.conta, serie: l.serieP, total: l.totalP })), mesesJ.length), [linhasJ, mesesJ.length]);
+
+  // comparativo conta a conta (mes padrao: o ultimo mes FECHADO do periodo que ja' tem realizado)
+  const mesesComRealizado = mesesJ.filter((m) => !!mesCorrente && m <= mesCorrente);
   const ultimoFechado = [...mesesComRealizado].reverse().find((m) => m !== mesCorrente) ?? mesesComRealizado[mesesComRealizado.length - 1];
   const mesDoComparativo = mesCmp && mesesComRealizado.includes(mesCmp) ? mesCmp : ultimoFechado;
   const comparacaoDoMes = useMemo(
@@ -111,40 +140,31 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
     return melhor && Math.abs(melhor.delta) >= 0.005 ? melhor : null;
   }, [comparacaoDoMes]);
 
-  // janela do grafico: os meses com realizado e mais 3 pela frente (so' o previsto), ou o P0 inteiro
-  const janela = janelaEscolhida ?? (temRealizado ? "realizado" : "todo");
-  const nJanela = janela === "todo" || mesesP.length === 0 ? mesesP.length : Math.min(mesesP.length, (temRealizado ? iUltimoReal : 2) + 4);
-  const mesesJ = mesesP.slice(0, nJanela);
-  const previstoJ = totaisMes.slice(0, nJanela);
-  const realizadoJ = realizadoMes ? realizadoMes.slice(0, nJanela) : mesesJ.map(() => null);
-  const desviosJ = temRealizado ? desviosContraP0(realizadoJ.map((v) => v ?? 0), previstoJ, iParcial >= 0 && iParcial < nJanela ? iParcial : null).map((d, i) => (realizadoJ[i] === null ? null : d)) : null;
-
   // numeros-chave
   const mesRef = mesCorrente && mesCorrente >= p0.mesIni && mesCorrente <= p0.mesFim ? mesCorrente : null;
   const iRef = mesRef ? mesesP.indexOf(mesRef) : -1;
-  const kpiAcum = useMemo(() => {
-    if (!realizadoMes) return null;
-    let p = 0;
-    let r = 0;
+  const kpiAcum = (() => {
+    let pp = 0;
+    let rr = 0;
     let n = 0;
-    let ate = "";
-    mesesP.forEach((m, i) => {
-      if (realizadoMes[i] === null || m === mesCorrente) return;
-      p += totaisMes[i];
-      r += realizadoMes[i] ?? 0;
+    let ateMes = "";
+    mesesJ.forEach((m, i) => {
+      if (realizadoJ[i] === null || m === mesCorrente) return;
+      pp += previstoJ[i];
+      rr += realizadoJ[i] ?? 0;
       n++;
-      ate = m;
+      ateMes = m;
     });
-    return n ? { p, r, n, ate } : null;
-  }, [realizadoMes, mesesP, totaisMes, mesCorrente]);
+    return n ? { p: pp, r: rr, n, ate: ateMes } : null;
+  })();
   const semRealizadoTexto = realizado.carregando ? "lendo o realizado do Senior…" : realizado.erro ? "realizado do Senior indisponível" : !realizado.contrato ? "sem realizado do Senior neste contrato" : "ainda sem realizado nos meses do P0";
 
   const nomeArquivo = `p0_${p0.codccu}_${nomeContrato.replace(/[^\w]+/g, "_").slice(0, 40)}`;
   function linhasQuadro(): (string | number)[][] {
-    const cab = ["Tipo de custo", "Conta financeira", "Reembolsável", ...mesesP.map(mesCurto), "Total previsto", "% do P0"];
+    const cab = ["Tipo de custo", "Conta financeira", "Reembolsável", ...mesesJ.map(mesCurto), "Total previsto", "% do período"];
     const corpo: (string | number)[][] = [];
-    for (const g of grupos) for (const l of g.linhas) corpo.push([g.grupoNome, l.conta.contaFinanceira, l.conta.reembolsavel ? "sim" : "não", ...l.serie, l.total, totalP ? l.total / totalP : 0]);
-    corpo.push(["", "TOTAL", "", ...totaisMes, totalP, 1]);
+    for (const g of gruposJ) for (const l of g.linhas) corpo.push([g.grupoNome, l.conta.contaFinanceira, l.conta.reembolsavel ? "sim" : "não", ...l.serie, l.total, totalJ ? l.total / totalJ : 0]);
+    corpo.push(["", "TOTAL", "", ...previstoJ, totalJ, 1]);
     return [cab, ...corpo];
   }
 
@@ -156,7 +176,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
       return n;
     });
 
-  const abrirCelula = (conta: string, mesIdx: number, valor: number, reembolsavel: boolean) => setDetalhe({ codccu: p0.codccu, conta, mes: mesesP[mesIdx], valor, reembolsavel, rotulo: p0.rotulo });
+  const abrirCelula = (conta: string, mesIdx: number, valor: number, reembolsavel: boolean) => setDetalhe({ codccu: p0.codccu, conta, mes: mesesJ[mesIdx], valor, reembolsavel, rotulo: p0.rotulo });
   const celula = (v: number, max: number, mesIdx: number, conta: string, reembolsavel: boolean) =>
     v ? (
       <button
@@ -164,7 +184,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
         onClick={() => abrirCelula(conta, mesIdx, v, reembolsavel)}
         className="block w-full rounded-md px-1.5 py-1 text-right text-[13px] tabular-nums transition hover:ring-2 hover:ring-brand/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
         style={estiloCelulaCalor(v, max)}
-        title={`${conta} · ${mesLongo(mesesP[mesIdx])}: ${moeda(v)} previsto — clique para ver as linhas do P0`}
+        title={`${conta} · ${mesLongo(mesesJ[mesIdx])}: ${moeda(v)} previsto — clique para ver as linhas do P0`}
       >
         {moedaCompacta(v).replace("R$ ", "")}
       </button>
@@ -185,8 +205,10 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
         ]}
       />
 
+      <PeriodoP0 meses={mesesP} de={de} ate={ate} mesCorrente={mesCorrente} onMudar={(d, a) => { setDeEsc(d); setAteEsc(a); }} />
+
       <div id="p0-resumo" className="grid scroll-mt-16 grid-cols-2 gap-3 lg:grid-cols-5">
-        <Kpi rotulo="Previsto no P0" valor={moedaCompacta(totalP)} detalhe={`custo de contrato · ${linhas.length} contas · ${mesesP.length} meses`} destaque lateral={<Sparkline valores={totaisMes} largura={132} altura={30} />} />
+        <Kpi rotulo={mesesJ.length === mesesP.length ? "Previsto no P0" : "Previsto no período"} valor={moedaCompacta(totalJ)} detalhe={`custo de contrato · ${linhasJ.length} contas · ${mesesJ.length} ${mesesJ.length === 1 ? "mês" : "meses"}`} destaque lateral={<Sparkline valores={previstoJ} largura={132} altura={30} />} />
         {iRef >= 0 && realizadoMes && realizadoMes[iRef] !== null ? (
           <Kpi
             rotulo={`Realizado em ${mesCurto(mesRef!)}`}
@@ -217,7 +239,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
           <Kpi rotulo="Último mês fechado" valor="—" detalhe={semRealizadoTexto} />
         )}
         <Kpi
-          rotulo={kpiAcum ? `Acumulado até ${mesCurto(kpiAcum.ate)}` : "Acumulado realizado × P0"}
+          rotulo={kpiAcum ? `No período · até ${mesCurto(kpiAcum.ate)}` : "Realizado × P0 no período"}
           valor={kpiAcum ? `${kpiAcum.r - kpiAcum.p > 0.005 ? "+" : kpiAcum.r - kpiAcum.p < -0.005 ? "−" : ""}${moedaCompacta(Math.abs(kpiAcum.r - kpiAcum.p))}` : "—"}
           detalhe={
             kpiAcum ? (
@@ -245,37 +267,26 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
         )}
       </div>
 
-      <div id="p0-grafico" className="scroll-mt-16">
+      <div id="p0-grafico" className="scroll-mt-16 space-y-5">
         <Cartao
           titulo="Previsto × realizado, mês a mês"
-          subtitulo={modo === "acumulado" ? "Quanto o P0 previa acumular e quanto o Senior já realizou" : "O que o P0 previa em cada mês contra o que o Senior realizou · os meses por vir mostram só o previsto"}
+          subtitulo={modoCol === "acumulado" ? "Quanto o P0 previa acumular e quanto o Senior já realizou" : "O que o P0 previa em cada mês contra o que o Senior realizou · os meses por vir mostram só o previsto"}
           acao={
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-gray-600">
-              <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group" aria-label="Tipo de gráfico">
-                {(["mensal", "acumulado"] as const).map((k) => (
-                  <button key={k} type="button" onClick={() => setModo(k)} className={`px-3 py-1.5 text-[13px] font-medium ${modo === k ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
-                    {k === "mensal" ? "Mensal" : "Acumulado"}
-                  </button>
-                ))}
-              </div>
-              {temRealizado && (
-                <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group" aria-label="Período do gráfico">
-                  {(["realizado", "todo"] as const).map((k) => (
-                    <button key={k} type="button" onClick={() => setJanelaEscolhida(k)} className={`px-3 py-1.5 text-[13px] font-medium ${janela === k ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
-                      {k === "realizado" ? "Meses com realizado" : `Todo o P0 (${mesesP.length} meses)`}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group" aria-label="Tipo de gráfico">
+              {(["mensal", "acumulado"] as const).map((k) => (
+                <button key={k} type="button" onClick={() => setModoCol(k)} className={`px-3 py-1.5 text-[13px] font-medium ${modoCol === k ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+                  {k === "mensal" ? "Mensal" : "Acumulado"}
+                </button>
+              ))}
             </div>
           }
         >
           <div className="mb-3">
-            <LegendaPrevistoRealizado modo={modo} temRealizado={temRealizado} />
+            <LegendaPrevistoRealizado modo={modoCol} temRealizado={temRealizado} />
           </div>
-          <GraficoPrevistoRealizado meses={mesesJ} previsto={previstoJ} realizado={realizadoJ} mesCorrente={mesCorrente} modo={modo} mesDestaque={mesDoComparativo} onMesClick={setMesCmp} />
+          <GraficoPrevistoRealizado meses={mesesJ} previsto={previstoJ} realizado={realizadoJ} mesCorrente={mesCorrente} modo={modoCol} mesDestaque={mesDoComparativo} onMesClick={setMesCmp} />
           {!temRealizado && <p className="mt-2 text-[13px] text-gray-500">{semRealizadoTexto.charAt(0).toUpperCase() + semRealizadoTexto.slice(1)}. O previsto continua valendo; o realizado aparece aqui assim que o Senior lançar.</p>}
-          {modo === "mensal" && desviosJ && desviosJ.some((v) => v !== null) && (
+          {modoCol === "mensal" && desviosJ && desviosJ.some((v) => v !== null) && (
             <div className="mt-4 border-t border-gray-100 pt-3">
               <h3 className="mb-1 text-sm font-semibold text-gray-800">
                 Quanto o realizado passou ou ficou abaixo do P0 <span className="font-normal text-gray-500">· em % do previsto de cada mês</span>
@@ -285,6 +296,27 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
             </div>
           )}
         </Cartao>
+
+        {temRealizado && (
+          <Cartao
+            titulo="Acompanhamento mensal"
+            subtitulo={modo === "acumulado" ? "Quanto o P0 previa acumular e quanto o Senior já realizou · * mês em andamento (só o já pago)" : "A linha do realizado do Senior contra a linha do previsto no P0, mês a mês · * mês em andamento (só o já pago)"}
+            acao={
+              <div className="inline-flex overflow-hidden rounded-lg border border-gray-200" role="group" aria-label="Tipo de gráfico">
+                {(["linha", "acumulado"] as const).map((k) => (
+                  <button key={k} type="button" onClick={() => setModo(k)} className={`px-3 py-1.5 text-[13px] font-medium ${modo === k ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+                    {k === "linha" ? "Mensal" : "Acumulado"}
+                  </button>
+                ))}
+              </div>
+            }
+          >
+            <div className="mb-3">
+              <LegendaPrevistoRealizado modo={modo} temRealizado={temRealizado} />
+            </div>
+            <GraficoPrevistoRealizado meses={mesesJ} previsto={previstoJ} realizado={realizadoJ} mesCorrente={mesCorrente} modo={modo} mesDestaque={mesDoComparativo} onMesClick={setMesCmp} />
+          </Cartao>
+        )}
       </div>
 
       {comparacaoDoMes && mesDoComparativo && (
@@ -302,7 +334,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
       <div id="p0-tabela" className="scroll-mt-16">
         <Cartao
           titulo="Plano de contas × mês (P0)"
-          subtitulo="O previsto de cada conta em cada mês, com a representatividade de cada uma no P0 · clique numa célula para ver as linhas do P0 por trás do valor · o realizado de cada mês está acima, nas contas do mês"
+          subtitulo="O previsto de cada conta em cada mês do período, com a representatividade de cada uma · clique numa célula para ver as linhas do P0 por trás do valor · o realizado de cada mês está acima, nas contas do mês"
           acao={
             <div className="flex items-center gap-2">
               <label className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-600">
@@ -326,7 +358,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
               <thead>
                 <tr className="text-left text-[13px] uppercase tracking-wide text-gray-500">
                   <th className="sticky left-0 z-10 min-w-[17rem] border-b border-gray-200 bg-white py-2 pr-3 font-semibold">Conta financeira</th>
-                  {mesesP.map((m) => (
+                  {mesesJ.map((m) => (
                     <th key={m} className="border-b border-gray-200 px-1.5 py-2 text-right font-semibold">
                       {mesCurto(m)}
                       {m === mesCorrente ? "*" : ""}
@@ -338,7 +370,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
               </thead>
               <tbody>
                 {agrupar
-                  ? grupos.map((g) => {
+                  ? gruposJ.map((g) => {
                       const fechado = fechados.has(g.grupoCodigo);
                       const cor = cores.get(g.grupoCodigo) ?? COR_DEMAIS;
                       return (
@@ -360,7 +392,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
                               </td>
                             ))}
                             <td className="border-b border-gray-100 px-3 py-2 text-right font-semibold tabular-nums text-gray-900">{moeda(g.total)}</td>
-                            <td className="border-b border-gray-100 px-3 py-2 text-right text-[13px] tabular-nums text-gray-500">{percentual(totalP ? g.total / totalP : 0, 1)}</td>
+                            <td className="border-b border-gray-100 px-3 py-2 text-right text-[13px] tabular-nums text-gray-500">{percentual(totalJ ? g.total / totalJ : 0, 1)}</td>
                           </tr>
                           {!fechado &&
                             g.linhas.map((l) => {
@@ -381,15 +413,15 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
                                     </td>
                                   ))}
                                   <td className="border-b border-gray-100 px-3 py-1 text-right tabular-nums text-gray-800">{moeda(l.total)}</td>
-                                  <td className="border-b border-gray-100 px-3 py-1 text-right text-[13px] tabular-nums text-gray-500">{percentual(totalP ? l.total / totalP : 0, 1)}</td>
+                                  <td className="border-b border-gray-100 px-3 py-1 text-right text-[13px] tabular-nums text-gray-500">{percentual(totalJ ? l.total / totalJ : 0, 1)}</td>
                                 </tr>
                               );
                             })}
                         </Fragment>
                       );
                     })
-                  : linhas.map((l) => {
-                      const max = Math.max(...l.serie, 0);
+                  : linhasJ.map((l) => {
+                      const max = Math.max(...l.serieP, 0);
                       return (
                         <tr key={l.conta.contaFinanceira} className="hover:bg-gray-50/70">
                           <td className="sticky left-0 z-10 border-b border-gray-100 bg-white py-1 pr-3">
@@ -400,13 +432,13 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
                               {l.conta.reembolsavel && <SeloReembolsavel />}
                             </span>
                           </td>
-                          {l.serie.map((v, i) => (
+                          {l.serieP.map((v, i) => (
                             <td key={i} className="border-b border-gray-100 p-0.5">
                               {celula(v, max, i, l.conta.contaFinanceira, l.conta.reembolsavel)}
                             </td>
                           ))}
-                          <td className="border-b border-gray-100 px-3 py-1 text-right tabular-nums text-gray-800">{moeda(l.total)}</td>
-                          <td className="border-b border-gray-100 px-3 py-1 text-right text-[13px] tabular-nums text-gray-500">{percentual(totalP ? l.total / totalP : 0, 1)}</td>
+                          <td className="border-b border-gray-100 px-3 py-1 text-right tabular-nums text-gray-800">{moeda(l.totalP)}</td>
+                          <td className="border-b border-gray-100 px-3 py-1 text-right text-[13px] tabular-nums text-gray-500">{percentual(totalJ ? l.totalP / totalJ : 0, 1)}</td>
                         </tr>
                       );
                     })}
@@ -414,12 +446,12 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
               <tfoot>
                 <tr className="font-semibold">
                   <td className="sticky left-0 z-10 bg-gray-100 py-2.5 pr-3 text-gray-800">Total previsto</td>
-                  {totaisMes.map((v, i) => (
+                  {previstoJ.map((v, i) => (
                     <td key={i} className="bg-gray-100 px-1.5 py-2.5 text-right text-[13px] tabular-nums text-gray-800">
                       {v ? moedaCompacta(v).replace("R$ ", "") : "–"}
                     </td>
                   ))}
-                  <td className="bg-gray-100 px-3 py-2.5 text-right tabular-nums text-gray-900">{moeda(totalP)}</td>
+                  <td className="bg-gray-100 px-3 py-2.5 text-right tabular-nums text-gray-900">{moeda(totalJ)}</td>
                   <td className="bg-gray-100 px-3 py-2.5 text-right text-xs text-gray-500">100%</td>
                 </tr>
               </tfoot>

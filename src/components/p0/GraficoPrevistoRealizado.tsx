@@ -21,7 +21,7 @@ function eixo(v: number): string {
   return v.toLocaleString("pt-BR");
 }
 
-export function LegendaPrevistoRealizado({ modo, temRealizado }: { modo: "mensal" | "acumulado"; temRealizado: boolean }) {
+export function LegendaPrevistoRealizado({ modo, temRealizado }: { modo: "mensal" | "linha" | "acumulado"; temRealizado: boolean }) {
   const item = (cor: string, texto: string, linha = false) => (
     <span className="inline-flex items-center gap-2 text-[13px] text-gray-600">
       {linha ? <span className="inline-block h-[3px] w-5 rounded" style={{ background: cor }} /> : <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: cor }} />}
@@ -30,8 +30,8 @@ export function LegendaPrevistoRealizado({ modo, temRealizado }: { modo: "mensal
   );
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-      {modo === "mensal" ? item(COR_PREVISTO, "Previsto no P0") : item(COR_PREVISTO_LINHA, "Previsto no P0 (acumulado)", true)}
-      {temRealizado && (modo === "mensal" ? item(COR_REALIZADO, "Realizado no Senior · dentro do previsto") : item(COR_REALIZADO, "Realizado no Senior (acumulado)", true))}
+      {modo === "mensal" ? item(COR_PREVISTO, "Previsto no P0") : item(COR_PREVISTO_LINHA, modo === "linha" ? "Previsto no P0" : "Previsto no P0 (acumulado)", true)}
+      {temRealizado && (modo === "mensal" ? item(COR_REALIZADO, "Realizado no Senior · dentro do previsto") : item(COR_REALIZADO, modo === "linha" ? "Realizado no Senior" : "Realizado no Senior (acumulado)", true))}
       {temRealizado && modo === "mensal" && item(COR_ACIMA, "Realizado · acima do previsto")}
     </div>
   );
@@ -53,7 +53,7 @@ export default function GraficoPrevistoRealizado({
   realizado: (number | null)[];
   /** mes em andamento (aaaa-mm): o realizado dele e' parcial */
   mesCorrente: string;
-  modo: "mensal" | "acumulado";
+  modo: "mensal" | "linha" | "acumulado";
   mesDestaque?: string;
   altura?: number;
   onMesClick?: (mes: string) => void;
@@ -97,7 +97,7 @@ export default function GraficoPrevistoRealizado({
 
   return (
     <div ref={ref} className="relative w-full select-none" style={{ height: altura }}>
-      <svg width={w} height={altura} role="img" aria-label={modo === "mensal" ? "Colunas do previsto no P0 e do realizado no Senior, mês a mês" : "Linhas do previsto e do realizado acumulados"} className="absolute left-0 top-0 block">
+      <svg width={w} height={altura} role="img" aria-label={modo === "mensal" ? "Colunas do previsto no P0 e do realizado no Senior, mês a mês" : modo === "linha" ? "Linhas do previsto no P0 e do realizado no Senior, mês a mês" : "Linhas do previsto e do realizado acumulados"} className="absolute left-0 top-0 block">
         {marcas.map((v) => (
           <g key={v}>
             <line x1={m.l} x2={w - m.r} y1={y(v)} y2={y(v)} stroke={v === 0 ? "#cbd5e1" : "#eef1f4"} strokeWidth={1} />
@@ -138,15 +138,18 @@ export default function GraficoPrevistoRealizado({
             );
           })}
 
-        {modo === "acumulado" && (
+        {modo !== "mensal" && (
           <g>
-            <path d={`${caminho(cumPrev.map((v, i) => ({ x: x(i), y: y(v) })))} L${x(n - 1)},${y(0)} L${x(0)},${y(0)} Z`} fill={COR_PREVISTO} fillOpacity={0.18} />
-            <path d={caminho(cumPrev.map((v, i) => ({ x: x(i), y: y(v) })))} fill="none" stroke={COR_PREVISTO_LINHA} strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
+            {modo === "acumulado" && <path d={`${caminho(serieP.map((v, i) => ({ x: x(i), y: y(v) })))} L${x(n - 1)},${y(0)} L${x(0)},${y(0)} Z`} fill={COR_PREVISTO} fillOpacity={0.18} />}
+            {modo === "linha" && tem && ultimoReal > 0 && (
+              <path d={`${caminho(serieR.slice(0, ultimoReal + 1).map((v, i) => ({ x: x(i), y: y(v ?? 0) })))} L${x(ultimoReal)},${y(0)} L${x(0)},${y(0)} Z`} fill={COR_REALIZADO} fillOpacity={0.1} />
+            )}
+            <path d={caminho(serieP.map((v, i) => ({ x: x(i), y: y(v) })))} fill="none" stroke={COR_PREVISTO_LINHA} strokeWidth={2.6} strokeDasharray={modo === "linha" ? "7 4" : undefined} strokeLinejoin="round" strokeLinecap="round" />
             {tem && (
               <>
                 <path
                   d={caminho(
-                    cumReal
+                    serieR
                       .map((v, i) => (v === null ? null : { x: x(i), y: y(v) }))
                       .filter((p): p is { x: number; y: number } => p !== null)
                       .slice(0, iParcial >= 0 ? iParcial : undefined)
@@ -157,21 +160,30 @@ export default function GraficoPrevistoRealizado({
                   strokeLinejoin="round"
                   strokeLinecap="round"
                 />
-                {iParcial > 0 && cumReal[iParcial] !== null && cumReal[iParcial - 1] !== null && (
-                  <path d={`M${x(iParcial - 1)},${y(cumReal[iParcial - 1] as number)} L${x(iParcial)},${y(cumReal[iParcial] as number)}`} fill="none" stroke={COR_REALIZADO} strokeWidth={2.6} strokeDasharray="5 4" />
+                {iParcial > 0 && serieR[iParcial] !== null && serieR[iParcial - 1] !== null && (
+                  <path d={`M${x(iParcial - 1)},${y(serieR[iParcial - 1] as number)} L${x(iParcial)},${y(serieR[iParcial] as number)}`} fill="none" stroke={COR_REALIZADO} strokeWidth={2.6} strokeDasharray="5 4" />
                 )}
-                {cumReal.map((v, i) => (v === null ? null : <circle key={i} cx={x(i)} cy={y(v)} r={i === ultimoReal ? 5 : 3.6} fill={i === iParcial ? "#fff" : COR_REALIZADO} stroke={i === iParcial ? COR_REALIZADO : "#fff"} strokeWidth={i === iParcial ? 2.4 : 1.6} />))}
-                {ultimoReal >= 0 && (
+                {serieR.map((v, i) => (v === null ? null : <circle key={i} cx={x(i)} cy={y(v)} r={i === ultimoReal ? 5 : 3.6} fill={i === iParcial ? "#fff" : COR_REALIZADO} stroke={i === iParcial ? COR_REALIZADO : "#fff"} strokeWidth={i === iParcial ? 2.4 : 1.6} />))}
+                {modo === "acumulado" && ultimoReal >= 0 && (
                   <g>
-                    <circle cx={x(ultimoReal)} cy={y(cumPrev[ultimoReal])} r={4.2} fill={COR_PREVISTO_LINHA} stroke="#fff" strokeWidth={1.6} />
-                    <text x={x(ultimoReal) + 10} y={y(cumReal[ultimoReal] as number) + 4} fontSize={12.5} fontWeight={700} fill="#00635b">
-                      Realizado {moedaCompacta(cumReal[ultimoReal] as number)}
+                    <circle cx={x(ultimoReal)} cy={y(serieP[ultimoReal])} r={4.2} fill={COR_PREVISTO_LINHA} stroke="#fff" strokeWidth={1.6} />
+                    <text x={x(ultimoReal) + 10} y={y(serieR[ultimoReal] as number) + 4} fontSize={12.5} fontWeight={700} fill="#00635b">
+                      Realizado {moedaCompacta(serieR[ultimoReal] as number)}
                     </text>
-                    <text x={x(ultimoReal) + 10} y={y(cumPrev[ultimoReal]) - 8} fontSize={12.5} fontWeight={700} fill={COR_PREVISTO_LINHA}>
-                      Previsto {moedaCompacta(cumPrev[ultimoReal])}
+                    <text x={x(ultimoReal) + 10} y={y(serieP[ultimoReal]) - 8} fontSize={12.5} fontWeight={700} fill={COR_PREVISTO_LINHA}>
+                      Previsto {moedaCompacta(serieP[ultimoReal])}
                     </text>
                   </g>
                 )}
+                {modo === "linha" &&
+                  serieR.map((v, i) =>
+                    v === null || !(banda >= 40 || i === ultimoReal || i === iDestaque) ? null : (
+                      <text key={i} x={x(i)} y={y(v) - 11} textAnchor="middle" fontSize={12} fontWeight={700} fill="#00635b">
+                        {moedaCompacta(v).replace("R$ ", "")}
+                      </text>
+                    )
+                  )}
+                {modo === "linha" && serieP.map((v, i) => (v > 0 && (banda >= 40 || i === iDestaque) ? <text key={`p${i}`} x={x(i)} y={y(v) + (serieR[i] !== null && (serieR[i] as number) > v ? 16 : -9)} textAnchor="middle" fontSize={11} fill="#6b7f9c">{moedaCompacta(v).replace("R$ ", "")}</text> : null))}
               </>
             )}
           </g>
