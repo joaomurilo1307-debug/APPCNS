@@ -11,7 +11,6 @@ import { saudeDoProjeto } from "@/lib/projetos/saude";
 import { sendNotificationEmail } from "@/lib/mailer";
 import { z } from "zod";
 import { contextoMetas } from "@/lib/contractGoals/server";
-import { validarVinculosMetas } from "@/lib/contractGoals/calculo";
 import { vincularMetasProjeto } from "@/lib/contractGoals/vinculos";
 
 export async function GET() {
@@ -110,10 +109,9 @@ export async function POST(req: Request) {
   }
   if (contractGoalIds.length) {
     const acessoMetas = await contextoMetas({ id: userId, role });
-    if (!codccu || !acessoMetas.podeVer(codccu)) return NextResponse.json({ error: "Sem acesso às metas deste contrato" }, { status: 403 });
-    const metas = await prisma.contractGoal.findMany({ where: { id: { in: contractGoalIds } }, include: { contrato: { select: { codccu: true } } } });
-    try { validarVinculosMetas(contractGoalIds, metas.map((m) => ({ ...m, codccu: m.contrato.codccu })), codccu); }
-    catch { return NextResponse.json({ error: "Selecione somente metas ativas do mesmo contrato do projeto" }, { status: 422 }); }
+    const metas = await prisma.contractGoal.findMany({ where: { id: { in: contractGoalIds } }, include: { contrato: { select: { codccu: true, acompanharResultados: true } } } });
+    if (metas.length !== new Set(contractGoalIds).size || !(await Promise.all(metas.map((m) => acessoMetas.podeVerMeta(m)))).every(Boolean) || !metas.every((m) => acessoMetas.podeGerirMeta(m))) return NextResponse.json({ error: "Você precisa gerenciar as metas escolhidas para associá-las a outro projeto" }, { status: 403 });
+    if (metas.some((m) => m.status !== "ATIVA" || m.contrato && (!m.contrato.acompanharResultados || codccu && m.contrato.codccu !== codccu))) return NextResponse.json({ error: "Selecione metas ativas compatíveis com o contexto do projeto" }, { status: 422 });
   }
   const membros = (await pessoasValidas(pessoas ?? [])).filter((id) => id !== userId);
 

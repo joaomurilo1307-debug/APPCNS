@@ -11,7 +11,7 @@ const db = new PrismaClient();
 const stamp = Date.now().toString();
 const ccus = ["98" + stamp.slice(-8), "97" + stamp.slice(-8)];
 const projectIds: string[] = [], userIds: string[] = [], contratoIds: string[] = [];
-let teamId: string | undefined, syncId: string | undefined, cenarios = 0;
+let teamId: string | undefined, planTeamId: string | undefined, syncId: string | undefined, cenarios = 0;
 type Client = { cookies: Map<string, string>; request: (path: string, body?: unknown, method?: string) => Promise<{ status: number; data: any }> };
 function client(): Client {
   const cookies = new Map<string, string>();
@@ -64,11 +64,18 @@ async function main() {
     assert.equal((await admin.request("/api/contract-goals", { ...indicador, targetValue: 15 })).status, 422);
     passou("CCU e consulta impedem escrita; direcao incoerente e rejeitada");
     const plano = await admin.request("/api/contract-goals", { codccu: ccus[0], kind: "PLANO", title: "Melhorar acompanhamento do contrato", category: "GERAL", source: "MANUAL", ownerId: adminId });
-    assert.equal(plano.status, 201, JSON.stringify(plano.data)); const planoId = plano.data.id;
+    assert.equal(plano.status, 422, "Planos novos devem executar uma meta, sem criar outra iniciativa solta.");
+    // Fixture de compatibilidade: representa um plano gravado antes da evolução do módulo.
+    const planoLegado = await db.contractGoal.create({ data: { contratoId: contratoIds[0], kind: "PLANO", title: "Plano anterior fictício", category: "GERAL", source: "MANUAL", ownerId: adminId } });
+    const planoId = planoLegado.id;
     const livre = await admin.request("/api/contract-goals/" + planoId);
     assert.equal(livre.data.baselineValue, null); assert.equal(livre.data.targetValue, null); assert.equal(livre.data.fraction, null);
     assert.equal((await admin.request("/api/contract-goals/" + planoId, { operation: "measurement", value: 50, measuredAt: new Date().toISOString() }, "PATCH")).status, 422);
-    passou("Plano teorico nao exige numeros nem inventa resultado financeiro");
+    passou("Novo plano solto é recusado; plano legado permanece legível sem inventar resultado financeiro");
+    const projetoPlano = await admin.request(`/api/contract-goals/${planoId}/plan`, { mode: "create", name: `PLANO FICTICIO ${stamp}` });
+    assert.equal(projetoPlano.status, 200, JSON.stringify(projetoPlano.data));
+    projectIds.push(projetoPlano.data.projectId);
+    planTeamId = (await db.project.findUniqueOrThrow({ where: { id: projetoPlano.data.projectId } })).teamId;
     for (const title of ["Definir rotina de acompanhamento", "Validar melhoria com a equipe"]) {
       assert.equal((await admin.request("/api/contract-goals/" + planoId, { operation: "action", title, ownerId: adminId }, "PATCH")).status, 200);
     }
@@ -129,6 +136,7 @@ async function main() {
     await db.custoContaFinanceira.deleteMany({ where: { codccu: { in: ccus } } });
     await db.contrato.deleteMany({ where: { id: { in: contratoIds } } });
     if (teamId) await db.team.delete({ where: { id: teamId } });
+    if (planTeamId) await db.team.delete({ where: { id: planTeamId } });
     await db.user.deleteMany({ where: { id: { in: userIds } } });
     if (syncId) await db.atualizacaoCusto.delete({ where: { id: syncId } });
     await db.$disconnect();

@@ -3,6 +3,15 @@ import { computePercentComplete } from "@/lib/progress";
 import { canViewProject } from "@/lib/permissions";
 import { apresentarMetas, incluirMetaContrato } from "@/lib/contractGoals/server";
 import type { UsuarioDaSessao } from "@/lib/acesso/servidor";
+import { filtroMetasSetor, resumirMetasSetor } from "@/lib/contractGoals/sectorGoals";
+
+/** A meta global recebe uma única contribuição por meta canônica, independente de quantos projetos a referenciam. */
+export async function computeSectorGoalForUser(goalId: string, usuario: UsuarioDaSessao) {
+  const eligible = await prisma.goal.findFirst({ where: { AND: [{ id: goalId }, filtroMetasSetor(usuario)] }, select: { id: true } });
+  if (!eligible) return null;
+  const summary = (await resumirMetasSetor([goalId], usuario)).get(goalId);
+  return summary && summary.contributionCount > 0 ? summary : null;
+}
 
 /** Metas vinculadas sao lidas da fonte canonica, com acesso ao projeto E ao contrato. Nao entram no roll-up legado. */
 export async function computeContractGoalForProject(goal: { projectId: string | null; contractGoalId: string | null }, usuario: UsuarioDaSessao) {

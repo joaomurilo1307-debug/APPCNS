@@ -18,3 +18,7 @@ senior-descobrir-saida*.txt
 .env.homologacao
 uploads-homologacao/
 tmp/
+.test-db*/
+.qa/
+.env.metas-test
+.env.finance-test
