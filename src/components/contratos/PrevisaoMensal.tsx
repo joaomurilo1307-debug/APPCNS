@@ -10,6 +10,7 @@ import GraficoMeses from "./GraficoMeses";
 import PlanilhaMeses, { type CelulaSel, type DadosPlanilha } from "./PlanilhaMeses";
 import SeletorPeriodo from "./SeletorPeriodo";
 import { useAbrirOC } from "@/components/custos/AbrirOC";
+import AvisoCentroDeCusto from "./AvisoCentroDeCusto";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 
 type Mes = { mes: string; programado: number; previsto: number; total: number; qtd: number; variacao: { valor: number; pct: number | null } | null };
@@ -150,6 +151,7 @@ export default function PrevisaoMensal({ ccuFixo }: { ccuFixo?: string }) {
 
   return (
     <div className="space-y-5">
+      {!ccuFixo && <AvisoCentroDeCusto resumo={!ccu} codccus={ccu ? [ccu] : d.centros.map((c) => c.ccu)} />}
       {/* ---------------- filtros */}
       <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">

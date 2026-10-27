@@ -15,6 +15,7 @@ import FiltrosCusto from "./FiltrosCusto";
 import SeloSenior from "./SeloSenior";
 import VisaoContrato from "./VisaoContrato";
 import VisaoGeral from "./VisaoGeral";
+import AvisoCentroDeCusto from "@/components/contratos/AvisoCentroDeCusto";
 import { chaveMes, contratosNaBase, coresDosGrupos, type BaseMes, type ContratoCusto, type Filtros, type TipoCusto } from "@/lib/custos/agregacao";
 import { mesLongo } from "@/lib/custos/formato";
 
@@ -200,11 +201,13 @@ export default function CustoPorContratoView({ ccuFixo }: { ccuFixo?: string }) 
             </div>
           ) : contratoAberto ? (
             <>
+              {!ccuFixo && <AvisoCentroDeCusto codccus={[contratoAberto.codccu]} />}
               <VisaoContrato contrato={contratoAberto} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onVoltar={unico || ccuFixo ? undefined : voltar} embutido={!!ccuFixo} onAbrirDetalhe={setDetalhe} />
               <AoVivo key={contratoAberto.codccu} codccu={contratoAberto.codccu} />
             </>
           ) : (
             <>
+              {!ccuFixo && <AvisoCentroDeCusto resumo codccus={contratosBase.map((c) => c.codccu)} />}
               <VisaoGeral contratos={contratosBase} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onAbrirContrato={abrirContrato} />
               <AoVivo />
             </>
