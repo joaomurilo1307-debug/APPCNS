@@ -2,7 +2,7 @@
 //
 // Regra dos reembolsaveis (decisao do Joao, 27/10/2026): ate set/2026 o Senior lancava todo o reembolsavel numa conta so' ("Despesas Reembolsaveis",
 // conta antiga); a partir do plano novo existem varias contas "R - ...". O P0 ja' vem com as contas R. Em cada mes:
-//   - se o realizado AINDA esta na conta antiga (nenhuma conta R lancada no mes) -> as contas R do P0 sao SOMADAS e comparadas com a conta unica;
+//   - se o realizado AINDA esta na conta antiga (nenhuma conta R lancada no mes) -> TODO o reembolsavel do P0 (contas R e, se o P0 tambem usa a conta antiga, ela) e' SOMADO e comparado com a conta unica;
 //   - se o realizado ja' tem contas R no mes -> compara conta R a conta R (linha a linha); o que sobrar na conta antiga aparece a' parte.
 // O criterio e' decidido pelo proprio dado de cada mes, nunca por uma data digitada.
 
@@ -131,7 +131,7 @@ export function compararMes(args: {
   for (const c of prev) {
     const v = valorNoMes(c, mes);
     if (Math.abs(v) < TOLERANCIA) continue;
-    if (modo === "agregado" && c.grupoCodigo === "reembR") unica().previsto += v;
+    if (modo === "agregado" && (c.grupoCodigo === "reembR" || c.grupoCodigo === "reemb")) unica().previsto += v;
     else item(c).previsto += v;
   }
   for (const c of real) {
