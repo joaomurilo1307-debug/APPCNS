@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
+import { lerDetalhesDoPlano } from "./planDetails";
 
-type Activity = { id: string; title: string; description?: string | null; ownerId?: string | null; dueDate?: Date | string | null; status: string; migratedAt?: Date | null; task?: unknown };
-type ProjectTask = { id: string; title: string; description?: string | null; assigneeId?: string | null; dueDate?: Date | string | null; startDate?: Date | string | null; durationDays?: number | null; actualStartedAt?: Date | string | null; actualEndedAt?: Date | string | null; priority?: string | null; parentTaskId?: string | null; status: string };
+type Activity = { id: string; title: string; description?: string | null; planDetails?: unknown; ownerId?: string | null; dueDate?: Date | string | null; status: string; migratedAt?: Date | null; task?: unknown };
+type ProjectTask = { id: string; title: string; description?: string | null; sourceGoalActionId?: string | null; assigneeId?: string | null; dueDate?: Date | string | null; startDate?: Date | string | null; durationDays?: number | null; actualStartedAt?: Date | string | null; actualEndedAt?: Date | string | null; priority?: string | null; parentTaskId?: string | null; status: string };
 export type PlanoParaAprovacao = {
   title: string; description?: string | null; planTitle?: string | null; planDescription?: string | null;
   planApprovalStatus?: string; planApprovalFingerprint?: string | null;
@@ -21,7 +22,7 @@ const date = (value?: Date | string | null) => value instanceof Date ? value.toI
 export function atividadesDoPlano(meta: PlanoParaAprovacao): Activity[] {
   return [
     ...meta.actions.filter((action) => !action.migratedAt && !action.task),
-    ...(meta.actionPlan?.tasks ?? []).map((task) => ({ ...task, ownerId: task.assigneeId, status: statusDaTarefa(task.status) })),
+    ...(meta.actionPlan?.tasks ?? []).map((task) => ({ ...task, planDetails: meta.actions.find((action) => action.id === task.sourceGoalActionId)?.planDetails, ownerId: task.assigneeId, status: statusDaTarefa(task.status) })),
   ];
 }
 
@@ -36,7 +37,8 @@ export function assinaturaDoPlano(meta: PlanoParaAprovacao): string {
   const tasks = new Map((meta.actionPlan?.tasks ?? []).map((task) => [task.id, task]));
   const activities = atividadesDoPlano(meta).map((activity) => {
     const task = tasks.get(activity.id);
-    return { id: activity.id, title: activity.title, description: activity.description ?? null, ownerId: activity.ownerId ?? null, dueDate: date(activity.dueDate), status: activity.status,
+    const details = lerDetalhesDoPlano(activity.planDetails);
+    return { id: activity.id, title: activity.title, description: activity.description ?? null, ...(details ? { planDetails: details } : {}), ownerId: activity.ownerId ?? null, dueDate: date(activity.dueDate), status: activity.status,
       startDate: date(task?.startDate), durationDays: task?.durationDays ?? null, actualStartedAt: date(task?.actualStartedAt), actualEndedAt: date(task?.actualEndedAt), priority: task?.priority ?? null, parentTaskId: task?.parentTaskId ?? null };
   }).sort((a, b) => a.id.localeCompare(b.id));
   const project = meta.actionPlan ? { id: meta.actionPlan.id, name: meta.actionPlan.name, description: meta.actionPlan.description ?? null, startDate: date(meta.actionPlan.startDate), endDate: date(meta.actionPlan.endDate), actualStartedAt: date(meta.actionPlan.actualStartedAt), actualEndedAt: date(meta.actionPlan.actualEndedAt), status: meta.actionPlan.status ?? null, ownerId: meta.actionPlan.ownerId ?? null, teamId: meta.actionPlan.teamId ?? null } : null;

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { dataDoItem, lerDetalhesDoPlano } from "@/lib/contractGoals/planDetails";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -112,9 +113,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       for (const [order, action] of atual.actions.entries()) {
         const status = statusTarefaDaAcao(action.status);
         if (!status || action.task || action.migratedAt) continue;
+        const details = lerDetalhesDoPlano(action.planDetails);
         await tx.task.upsert({
           where: { sourceGoalActionId: action.id }, update: {},
-          create: { sourceGoalActionId: action.id, projectId: project.id, title: action.title, description: action.description, assigneeId: action.ownerId, dueDate: action.dueDate, status: status as "A_FAZER" | "FAZENDO" | "BLOQUEADO" | "FEITO", order },
+          create: { sourceGoalActionId: action.id, projectId: project.id, title: action.title, description: action.description, assigneeId: action.ownerId, dueDate: action.dueDate, startDate: dataDoItem(details?.plannedStart), actualEndedAt: status === "FEITO" ? dataDoItem(details?.actualCompletion) : null, status: status as "A_FAZER" | "FAZENDO" | "BLOQUEADO" | "FEITO", order },
         });
         await tx.contractGoalAction.update({ where: { id: action.id }, data: { migratedAt: new Date() } });
       }

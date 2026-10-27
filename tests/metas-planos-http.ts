@@ -125,6 +125,7 @@ async function main() {
     const successor=await db.task.create({data:{projectId:plan,title:prefix+" Sucessora FS",durationDays:2,startDate:new Date("2026-12-21T12:00:00Z"),dueDate:new Date("2026-12-23T12:00:00Z")}});
     ok(await admin.request(`/api/tasks/${successor.id}/dependencies`,{predecessorId:task.id,type:"FS",lagDays:0}),201);
     ok(await admin.request("/api/contract-goals/"+goal,{operation:"updateAction",actionId:task.id,status:"EM_ANDAMENTO",dueDate:"2026-12-25T12:00:00Z"},"PATCH"));
+    assert.equal((await db.task.findUniqueOrThrow({where:{id:task.id}})).durationDays,null,"Duração derivada permanece nula para futuras alterações de prazo por Projetos");
     const movedByMeta=await db.task.findUniqueOrThrow({where:{id:successor.id}});
     assert.equal(movedByMeta.startDate?.toISOString(),"2026-12-25T12:00:00.000Z");assert.equal(movedByMeta.dueDate?.toISOString(),"2026-12-27T12:00:00.000Z");
     ok(await admin.request(`/api/tasks/${task.id}`,{dueDate:"2026-12-27T12:00:00Z"},"PATCH"));
@@ -225,6 +226,63 @@ async function main() {
     ok(await admin.request(`/api/tasks/${actualTask.id}`,{status:"FAZENDO"},"PATCH"));
     const reopened=ok(await admin.request(`/api/contract-goals/${approvalGoal}`));assert.equal(reopened.effectivePlanApprovalStatus,"REAVALIAR");assert.equal(reopened.canSubmitPlan,false);assert.equal(reopened.fraction,null);
     pass("plano 100% segue ao gestor designado sem autoaprovação; decisão não fabrica resultado e edição posterior exige reavaliação");
+
+    const modelGoal=await createMeta(admin,{...manual,title:prefix+" Modelo FOR 1.0.50"});
+    ok(await admin.request(`/api/contract-goals/${modelGoal}/plan`,{mode:"prepare",name:prefix+" Plano estruturado"}));
+    const planDetails={competence:"2026-09",item:"1.2",account:"EPI e EPC",fact:"Consumo acima da referência",correctiveMeasure:"Revisar distribuição",correctiveHow:"Conferir estoque e entregas",preventiveMeasure:"Planejar consumo",preventiveHow:"Conferência mensal",plannedStart:"2026-08-01",originalDueDate:"2026-08-20",replannedDueDate:"2026-08-25",actualCompletion:null,notes:"Preservar a segurança"};
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"action",title:prefix+" Item estruturado",description:"Fornecedor e contexto da linha",ownerId:member.id,dueDate:"2026-08-25T12:00:00.000Z",planDetails},"PATCH"));
+    let structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));assert.deepEqual(structured.actions[0].planDetails,planDetails);assert.equal(structured.actionPlan,null);
+    const modelAction=structured.actions[0].id;
+    assert.equal((await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:modelAction,status:"A_FAZER",planDetails:{...planDetails,actualCompletion:"2026-08-25"}},"PATCH")).status,422);
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:modelAction,status:"EM_ANDAMENTO"},"PATCH"));
+    structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));assert.deepEqual(structured.actions[0].planDetails,planDetails,"Mudança só de status não apaga o formulário");
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:modelAction,status:"CONCLUIDA",planDetails:{...planDetails,actualCompletion:"2026-08-25"}},"PATCH"));
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:modelAction,status:"EM_ANDAMENTO"},"PATCH"));
+    structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));assert.deepEqual(structured.actions[0].planDetails,planDetails,"Reabrir limpa o realizado anterior e preserva os demais campos");
+    const modelProject=ok(await admin.request(`/api/contract-goals/${modelGoal}/plan`,{mode:"create",name:prefix+" Projeto do modelo",peopleIds:[member.id]}));projectIds.push(modelProject.id);teamIds.push((await db.project.findUniqueOrThrow({where:{id:modelProject.id}})).teamId);
+    structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));const modelTask=structured.actions[0].id;assert.ok(structured.actions[0].taskId);assert.deepEqual(structured.actions[0].planDetails,planDetails);assert.equal(structured.actions[0].startDate,"2026-08-01T12:00:00.000Z");assert.equal(await db.task.count({where:{projectId:modelProject.id}}),1);
+    ok(await admin.request(`/api/tasks/${modelTask}`,{dueDate:"2026-08-28T12:00:00.000Z",status:"FEITO"},"PATCH"));
+    structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));assert.equal(structured.actions[0].dueDate,"2026-08-28T12:00:00.000Z");assert.equal(structured.actions[0].planDetails.originalDueDate,"2026-08-20");assert.ok(structured.actions[0].actualEndedAt);
+    assert.equal((await collaborator.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:modelTask,status:"CONCLUIDA",planDetails:{...planDetails,fact:"Sem autorização de gestão"}},"PATCH")).status,403);
+    pass("formulário do plano preserva fatos, medidas e datas na conversão; prazo e realizado do projeto são canônicos e os campos exigem gestão");
+
+    const nativeTask=await db.task.create({data:{projectId:modelProject.id,title:prefix+" Atividade nativa do projeto",assigneeId:adminId,status:"FEITO"}});
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:nativeTask.id,status:"CONCLUIDA",planDetails:{fact:"Criada no projeto",correctiveMeasure:"Acompanhar resultado",notes:"Registro de contexto"}},"PATCH"));
+    structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));assert.equal(structured.actions.length,2);assert.equal(structured.actions.find((a:any)=>a.id===nativeTask.id).planDetails.fact,"Criada no projeto");assert.equal(await db.task.count({where:{projectId:modelProject.id}}),2);
+    ok(await admin.request(`/api/contract-goals/${modelGoal}/plan/approval`,{operation:"submit",approverId:approver.id}));
+    const inbox=ok(await designated.request('/api/contract-goals/approvals')).plans.find((p:any)=>p.id===modelGoal);assert.equal(inbox.status,"PENDENTE");assert.equal(inbox.activities.find((a:any)=>a.id===nativeTask.id).planDetails.notes,"Registro de contexto");
+    ok(await designated.request(`/api/contract-goals/${modelGoal}/plan/approval`,{operation:"approve"}));
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:nativeTask.id,status:"CONCLUIDA",planDetails:{fact:"Criada no projeto",correctiveMeasure:"Medida revisada",notes:"Registro de contexto"}},"PATCH"));
+    structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));assert.equal(structured.effectivePlanApprovalStatus,"REAVALIAR");assert.equal(structured.executionFraction,1);assert.equal(structured.fraction,null);assert.equal(await db.task.count({where:{projectId:modelProject.id}}),2);
+    pass("atividade nativa recebe contexto do plano sem duplicar Task; aprovador vê os campos e alterar medida invalida aprovação sem inventar resultado");
+
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"action",title:prefix+" Concluída em data informada",ownerId:adminId,status:"CONCLUIDA",planDetails:{actualCompletion:"2026-08-02"}},"PATCH"));
+    let datedTask=await db.task.findFirstOrThrow({where:{projectId:modelProject.id,title:prefix+" Concluída em data informada"}});assert.ok(datedTask.actualStartedAt!<=datedTask.actualEndedAt!);assert.equal(datedTask.actualEndedAt!.toISOString(),"2026-08-02T12:00:00.000Z");
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"action",title:prefix+" Concluir depois pelo plano",ownerId:adminId,status:"A_FAZER",planDetails:{}},"PATCH"));
+    const newDatedTask=await db.task.findFirstOrThrow({where:{projectId:modelProject.id,title:prefix+" Concluir depois pelo plano"}});
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:newDatedTask.id,status:"CONCLUIDA",planDetails:{actualCompletion:"2026-08-03"}},"PATCH"));
+    datedTask=await db.task.findUniqueOrThrow({where:{id:newDatedTask.id}});assert.ok(datedTask.actualStartedAt!<=datedTask.actualEndedAt!);assert.equal(datedTask.actualEndedAt!.toISOString(),"2026-08-03T12:00:00.000Z");
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:newDatedTask.id,status:"EM_ANDAMENTO"},"PATCH"));
+    structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));assert.equal(structured.actions.find((a:any)=>a.id===newDatedTask.id).actualEndedAt,null);
+    const startedTask=await db.task.create({data:{projectId:modelProject.id,title:prefix+" Início real registrado",assigneeId:adminId,status:"FAZENDO",actualStartedAt:new Date("2026-08-04T18:30:00.000Z")}});
+    assert.equal((await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:startedTask.id,status:"CONCLUIDA",planDetails:{actualCompletion:"2026-08-03"}},"PATCH")).status,422);
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:startedTask.id,status:"CONCLUIDA",planDetails:{actualCompletion:"2026-08-04"}},"PATCH"));
+    datedTask=await db.task.findUniqueOrThrow({where:{id:startedTask.id}});assert.equal(datedTask.actualEndedAt!.toISOString(),"2026-08-04T18:30:00.000Z");
+    pass("datas realizadas informadas não geram início posterior ao fim e reabrir atividade remove o realizado canônico");
+
+    const scheduleAnchor=await db.task.create({data:{projectId:modelProject.id,title:prefix+" Âncora de cronograma",assigneeId:adminId,startDate:new Date("2026-08-01T12:00:00.000Z"),dueDate:new Date("2026-08-02T12:00:00.000Z"),durationDays:1}});
+    const scheduleNative=await db.task.create({data:{projectId:modelProject.id,title:prefix+" Item nativo com duração",assigneeId:adminId,startDate:new Date("2026-08-01T12:00:00.000Z"),dueDate:new Date("2026-08-06T12:00:00.000Z"),durationDays:5}});
+    await db.taskDependency.create({data:{predecessorId:scheduleAnchor.id,successorId:scheduleNative.id,type:"FS",lagDays:0}});
+    const scheduleDetails={plannedStart:"2026-08-02",originalDueDate:"2026-08-06",replannedDueDate:"2026-08-10",fact:"Revisão do prazo"};
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:scheduleNative.id,status:"A_FAZER",dueDate:"2026-08-10T12:00:00.000Z",planDetails:scheduleDetails},"PATCH"));
+    let scheduled=await db.task.findUniqueOrThrow({where:{id:scheduleNative.id}});assert.equal(scheduled.durationDays,8,"A duração segue fim menos início, sem acrescentar um dia");assert.equal(scheduled.startDate!.toISOString(),"2026-08-02T12:00:00.000Z");assert.equal(scheduled.dueDate!.toISOString(),"2026-08-10T12:00:00.000Z","Duração antiga5 não pode sobrescrever prazo novo de8dias");
+    await db.task.update({where:{id:scheduleNative.id},data:{startDate:new Date("2026-08-02T00:00:00.000Z"),dueDate:new Date("2026-08-10T00:00:00.000Z")}});
+    const untouchedTask=await db.task.create({data:{projectId:modelProject.id,title:prefix+" Outro item não editado",assigneeId:adminId,startDate:new Date("2026-08-10T12:00:00.000Z"),dueDate:new Date("2026-08-15T12:00:00.000Z"),durationDays:5}});
+    await db.taskDependency.create({data:{predecessorId:scheduleAnchor.id,successorId:untouchedTask.id,type:"FS",lagDays:0}});
+    ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:scheduleNative.id,status:"A_FAZER",dueDate:"2026-08-10T12:00:00.000Z",planDetails:{...scheduleDetails,fact:"Somente análise do contexto foi corrigida"}},"PATCH"));
+    scheduled=await db.task.findUniqueOrThrow({where:{id:scheduleNative.id}});assert.equal(scheduled.durationDays,8);assert.equal(scheduled.startDate!.toISOString(),"2026-08-02T00:00:00.000Z");assert.equal(scheduled.dueDate!.toISOString(),"2026-08-10T00:00:00.000Z","O formulário sem horário não muda a hora canônica ao salvar o mesmo dia");
+    const untouched=await db.task.findUniqueOrThrow({where:{id:untouchedTask.id}});assert.equal(untouched.startDate!.toISOString(),untouchedTask.startDate!.toISOString());assert.equal(untouched.dueDate!.toISOString(),untouchedTask.dueDate!.toISOString(),"Editar só o contexto não reprograma o projeto");
+    pass("datas do formulário atualizam duração nativa antes da rede FS; editar apenas contexto preserva o cronograma");
     console.log(JSON.stringify({passed:scenarios,failed:0,database:url.pathname.slice(1),productionTouched:false}));
   } finally {
     // A guarda acima valida o banco antes de qualquer cadastro ou remoção.
