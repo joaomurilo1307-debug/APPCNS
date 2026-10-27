@@ -60,6 +60,12 @@ Até set/2026 o Senior lançava todo o reembolsável numa conta só (“Despesas
 O critério vem do dado de cada mês, não de uma data digitada. Situações: acima do P0, abaixo, igual, sem previsão (realizado sem linha no P0) e não realizado (previsto sem realizado).
 O mês em andamento compara só o já pago e fica fora das barras de desvio. Meses fora do período do P0 não têm comparação; um mês dentro do período sem linhas (pausa) tem previsto zero.
 
+## Aviso nos CCU 210 e 230 (custo e receita do 3687)
+
+No Senior não existe centro de custo próprio para o 3687. Os **custos** do 3687 ficam no CCU 210, junto com os do 3686 (por isso o P0 do 210 é 3686 + 3687). O **faturamento** (medição) do 3687 vai para o CCU 230, junto com o 3687 LT (a receita do 230 é o 3687 LT mais o 3687). Quem analisa o 3687 precisa olhar o 210 (custo) e o 230 (receita) juntos.
+
+Um aviso explica isso nas telas de centro de custo: página do CCU (`/contratos/[ccu]`), Custo por centro de custo, Receita e Medição (lista e detalhe), Previsão (com o CCU escolhido) e P0. Nas telas que listam vários centros aparece uma versão de uma linha. Texto e regra: `src/lib/contratos/avisosPorCentro.ts`; componente: `src/components/contratos/AvisoCentroDeCusto.tsx`; teste: `tests/avisos-centro.test.ts`. Para tirar o aviso, esvazie `AVISOS_POR_CCU`.
+
 ## Acesso
 
 `GET /api/p0/custos`, `/api/p0/linhas` e `/api/p0/situacao` seguem a regra dos custos (`escopoDeCustos`/`podeVerCcu`): quem não vê os custos do contrato não vê o P0 (403).

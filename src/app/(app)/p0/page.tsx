@@ -6,6 +6,7 @@
 import Link from "next/link";
 import FiltroContratos from "@/components/FiltroContratos";
 import BotaoExcel from "@/components/BotaoExcel";
+import AvisoCentroDeCusto from "@/components/contratos/AvisoCentroDeCusto";
 import { useEffect, useMemo, useState } from "react";
 import { PartesDoP0 } from "@/components/contratos/AbasContrato";
 import { mesCurto, moedaCompacta } from "@/lib/custos/formato";
@@ -73,7 +74,8 @@ export default function P0Page() {
             />
           </div>
         </header>
-        {erro ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro}</div> : !contratos ? <p className="py-6 text-center text-sm text-gray-500">Carregando contratos…</p> : (
+        {erro ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{erro}</div> : !contratos ? <p className="py-6 text-center text-sm text-gray-500">Carregando contratos…</p> : (<>
+          <AvisoCentroDeCusto resumo codccus={filtrados.map((c) => c.codccu)} />
           <div className="overflow-x-auto rounded-xl border border-gray-100">
             <table className="w-full min-w-[700px] text-[13.5px]">
               <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500"><tr><th className="px-3 py-2">CCU</th><th className="px-3 py-2">Contrato</th><th className="px-3 py-2">Cliente</th><th className="px-3 py-2">P0</th><th className="px-3 py-2" /></tr></thead>
@@ -97,7 +99,7 @@ export default function P0Page() {
               </tbody>
             </table>
           </div>
-        )}
+        </>)}
       </section>
     </div>
   );

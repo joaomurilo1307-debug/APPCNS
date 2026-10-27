@@ -8,6 +8,7 @@ import FiltroContratos from "@/components/FiltroContratos";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mesCurto, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 import BotaoExcel from "@/components/BotaoExcel";
+import AvisoCentroDeCusto from "@/components/contratos/AvisoCentroDeCusto";
 import type { AbaExcel } from "@/lib/exportarExcel";
 import SeletorPeriodo, { atalhosDePeriodo } from "@/components/contratos/SeletorPeriodo";
 import { somaMes } from "@/lib/medicao/competencia";
@@ -242,6 +243,7 @@ export default function MedicaoLista() {
               </select>
               <label className="flex items-center gap-2 text-[13px] text-gray-600"><input type="checkbox" checked={soComSaldo} onChange={(e) => setSoComSaldo(e.target.checked)} /> Só com saldo</label>
             </header>
+            <AvisoCentroDeCusto resumo codccus={lista.map((c) => c.codccu)} />
             <div className="overflow-x-auto rounded-xl border border-gray-100">
               <table className="w-full min-w-[1080px] text-[13.5px] tabular-nums">
                 <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">

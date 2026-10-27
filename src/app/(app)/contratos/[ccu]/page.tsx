@@ -12,6 +12,7 @@ import FichaEditor, { type FichaContrato } from "@/components/contratos/FichaEdi
 import BotaoDossie from "@/components/contratos/BotaoDossie";
 import { AbaMedicaoDoContrato, useMedicaoDoContrato } from "@/components/contratos/MedicaoDoContrato";
 import ControleAcompanhamentoContrato from "@/components/contratos/ControleAcompanhamentoContrato";
+import AvisoCentroDeCusto from "@/components/contratos/AvisoCentroDeCusto";
 import PainelMetasContrato from "@/components/contractGoals/PainelMetasContrato";
 import GraficosDoContrato from "@/components/contratos/GraficosDoContrato";
 import { normalizarPeriodoConsolidado } from "@/lib/medicao/consolidado";
@@ -102,6 +103,8 @@ function Pagina() {
       </header>
 
       {podeEditar && <ControleAcompanhamentoContrato ficha={ficha} onSalvo={setFicha} />}
+
+      <AvisoCentroDeCusto codccus={[ficha.codccu]} />
 
       <nav className="mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-gray-200" aria-label="Seções do contrato">
         {ABAS.map((a) => (

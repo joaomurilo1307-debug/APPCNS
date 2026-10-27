@@ -12,6 +12,7 @@ import { BarrasPorMes, ConsumoPorLinha, Gauge, LinhasAvanco } from "./GraficosMe
 import ReceitaContrato from "./ReceitaContrato";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 import BotaoExcel from "@/components/BotaoExcel";
+import AvisoCentroDeCusto from "@/components/contratos/AvisoCentroDeCusto";
 import { abaMedicaoPorLinha } from "@/lib/medicao/excel";
 
 type Cel = { qtd: number; valor: number };
@@ -200,6 +201,8 @@ export default function MedicaoDetalhe({ numCtr, embutido = false, periodoContro
           {dadosCarregados && <span>Dados do Senior de {horaBr(d.atualizadoEm)}</span>}
         </div>
       </header>
+
+      {!embutido && <AvisoCentroDeCusto codccus={[d.contrato.codccu]} />}
 
       {/* ---------------- controles */}
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-soft">
