@@ -4,6 +4,9 @@
 // Por decisao do Joao (19/10/2026): Custo de pessoal e P0 sao ESTRUTURA/BASE (ainda sem dados; o P0 so' sera feito depois que todos os contratos tiverem o seu).
 // Previsao le os titulos em aberto do Senior, somente leitura.
 
+import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import P0CustosContrato from "@/components/p0/P0CustosContrato";
 import ClientesDoContrato from "./ClientesDoContrato";
 import ProjetosDoContrato from "./ProjetosDoContrato";
 import PrevisaoMensal from "./PrevisaoMensal";
@@ -34,11 +37,23 @@ function Vazio({ titulo, texto, extra }: { titulo: string; texto: string; extra?
 // ---------------------------------------------------------------- Ficha e projetos (cadastro e vinculos preservados)
 export function AbaFichaContrato({ ficha, irParaAba }: { ficha: FichaContrato; irParaAba: (a: string) => void }) {
   const fichaCompleta = !!(ficha.cliente && ficha.numero && ficha.vigenciaFim && ficha.valor);
+  // o P0 esta cadastrado para este contrato? (null enquanto nao se sabe)
+  const [temP0, setTemP0] = useState<boolean | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/p0/custos?ccu=${encodeURIComponent(ficha.codccu)}`, { cache: "no-store", signal: controller.signal })
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (!controller.signal.aborted) setTemP0(r.ok && d.existe === true ? true : null);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [ficha.codccu]);
   const itens: [string, boolean | null, string | null][] = [
     ["Custos do Senior (aba Custos)", true, "custos"],
     ["Ficha cadastral (cliente, número, vigência, valor)", fichaCompleta, null],
     ["Custo de pessoal", null, "pessoal"],
-    ["Orçamento base (P0)", null, "p0"],
+    ["Orçamento base (P0)", temP0, "p0"],
     ["Previsão do Senior por contrato (títulos em aberto)", true, "previsao"],
     ["Metas do contrato", true, "metas"],
     ["Planos de Ação do contrato", true, "acoes"],
@@ -104,18 +119,45 @@ export function PartesDoP0() {
   );
 }
 
-export function AbaP0() {
+// Subabas do P0: so' "Custos de contrato" tem dados por enquanto; Receita e Custos pessoais vem depois (o custo de pessoal do P0 ja' fica guardado a' parte).
+const SUBABAS_P0 = [
+  { id: "custos", nome: "Custos de contrato" },
+  { id: "receita", nome: "Receita" },
+  { id: "pessoal", nome: "Custos pessoais" },
+] as const;
+
+export function AbaP0({ codccu, nomeContrato }: { codccu: string; nomeContrato: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const sub = (SUBABAS_P0.find((a) => a.id === params.get("p0"))?.id ?? "custos") as (typeof SUBABAS_P0)[number]["id"];
+  const irPara = (id: string) => {
+    const n = new URLSearchParams(params.toString());
+    if (id === "custos") n.delete("p0");
+    else n.set("p0", id);
+    router.replace(`${pathname}${n.toString() ? `?${n}` : ""}`, { scroll: false });
+  };
   return (
     <div className="space-y-5">
-      <Cartao titulo="P0 do contrato" sub="Aba preparada. O cadastro só começa depois que todos os contratos tiverem o seu P0 definido.">
-        <Vazio
-          titulo="O P0 deste contrato ainda não foi cadastrado."
-          texto="Quando o P0 de cada contrato estiver pronto, ele será cadastrado aqui. Nada é estimado nem preenchido automaticamente: o previsto vem do P0 e o realizado vem do Senior."
-        />
-      </Cartao>
-      <Cartao titulo="Como o P0 vai funcionar" sub="Para o gestor entender o que virá nesta aba">
-        <PartesDoP0 />
-      </Cartao>
+      <nav className="flex flex-wrap gap-1.5" aria-label="Partes do P0">
+        {SUBABAS_P0.map((a) => (
+          <button key={a.id} type="button" onClick={() => irPara(a.id)} className={`rounded-full border px-4 py-1.5 text-[14px] font-medium transition ${sub === a.id ? "border-brand bg-brand text-white" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}>
+            {a.nome}
+            {a.id !== "custos" && <span className={`ml-1.5 text-xs font-normal ${sub === a.id ? "text-white/80" : "text-gray-400"}`}>em breve</span>}
+          </button>
+        ))}
+      </nav>
+      {sub === "custos" && <P0CustosContrato key={codccu} codccu={codccu} nomeContrato={nomeContrato} />}
+      {sub === "receita" && (
+        <Cartao titulo="P0 de receita" sub="As linhas das medições do contrato: o que se espera faturar, mês a mês">
+          <Vazio titulo="Esta parte do P0 vem depois dos custos." texto="Quando o P0 de receita do contrato estiver pronto, ele será cadastrado aqui, ao lado do realizado de medição e faturamento. Nada é estimado nem preenchido automaticamente." />
+        </Cartao>
+      )}
+      {sub === "pessoal" && (
+        <Cartao titulo="P0 de custos pessoais" sub="Salários CLT, encargos, férias, 13º e provisões previstos, mês a mês">
+          <Vazio titulo="Esta parte do P0 vem depois dos custos de contrato." texto="Os valores de custo de pessoal do P0 ficam guardados à parte e nunca se misturam com o custo de contrato. Quando esta parte for liberada, eles aparecem aqui, comparados com o custo de pessoal realizado." />
+        </Cartao>
+      )}
     </div>
   );
 }

@@ -25,6 +25,26 @@ function eixo(v: number): string {
 
 // ------------------------------------------------------------------------------------------ linha de acompanhamento
 
+/** Acumulado que preserva os meses sem dado (null): a linha comparada para onde o dado acaba. */
+function acumuladoComNulos(valores: ReadonlyArray<number | null>): (number | null)[] {
+  let s = 0;
+  return valores.map((v) => (v === null ? null : (s += v)));
+}
+
+/** Trechos seguidos sem lacuna (null), com o indice do mes e o valor de cada ponto. */
+function trechosContinuos(serie: ReadonlyArray<number | null>): { i: number; v: number }[][] {
+  const out: { i: number; v: number }[][] = [];
+  let atual: { i: number; v: number }[] = [];
+  serie.forEach((v, i) => {
+    if (v === null) {
+      if (atual.length) out.push(atual);
+      atual = [];
+    } else atual.push({ i, v });
+  });
+  if (atual.length) out.push(atual);
+  return out;
+}
+
 export function LinhaAcompanhamento({
   meses,
   valores,
@@ -38,6 +58,7 @@ export function LinhaAcompanhamento({
   rotuloAcessivel = "Linha de acompanhamento do custo mensal",
   rotuloMensal = "Custo no mês",
   rotuloAcumulado = "Acumulado",
+  comparacao,
 }: {
   meses: string[];
   valores: number[];
@@ -51,6 +72,11 @@ export function LinhaAcompanhamento({
   rotuloAcessivel?: string;
   rotuloMensal?: string;
   rotuloAcumulado?: string;
+  /**
+   * Segunda linha para comparar (ex.: o P0 sobre o realizado). `valores` alinhado a `meses`, null onde nao ha dado (a linha para ali);
+   * `desvios` (opcional) e' o desvio da linha principal contra esta, por mes, mostrado no balao; `parcialEm` marca o mes em andamento.
+   */
+  comparacao?: { rotulo: string; cor: string; valores: (number | null)[]; parcialEm?: string; desvios?: (number | null)[]; rotuloDesvio?: string };
 }) {
   const [ref, largura] = useLargura<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -68,8 +94,10 @@ export function LinhaAcompanhamento({
   const media = modo === "mensal" ? mediaDoPeriodo(valores, temParcial) : null;
   const mm3 = modo === "mensal" && mostrarMediaMovel ? mediaMovel(valores, 3, temParcial) : null;
   const metaSerie = meta && meta > 0 ? (modo === "acumulado" ? valores.map((_, i) => meta * (i + 1)) : valores.map(() => meta)) : null;
+  const cmp = comparacao ? (modo === "acumulado" ? acumuladoComNulos(comparacao.valores) : comparacao.valores) : null;
+  const iCmpParcial = comparacao?.parcialEm ? meses.indexOf(comparacao.parcialEm) : -1;
 
-  const topoBruto = Math.max(...serie, ...(metaSerie ?? [0]), media ?? 0, ...(mm3 ?? []).map((v) => v ?? 0), 0) * 1.08;
+  const topoBruto = Math.max(...serie, ...(metaSerie ?? [0]), media ?? 0, ...(mm3 ?? []).map((v) => v ?? 0), ...(cmp ?? []).map((v) => v ?? 0), 0) * 1.08;
   const { topo, marcas } = escalaBonita(topoBruto);
   const x = (i: number) => m.l + banda * i + banda / 2;
   const y = (v: number) => m.t + areaH - (v / topo) * areaH;
@@ -78,6 +106,9 @@ export function LinhaAcompanhamento({
   const fechados = temParcial ? serie.slice(0, iParcial) : serie;
   const ptsFechados = fechados.map((v, i) => ({ x: x(i), y: y(v) }));
   const passoRotulo = banda < 46 ? 2 : 1;
+  // em grafico denso (rotulo de 2 em 2), o rotulo vizinho do mes em destaque some para nao ficar um em cima do outro
+  const iDestaque = mesDestaque ? meses.indexOf(mesDestaque) : -1;
+  const vizinhoDoDestaque = (i: number) => passoRotulo > 1 && iDestaque >= 0 && i !== iDestaque && Math.abs(i - iDestaque) < passoRotulo;
   const area = ptsFechados.length > 1 ? `${caminho(ptsFechados)} L${ptsFechados[ptsFechados.length - 1].x},${y(0)} L${ptsFechados[0].x},${y(0)} Z` : "";
 
   function dica(i: number) {
@@ -93,6 +124,8 @@ export function LinhaAcompanhamento({
       vsMeta: metaSerie ? variacao(serie[i], metaSerie[i]) : null,
       metaValor: metaSerie ? metaSerie[i] : null,
       parcial: temParcial && i === iParcial,
+      cmpValor: cmp ? cmp[i] : null,
+      cmpDesvio: comparacao?.desvios && modo === "mensal" ? comparacao.desvios[i] ?? null : null,
     };
   }
   const tip = hover !== null ? dica(hover) : null;
@@ -150,6 +183,17 @@ export function LinhaAcompanhamento({
           />
         )}
 
+        {cmp && comparacao && (
+          <g>
+            {trechosContinuos(cmp).map((t, k) =>
+              t.length > 1 ? <path key={k} d={caminho(t.map((p) => ({ x: x(p.i), y: y(p.v) })))} fill="none" stroke={comparacao.cor} strokeWidth={2.6} strokeDasharray="7 4" strokeLinejoin="round" strokeLinecap="round" /> : null
+            )}
+            {cmp.map((v, i) =>
+              v === null ? null : <circle key={i} cx={x(i)} cy={y(v)} r={4} fill={i === iCmpParcial ? "#ffffff" : comparacao.cor} stroke={i === iCmpParcial ? comparacao.cor : "#ffffff"} strokeWidth={i === iCmpParcial ? 2.2 : 1.6} />
+            )}
+          </g>
+        )}
+
         {ptsFechados.length > 1 && <path d={caminho(ptsFechados)} fill="none" stroke={COR_LINHA} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />}
         {temParcial && ptsFechados.length > 0 && (
           <path d={`M${ptsFechados[ptsFechados.length - 1].x},${ptsFechados[ptsFechados.length - 1].y} L${x(iParcial)},${y(serie[iParcial])}`} fill="none" stroke={COR_LINHA} strokeWidth={2.4} strokeDasharray="5 5" />
@@ -161,12 +205,12 @@ export function LinhaAcompanhamento({
           return (
             <g key={meses[i]}>
               <circle cx={x(i)} cy={y(v)} r={destaque ? 6 : 4.5} fill={parcial ? "#ffffff" : COR_LINHA} stroke={parcial ? COR_LINHA : "#ffffff"} strokeWidth={parcial ? 2.5 : 2} />
-              {(i % passoRotulo === 0 || destaque || parcial) && (
+              {((i % passoRotulo === 0 && !vizinhoDoDestaque(i)) || destaque || parcial) && (
                 <text x={x(i)} y={y(v) - 12} textAnchor="middle" fontSize={12} fontWeight={destaque ? 700 : 600} fill={destaque ? "#00635b" : "#374151"}>
                   {moedaCompacta(v).replace("R$ ", "")}
                 </text>
               )}
-              {(i % passoRotulo === 0 || destaque) && (
+              {((i % passoRotulo === 0 && !vizinhoDoDestaque(i)) || destaque) && (
                 <text x={x(i)} y={h - 11} textAnchor="middle" fontSize={12.5} fontWeight={destaque ? 700 : 500} fill={destaque ? "#00635b" : "#6b7280"}>
                   {mesCurto(meses[i])}
                   {parcial ? "*" : ""}
@@ -207,6 +251,18 @@ export function LinhaAcompanhamento({
                 <span className={`font-medium tabular-nums ${tip.vsMedia > 0.005 ? "text-red-600" : tip.vsMedia < -0.005 ? "text-emerald-700" : "text-gray-500"}`}>{variacaoTexto(tip.vsMedia)}</span>
               </li>
             )}
+            {tip.cmpValor !== null && comparacao && (
+              <li className="flex justify-between">
+                <span style={{ color: comparacao.cor }}>{comparacao.rotulo}</span>
+                <span className="tabular-nums text-gray-800">{moeda(tip.cmpValor)}</span>
+              </li>
+            )}
+            {tip.cmpDesvio !== null && comparacao && (
+              <li className="flex justify-between">
+                <span>{comparacao.rotuloDesvio ?? `vs ${comparacao.rotulo}`}</span>
+                <span className={`font-medium tabular-nums ${tip.cmpDesvio > 0.005 ? "text-red-600" : tip.cmpDesvio < -0.005 ? "text-emerald-700" : "text-gray-500"}`}>{variacaoTexto(tip.cmpDesvio)}</span>
+              </li>
+            )}
             {tip.metaValor !== null && (
               <li className="flex justify-between">
                 <span>Meta</span>
@@ -229,6 +285,7 @@ export function LegendaLinha({
   temMeta,
   rotuloMensal = "Custo do mês",
   rotuloAcumulado = "Custo acumulado",
+  comparacao,
 }: {
   modo: "mensal" | "acumulado";
   mostrarMedia: boolean;
@@ -236,6 +293,7 @@ export function LegendaLinha({
   temMeta: boolean;
   rotuloMensal?: string;
   rotuloAcumulado?: string;
+  comparacao?: { rotulo: string; cor: string };
 }) {
   const item = (cor: string, texto: string, tracejado?: string) => (
     <span className="inline-flex items-center gap-2 text-[13px] text-gray-600">
@@ -251,6 +309,7 @@ export function LegendaLinha({
       {modo === "mensal" && mostrarMedia && item(COR_MEDIA, "Média do período (meses fechados)", "3 5")}
       {modo === "mensal" && mostrarMediaMovel && item(COR_MM3, "Média móvel de 3 meses", "9 4 2 4")}
       {temMeta && item(COR_META, modo === "acumulado" ? "Meta acumulada" : "Meta mensal", "7 5")}
+      {comparacao && item(comparacao.cor, modo === "acumulado" ? `${comparacao.rotulo} (acumulado)` : comparacao.rotulo, "7 4")}
     </div>
   );
 }
@@ -264,9 +323,18 @@ export function BarrasVariacao({
   selecionado,
   onSelecionar,
   dicas,
+  contra = "o mês anterior",
+  dicaClique = "clique para ver as contas que variaram",
+  rotuloAlta = "▲ sobe",
+  rotuloQueda = "▼ cai",
 }: {
   meses: string[];
   variacoes: (number | null)[];
+  /** contra o que a variacao e' medida (texto do balao e da acessibilidade) */
+  contra?: string;
+  dicaClique?: string;
+  rotuloAlta?: string;
+  rotuloQueda?: string;
   altura?: number;
   /** mes (aaaa-mm) em analise: fica destacado e o painel "O que mudou" mostra as contas que mais variaram */
   selecionado?: string;
@@ -288,16 +356,16 @@ export function BarrasVariacao({
 
   return (
     <div ref={ref} className="relative w-full select-none" style={{ height: altura }}>
-      <svg width={w} height={altura} role="img" aria-label="Variação do custo contra o mês anterior" className="absolute left-0 top-0 block">
+      <svg width={w} height={altura} role="img" aria-label={`Variação do custo contra ${contra}`} className="absolute left-0 top-0 block">
         <line x1={m.l} x2={w - m.r} y1={zero} y2={zero} stroke="#cbd5e1" strokeWidth={1.5} />
         <text x={m.l - 10} y={zero + 4} textAnchor="end" fontSize={12} fill="#6b7280">
           0%
         </text>
         <text x={m.l - 10} y={m.t + 6} textAnchor="end" fontSize={11.5} fill="#b45309">
-          ▲ sobe
+          {rotuloAlta}
         </text>
         <text x={m.l - 10} y={altura - m.b - 2} textAnchor="end" fontSize={11.5} fill="#047857">
-          ▼ cai
+          {rotuloQueda}
         </text>
         {variacoes.map((v, i) => {
           const cx = m.l + banda * i + banda / 2;
@@ -335,7 +403,7 @@ export function BarrasVariacao({
           return (
             <g key={meses[i]}>
               {faixa}
-              <title>{`${mesLongo(meses[i])}: ${variacaoTexto(v)} contra o mês anterior${dicas?.[i] ? "\n" + dicas[i] : ""}${clicavel ? "\n(clique para ver as contas que variaram)" : ""}`}</title>
+              <title>{`${mesLongo(meses[i])}: ${variacaoTexto(v)} contra ${contra}${dicas?.[i] ? "\n" + dicas[i] : ""}${clicavel ? `\n(${dicaClique})` : ""}`}</title>
               <rect style={{ pointerEvents: "none" }} x={cx - larg / 2} y={sobe ? zero - alt : zero} width={larg} height={alt} rx={3} fill={sobe ? COR_ALTA : COR_QUEDA} />
               <text x={cx} y={sobe ? zero - alt - 5 : zero + alt + 14} textAnchor="middle" fontSize={12} fontWeight={600} fill={sobe ? "#b91c1c" : "#047857"}>
                 {sobe ? "+" : "−"}

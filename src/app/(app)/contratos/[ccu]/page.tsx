@@ -118,7 +118,7 @@ function Pagina() {
       {aba === "medicao" && <AbaMedicaoDoContrato key={ficha.codccu} estado={medicao} periodo={periodo} onPeriodo={mudarPeriodo} />}
       {aba === "custos" && <CustoPorContratoView ccuFixo={ficha.codccu} />}
       {aba === "pessoal" && <AbaPessoal />}
-      {aba === "p0" && <AbaP0 />}
+      {aba === "p0" && <AbaP0 key={ficha.codccu} codccu={ficha.codccu} nomeContrato={ficha.nome} />}
       {aba === "previsao" && <AbaPrevisao codccu={ficha.codccu} />}
 
       {editando && <FichaEditor ficha={ficha} onSalvo={(f) => { setFicha(f); setEditando(false); }} onFechar={() => setEditando(false)} />}

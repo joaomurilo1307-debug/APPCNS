@@ -32,6 +32,11 @@ import MatrizRepresentatividade from "./MatrizRepresentatividade";
 import ParetoFornecedores from "./ParetoFornecedores";
 import VariacaoPorConta from "./VariacaoPorConta";
 import { useLancamentos } from "./useLancamentos";
+import ComparativoP0 from "@/components/p0/ComparativoP0";
+import { useP0Custos } from "@/components/p0/useP0Custos";
+import { desviosContraP0, previstoPorMes } from "@/lib/p0/comparar";
+
+const COR_P0 = "#2a78d6";
 
 export default function VisaoContrato({
   contrato,
@@ -68,6 +73,11 @@ export default function VisaoContrato({
   // mes em analise no painel "O que mudou": clicar numa barra de variacao muda o mes (padrao: o ultimo mes fechado do periodo)
   const [mesAnalise, setMesAnalise] = useState<string | null>(null);
   const lancamentos = useLancamentos(contrato.codccu, filtros, base);
+  // P0 do contrato (linha de base de custos): quando existe, entra como linha no grafico, desvio por mes e comparativo conta a conta
+  const p0estado = useP0Custos(contrato.codccu);
+  const p0 = p0estado.estado === "ok" ? p0estado.p0 : null;
+  const [mostrarP0, setMostrarP0] = useState(true);
+  const [mesP0, setMesP0] = useState<string | null>(null);
 
   // meta mensal do coordenador: fica guardada neste navegador, por centro de custo
   useEffect(() => {
@@ -177,6 +187,16 @@ export default function VisaoContrato({
     };
   }, [linhas, iPonte, temPonte]);
 
+  // P0: previsto por mes (null fora do periodo do P0), desvio do realizado contra ele e o mes do comparativo (clicar numa barra de desvio troca o mes)
+  const previstoMes = useMemo(() => (p0 ? previstoPorMes(p0.contas, mesesP, { mesIni: p0.mesIni, mesFim: p0.mesFim }, filtros, busca) : null), [p0, mesesP, filtros, busca]);
+  const desviosP0 = previstoMes ? desviosContraP0(totaisMes, previstoMes, refParcial ? mesesP.length - 1 : null) : null;
+  const mesesComP0 = p0 ? mesesAsc.filter((m) => m >= p0.mesIni && m <= p0.mesFim) : [];
+  const ultimoFechadoP0 = [...mesesComP0].reverse().find((m) => m !== mesCorrente) ?? mesesComP0[mesesComP0.length - 1];
+  const mesDoComparativo = mesP0 && mesesComP0.includes(mesP0) ? mesP0 : ultimoFechadoP0;
+  const comparacaoP0 = p0 && previstoMes && mostrarP0 && previstoMes.some((v) => v !== null) ? { rotulo: "P0 previsto", cor: COR_P0, valores: previstoMes, desvios: desviosP0 ?? undefined, rotuloDesvio: "Realizado vs P0" } : undefined;
+  const previstoRef = previstoMes && mesesP.length ? previstoMes[mesesP.length - 1] : null;
+  const deltaRef = previstoRef !== null ? totalRef - previstoRef : null;
+
   // grafico: por grupo (cor segue o grupo no sistema todo)
   const { series, legenda } = useMemo(() => {
     const lista = grupos.map((g) => ({ codigo: g.grupoCodigo, nome: g.grupoNome, valores: g.serie, total: g.total, cor: cores.get(g.grupoCodigo) ?? COR_DEMAIS }));
@@ -281,7 +301,7 @@ export default function VisaoContrato({
         <VazioPeriodo />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className={`grid grid-cols-2 gap-3 ${p0 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
             <Kpi rotulo="Custo no período" valor={moedaCompacta(totalP)} detalhe={`${mesesComCusto} ${mesesComCusto === 1 ? "mês" : "meses"} com custo · ${linhas.length} contas`} destaque />
             <Kpi
               rotulo={`Mês de referência · ${mesCurto(filtros.ate)}`}
@@ -291,6 +311,25 @@ export default function VisaoContrato({
             <Kpi rotulo="Média mensal" valor={moedaCompacta(mesesP.length ? totalP / mesesP.length : 0)} detalhe={`em ${mesesP.length} ${mesesP.length === 1 ? "mês" : "meses"} do período`} />
             <Kpi rotulo="Maior conta" valor={<span className="block truncate text-lg">{maiorConta.conta.contaFinanceira}</span>} detalhe={`${moedaCompacta(maiorConta.totalP)} · ${percentual(maiorConta.totalP / totalP)} do centro de custo`} />
             <Kpi rotulo="Reembolsável" valor={moedaCompacta(reemb)} detalhe={reemb ? `conta antiga ${moedaCompacta(reembAntiga)} · contas R ${moedaCompacta(reembR)}` : "nenhum no período"} />
+            {p0 && (
+              <Kpi
+                rotulo={`Contra o P0 · ${mesCurto(filtros.ate)}`}
+                valor={previstoRef === null || deltaRef === null ? "—" : `${deltaRef > 0.005 ? "+" : deltaRef < -0.005 ? "−" : ""}${moedaCompacta(Math.abs(deltaRef))}`}
+                detalhe={
+                  previstoRef === null ? (
+                    `o P0 cobre ${mesLongo(p0.mesIni)} a ${mesLongo(p0.mesFim)}`
+                  ) : refParcial ? (
+                    <>
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">em andamento · só o já pago</span> <span>P0 {moedaCompacta(previstoRef)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Variacao v={variacao(totalRef, previstoRef)} sufixo="vs P0" /> <span>· P0 {moedaCompacta(previstoRef)}</span>
+                    </>
+                  )
+                }
+              />
+            )}
           </div>
 
           <Cartao
@@ -320,6 +359,11 @@ export default function VisaoContrato({
                     </label>
                   </>
                 )}
+                {p0 && (
+                  <label className="flex cursor-pointer items-center gap-1.5">
+                    <input type="checkbox" checked={mostrarP0} onChange={(e) => setMostrarP0(e.target.checked)} className="h-4 w-4 accent-[#2a78d6]" /> P0 previsto
+                  </label>
+                )}
                 <label className="flex items-center gap-1.5">
                   Meta mensal R$
                   <input
@@ -336,9 +380,9 @@ export default function VisaoContrato({
             }
           >
             <div className="mb-3">
-              <LegendaLinha modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} temMeta={!!meta} />
+              <LegendaLinha modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} temMeta={!!meta} comparacao={comparacaoP0 && { rotulo: comparacaoP0.rotulo, cor: comparacaoP0.cor }} />
             </div>
-            <LinhaAcompanhamento meses={mesesP} valores={totaisMes} mesParcial={refParcial ? mesCorrente : undefined} mesDestaque={filtros.ate} modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} meta={meta} />
+            <LinhaAcompanhamento meses={mesesP} valores={totaisMes} mesParcial={refParcial ? mesCorrente : undefined} mesDestaque={filtros.ate} modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} meta={meta} comparacao={comparacaoP0} />
             {meta && (
               <p className={`mt-1 text-[13px] font-medium ${acimaDaMeta ? "text-red-700" : "text-emerald-700"}`}>
                 {acimaDaMeta ? `▲ ${acimaDaMeta} de ${mesesFechados.length} meses fechados ficaram acima da meta de ${moeda(meta)}` : `✓ Nenhum dos ${mesesFechados.length} meses fechados passou da meta de ${moeda(meta)}`}
@@ -357,6 +401,17 @@ export default function VisaoContrato({
                       voltar ao último mês fechado
                     </button>
                   )}
+                </p>
+              </div>
+            )}
+            {modo === "mensal" && p0 && mostrarP0 && desviosP0 && desviosP0.some((v) => v !== null) && (
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                <h3 className="mb-1 text-sm font-semibold text-gray-800">
+                  Desvio contra o P0 <span className="font-normal text-gray-500">· realizado do mês contra o previsto no P0</span>
+                </h3>
+                <BarrasVariacao meses={mesesP} variacoes={desviosP0} selecionado={mesDoComparativo} onSelecionar={setMesP0} contra="o P0" dicaClique="clique para comparar com o P0 logo abaixo" rotuloAlta="▲ acima" rotuloQueda="▼ abaixo" />
+                <p className="mt-1 text-xs text-gray-500">
+                  Vermelho = o mês custou <b>mais</b> do que o P0 previa; verde = custou <b>menos</b>. O mês em andamento fica de fora (só o já pago). Clique numa barra para ver, logo abaixo, <b>quais contas</b> ficaram acima ou abaixo do P0.
                 </p>
               </div>
             )}
@@ -420,6 +475,17 @@ export default function VisaoContrato({
 
           {temPonte && (
             <VariacaoPorConta linhas={todas} mesesAsc={mesesAsc} iMes={iPonte} mesesEscolha={mesesP.filter((m) => mesesAsc.indexOf(m) > 0)} onMes={setMesAnalise} />
+          )}
+
+          {p0 && mesDoComparativo && (
+            <ComparativoP0 p0={p0} realizado={contrato.contas} mes={mesDoComparativo} mesesEscolha={mesesComP0} onMes={setMesP0} filtros={filtros} busca={busca} mesCorrente={mesCorrente} baseRotulo={base === "competencia" ? "competência da nota" : "data de pagamento"} nomeArquivo={contrato.codccu} />
+          )}
+          {p0 && !mesDoComparativo && (
+            <Cartao titulo="Comparativo com o P0" subtitulo="O realizado do Senior contra o previsto no P0, conta a conta">
+              <p className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-600">
+                O P0 deste contrato cobre de <b>{mesLongo(p0.mesIni)}</b> a <b>{mesLongo(p0.mesFim)}</b>; ainda não há mês com realizado para comparar.
+              </p>
+            </Cartao>
           )}
 
           <MatrizRepresentatividade grupos={grupos} meses={mesesP} totaisMes={totaisMes} totalP={totalP} cores={cores} mesCorrente={mesCorrente} />

@@ -1998,3 +1998,42 @@ model AtualizacaoProjeto {
 
   @@index([projectId, createdAt])
 }
+
+// P0 (linha de base de custos) de cada contrato, cadastrado a partir da planilha "P0 PREVISTO - DADOS PREVISTO" da area. Uma versao por P0:
+// o original e, no futuro, cada aditivo (versao 2, 3...). O sistema le sempre a versao ATIVA mais nova. Nada aqui e' estimado: cada linha
+// e' uma linha da planilha, ja' com a conta no nome do plano do Senior (o mesmo da tela Custo por Contrato).
+model P0Versao {
+  id          String   @id @default(cuid())
+  codccu      String
+  versao      Int      @default(1)
+  rotulo      String // "P0 original", "Aditivo 1"...
+  origem      String? // arquivo/data de onde veio
+  rotuloNaPlanilha String? // como a planilha chamava o contrato (so' para conferencia)
+  ativa       Boolean  @default(true)
+  criadoEm    DateTime @default(now())
+
+  linhas P0Linha[]
+
+  @@unique([codccu, versao])
+  @@index([codccu])
+}
+
+// Linha do P0. `tipo` separa o que entra no custo de contrato (comparavel com a aba Custos) do custo de pessoal (salario CLT, encargos, ferias,
+// 13o, provisoes), guardado para a aba "P0 custos pessoais" e nunca somado ao custo de contrato. Futuro: "RECEITA" (P0 receita).
+model P0Linha {
+  id           String   @id @default(cuid())
+  p0Id         String
+  tipo         String // CUSTO_CONTRATO | CUSTO_PESSOAL
+  codConta     Int? // codigo da conta no plano do Senior
+  conta        String // nome da conta no plano do Senior
+  grupoCodigo  String // grupo (tipo de custo) como na tela de custos
+  grupoNome    String
+  reembolsavel Boolean  @default(false)
+  competencia  DateTime // dia 1 do mes
+  valor        Float
+  historico    String?  @db.Text
+
+  p0 P0Versao @relation(fields: [p0Id], references: [id], onDelete: Cascade)
+
+  @@index([p0Id, tipo, competencia])
+}
