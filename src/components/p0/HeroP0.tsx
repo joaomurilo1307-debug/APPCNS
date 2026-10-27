@@ -7,6 +7,9 @@
 import { useMemo } from "react";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 
+// mes em andamento: nem verde nem vermelho, porque o realizado ainda e' so' o ja' pago
+const COR_AO_VIVO = "#2a78d6";
+
 type Props = {
   rotulo: string;
   origem: string | null;
@@ -47,7 +50,12 @@ export default function HeroP0({ rotulo, origem, rotuloNaPlanilha, meses, previs
   // anos para a regua embaixo da faixa
   const anos = useMemo(() => meses.map((m, i) => ({ m, i })).filter(({ m, i }) => i === 0 || m.endsWith("-01")), [meses]);
   const pos = (i: number) => `${((i + 0.5) / n) * 100}%`;
+  // P0 que comeca no mes atual: o "hoje" cairia em cima do rotulo do primeiro mes, entao vai para uma segunda linha
+  const hojeNoInicio = iAtual >= 0 && iAtual / n < 0.12;
 
+  // mes em andamento (parcial): so' o ja' pago contra o previsto do mes
+  const realizadoNoMes = iAtual >= 0 && realizado ? realizado[iAtual] : null;
+  const previstoNoMes = iAtual >= 0 ? previsto[iAtual] : 0;
   const razao = realizadoVencido !== null && previstoVencido > 0 ? realizadoVencido / previstoVencido : null;
   const corRazao = razao === null ? "#0e9f94" : razao > 1.005 ? "#e5675f" : "#0e9f94";
 
@@ -85,7 +93,7 @@ export default function HeroP0({ rotulo, origem, rotuloNaPlanilha, meses, previs
             );
           })}
         </div>
-        <div className="relative mt-1.5 h-4 text-[11.5px] text-gray-400">
+        <div className={`relative mt-1.5 text-[11.5px] text-gray-400 ${hojeNoInicio ? "h-9" : "h-4"}`}>
           {anos.map(({ m, i }) => (
             <span key={m} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: pos(i), ...(i === 0 ? { transform: "none", left: 0 } : null) }}>
               {i === 0 ? mesCurto(m) : m.slice(0, 4)}
@@ -93,7 +101,7 @@ export default function HeroP0({ rotulo, origem, rotuloNaPlanilha, meses, previs
           ))}
           <span className="absolute right-0 whitespace-nowrap">{mesCurto(meses[n - 1])}</span>
           {iAtual >= 0 && (
-            <span className="absolute -translate-x-1/2 whitespace-nowrap font-semibold text-amber-600" style={{ left: pos(iAtual), top: -1 }}>
+            <span className={`absolute whitespace-nowrap font-semibold text-amber-600 ${hojeNoInicio ? "" : "-translate-x-1/2"}`} style={hojeNoInicio ? { left: 0, top: 16 } : { left: pos(iAtual), top: -1 }}>
               ▲ hoje
             </span>
           )}
@@ -130,6 +138,20 @@ export default function HeroP0({ rotulo, origem, rotuloNaPlanilha, meses, previs
               marcador={1 / 1.25}
               cor={corRazao}
               legenda={`Senior realizou ${moedaCompacta(realizadoVencido)} nos meses fechados, contra ${moedaCompacta(previstoVencido)} previstos (a marca é o previsto)`}
+            />
+          ) : realizadoNoMes !== null && previstoNoMes > 0 ? (
+            // nenhum mes fechou ainda: acompanha o mes em andamento ao vivo (so' o ja' pago contra o previsto do mes)
+            <Medidor
+              titulo={`Realizado × previsto · ${mesCurto(meses[iAtual])}`}
+              destaque={
+                <span style={{ color: COR_AO_VIVO }}>
+                  {percentual(realizadoNoMes / previstoNoMes, 0)} <span className="text-[15px] font-medium text-gray-400">do previsto do mês</span>
+                </span>
+              }
+              pct={Math.min(realizadoNoMes / previstoNoMes, 1.25) / 1.25}
+              marcador={1 / 1.25}
+              cor={COR_AO_VIVO}
+              legenda={`Mês em andamento: o Senior já realizou ${moedaCompacta(realizadoNoMes)} de ${moedaCompacta(previstoNoMes)} previstos em ${mesCurto(meses[iAtual])} (só o já pago; a marca é o previsto)`}
             />
           ) : (
             <Medidor titulo="Realizado × previsto" destaque="—" pct={0} cor="#9aa5b1" legenda={realizado === null ? "Sem o realizado do Senior para comparar" : "Ainda não há mês fechado dentro do P0"} />
