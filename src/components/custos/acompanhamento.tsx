@@ -105,7 +105,7 @@ export function LinhaAcompanhamento({
   const caminho = (pts: { x: number; y: number }[]) => pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
   const fechados = temParcial ? serie.slice(0, iParcial) : serie;
   const ptsFechados = fechados.map((v, i) => ({ x: x(i), y: y(v) }));
-  const passoRotulo = banda < 46 ? 2 : 1;
+  const passoRotulo = banda < 30 ? 3 : banda < 46 ? 2 : 1;
   // em grafico denso (rotulo de 2 em 2), o rotulo vizinho do mes em destaque some para nao ficar um em cima do outro
   const iDestaque = mesDestaque ? meses.indexOf(mesDestaque) : -1;
   const vizinhoDoDestaque = (i: number) => passoRotulo > 1 && iDestaque >= 0 && i !== iDestaque && Math.abs(i - iDestaque) < passoRotulo;
@@ -351,7 +351,7 @@ export function BarrasVariacao({
   const maxAbs = Math.min(1.2, Math.max(0.25, ...variacoes.map((v) => (v === null ? 0 : Math.abs(v)))));
   const zero = m.t + areaH / 2;
   const escala = (areaH / 2 - 14) / maxAbs;
-  const passoRotulo = banda < 46 ? 2 : 1;
+  const passoRotulo = banda < 30 ? 3 : banda < 46 ? 2 : 1;
   const larg = Math.max(12, Math.min(40, banda * 0.55));
 
   return (

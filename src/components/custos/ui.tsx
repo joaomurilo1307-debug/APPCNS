@@ -20,12 +20,13 @@ export function Cartao({ titulo, subtitulo, acao, children, className = "" }: { 
   );
 }
 
-export function Kpi({ rotulo, valor, detalhe, destaque }: { rotulo: string; valor: ReactNode; detalhe?: ReactNode; destaque?: boolean }) {
+export function Kpi({ rotulo, valor, detalhe, destaque, lateral }: { rotulo: string; valor: ReactNode; detalhe?: ReactNode; destaque?: boolean; lateral?: ReactNode }) {
   return (
-    <div className={`min-w-0 rounded-2xl border p-4 shadow-soft ${destaque ? "border-brand/30 bg-brand-light/60" : "border-gray-100 bg-white"}`}>
+    <div className={`relative min-w-0 rounded-2xl border p-4 shadow-soft ${destaque ? "border-brand/30 bg-brand-light/60" : "border-gray-100 bg-white"}`}>
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{rotulo}</p>
       <p className="mt-1 truncate text-[28px] font-semibold leading-tight tabular-nums tracking-tight text-gray-900">{valor}</p>
       {detalhe && <div className="mt-1 text-[13px] text-gray-500">{detalhe}</div>}
+      {lateral && <div className="pointer-events-none mt-2 overflow-hidden">{lateral}</div>}
     </div>
   );
 }

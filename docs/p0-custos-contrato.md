@@ -26,7 +26,7 @@ por decisão do João. Se o Senior lançar algo na conta 77 de um contrato, o re
 
 ## Telas
 
-- **Contrato > P0 > Custos de contrato** (`src/components/p0/P0CustosContrato.tsx`): gráfico de acompanhamento do previsto (média, média móvel, realizado por cima),
+- **Contrato > P0 > Custos de contrato** (`src/components/p0/P0CustosContrato.tsx`): abre com o **hero** (`HeroP0.tsx`: faixa dos meses do P0 — fechados, mês em andamento e por vir — e três medidores: prazo, previsto que já venceu e realizado × previsto) e **atalhos fixos** de seção (`NavSecoesP0.tsx`). Depois: gráfico de acompanhamento do previsto (média, média móvel, realizado por cima),
   variação contra o mês anterior, desvio do realizado contra o P0, “o que variou” no P0, comparativo conta a conta, evolução por tipo de custo, representatividade e a tabela
   plano de contas × mês (clique na célula = linhas do P0 por trás do valor).
 - **Contrato > Custos** (`VisaoContrato.tsx`): quando o contrato tem P0, entram a linha “P0 previsto” no gráfico, o KPI “Contra o P0”, as barras de desvio e o card
