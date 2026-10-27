@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ContestacoesDeCusto from "@/components/aprovacoes/ContestacoesDeCusto";
+import PlanosDeAcao from "@/components/aprovacoes/PlanosDeAcao";
 import { useSession } from "next-auth/react";
 import Avatar from "@/components/Avatar";
 import { eventTypeLabel } from "@/lib/calendarColors";
@@ -235,6 +236,7 @@ export default function AprovacoesPage() {
       </div>
 
       <ContestacoesDeCusto />
+      <PlanosDeAcao />
 
       {ocSemVinculo && ocsSenior.length === 0 && (
         <p className="mb-8 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">

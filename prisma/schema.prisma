@@ -227,8 +227,10 @@ model User {
   taskComments    TaskComment[]
   assignedGoals   Goal[]         @relation("GoalAssignees")
   ownedContractGoals ContractGoal[] @relation("ContractGoalOwner")
+  createdContractGoals ContractGoal[] @relation("ContractGoalCreator")
   contractGoalMeasurements ContractGoalMeasurement[] @relation("ContractGoalMeasurementAuthor")
   assignedContractGoalActions ContractGoalAction[] @relation("ContractGoalActionOwner")
+  approvingContractGoalPlans ContractGoal[] @relation("ContractGoalPlanApprover")
   createdEvents   CalendarEvent[]         @relation("EventCreator")
   eventInvites    CalendarEventAttendee[]
   outlookAccount  OutlookAccount?
@@ -674,6 +676,7 @@ model Project {
   orcamento      Float?
   // contrato (centro de custo = Contrato.codccu) a que o projeto pertence; opcional
   codccu         String?
+  actionPlanGoalId String? @unique
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -684,6 +687,7 @@ model Project {
   tasks    Task[]
   board    ProjectBoard?
   goals    Goal[]
+  actionPlanGoal ContractGoal? @relation("GoalActionPlan", fields: [actionPlanGoalId], references: [id], onDelete: SetNull)
   events   CalendarEvent[]
   customFields CustomField[]
   milestones Milestone[]
@@ -980,6 +984,7 @@ model Goal {
   parentGoal   Goal?   @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: SetNull)
   subGoals     Goal[]  @relation("GoalHierarchy")
   contractGoal ContractGoal? @relation(fields: [contractGoalId], references: [id], onDelete: SetNull)
+  contractContributions ContractGoal[] @relation("SectorGoalContributions")
 
   @@index([projectId])
   @@index([parentGoalId])
@@ -990,7 +995,7 @@ model Goal {
 // Indicador canonico do contrato. Projetos referenciam a mesma meta, sem repetir suas medicoes.
 model ContractGoal {
   id String @id @default(cuid())
-  contratoId String
+  contratoId String?
   title String
   description String? @db.Text
   category String @default("GERAL")
@@ -1001,19 +1006,47 @@ model ContractGoal {
   direction String?
   source String @default("MANUAL")
   sourceAccount String?
+  sourceCcu String?
+  metricName String?
+  planTitle String?
+  planDescription String? @db.Text
+  planCreatedAt DateTime?
+  planApprovalStatus String @default("NAO_SOLICITADA")
+  planApproverId String?
+  planSubmittedAt DateTime?
+  planApprovedAt DateTime?
+  planDecidedAt DateTime?
+  planApprovalNote String? @db.Text
+  planApprovalFingerprint String?
+  parentGoalId String?
+  contributionWeight Float?
+  evaluationMode String @default("ACUMULADO")
+  frequency String @default("MENSAL")
+  baselinePeriodStart String?
+  baselinePeriodEnd String?
+  targetMode String @default("ABSOLUTO")
+  targetChange Float?
+  tolerance Float @default(0)
   periodStart String?
   periodEnd String?
   dueDate DateTime?
   ownerId String?
+  creatorId String?
   status String @default("ATIVA")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Restrict)
+  contrato Contrato? @relation(fields: [contratoId], references: [id], onDelete: Restrict)
   owner User? @relation("ContractGoalOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  creator User? @relation("ContractGoalCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+  actionPlan Project? @relation("GoalActionPlan")
+  planApprover User? @relation("ContractGoalPlanApprover", fields: [planApproverId], references: [id], onDelete: SetNull)
+  parentGoal Goal? @relation("SectorGoalContributions", fields: [parentGoalId], references: [id], onDelete: SetNull)
   measurements ContractGoalMeasurement[]
   actions ContractGoalAction[]
   projectGoals Goal[]
   @@index([contratoId, status])
+  @@index([creatorId, status])
+  @@index([ownerId, status])
 }
 
 model ContractGoalMeasurement {
@@ -1038,10 +1071,12 @@ model ContractGoalAction {
   ownerId String?
   dueDate DateTime?
   status String @default("A_FAZER")
+  migratedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   goal ContractGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
   owner User? @relation("ContractGoalActionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  task Task? @relation("GoalActionTask")
   @@index([goalId, status])
   @@index([ownerId, dueDate])
 }
@@ -1159,6 +1194,7 @@ model Task {
   projectId         String?
   assigneeId        String?
   parentTaskId      String?
+  sourceGoalActionId String? @unique
   locked            Boolean           @default(false)
   outlookEventId    String?           @unique
   actualStartedAt   DateTime?
@@ -1167,6 +1203,7 @@ model Task {
   updatedAt         DateTime          @updatedAt
 
   project      Project?               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceGoalAction ContractGoalAction? @relation("GoalActionTask", fields: [sourceGoalActionId], references: [id], onDelete: SetNull)
   assignee     User?                  @relation("TaskAssignee", fields: [assigneeId], references: [id])
   parentTask   Task?                  @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
   subtasks     Task[]                 @relation("Subtasks")

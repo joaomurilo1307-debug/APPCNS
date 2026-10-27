@@ -8,6 +8,7 @@ import { z } from "zod";
 import { apresentarMetas, contextoMetas, incluirMetaContrato } from "@/lib/contractGoals/server";
 import { vincularMetasProjeto } from "@/lib/contractGoals/vinculos";
 import { negarSemEdicao } from "@/lib/acesso/servidor";
+import { ErroComposicaoSetor, validarPaiLegado } from "@/lib/contractGoals/sectorGoals";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -71,22 +72,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (["CLIENTE", "VISUALIZADOR"].includes(role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
     const somenteConsulta = await negarSemEdicao({ id: userId, role }, "projetos"); if (somenteConsulta) return somenteConsulta;
     const contexto = await contextoMetas({ id: userId, role });
-    if (!project.codccu || !contexto.podeVer(project.codccu)) return NextResponse.json({ error: "Sem acesso às metas do contrato" }, { status: 403 });
+    const meta = await prisma.contractGoal.findUnique({ where: { id: parsed.data.contractGoalId }, include: { contrato: { select: { codccu: true } } } });
+    if (!meta || !(await contexto.podeVerMeta(meta)) || !contexto.podeGerirMeta(meta)) return NextResponse.json({ error: "Você precisa gerenciar a meta escolhida para associá-la a outro projeto" }, { status: 403 });
     try {
       await prisma.$transaction((tx) => vincularMetasProjeto(tx, project, [parsed.data.contractGoalId!]));
       return NextResponse.json({ ok: true }, { status: 201 });
-    } catch { return NextResponse.json({ error: "A meta deve estar ativa e pertencer ao mesmo contrato deste projeto" }, { status: 422 }); }
+    } catch { return NextResponse.json({ error: "A meta deve estar ativa e ser compatível com o contexto deste projeto" }, { status: 422 }); }
   }
   if (parsed.data.parentGoalId && (await prisma.goal.findUnique({ where: { id: parsed.data.parentGoalId }, select: { contractGoalId: true } }))?.contractGoalId) return NextResponse.json({ error: "A meta canônica é vinculada pelo contrato, sem somar outra medição" }, { status: 422 });
   const { assignedUserIds, contractGoalId, ...rest } = parsed.data;
-  const goal = await prisma.goal.create({
-    data: {
-      ...rest,
-      projectId: params.id,
-      dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
-      assignedUsers: assignedUserIds?.length ? { connect: assignedUserIds.map((id) => ({ id })) } : undefined,
-    },
-  });
-
-  return NextResponse.json(goal, { status: 201 });
+  try {
+    const goal = await prisma.$transaction(async (tx) => {
+      await validarPaiLegado(tx, rest.parentGoalId);
+      return tx.goal.create({ data: {
+        ...rest, projectId: params.id,
+        dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
+        assignedUsers: assignedUserIds?.length ? { connect: assignedUserIds.map((id) => ({ id })) } : undefined,
+      } });
+    });
+    return NextResponse.json(goal, { status: 201 });
+  } catch (error) {
+    if (error instanceof ErroComposicaoSetor) return NextResponse.json({ error: error.message }, { status: 422 });
+    throw error;
+  }
 }

@@ -1,11 +1,26 @@
 export type PessoaMeta = { id: string; name: string };
 export type MedicaoMeta = { id: string; value: number; measuredAt: string; period: string | null; note: string | null; createdBy: PessoaMeta };
-export type AcaoMeta = { id: string; title: string; description: string | null; ownerId: string | null; owner: PessoaMeta | null; dueDate: string | null; status: string; canUpdate: boolean };
+export type AcaoMeta = { id: string; title: string; description: string | null; ownerId: string | null; owner: PessoaMeta | null; dueDate: string | null; status: string; canUpdate: boolean; taskId?: string | null; projectId?: string | null };
+export type PeriodoMeta = { period: string; start: string; end: string; value: number | null; target: number | null; progress: number | null; state: "FUTURO" | "ABERTO" | "FECHADO"; updatedAt: string | null; error?: string | null; changePercent?: number | null; partial?: boolean };
+export type PlanoMeta = { id: string; name: string; canManage: boolean; taskCount: number; completedCount: number };
+export type PlanoSemProjeto = { name: string; description: string | null; createdAt: string | null };
 export type MetaContrato = {
   id: string; title: string; description: string | null; category: string; kind: "INDICADOR" | "PLANO"; unit: string | null; baselineValue: number | null; targetValue: number | null; direction: string | null; source: string;
   sourceAccount: string | null; periodStart: string | null; periodEnd: string | null; dueDate: string | null; ownerId: string | null; status: string;
-  owner: PessoaMeta | null; contrato: { id: string; codccu: string; nome: string }; currentValue: number | null; fraction: number | null;
+  owner: PessoaMeta | null; contrato: { id: string; codccu: string; nome: string } | null; currentValue: number | null; fraction: number | null;
+  sourceCcu?: string | null; metricName?: string | null; targetMode?: string; targetChange?: number | null; tolerance?: number | null;
+  evaluationMode?: string; frequency?: string; baselinePeriodStart?: string | null; baselinePeriodEnd?: string | null;
+  actionPlan?: PlanoMeta | null;
+  standalonePlan?: PlanoSemProjeto | null; hasPlan?: boolean;
+  parentGoalId?: string | null; contributionWeight?: number | null;
+  sectorGoal?: { id: string; title: string; weight: number } | null;
+  planApprovalStatus?: string; effectivePlanApprovalStatus?: string;
+  planApprover?: PessoaMeta | null; planApproverId?: string | null;
+  planSubmittedAt?: string | null; planApprovedAt?: string | null; planDecidedAt?: string | null; planApprovalNote?: string | null;
+  evaluation?: { periods: PeriodoMeta[]; currentValue?: number | null; currentPeriod?: string | null; currentState?: string | null; baselineValue?: number | null; targetValue?: number | null; sourceUpdatedAt?: string | null; sourceError?: string | null; fraction?: number | null } | null;
   executionFraction: number | null;
   canManage: boolean; canRecord: boolean; sourceError: string | null; sourceUpdatedAt: string | null;
+  canCreatePlan?: boolean; canConvertPlan?: boolean; canAddAction?: boolean;
+  canSubmitPlan?: boolean; canApprovePlan?: boolean; canRejectPlan?: boolean;
   measurements: MedicaoMeta[]; actions: AcaoMeta[]; projects: { id: string; name: string; goalId: string }[];
 };

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { computeGoalFraction, computeGoalCurrentValue } from "@/lib/goals";
 import { visibleProjectWhere } from "@/lib/permissions";
 import { z } from "zod";
+import { resumirMetasSetor } from "@/lib/contractGoals/sectorGoals";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -32,13 +33,19 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
   });
 
-  const withComputed = await Promise.all(
-    goals.map(async (g) => ({
+  const sectorSummaries = await resumirMetasSetor(goals.filter((g) => !g.projectId).map((g) => g.id), u);
+  const withComputed = await Promise.all(goals.map(async (g) => {
+    const sector = sectorSummaries.get(g.id);
+    const weighted = sector && sector.contributionCount > 0 ? sector : null;
+    return {
       ...g,
-      computedCurrentValue: await computeGoalCurrentValue(g.id),
+      // Metas com composição ponderada usam esse motor; o roll-up antigo não é somado pela segunda vez.
+      computedCurrentValue: weighted ? weighted.weightedFraction === null ? null : (g.targetValue ?? 100) * weighted.weightedFraction : await computeGoalCurrentValue(g.id),
+      fraction: weighted ? weighted.weightedFraction : await computeGoalFraction(g.id),
+      sectorSummary: weighted,
       subGoals: await Promise.all(g.subGoals.map(async (sg) => ({ ...sg, fraction: await computeGoalFraction(sg.id) }))),
-    }))
-  );
+    };
+  }));
 
   return NextResponse.json(withComputed);
 }

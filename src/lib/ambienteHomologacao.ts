@@ -6,6 +6,8 @@ export function homologacaoLocalSegura(env: NodeJS.ProcessEnv = process.env): bo
   if (env.APP_ENV !== "homologacao" || !seniorSimulada(env)) return false;
   try {
     const url = new URL(env.DATABASE_URL ?? "");
-    return ["localhost", "127.0.0.1"].includes(url.hostname) && url.pathname === "/consominas_gestao_itau_homologacao";
+    const bancoLegado = url.pathname === "/consominas_gestao_itau_homologacao";
+    const bancoMetas = url.pathname === "/consominas_metas_homologacao" && url.port === "55439";
+    return ["localhost", "127.0.0.1"].includes(url.hostname) && (bancoLegado || bancoMetas);
   } catch { return false; }
 }

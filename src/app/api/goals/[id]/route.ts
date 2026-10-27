@@ -4,8 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam, isTeamManager } from "@/lib/permissions";
 import { negarSemEdicao } from "@/lib/acesso/servidor";
-import { computeGoalFraction, computeGoalCurrentValue, computeContractGoalForProject } from "@/lib/goals";
+import { computeGoalFraction, computeGoalCurrentValue, computeContractGoalForProject, computeSectorGoalForUser } from "@/lib/goals";
 import { z } from "zod";
+import { ErroComposicaoSetor, validarPaiLegado } from "@/lib/contractGoals/sectorGoals";
 
 async function canManageGoal(userId: string, role: string, goal: { projectId: string | null; project: { teamId: string } | null }) {
   if (role === "ADMIN" || role === "DIRETOR") return true;
@@ -41,12 +42,15 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ ...goal, title: canonical.title, description: canonical.description, targetValue: canonical.targetValue, currentValue: canonical.currentValue, unit: canonical.unit, dueDate: canonical.dueDate, contractGoal: canonical, fraction: canonical.fraction, computedCurrentValue: canonical.currentValue });
   }
 
-  const computedCurrentValue = await computeGoalCurrentValue(goal.id);
+  const usuario = session.user as any;
+  if (!goal.projectId && !["ADMIN", "DIRETOR"].includes(usuario.role) && !(await prisma.goal.count({ where: { id: goal.id, OR: [{ assignedUsers: { some: { id: usuario.id } } }, { assignedTeam: { members: { some: { userId: usuario.id } } } }] } }))) return NextResponse.json({ error: "Sem acesso à meta do setor" }, { status: 403 });
+  const sectorSummary = !goal.projectId ? await computeSectorGoalForUser(goal.id, usuario) : null;
+  const computedCurrentValue = sectorSummary ? sectorSummary.weightedFraction === null ? null : (goal.targetValue ?? 100) * sectorSummary.weightedFraction : await computeGoalCurrentValue(goal.id);
   const subGoalsWithFraction = await Promise.all(
     goal.subGoals.map(async (sg) => ({ ...sg, fraction: await computeGoalFraction(sg.id) }))
   );
 
-  return NextResponse.json({ ...goal, computedCurrentValue, subGoals: subGoalsWithFraction });
+  return NextResponse.json({ ...goal, computedCurrentValue, fraction: sectorSummary?.weightedFraction ?? (sectorSummary ? null : await computeGoalFraction(goal.id)), sectorSummary, subGoals: subGoalsWithFraction });
 }
 
 const updateGoalSchema = z.object({
@@ -112,8 +116,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (parsed.data.dueDate !== undefined) data.dueDate = parsed.data.dueDate ? new Date(parsed.data.dueDate) : null;
   if (assignedUserIds !== undefined) data.assignedUsers = { set: assignedUserIds.map((id) => ({ id })) };
 
-  const updated = await prisma.goal.update({ where: { id: params.id }, data });
-  return NextResponse.json(updated);
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      for (const id of [...new Set([params.id, data.parentGoalId].filter((value): value is string => typeof value === "string" && !!value))].sort()) await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "sector-goal:" + id);
+      if (data.parentGoalId) await validarPaiLegado(tx, data.parentGoalId);
+      const composed = await tx.contractGoal.count({ where: { parentGoalId: params.id } });
+      if (composed && (data.parentGoalId || data.currentValue !== undefined || data.autoFromProjectProgress)) throw new ErroComposicaoSetor("O resultado desta meta global vem da composição ponderada. Edite as metas vinculadas, preservando sua posição global.");
+      return tx.goal.update({ where: { id: params.id }, data });
+    });
+    return NextResponse.json(updated);
+  } catch (error) {
+    if (error instanceof ErroComposicaoSetor) return NextResponse.json({ error: error.message }, { status: 422 });
+    throw error;
+  }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
@@ -132,6 +147,24 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     const somenteConsulta = await negarSemEdicao({ id: userId, role }, "projetos"); if (somenteConsulta) return somenteConsulta;
   }
 
-  await prisma.goal.delete({ where: { id: params.id } });
+  if (goal.contractGoalId) {
+    const removed = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "project-plan:" + goal.projectId);
+      const current = await tx.goal.findUnique({ where: { id: params.id }, include: { project: { select: { actionPlanGoalId: true } } } });
+      if (!current) return true;
+      if (current.project?.actionPlanGoalId === current.contractGoalId) return false;
+      await tx.goal.delete({ where: { id: params.id } });
+      return true;
+    });
+    if (!removed) return NextResponse.json({ error: "Esta meta é o vínculo principal do plano de ação. Gerencie o plano pela meta; este vínculo não pode ser removido isoladamente." }, { status: 409 });
+  } else {
+    const removed = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "sector-goal:" + params.id);
+      if (await tx.contractGoal.count({ where: { parentGoalId: params.id } })) return false;
+      await tx.goal.delete({ where: { id: params.id } });
+      return true;
+    });
+    if (!removed) return NextResponse.json({ error: "Esta meta global possui metas vinculadas com pesos. Desvincule essas contribuições antes de excluir a meta do setor." }, { status: 409 });
+  }
   return NextResponse.json({ ok: true });
 }

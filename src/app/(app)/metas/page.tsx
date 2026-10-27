@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Avatar from "@/components/Avatar";
-import PainelMetasContrato from "@/components/contractGoals/PainelMetasContrato";
+import Link from "next/link";
 
 type SubGoal = {
   id: string;
@@ -24,7 +24,9 @@ type Goal = {
   description: string | null;
   targetValue: number | null;
   currentValue: number;
-  computedCurrentValue: number;
+  computedCurrentValue: number | null;
+  fraction?: number | null;
+  sectorSummary?: { configuredWeight: number; evaluatedWeight: number; unevaluatedWeight: number; unconfiguredWeight: number; weightedFraction: number | null; knownFraction: number; contributionCount: number; hiddenCount: number; contributions: { id: string; title: string; weight: number; fraction: number | null; executionFraction: number | null; weightedFraction: number | null; codccu?: string | null }[] } | null;
   unit: string | null;
   dueDate: string | null;
   assignedUsers: { id: string; name: string; avatarColor: string | null }[];
@@ -162,10 +164,11 @@ function MetasGerais() {
 
       <div className="flex flex-col gap-4">
         {goals.map((g) => {
+          const setor = g.sectorSummary && g.sectorSummary.contributionCount > 0 ? g.sectorSummary : null;
           const value = g.subGoals.length > 0 ? g.computedCurrentValue : g.currentValue;
-          const pct = g.targetValue ? Math.min(100, Math.round((value / g.targetValue) * 100)) : 0;
+          const pct = g.targetValue && value !== null ? Math.min(100, Math.round((value / g.targetValue) * 100)) : 0;
           return (
-            <div key={g.id} className="rounded-xl border border-gray-200 bg-white p-4">
+            <div key={g.id} id={`meta-setor-${g.id}`} className="scroll-mt-6 rounded-xl border border-gray-200 bg-white p-4">
               {editingId === g.id ? (
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <input
@@ -229,13 +232,21 @@ function MetasGerais() {
                 </div>
               )}
 
-              {g.targetValue && (
+              {setor ? <section className="mb-3 space-y-3 rounded-xl border border-teal-100 bg-teal-50/30 p-4" aria-label={`Resultado ponderado da meta ${g.title}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold text-teal-800">Resultado ponderado das metas vinculadas</p><p className="text-sm font-semibold text-gray-900">{setor.weightedFraction === null ? "Aguardando avaliações completas" : `${(setor.weightedFraction * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% da composição`}</p></div>
+                <div className="h-2 overflow-hidden rounded-full bg-white" role="progressbar" aria-label="Resultado ponderado da meta do setor" aria-valuenow={setor.weightedFraction === null ? undefined : Math.round(setor.weightedFraction * 100)} aria-valuemin={0} aria-valuemax={100}><div className={`h-full rounded-full ${setor.weightedFraction === null ? "bg-amber-400" : "bg-teal-500"}`} style={{ width: `${Math.max(0, Math.min(100, (setor.weightedFraction ?? setor.knownFraction) * 100))}%` }} /></div>
+                {setor.weightedFraction === null && <p className="text-xs text-amber-800">Parte conhecida: {(setor.knownFraction * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} pontos percentuais. Há contribuições sem avaliação ou sem acesso à fonte; este não é um resultado final.</p>}
+                <p className="text-xs text-gray-500">Pesos configurados: {setor.configuredWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% · ainda sem configuração: {setor.unconfiguredWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%{setor.unevaluatedWeight > 0 ? ` · aguardando avaliação: ${setor.unevaluatedWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : ""}</p>
+                <div className="space-y-2">{setor.contributions.map((contribuicao) => <div key={contribuicao.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs"><div>{contribuicao.codccu ? <Link href={`/contratos/${contribuicao.codccu}?aba=metas&meta=${contribuicao.id}#meta-contrato-${contribuicao.id}`} className="font-medium text-teal-800 hover:underline">{contribuicao.title} ↗</Link> : <span className="font-medium text-gray-700">{contribuicao.title}</span>}<p className="mt-1 text-gray-400">Peso {contribuicao.weight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% · avanço {contribuicao.fraction === null ? "aguardando avaliação" : `${Math.round(contribuicao.fraction * 100)}%`}</p></div><span className="font-semibold text-gray-700">{contribuicao.weightedFraction === null ? "Sem avaliação" : `${(contribuicao.weightedFraction * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} p.p.`}</span></div>)}</div>
+                {setor.hiddenCount > 0 && <p className="text-xs text-gray-500">Há contribuições restritas ao seu acesso.</p>}
+                <p className="text-xs text-gray-500">Cada avanço é multiplicado pelo peso configurado. Os pesos não são redistribuídos automaticamente; este percentual mede a composição da meta e não um valor financeiro realizado.</p>
+              </section> : g.targetValue !== null && (
                 <>
                   <div className="mb-1 h-2 w-full overflow-hidden rounded-full bg-gray-100">
                     <div className="h-full bg-brand" style={{ width: `${pct}%` }} />
                   </div>
                   <p className="mb-3 text-xs text-gray-500">
-                    {value.toFixed(1)}
+                    {value === null ? "Sem avaliação" : value.toFixed(1)}
                     {g.unit ? ` ${g.unit}` : ""} de {g.targetValue}
                     {g.unit ? ` ${g.unit}` : ""} ({pct}%)
                   </p>
@@ -274,6 +285,5 @@ function MetasGerais() {
 }
 
 export default function MetasPage() {
-  const [aba, setAba] = useState<"contratos" | "gerais">("contratos");
-  return <div className="space-y-5"><nav className="flex gap-2 border-b border-gray-200" aria-label="Tipos de metas">{([["contratos", "Metas e Planos de Ação por contrato"], ["gerais", "Metas gerais e projetos"]] as const).map(([id, nome]) => <button key={id} onClick={() => setAba(id)} className={`border-b-2 px-4 py-3 text-sm font-medium ${aba === id ? "border-brand text-brand" : "border-transparent text-gray-500"}`}>{nome}</button>)}</nav>{aba === "contratos" ? <PainelMetasContrato /> : <MetasGerais />}</div>;
+  return <MetasGerais />;
 }
