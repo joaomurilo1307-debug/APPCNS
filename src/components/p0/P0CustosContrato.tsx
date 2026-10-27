@@ -26,7 +26,7 @@ import { baixarCsv } from "@/lib/custos/csv";
 import BotaoExcel from "@/components/BotaoExcel";
 import { abaDeLinhas } from "@/lib/exportarExcel";
 import { BarrasVariacao, LegendaLinha, LinhaAcompanhamento } from "@/components/custos/acompanhamento";
-import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, estiloCelulaCalor, type SerieEmpilhada } from "@/components/custos/graficos";
+import { BarrasRanking, ColunasEmpilhadas, LegendaGrupos, Sparkline, estiloCelulaCalor, type SerieEmpilhada } from "@/components/custos/graficos";
 import MatrizRepresentatividade from "@/components/custos/MatrizRepresentatividade";
 import VariacaoPorConta from "@/components/custos/VariacaoPorConta";
 import { Cartao, Kpi, SeloReembolsavel, Variacao } from "@/components/custos/ui";
@@ -34,6 +34,8 @@ import { desviosContraP0, totaisPorMes } from "@/lib/p0/comparar";
 import { mesesEntre, type P0Custos } from "@/lib/p0/montar";
 import ComparativoP0 from "./ComparativoP0";
 import DetalheP0, { type AlvoP0 } from "./DetalheP0";
+import HeroP0 from "./HeroP0";
+import NavSecoesP0 from "./NavSecoesP0";
 import { useP0Custos } from "./useP0Custos";
 import { useRealizadoDoContrato } from "./useRealizadoDoContrato";
 
@@ -215,18 +217,20 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-gray-100 bg-white px-5 py-3 text-[13px] text-gray-600 shadow-soft">
-        <span className="rounded-full bg-brand-light px-2.5 py-0.5 text-xs font-semibold text-brand-dark">{p0.rotulo}</span>
-        <span>
-          Cobre <b>{mesLongo(p0.mesIni)}</b> a <b>{mesLongo(p0.mesFim)}</b> · {mesesP.length} meses
-          {mesesSemPrevisao > 0 && <> ({mesesSemPrevisao} sem previsão, como pausa do contrato)</>}
-        </span>
-        {p0.origem && <span className="text-gray-400">· {p0.origem}</span>}
-        {p0.rotuloNaPlanilha && <span className="text-gray-400">· rótulo na planilha: {p0.rotuloNaPlanilha}</span>}
-      </div>
+      <HeroP0 rotulo={p0.rotulo} origem={p0.origem} rotuloNaPlanilha={p0.rotuloNaPlanilha} meses={mesesP} previsto={totaisMes} realizado={realizadoMes} mesCorrente={mesCorrente} />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Kpi rotulo="Previsto no P0" valor={moedaCompacta(totalP)} detalhe={`custo de contrato · ${linhas.length} contas · ${mesesP.length} meses`} destaque />
+      <NavSecoesP0
+        itens={[
+          { id: "p0-resumo", nome: "Resumo" },
+          { id: "p0-acompanhamento", nome: "Acompanhamento" },
+          ...(realizado.contrato && mesDoComparativo ? [{ id: "p0-comparativo", nome: "Comparativo com o realizado" }] : []),
+          { id: "p0-composicao", nome: "Composição do custo" },
+          { id: "p0-tabela", nome: "Plano de contas × mês" },
+        ]}
+      />
+
+      <div id="p0-resumo" className="grid scroll-mt-16 grid-cols-2 gap-3 lg:grid-cols-5">
+        <Kpi rotulo="Previsto no P0" valor={moedaCompacta(totalP)} detalhe={`custo de contrato · ${linhas.length} contas · ${mesesP.length} meses`} destaque lateral={<Sparkline valores={totaisMes} largura={132} altura={30} />} />
         <Kpi
           rotulo={`Previsto em ${mesCurto(mesRef)}`}
           valor={moedaCompacta(previstoRef)}
@@ -251,6 +255,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
         />
       </div>
 
+      <div id="p0-acompanhamento" className="scroll-mt-16 space-y-5">
       <Cartao
         titulo="Acompanhamento mensal do P0"
         subtitulo={modo === "acumulado" ? "Quanto o P0 prevê acumular ao longo do contrato (e quanto o Senior já realizou)" : "Linha do custo previsto em cada mês contra a média e a tendência, com o realizado do Senior por cima"}
@@ -323,10 +328,15 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
       </Cartao>
 
       {temPonte && <VariacaoPorConta linhas={todas} mesesAsc={mesesP} iMes={iPonte} mesesEscolha={mesesP.slice(1)} onMes={setMesAnalise} sufixoTitulo=" no P0" descricao="Todas as contas do P0 que mudam de um mês para o outro, da maior variação para a menor" />}
+      </div>
 
-      {realizado.contrato && mesDoComparativo && <ComparativoP0 p0={p0} realizado={contaRealizado} mes={mesDoComparativo} mesesEscolha={mesesComRealizado} onMes={setMesCmp} filtros={SEM_FILTRO} mesCorrente={mesCorrente} baseRotulo={realizado.base === "competencia" ? "competência da nota" : "data de pagamento"} nomeArquivo={p0.codccu} />}
+      {realizado.contrato && mesDoComparativo && (
+        <div id="p0-comparativo" className="scroll-mt-16">
+          <ComparativoP0 p0={p0} realizado={contaRealizado} mes={mesDoComparativo} mesesEscolha={mesesComRealizado} onMes={setMesCmp} filtros={SEM_FILTRO} mesCorrente={mesCorrente} baseRotulo={realizado.base === "competencia" ? "competência da nota" : "data de pagamento"} nomeArquivo={p0.codccu} />
+        </div>
+      )}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      <div id="p0-composicao" className="grid scroll-mt-16 items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <Cartao titulo="Evolução mensal prevista por tipo de custo" subtitulo="Cada coluna é um mês do P0; o número no topo é o total previsto">
           <div className="mb-3">
             <LegendaGrupos
@@ -367,6 +377,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
 
       <MatrizRepresentatividade grupos={grupos} meses={mesesP} totaisMes={totaisMes} totalP={totalP} cores={cores} mesCorrente={mesCorrente} rotuloTotal="Previsto do mês" />
 
+      <div id="p0-tabela" className="scroll-mt-16">
       <Cartao
         titulo="Plano de contas × mês (P0)"
         subtitulo="Cada célula é o previsto no P0; clique para ver as linhas do P0 por trás do valor. A cor mostra os meses mais pesados de cada conta."
@@ -493,6 +504,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
           </table>
         </div>
       </Cartao>
+      </div>
 
       <DetalheP0 alvo={detalhe} onFechar={() => setDetalhe(null)} />
     </div>

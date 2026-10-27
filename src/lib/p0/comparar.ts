@@ -121,7 +121,7 @@ export function compararMes(args: {
         reembolsavel: true,
         previsto: 0,
         realizado: 0,
-        nota: "Neste mês o Senior ainda lança o reembolsável numa conta só: as contas R do P0 foram somadas para comparar.",
+        nota: "Soma das contas R do P0 comparada com a conta única do Senior.",
       };
       itens.set("reemb-unica", it);
     }

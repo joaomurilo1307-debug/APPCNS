@@ -24,6 +24,18 @@ const SELO: Record<StatusComparacao, { t: string; c: string }> = {
   nao_realizado: { t: "Não realizado", c: "bg-slate-200 text-slate-700" },
 };
 
+/** Barra "previsto x realizado": o preenchimento e' o realizado; a marca preta e' o previsto no P0. Vermelho = passou do previsto. */
+function BarraPrevistoRealizado({ previsto, realizado }: { previsto: number; realizado: number }) {
+  const max = Math.max(previsto, realizado, 1);
+  const acima = realizado > previsto + 0.005;
+  return (
+    <div className="relative h-2.5 w-40 rounded-full bg-gray-200/80" title={`Previsto ${moeda(previsto)} · realizado ${moeda(realizado)}`}>
+      <div className="h-full rounded-full" style={{ width: `${(realizado / max) * 100}%`, background: acima ? "#e5675f" : "#0e9f94" }} />
+      {previsto > 0 && <span className="absolute top-[-3px] h-[16px] w-[2px] rounded bg-gray-800" style={{ left: `calc(${(previsto / max) * 100}% - 1px)` }} aria-hidden />}
+    </div>
+  );
+}
+
 const pctTexto = (p: number | null) => (p === null ? "" : `(${p > 0 ? "+" : "−"}${percentual(Math.abs(p), Math.abs(p) < 0.1 ? 1 : 0)})`);
 const corDelta = (d: number) => (d > 0.005 ? "text-red-600" : d < -0.005 ? "text-emerald-700" : "text-gray-500");
 const dinheiroComSinal = (d: number) => `${d > 0.005 ? "+" : d < -0.005 ? "−" : ""}${moeda(Math.abs(d))}`;
@@ -171,10 +183,10 @@ export default function ComparativoP0({
             <p className="py-6 text-center text-sm text-gray-500">Sem previsão nem realizado neste mês com os filtros escolhidos.</p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-gray-100">
-              <table className="w-full text-[14px]">
+              <table className="w-full min-w-[860px] text-[14px]">
                 <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                   <tr>
-                    <th className="px-3 py-2">Tipo de custo / conta</th>
+                    <th className="min-w-[15rem] px-3 py-2">Tipo de custo / conta</th>
                     <th className="px-3 py-2 text-center">Situação</th>
                     <th className="px-3 py-2 text-right">Previsto (P0)</th>
                     <th className="px-3 py-2 text-right">Realizado</th>
@@ -200,7 +212,9 @@ export default function ComparativoP0({
                           <td className={`px-3 py-2 text-right font-semibold tabular-nums ${corDelta(g.delta)}`}>
                             {dinheiroComSinal(g.delta)} <span className="text-xs font-normal text-gray-400">{pctTexto(g.pct)}</span>
                           </td>
-                          <td className="hidden md:table-cell" />
+                          <td className="hidden px-3 py-2 md:table-cell">
+                            <BarraPrevistoRealizado previsto={g.previsto} realizado={g.realizado} />
+                          </td>
                         </tr>
                         {!fechado &&
                           linhas.map((l) => (
@@ -243,6 +257,7 @@ export default function ComparativoP0({
               </table>
             </div>
           )}
+          {todasLinhas.length > 0 && <p className="mt-2 text-xs text-gray-500">Em cada tipo de custo, a barra é o realizado e a marca preta é o previsto no P0 (vermelho = passou do previsto). Nas contas, a barra é o tamanho do desvio.</p>}
         </>
       )}
     </Cartao>
