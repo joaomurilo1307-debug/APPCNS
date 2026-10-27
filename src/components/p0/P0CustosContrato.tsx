@@ -8,7 +8,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { COR_DEMAIS, agruparPorGrupo, coresDosGrupos, linhasDoContrato, soma, variacao, type ContratoCusto, type Filtros } from "@/lib/custos/agregacao";
+import { COR_DEMAIS, agruparPorGrupo, contaPassa, coresDosGrupos, linhasDoContrato, soma, variacao, type ContaDoContrato, type ContratoCusto, type Filtros } from "@/lib/custos/agregacao";
 import { mesCurto, mesLongo, moeda, moedaCompacta, percentual } from "@/lib/custos/formato";
 import { baixarCsv } from "@/lib/custos/csv";
 import BotaoExcel from "@/components/BotaoExcel";
@@ -20,6 +20,7 @@ import { compararMes, desviosContraP0, totaisPorMes } from "@/lib/p0/comparar";
 import { mesesEntre, type P0Custos } from "@/lib/p0/montar";
 import ComparativoP0 from "./ComparativoP0";
 import DetalheP0, { type AlvoP0 } from "./DetalheP0";
+import FiltrosP0 from "./FiltrosP0";
 import GraficoPrevistoRealizado, { LegendaPrevistoRealizado } from "./GraficoPrevistoRealizado";
 import HeroP0 from "./HeroP0";
 import NavSecoesP0 from "./NavSecoesP0";
@@ -73,6 +74,23 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
   const [ateEsc, setAteEsc] = useState<string | null>(null);
   const [mesCmp, setMesCmp] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<AlvoP0 | null>(null);
+  // filtros (tipo de custo, grupo de contas e busca por conta): valem para o previsto, o realizado, os graficos e as tabelas
+  const [filtros, setFiltros] = useState<Pick<Filtros, "tipo" | "grupo">>(SEM_FILTRO);
+  const [busca, setBusca] = useState("");
+  const mudarFiltros = (parcial: Partial<Pick<Filtros, "tipo" | "grupo">>) =>
+    setFiltros((f) => {
+      const n = { ...f, ...parcial };
+      // trocou o tipo e o grupo escolhido nao existe mais nele: volta para todos os grupos
+      if (parcial.tipo && n.grupo !== "todos" && !p0.contas.some((c) => c.grupoCodigo === n.grupo && contaPassa(c, { tipo: n.tipo, grupo: "todos" }))) n.grupo = "todos";
+      return n;
+    });
+  const gruposDoFiltro = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of p0.contas) if (contaPassa(c, { tipo: filtros.tipo, grupo: "todos" })) m.set(c.grupoCodigo, c.grupoNome);
+    return Array.from(m, ([codigo, nome]) => ({ codigo, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [p0.contas, filtros.tipo]);
+  const termoBusca = busca.trim().toLowerCase();
+  const passaNoFiltro = (c: ContaDoContrato) => contaPassa(c, filtros) && (!termoBusca || c.contaFinanceira.toLowerCase().includes(termoBusca));
 
   // o P0 cobre do primeiro ao ultimo mes com previsao, sem pular nenhum (um mes sem previsao no meio, como uma pausa, aparece zerado)
   const mesesP = useMemo(() => mesesEntre(p0.mesIni, p0.mesFim), [p0.mesIni, p0.mesFim]);
@@ -83,7 +101,7 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
   );
   const cores = useMemo(() => coresDosGrupos([contratoP0]), [contratoP0]);
 
-  const todas = useMemo(() => linhasDoContrato(contratoP0, { de: p0.mesIni, ate: p0.mesFim, ...SEM_FILTRO }, mesesP), [contratoP0, p0.mesIni, p0.mesFim, mesesP]);
+  const todas = useMemo(() => linhasDoContrato(contratoP0, { de: p0.mesIni, ate: p0.mesFim, ...filtros }, mesesP, busca), [contratoP0, p0.mesIni, p0.mesFim, mesesP, filtros, busca]);
   const linhas = useMemo(() => todas.filter((l) => l.total !== 0).sort((a, b) => b.total - a.total), [todas]);
   const grupos = useMemo(() => agruparPorGrupo(linhas, mesesP.length), [linhas, mesesP.length]);
   const totaisMes = useMemo(() => mesesP.map((_, i) => soma(linhas.map((l) => l.serie[i]))), [linhas, mesesP]);
@@ -93,8 +111,8 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
   const contaRealizado = realizado.contrato?.contas ?? [];
   const realizadoMes = useMemo(() => {
     if (!realizado.contrato) return null;
-    return totaisPorMes(contaRealizado, mesesP, SEM_FILTRO).map((v, i) => (mesCorrente && mesesP[i] <= mesCorrente ? v : null));
-  }, [realizado.contrato, contaRealizado, mesesP, mesCorrente]);
+    return totaisPorMes(contaRealizado, mesesP, filtros, busca).map((v, i) => (mesCorrente && mesesP[i] <= mesCorrente ? v : null));
+  }, [realizado.contrato, contaRealizado, mesesP, mesCorrente, filtros, busca]);
   const iParcial = mesCorrente ? mesesP.indexOf(mesCorrente) : -1;
   const iUltimoReal = realizadoMes ? realizadoMes.reduce<number>((u, v, i) => (v !== null ? i : u), -1) : -1;
   const temRealizado = iUltimoReal >= 0;
@@ -130,8 +148,8 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
   const ultimoFechado = [...mesesComRealizado].reverse().find((m) => m !== mesCorrente) ?? mesesComRealizado[mesesComRealizado.length - 1];
   const mesDoComparativo = mesCmp && mesesComRealizado.includes(mesCmp) ? mesCmp : ultimoFechado;
   const comparacaoDoMes = useMemo(
-    () => (realizado.contrato && mesDoComparativo ? compararMes({ p0: p0.contas, realizado: contaRealizado, mes: mesDoComparativo, periodo: { mesIni: p0.mesIni, mesFim: p0.mesFim }, filtros: SEM_FILTRO }) : null),
-    [realizado.contrato, mesDoComparativo, p0, contaRealizado]
+    () => (realizado.contrato && mesDoComparativo ? compararMes({ p0: p0.contas, realizado: contaRealizado, mes: mesDoComparativo, periodo: { mesIni: p0.mesIni, mesFim: p0.mesFim }, filtros, busca }) : null),
+    [realizado.contrato, mesDoComparativo, p0, contaRealizado, filtros, busca]
   );
   const maiorDesvio = useMemo(() => {
     if (!comparacaoDoMes) return null;
@@ -157,7 +175,14 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
     });
     return n ? { p: pp, r: rr, n, ate: ateMes } : null;
   })();
-  const semRealizadoTexto = realizado.carregando ? "lendo o realizado do Senior…" : realizado.erro ? "realizado do Senior indisponível" : !realizado.contrato ? "sem realizado do Senior neste contrato" : "ainda sem realizado nos meses do P0";
+  // P0 que comeca no mes atual: nenhum mes fechou ainda, entao a comparacao so' comeca quando ele fechar
+  const comecaNoMesAtual = !!mesCorrente && mesesP[0] === mesCorrente;
+  const mesDoComparativoEmAndamento = !!mesCorrente && mesDoComparativo === mesCorrente;
+  const semRealizadoTexto = realizado.carregando ? "lendo o realizado do Senior…" : realizado.erro ? "realizado do Senior indisponível" : !realizado.contrato ? "sem realizado do Senior neste contrato" : comecaNoMesAtual ? `o P0 começa em ${mesCurto(mesCorrente!)}: nenhum mês fechou ainda` : "ainda sem realizado nos meses do P0";
+
+  // "Tipo de custo x mes" recebe as contas ja' filtradas (ele nao tem filtro proprio)
+  const p0Filtrado = useMemo(() => ({ ...p0, contas: p0.contas.filter(passaNoFiltro) }), [p0, filtros, termoBusca]); // eslint-disable-line react-hooks/exhaustive-deps
+  const realizadoFiltrado = useMemo(() => contaRealizado.filter(passaNoFiltro), [contaRealizado, filtros, termoBusca]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const nomeArquivo = `p0_${p0.codccu}_${nomeContrato.replace(/[^\w]+/g, "_").slice(0, 40)}`;
   function linhasQuadro(): (string | number)[][] {
@@ -207,8 +232,10 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
 
       <PeriodoP0 meses={mesesP} de={de} ate={ate} mesCorrente={mesCorrente} onMudar={(d, a) => { setDeEsc(d); setAteEsc(a); }} />
 
+      <FiltrosP0 filtros={filtros} onMudar={mudarFiltros} grupos={gruposDoFiltro} busca={busca} onBusca={setBusca} />
+
       <div id="p0-resumo" className="grid scroll-mt-16 grid-cols-2 gap-3 lg:grid-cols-5">
-        <Kpi rotulo={mesesJ.length === mesesP.length ? "Previsto no P0" : "Previsto no período"} valor={moedaCompacta(totalJ)} detalhe={`custo de contrato · ${linhasJ.length} contas · ${mesesJ.length} ${mesesJ.length === 1 ? "mês" : "meses"}`} destaque lateral={<Sparkline valores={previstoJ} largura={132} altura={30} />} />
+        <Kpi rotulo={mesesJ.length === mesesP.length ? "Previsto no P0" : "Previsto no período"} valor={moedaCompacta(totalJ)} detalhe={`custo de contrato · ${linhasJ.length} ${linhasJ.length === 1 ? "conta" : "contas"} · ${mesesJ.length} ${mesesJ.length === 1 ? "mês" : "meses"}`} destaque lateral={<Sparkline valores={previstoJ} largura={132} altura={30} />} />
         {iRef >= 0 && realizadoMes && realizadoMes[iRef] !== null ? (
           <Kpi
             rotulo={`Realizado em ${mesCurto(mesRef!)}`}
@@ -253,12 +280,13 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
         />
         {maiorDesvio ? (
           <Kpi
-            rotulo={`Maior desvio · ${mesCurto(mesDoComparativo!)}`}
+            rotulo={mesDoComparativoEmAndamento ? `Maior diferença · ${mesCurto(mesDoComparativo!)} (em andamento)` : `Maior desvio · ${mesCurto(mesDoComparativo!)}`}
             valor={<span className="block truncate text-lg">{maiorDesvio.nome}</span>}
             detalhe={
-              <span className={maiorDesvio.delta > 0 ? "font-medium text-red-600" : "font-medium text-emerald-700"}>
+              // mes em andamento: o realizado e' so' o ja' pago, entao "abaixo do P0" seria enganoso (a conta pode ainda ser paga no mes)
+              <span className={mesDoComparativoEmAndamento ? "font-medium text-gray-600" : maiorDesvio.delta > 0 ? "font-medium text-red-600" : "font-medium text-emerald-700"}>
                 {maiorDesvio.delta > 0 ? "+" : "−"}
-                {moedaCompacta(Math.abs(maiorDesvio.delta))} {maiorDesvio.delta > 0 ? "acima" : "abaixo"} do P0
+                {moedaCompacta(Math.abs(maiorDesvio.delta))} {maiorDesvio.delta > 0 ? "acima do P0" : mesDoComparativoEmAndamento ? "do previsto ainda não pago" : "abaixo do P0"}
               </span>
             }
           />
@@ -321,13 +349,13 @@ function VisaoP0({ p0, nomeContrato }: { p0: P0Custos; nomeContrato: string }) {
 
       {comparacaoDoMes && mesDoComparativo && (
         <div id="p0-comparativo" className="scroll-mt-16">
-          <ComparativoP0 p0={p0} realizado={contaRealizado} mes={mesDoComparativo} mesesEscolha={mesesComRealizado} onMes={setMesCmp} filtros={SEM_FILTRO} mesCorrente={mesCorrente} baseRotulo={realizado.base === "competencia" ? "competência da nota" : "data de pagamento"} nomeArquivo={p0.codccu} />
+          <ComparativoP0 p0={p0} realizado={contaRealizado} mes={mesDoComparativo} mesesEscolha={mesesComRealizado} onMes={setMesCmp} filtros={filtros} busca={busca} mesCorrente={mesCorrente} baseRotulo={realizado.base === "competencia" ? "competência da nota" : "data de pagamento"} nomeArquivo={p0.codccu} />
         </div>
       )}
 
       {comparacaoDoMes && (
         <div id="p0-tipos" className="scroll-mt-16">
-          <TiposDeCustoPorMes p0={p0} realizado={contaRealizado} meses={mesesComRealizado} mesCorrente={mesCorrente} mesSelecionado={mesDoComparativo} onMes={setMesCmp} />
+          <TiposDeCustoPorMes p0={p0Filtrado} realizado={realizadoFiltrado} meses={mesesComRealizado} mesCorrente={mesCorrente} mesSelecionado={mesDoComparativo} onMes={setMesCmp} />
         </div>
       )}
 

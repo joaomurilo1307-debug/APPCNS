@@ -50,6 +50,8 @@ O 4337 é diferente dos demais: o previsto vem em **parcelas lineares** (1/36 po
   **Comparativo com o P0** (logo abaixo de “O que variou”). Sem P0 cadastrado a tela fica como era.
 - **/p0**: lista dos contratos e se o P0 já está cadastrado.
 
+**Filtros e mês em andamento (27/10/2026).** Na aba P0 > Custos de contrato, além do período, dá para filtrar por tipo de custo (todos, custo próprio, reembolsável), por grupo de contas e por conta (busca). Os filtros valem para os cards, a faixa, os gráficos, o comparativo e a tabela ao mesmo tempo (`FiltrosP0.tsx`). O mês em andamento é acompanhado ao vivo: o realizado dele é só o que o Senior já pagou, comparado com o previsto do mês. Quando o P0 começa no mês atual (como o do 210 e do 230, que começam em out/26), nenhum mês fechou ainda e o medidor "Realizado × previsto" mostra o mês em andamento em azul, sem chamar de desvio; o "Maior diferença" do mês em andamento diz "do previsto ainda não pago", porque a conta ainda pode ser paga no mês.
+
 ## Reembolsáveis (regra do comparativo — `src/lib/p0/comparar.ts`)
 
 Até set/2026 o Senior lançava todo o reembolsável numa conta só (“Despesas Reembolsáveis”, conta antiga); agora há várias contas “R - …”, e o P0 já vem com elas. Em cada mês:
