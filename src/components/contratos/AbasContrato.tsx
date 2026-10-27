@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import P0CustosContrato from "@/components/p0/P0CustosContrato";
+import P0PessoaisContrato from "@/components/p0/P0PessoaisContrato";
 import ClientesDoContrato from "./ClientesDoContrato";
 import ProjetosDoContrato from "./ProjetosDoContrato";
 import PrevisaoMensal from "./PrevisaoMensal";
@@ -119,7 +120,7 @@ export function PartesDoP0() {
   );
 }
 
-// Subabas do P0: so' "Custos de contrato" tem dados por enquanto; Receita e Custos pessoais vem depois (o custo de pessoal do P0 ja' fica guardado a' parte).
+// Subabas do P0: "Custos de contrato" e "Custos pessoais" (so' o previsto, separado do custo de contrato) tem dados; Receita vem depois.
 const SUBABAS_P0 = [
   { id: "custos", nome: "Custos de contrato" },
   { id: "receita", nome: "Receita" },
@@ -143,7 +144,7 @@ export function AbaP0({ codccu, nomeContrato }: { codccu: string; nomeContrato: 
         {SUBABAS_P0.map((a) => (
           <button key={a.id} type="button" onClick={() => irPara(a.id)} className={`rounded-full border px-4 py-1.5 text-[14px] font-medium transition ${sub === a.id ? "border-brand bg-brand text-white" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}>
             {a.nome}
-            {a.id !== "custos" && <span className={`ml-1.5 text-xs font-normal ${sub === a.id ? "text-white/80" : "text-gray-400"}`}>em breve</span>}
+            {a.id === "receita" && <span className={`ml-1.5 text-xs font-normal ${sub === a.id ? "text-white/80" : "text-gray-400"}`}>em breve</span>}
           </button>
         ))}
       </nav>
@@ -153,11 +154,7 @@ export function AbaP0({ codccu, nomeContrato }: { codccu: string; nomeContrato: 
           <Vazio titulo="Esta parte do P0 vem depois dos custos." texto="Quando o P0 de receita do contrato estiver pronto, ele será cadastrado aqui, ao lado do realizado de medição e faturamento. Nada é estimado nem preenchido automaticamente." />
         </Cartao>
       )}
-      {sub === "pessoal" && (
-        <Cartao titulo="P0 de custos pessoais" sub="Salários CLT, encargos, férias, 13º e provisões previstos, mês a mês">
-          <Vazio titulo="Esta parte do P0 vem depois dos custos de contrato." texto="Os valores de custo de pessoal do P0 ficam guardados à parte e nunca se misturam com o custo de contrato. Quando esta parte for liberada, eles aparecem aqui, comparados com o custo de pessoal realizado." />
-        </Cartao>
-      )}
+      {sub === "pessoal" && <P0PessoaisContrato key={codccu} codccu={codccu} />}
     </div>
   );
 }

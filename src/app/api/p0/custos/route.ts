@@ -5,14 +5,17 @@ import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { contasDoP0, periodoDoP0, type P0Resposta } from "@/lib/p0/montar";
 
-// P0 de CUSTO DE CONTRATO de um contrato (a versao ativa mais nova), no mesmo formato das contas da tela Custo por Contrato.
-// So' le o que foi cadastrado a partir da planilha da area; nao estima nada. O custo de pessoal (salario CLT, encargos, ferias, 13o, provisoes)
-// fica guardado a' parte e nao sai aqui. Quem pode ver o P0 de um contrato e' quem pode ver os custos dele (mesma regra de /api/custos-conta).
+// P0 de um contrato (a versao ativa mais nova), no mesmo formato das contas da tela Custo por Contrato. So' le o que foi cadastrado a partir da
+// planilha da area; nao estima nada. Por padrao devolve o CUSTO DE CONTRATO; com `?tipo=pessoal` devolve o P0 de CUSTOS PESSOAIS (salario CLT,
+// encargos, ferias, 13o e provisoes), que fica separado e nunca se mistura com o custo de contrato. O de custo de contrato traz tambem o total de
+// pessoal (so' o numero) para a ponte com o P0 inteiro. Quem pode ver o P0 de um contrato e' quem pode ver os custos dele (mesma regra de /api/custos-conta).
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  const ccu = new URL(req.url).searchParams.get("ccu");
+  const url = new URL(req.url);
+  const ccu = url.searchParams.get("ccu");
   if (!ccu) return NextResponse.json({ error: "Informe o centro de custo (ccu)" }, { status: 400 });
+  const tipo = url.searchParams.get("tipo") === "pessoal" ? "CUSTO_PESSOAL" : "CUSTO_CONTRATO";
 
   const escopo = await escopoDeCustos(prisma, session.user as any);
   if (!podeVerCcu(escopo, ccu)) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
@@ -21,13 +24,14 @@ export async function GET(req: Request) {
   if (!versao) return NextResponse.json({ existe: false } satisfies P0Resposta);
 
   const linhas = await prisma.p0Linha.findMany({
-    where: { p0Id: versao.id, tipo: "CUSTO_CONTRATO" },
+    where: { p0Id: versao.id, tipo },
     select: { codConta: true, conta: true, grupoCodigo: true, grupoNome: true, reembolsavel: true, competencia: true, valor: true },
   });
   const contas = contasDoP0(linhas);
   const periodo = periodoDoP0(contas);
   if (!periodo) return NextResponse.json({ existe: false } satisfies P0Resposta);
 
+  const pessoal = tipo === "CUSTO_CONTRATO" ? await prisma.p0Linha.aggregate({ where: { p0Id: versao.id, tipo: "CUSTO_PESSOAL" }, _sum: { valor: true } }) : null;
   const resposta: P0Resposta = {
     existe: true,
     codccu: versao.codccu,
@@ -38,6 +42,7 @@ export async function GET(req: Request) {
     mesIni: periodo.mesIni,
     mesFim: periodo.mesFim,
     totalCusto: Math.round(contas.reduce((s, c) => s + c.total, 0) * 100) / 100,
+    ...(pessoal ? { totalPessoal: Math.round((pessoal._sum.valor ?? 0) * 100) / 100 } : {}),
     contas,
   };
   return NextResponse.json(resposta);

@@ -23,6 +23,8 @@ export type P0Custos = {
   mesIni: string;
   mesFim: string;
   totalCusto: number;
+  /** soma do P0 de custos pessoais do contrato (salario CLT, encargos, ferias, 13o, provisoes): so' o total, para a ponte com o P0 inteiro */
+  totalPessoal?: number;
   contas: ContaDoContrato[];
 };
 
