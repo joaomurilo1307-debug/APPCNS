@@ -2,7 +2,13 @@
 // Roda sozinho no boot e e' seguro repetir: so' troca o que ainda esta com o nome antigo do Senior (um nome que o administrador ja mudou fica como esta).
 // Nao toca em valores, contratos, P0 nem no Senior. Ver src/lib/contratos/nomesDeExibicao.ts.
 import { PrismaClient } from "@prisma/client";
-import { NOMES_DE_EXIBICAO, nomeGravadoNovo, podeTrocarNome } from "../src/lib/contratos/nomesDeExibicao";
+// ATENCAO: a imagem de producao so' leva a pasta prisma/ (sem src/), entao este arquivo nao pode importar de ../src. Mantenha os nomes iguais aos de
+// src/lib/contratos/nomesDeExibicao.ts (o teste tests/nomes-exibicao.test.ts confere).
+const NOMES_DE_EXIBICAO: Record<string, string> = { "210": "MRN CT 3686 + 3687", "230": "MRN CT 3687 LT" };
+const NOMES_ANTIGOS_DO_SENIOR: Record<string, string> = { "210": "MRN CT 3686/2023", "230": "MRN CT 3687/2023" };
+const semPrefixoCcu = (codccu: string, nome: string) => nome.replace(new RegExp(String.raw`^${codccu}\s*-\s*`), "").trim();
+const podeTrocarNome = (codccu: string, gravado: string) => semPrefixoCcu(codccu, gravado) === NOMES_ANTIGOS_DO_SENIOR[codccu];
+const nomeGravadoNovo = (codccu: string, gravado: string) => (new RegExp(String.raw`^${codccu}\s*-\s*`).test(gravado) ? `${codccu} - ${NOMES_DE_EXIBICAO[codccu]}` : NOMES_DE_EXIBICAO[codccu]);
 
 const prisma = new PrismaClient();
 
