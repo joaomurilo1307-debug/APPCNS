@@ -72,5 +72,9 @@ npx tsx prisma/seed-acessos-iniciais.ts || true
 echo "Criando projetos de exemplo (uma vez por pessoa)..."
 npx tsx prisma/seed-projetos-exemplo.ts || true
 
+# P0 (linha de base de custos) dos contratos, de prisma/data/p0/*.json: so' carrega a versao que ainda nao existe; nunca sobrescreve nem apaga.
+echo "Carregando P0 dos contratos (so' o que ainda nao foi carregado)..."
+npx tsx prisma/seed-p0.ts || true
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000

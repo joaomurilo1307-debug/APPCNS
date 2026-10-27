@@ -18,12 +18,17 @@ export default function VariacaoPorConta({
   iMes,
   mesesEscolha,
   onMes,
+  sufixoTitulo = "",
+  descricao = "Todas as contas que mudaram de um mês para o outro, da maior variação para a menor",
 }: {
   linhas: LinhaConta[]; // series completas (alinhadas a mesesAsc)
   mesesAsc: string[];
   iMes: number; // indice do mes analisado em mesesAsc (precisa ser > 0)
   mesesEscolha: string[]; // meses que podem ser escolhidos (do periodo, exceto o primeiro)
   onMes: (mes: string) => void;
+  /** acrescentado ao titulo (ex.: " no P0") quando a lista nao e' do realizado */
+  sufixoTitulo?: string;
+  descricao?: string;
 }) {
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [todas, setTodas] = useState(false);
@@ -63,8 +68,8 @@ export default function VariacaoPorConta({
 
   return (
     <Cartao
-      titulo={`O que variou de ${mesCurto(mesesAsc[iMes - 1])} para ${mesCurto(mesesAsc[iMes])}`}
-      subtitulo={`Todas as contas que mudaram de um mês para o outro, da maior variação para a menor · ${mesLongo(mesesAsc[iMes - 1])} contra ${mesLongo(mesesAsc[iMes])}`}
+      titulo={`O que variou de ${mesCurto(mesesAsc[iMes - 1])} para ${mesCurto(mesesAsc[iMes])}${sufixoTitulo}`}
+      subtitulo={`${descricao} · ${mesLongo(mesesAsc[iMes - 1])} contra ${mesLongo(mesesAsc[iMes])}`}
       acao={
         <label className="flex items-center gap-1.5 text-[13px] text-gray-600">
           Mês

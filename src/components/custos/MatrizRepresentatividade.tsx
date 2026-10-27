@@ -15,7 +15,7 @@ const fundo = (parte: number) => {
 };
 const pct = (v: number) => (v < 0.005 ? "<1%" : percentual(v, v < 0.1 ? 1 : 0));
 
-export default function MatrizRepresentatividade({ grupos, meses, totaisMes, totalP, cores, mesCorrente }: { grupos: LinhaGrupo[]; meses: string[]; totaisMes: number[]; totalP: number; cores: Map<string, string>; mesCorrente: string }) {
+export default function MatrizRepresentatividade({ grupos, meses, totaisMes, totalP, cores, mesCorrente, rotuloTotal = "Custo do mês" }: { grupos: LinhaGrupo[]; meses: string[]; totaisMes: number[]; totalP: number; cores: Map<string, string>; mesCorrente: string; rotuloTotal?: string }) {
   const [abertos, setAbertos] = useState<Set<string>>(new Set(grupos.slice(0, 1).map((g) => g.grupoCodigo)));
   const alternar = (c: string) =>
     setAbertos((a) => {
@@ -107,7 +107,7 @@ export default function MatrizRepresentatividade({ grupos, meses, totaisMes, tot
           </tbody>
           <tfoot>
             <tr className="font-semibold">
-              <td className="sticky left-0 z-10 bg-gray-100 py-2 pr-3 text-gray-800">Custo do mês</td>
+              <td className="sticky left-0 z-10 bg-gray-100 py-2 pr-3 text-gray-800">{rotuloTotal}</td>
               {totaisMes.map((v, i) => (
                 <td key={i} className="bg-gray-100 px-0.5 py-2 text-center text-[12px] tabular-nums text-gray-800">
                   {v ? moedaCompacta(v).replace("R$ ", "") : "–"}
