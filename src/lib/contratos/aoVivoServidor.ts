@@ -3,6 +3,7 @@
 
 import type { prisma as prismaReal } from "@/lib/prisma";
 import { nomeConta } from "@/lib/custos/planoContas";
+import { NOMES_DE_EXIBICAO } from "./nomesDeExibicao";
 import { itemDaOc, itemDoTitulo, type ItemAoVivo } from "./aoVivo";
 import { codigoDaContaDaOc, linhasDaOc, ocsAindaSemTitulo } from "./ocsDoCentro";
 import { ehContaForaDoCusto } from "./previsao";
@@ -26,6 +27,7 @@ export async function nomesDosCentros(db: typeof prismaReal, ccus: string[]): Pr
       nomes.set(c.codccu, c.contrato.replace(new RegExp(`^${c.codccu}\\s*-\\s*`), "").trim() || c.contrato);
     }
   }
+  for (const c of ccus) if (NOMES_DE_EXIBICAO[c]) nomes.set(c, NOMES_DE_EXIBICAO[c]); // 210 e 230: nome de exibicao (ver nomesDeExibicao.ts)
   return nomes;
 }
 

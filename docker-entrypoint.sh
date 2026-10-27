@@ -76,5 +76,8 @@ npx tsx prisma/seed-projetos-exemplo.ts || true
 echo "Carregando P0 dos contratos (so' o que ainda nao foi carregado)..."
 npx tsx prisma/seed-p0.ts || true
 
+# Nome de exibicao dos centros de custo 210 e 230 (so' troca o que ainda esta com o nome antigo do Senior; seguro repetir).
+npx tsx prisma/seed-nomes-contratos.ts || true
+
 echo "Iniciando aplicacao..."
 exec npx next start -p 3000
