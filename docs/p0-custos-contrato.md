@@ -24,6 +24,21 @@ por decisão do João. Se o Senior lançar algo na conta 77 de um contrato, o re
 - Gerar o JSON de uma planilha: o script que separa custo × pessoal e padroniza a escrita (conta, grupo e código do plano do Senior) está na pasta de trabalho
   do Núcleo (`scratchpad/p0_separar_custo.py`, `p0_padrao_sistema.py`, `p0_exportar_json.py`).
 
+## P0 carregados
+
+| CCU | Contrato | Fonte | Custo de contrato (R$) | Custos pessoais (R$) |
+|---|---|---|---:|---:|
+| 210 | MRN CT 3686/2023 + MRN CT 3687/2023 (3686 e 3687 analisados juntos no mesmo centro de custo; **v2**) | P0 3686 + P0 3687 | 10.045.548,84 | 9.394.443,61 |
+| 230 | MRN CT 3687 LT (**v2**: só o LT) | P0 3687 LT | 8.049.034,43 | 1.259.968,54 |
+| 102335 | MRN CT 4337/2026 | controle de custos de 16/10/2026, aba “DADOS PREVISTO - P0” | 11.771.791,33 | 18.182.642,58 |
+| 102345 | MRN CT 4343/2026 | P0 4343 PMRE | 12.844.088,67 | 1.555.784,43 |
+| 102385 | MRN CT 4362/2026 | P0 4362 PLT02 | 5.616.316,25 | 783.306,16 |
+| 102395 | MRN CT 4353/2026 - BIOTA | P0 4353 BAQ | 4.180.890,24 | 1.128.155,56 |
+
+A v1 do 210 (só o 3686) e a do 230 (3687 + LT juntos, de 27/10) continuam no banco como histórico; o sistema lê a versão ativa mais nova (v2). A divisão da v2 segue a tabela da Denise, confirmada pela diretoria em 28/10/2026 (3686 + 3687 → 210; 3687 LT → 230). **Rollback da v2:** `UPDATE "P0Versao" SET ativa = false WHERE codccu IN ('210','230') AND versao = 2;` (volta a v1). Atenção ao comparar: no Senior a medição (receita) do contrato 3687 vai toda para o CCU 230.
+
+O 4337 é diferente dos demais: o previsto vem em **parcelas lineares** (1/36 por mês, 36 meses) e 32 contas sem previsão foram completadas com a **média realizada do CT 3581** (R$ 409.221,97, 1,4% do total; o histórico de cada linha diz “COMPLEMENTO MARCO 0”). A conta “Serviços Geotécnicos / Laboratório” (complemento) não existe no plano do Senior: entra com `codConta` nulo e grupo `semplano` (“Sem correspondência no plano do Senior”), casa pelo nome e nunca terá realizado por código. “Depreciação - Veículos” é negativa (−R$ 1.465.661,88) e, pela regra do sistema, fica no custo de contrato. Os valores têm frações de centavo e são guardados com a precisão da planilha; a tela arredonda por conta e mês, então o total na tela fica R$ 0,59 acima do da planilha.
+
 ## Telas
 
 - **Contrato > P0 > Custos de contrato** (`src/components/p0/P0CustosContrato.tsx`): abre com o **hero** (`HeroP0.tsx`: faixa dos meses do P0 — fechados, mês em andamento e por vir — e três medidores: prazo, previsto que já venceu e realizado × previsto) e **atalhos fixos** de seção (`NavSecoesP0.tsx`). Depois: gráfico de acompanhamento do previsto (média, média móvel, realizado por cima),
