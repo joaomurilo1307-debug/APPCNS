@@ -193,7 +193,7 @@ export default function VisaoContrato({
   const mesesComP0 = p0 ? mesesAsc.filter((m) => m >= p0.mesIni && m <= p0.mesFim) : [];
   const ultimoFechadoP0 = [...mesesComP0].reverse().find((m) => m !== mesCorrente) ?? mesesComP0[mesesComP0.length - 1];
   const mesDoComparativo = mesP0 && mesesComP0.includes(mesP0) ? mesP0 : ultimoFechadoP0;
-  const comparacaoP0 = p0 && previstoMes && mostrarP0 && previstoMes.some((v) => v !== null) ? { rotulo: "P0 previsto", cor: COR_P0, valores: previstoMes, desvios: desviosP0 ?? undefined, rotuloDesvio: "Realizado vs P0" } : undefined;
+  const comparacaoP0 = p0 && previstoMes && mostrarP0 && previstoMes.some((v) => v !== null) ? { rotulo: "P0 previsto", cor: COR_P0, valores: previstoMes, desvios: desviosP0 ?? undefined, rotuloDesvio: "Realizado vs P0", discreta: true } : undefined;
   const previstoRef = previstoMes && mesesP.length ? previstoMes[mesesP.length - 1] : null;
   const deltaRef = previstoRef !== null ? totalRef - previstoRef : null;
 
@@ -380,7 +380,7 @@ export default function VisaoContrato({
             }
           >
             <div className="mb-3">
-              <LegendaLinha modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} temMeta={!!meta} comparacao={comparacaoP0 && { rotulo: comparacaoP0.rotulo, cor: comparacaoP0.cor }} />
+              <LegendaLinha modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} temMeta={!!meta} comparacao={comparacaoP0 && { rotulo: comparacaoP0.rotulo, cor: comparacaoP0.cor, discreta: true }} />
             </div>
             <LinhaAcompanhamento meses={mesesP} valores={totaisMes} mesParcial={refParcial ? mesCorrente : undefined} mesDestaque={filtros.ate} modo={modo} mostrarMedia={mostrarMedia} mostrarMediaMovel={mostrarMM3} meta={meta} comparacao={comparacaoP0} />
             {meta && (

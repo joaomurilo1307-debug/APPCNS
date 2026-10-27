@@ -76,7 +76,7 @@ export function LinhaAcompanhamento({
    * Segunda linha para comparar (ex.: o P0 sobre o realizado). `valores` alinhado a `meses`, null onde nao ha dado (a linha para ali);
    * `desvios` (opcional) e' o desvio da linha principal contra esta, por mes, mostrado no balao; `parcialEm` marca o mes em andamento.
    */
-  comparacao?: { rotulo: string; cor: string; valores: (number | null)[]; parcialEm?: string; desvios?: (number | null)[]; rotuloDesvio?: string };
+  comparacao?: { rotulo: string; cor: string; valores: (number | null)[]; parcialEm?: string; desvios?: (number | null)[]; rotuloDesvio?: string; discreta?: boolean };
 }) {
   const [ref, largura] = useLargura<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -186,10 +186,26 @@ export function LinhaAcompanhamento({
         {cmp && comparacao && (
           <g>
             {trechosContinuos(cmp).map((t, k) =>
-              t.length > 1 ? <path key={k} d={caminho(t.map((p) => ({ x: x(p.i), y: y(p.v) })))} fill="none" stroke={comparacao.cor} strokeWidth={2.6} strokeDasharray="7 4" strokeLinejoin="round" strokeLinecap="round" /> : null
+              t.length > 1 ? (
+                <path
+                  key={k}
+                  d={caminho(t.map((p) => ({ x: x(p.i), y: y(p.v) })))}
+                  fill="none"
+                  stroke={comparacao.cor}
+                  strokeWidth={comparacao.discreta ? 1.5 : 2.6}
+                  strokeOpacity={comparacao.discreta ? 0.55 : 1}
+                  strokeDasharray={comparacao.discreta ? "3 4" : "7 4"}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              ) : null
             )}
             {cmp.map((v, i) =>
-              v === null ? null : <circle key={i} cx={x(i)} cy={y(v)} r={4} fill={i === iCmpParcial ? "#ffffff" : comparacao.cor} stroke={i === iCmpParcial ? comparacao.cor : "#ffffff"} strokeWidth={i === iCmpParcial ? 2.2 : 1.6} />
+              v === null ? null : comparacao.discreta ? (
+                <circle key={i} cx={x(i)} cy={y(v)} r={2.3} fill={comparacao.cor} fillOpacity={0.6} />
+              ) : (
+                <circle key={i} cx={x(i)} cy={y(v)} r={4} fill={i === iCmpParcial ? "#ffffff" : comparacao.cor} stroke={i === iCmpParcial ? comparacao.cor : "#ffffff"} strokeWidth={i === iCmpParcial ? 2.2 : 1.6} />
+              )
             )}
           </g>
         )}
@@ -293,12 +309,12 @@ export function LegendaLinha({
   temMeta: boolean;
   rotuloMensal?: string;
   rotuloAcumulado?: string;
-  comparacao?: { rotulo: string; cor: string };
+  comparacao?: { rotulo: string; cor: string; discreta?: boolean };
 }) {
-  const item = (cor: string, texto: string, tracejado?: string) => (
-    <span className="inline-flex items-center gap-2 text-[13px] text-gray-600">
+  const item = (cor: string, texto: string, tracejado?: string, discreta?: boolean) => (
+    <span className={`inline-flex items-center gap-2 text-[13px] ${discreta ? "text-gray-400" : "text-gray-600"}`}>
       <svg width="28" height="10" aria-hidden>
-        <line x1="0" y1="5" x2="28" y2="5" stroke={cor} strokeWidth="3" strokeDasharray={tracejado} />
+        <line x1="0" y1="5" x2="28" y2="5" stroke={cor} strokeWidth={discreta ? 1.5 : 3} strokeOpacity={discreta ? 0.6 : 1} strokeDasharray={tracejado} />
       </svg>
       {texto}
     </span>
@@ -309,7 +325,7 @@ export function LegendaLinha({
       {modo === "mensal" && mostrarMedia && item(COR_MEDIA, "Média do período (meses fechados)", "3 5")}
       {modo === "mensal" && mostrarMediaMovel && item(COR_MM3, "Média móvel de 3 meses", "9 4 2 4")}
       {temMeta && item(COR_META, modo === "acumulado" ? "Meta acumulada" : "Meta mensal", "7 5")}
-      {comparacao && item(comparacao.cor, modo === "acumulado" ? `${comparacao.rotulo} (acumulado)` : comparacao.rotulo, "7 4")}
+      {comparacao && item(comparacao.cor, modo === "acumulado" ? `${comparacao.rotulo} (acumulado)` : comparacao.rotulo, comparacao.discreta ? "3 4" : "7 4", comparacao.discreta)}
     </div>
   );
 }
