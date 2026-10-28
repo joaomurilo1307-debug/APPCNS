@@ -8,6 +8,8 @@ import { motorDeOcs } from "@/lib/cache/ocsMotor";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
 import { garantirFormasPagamentoAtualizadas, carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
 import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
+import { nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
+import { centroDoRateio } from "@/lib/titulos/centroDoRateio";
 
 // Programação de Contas a Pagar por título, escopo histórico completo.
 // Mesmo nível de acesso das Aprovações OC do Senior. Motor de conciliação
@@ -47,7 +49,7 @@ let emCalculo: { assinatura: string; promessa: Promise<string> } | null = null;
 
 /** Tudo que alimenta a lista, resumido numa chave curta. Se qualquer coisa mudar (titulo, OC, vinculo manual, adiamento, dossie...), a chave muda. */
 async function assinaturaDaLista(): Promise<string> {
-  const [t, oc, dossies, usuarios, formas, adiamentos, vinculos] = await Promise.all([
+  const [t, oc, dossies, usuarios, formas, adiamentos, vinculos, detalhe] = await Promise.all([
     prisma.tituloContasAPagar.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
     motorDeOcs(prisma),
     prisma.dossieOC.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }),
@@ -56,6 +58,7 @@ async function assinaturaDaLista(): Promise<string> {
     // poucos registros: lidos por inteiro para que qualquer alteracao (inclusive trocar a OC de um vinculo manual) mude a chave
     prisma.tituloAdiamento.findMany({ where: { tituloId: { not: null } }, select: { id: true, marcadoEm: true, resolvidoEm: true, resolvidoComo: true, motivo: true } }),
     prisma.tituloOcVinculo.findMany({ select: { id: true, numOcp: true, criadoEm: true } }),
+    prisma.custoFinanceiroDetalhe.aggregate({ _max: { atualizadoEm: true }, _count: { _all: true } }), // rateio usado quando o titulo nao traz centro de custo
   ]);
   const k = (d: Date | null | undefined) => d?.getTime() ?? 0;
   return [
@@ -66,6 +69,7 @@ async function assinaturaDaLista(): Promise<string> {
     `f${formas._count._all}:${k(formas._max.atualizadoEm)}`,
     `a${adiamentos.map((a) => `${a.id}.${k(a.marcadoEm)}.${k(a.resolvidoEm)}.${a.resolvidoComo ?? ""}.${a.motivo ?? ""}`).join(",")}`,
     `v${vinculos.map((v) => `${v.id}.${v.numOcp}.${k(v.criadoEm)}`).join(",")}`,
+    `r${detalhe._count._all}:${k(detalhe._max.atualizadoEm)}`,
   ].join("|");
 }
 
@@ -102,6 +106,24 @@ async function calcularTexto(): Promise<string> {
   ]);
 
   const vinculoManualDe = new Map(vinculosManuais.map((v) => [`${v.numTit}|${v.codFil}|${v.codFor}`, v]));
+
+  // Titulo sem centro de custo no CABECALHO (E501TCP.CODCCU em branco) mas com rateio no Senior: o centro vem do rateio que o Custo por Centro de Custo ja usa
+  // (CustoFinanceiroDetalhe, so' titulos pagos e contas de custo). So' quando o rateio aponta UM centro; rateado entre varios vai como "Rateado em N centros".
+  const semCentro = titulos.filter((t) => !t.codccu);
+  const rateioPorTitulo = new Map<string, string[]>();
+  if (semCentro.length) {
+    const linhas = await prisma.custoFinanceiroDetalhe.findMany({
+      where: { numTit: { in: [...new Set(semCentro.map((t) => t.numTit))] }, codFor: { in: [...new Set(semCentro.map((t) => t.codFor))] } },
+      select: { numTit: true, codFor: true, codTpt: true, codccu: true },
+    });
+    const porChave = new Map<string, typeof linhas>();
+    for (const l of linhas) (porChave.get(`${l.numTit}|${l.codFor}`) ?? porChave.set(`${l.numTit}|${l.codFor}`, []).get(`${l.numTit}|${l.codFor}`)!).push(l);
+    for (const t of semCentro) {
+      const ccus = centroDoRateio(porChave.get(`${t.numTit}|${t.codFor}`) ?? [], t.tipo);
+      if (ccus.length) rateioPorTitulo.set(t.id, ccus);
+    }
+  }
+  const nomesRateio = await nomesDosCentros(prisma, [...new Set([...rateioPorTitulo.values()].flat())]);
 
   // Mais recente por titulo (a query ja vem ordenada por marcadoEm desc).
   const adiamentoPorTitulo = new Map<string, (typeof adiamentos)[number]>();
@@ -165,8 +187,7 @@ async function calcularTexto(): Promise<string> {
         valorOriginal: t.valorOriginal,
         valorAberto: t.valorAberto,
         dataPagamento: t.dataPagamento,
-        ccuNome: t.ccuNome ?? t.codccu,
-        codccu: t.codccu ?? null, // o filtro de area (topo das telas) e' aplicado no navegador por este codigo
+        ...centroParaTela(t, rateioPorTitulo.get(t.id), nomesRateio),
         ocRelacionada: vinculo.ocRelacionada,
         ocCodFil,
         vinculoManual: vinculoManual ? { numOcp: vinculoManual.numOcp, por: vinculoManual.criadoPorNome, em: vinculoManual.criadoEm } : null,
@@ -219,4 +240,11 @@ async function calcularTexto(): Promise<string> {
     totalTitulos: titulos.length,
     sincronizadoEm,
   });
+}
+
+/** Centro mostrado na lista: o do cabecalho do titulo; sem ele, o do rateio do Senior (marcado `ccuOrigem: "rateio"`). `codccu` alimenta o filtro de area do topo das telas. */
+function centroParaTela(t: { ccuNome: string | null; codccu: string | null }, rateio: string[] | undefined, nomes: Map<string, string>) {
+  if (t.codccu || t.ccuNome || !rateio) return { ccuNome: t.ccuNome ?? t.codccu, codccu: t.codccu ?? null, ccuOrigem: null as "rateio" | null };
+  if (rateio.length === 1) return { ccuNome: nomes.get(rateio[0])?.trim() || `CC ${rateio[0]}`, codccu: rateio[0], ccuOrigem: "rateio" as const };
+  return { ccuNome: `Rateado em ${rateio.length} centros`, codccu: null, ccuOrigem: "rateio" as const };
 }
