@@ -9,7 +9,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import P0CustosContrato from "@/components/p0/P0CustosContrato";
 import P0PessoaisContrato from "@/components/p0/P0PessoaisContrato";
 import CustoPessoalView from "@/components/custoPessoal/CustoPessoalView";
-import { NOME_DO_NUCLEO } from "@/lib/custoPessoal/escopo";
 import ClientesDoContrato from "./ClientesDoContrato";
 import ProjetosDoContrato from "./ProjetosDoContrato";
 import PrevisaoMensal from "./PrevisaoMensal";
@@ -91,17 +90,9 @@ export function AbaFichaContrato({ ficha, irParaAba }: { ficha: FichaContrato; i
 }
 
 // ---------------------------------------------------------------- Custo de pessoal
-// Por enquanto so' os centros de custo ADM (folha CLT lida do Senior, conferida ao centavo); o acesso e' o do modulo restrito "custo_pessoal".
+// Folha CLT do centro de custo lida do Senior (qualquer centro com folha); o acesso e' o do modulo restrito e exclusivo "custo_pessoal".
 export function AbaPessoal({ codccu }: { codccu: string }) {
-  if (NOME_DO_NUCLEO.has(codccu)) return <CustoPessoalView ccuFixo={codccu} />;
-  return (
-    <Cartao titulo="Custo de pessoal" sub="Base para o gestor entender quanto o time do contrato custa e como isso se compara ao resultado">
-      <Vazio
-        titulo="Esta aba ainda não recebe dados deste centro de custo."
-        texto="O custo de pessoal (folha, encargos e provisões, lido do Senior) já está disponível para os centros de custo administrativos. Os centros de contrato entram depois, quando cada número estiver validado ao centavo contra o Senior."
-      />
-    </Cartao>
-  );
+  return <CustoPessoalView ccuFixo={codccu} />;
 }
 
 // ---------------------------------------------------------------- P0 (estrutura, sem cadastro por enquanto)

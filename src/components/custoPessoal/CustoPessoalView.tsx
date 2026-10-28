@@ -1,6 +1,7 @@
 "use client";
 
-// Custo de pessoal CLT por centro de custo (so' os nucleos ADM, por enquanto). Visao geral: total por centro e mes; clicar num total abre a folha de quem compoe o valor.
+// Custo de pessoal CLT por centro de custo (todos os que tem folha; filtro por grupo: nucleos ADM, Engenharia, Ambiental, Outros). Visao geral: total por centro e mes;
+// clicar num total abre a folha de quem compoe o valor. Meses FECHADOS (a memoria) nao mudam mais e aparecem marcados.
 // Clicar no centro de custo abre o detalhe: quanto gasta com o que (folha, INSS, FGTS, IRRF, ferias, 1/3, 13o, provisoes) mes a mes e a folha pessoa a pessoa.
 // `ccuFixo` = embutido na aba "Custo de pessoal" do contrato (um centro so', sem titulo nem voltar).
 
@@ -14,12 +15,14 @@ import BotaoExcel from "@/components/BotaoExcel";
 import { abaDeLinhas } from "@/lib/exportarExcel";
 import { COMPONENTES, GRUPOS_COMPONENTE, totalDoGrupo, type GrupoComponente } from "@/lib/custoPessoal/componentes";
 import { mesesDasLinhas, mesesDoPeriodo, porCentroEMes, porMes, totalDoPeriodo, type Celula, type LinhaCentroMes } from "@/lib/custoPessoal/agregar";
-import { NOME_DO_NUCLEO, type NucleoAdm } from "@/lib/custoPessoal/escopo";
+import { GRUPOS_CENTRO, nomeDoCentro, type GrupoCentro } from "@/lib/custoPessoal/escopo";
 import { nomeBonito } from "@/lib/custoPessoal/formato";
 import GraficoEmpilhado, { LegendaEmpilhado, type PontoEmpilhado } from "./GraficoEmpilhado";
 import FolhaDoCentro, { type PessoaDaFolha } from "./FolhaDoCentro";
 
-type Dados = { nucleos: NucleoAdm[]; linhas: LinhaCentroMes[]; atualizadoEm: string | null };
+type CentroDaTela = { codccu: string; nome: string; grupo: GrupoCentro };
+type Fechamento = { mes: string; fechadoEm: string; linhas: number; total: number };
+type Dados = { centros: CentroDaTela[]; linhas: LinhaCentroMes[]; fechamentos: Fechamento[]; atualizadoEm: string | null };
 
 const pontoDe = (mes: string, c: Celula | undefined): PontoEmpilhado => ({ mes, folha: c ? totalDoGrupo(c, "folha") : 0, provisoes: c ? totalDoGrupo(c, "provisoes") : 0, prolabore: c ? totalDoGrupo(c, "prolabore") : 0 });
 const curto = (v: number) => (v ? moedaCompacta(v).replace("R$ ", "") : "–");
@@ -58,6 +61,7 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
   const params = useSearchParams();
   const [dados, setDados] = useState<Dados | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [semAcesso, setSemAcesso] = useState(false);
   const [gaveta, setGaveta] = useState<{ ccu: string; mes: string } | null>(null);
 
   useEffect(() => {
@@ -66,7 +70,8 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
         if (controller.signal.aborted) return;
-        if (!r.ok) return setErro(r.status === 403 ? "Você não tem acesso ao custo de pessoal." : j.error || "Não foi possível carregar o custo de pessoal.");
+        if (r.status === 403) return setSemAcesso(true);
+        if (!r.ok) return setErro(j.error || "Não foi possível carregar o custo de pessoal.");
         setDados(j as Dados);
       })
       .catch(() => !controller.signal.aborted && setErro("Não foi possível carregar o custo de pessoal."));
@@ -88,7 +93,10 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
 
   const todosMeses = useMemo(() => mesesDasLinhas(dados?.linhas ?? []), [dados]);
   const mapa = useMemo(() => porCentroEMes(dados?.linhas ?? []), [dados]);
+  const centroPorCodigo = useMemo(() => new Map((dados?.centros ?? []).map((c) => [c.codccu, c])), [dados]);
 
+  // Embutido na aba do contrato, quem nao tem o modulo exclusivo ve so' o aviso (a pagina inteira ja redireciona).
+  if (semAcesso) return ccuFixo ? <Cartao titulo="Custo de pessoal"><p className="rounded-xl border border-dashed border-gray-200 px-5 py-8 text-center text-sm text-gray-500">O custo de pessoal é dado de remuneração e está liberado só para quem recebeu esse acesso.</p></Cartao> : <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-800">Você não tem acesso ao custo de pessoal.</div>;
   if (erro) return <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-800">{erro}</div>;
   if (!dados) return <div className="space-y-4" aria-busy><div className="h-28 animate-pulse rounded-2xl bg-gray-200/70" /><div className="h-72 animate-pulse rounded-2xl bg-gray-200/70" /></div>;
   if (todosMeses.length === 0) return <Cartao titulo="Custo de pessoal"><p className="rounded-xl border border-dashed border-gray-200 px-5 py-10 text-center text-sm text-gray-500">Ainda não há folha carregada. Ela chega do Senior (HCM) e fica aqui assim que for sincronizada.</p></Cartao>;
@@ -100,12 +108,16 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
   const mesesJ = mesesDoPeriodo(todosMeses, de, ate);
   const mudarPeriodo = (d: string, a: string) => mudarUrl({ de: d, ate: a });
   const ccuParam = ccuFixo ?? params.get("ccu");
-  const ccu = ccuParam && NOME_DO_NUCLEO.has(ccuParam) ? ccuParam : null;
+  const ccu = ccuFixo ?? (ccuParam && centroPorCodigo.has(ccuParam) ? ccuParam : null);
+  const fechadoDoMes = new Map((dados.fechamentos ?? []).map((f) => [f.mes, f]));
+  const mesesFechados = todosMeses.filter((m) => fechadoDoMes.has(m));
+  const mesesAbertos = todosMeses.filter((m) => !fechadoDoMes.has(m));
   const atualizado = dados.atualizadoEm ? `Dados do Senior de ${dataHoraCurta(dados.atualizadoEm)}` : null;
 
   // ---------------------------------------------------------------- detalhe de um centro de custo
   if (ccu) {
-    const nome = NOME_DO_NUCLEO.get(ccu) ?? ccu;
+    const nome = centroPorCodigo.get(ccu)?.nome ?? nomeDoCentro(ccu);
+    const rotuloGrupo = GRUPOS_CENTRO.find((g) => g.id === centroPorCodigo.get(ccu)?.grupo)?.rotulo;
     const celulas = mesesJ.map((m) => mapa.get(ccu)?.get(m));
     const comDados = mesesJ.filter((_, i) => celulas[i] && celulas[i]!.pessoas > 0);
     const tot = totalDoPeriodo(celulas);
@@ -141,7 +153,7 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
             <Link href="/custo-pessoal" className="text-[13px] font-medium text-brand hover:text-brand-dark">← Todos os centros de custo</Link>
             <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-gray-900">{nome} <span className="ml-1 rounded-lg bg-teal-50 px-2 py-0.5 align-middle text-sm font-semibold tabular-nums text-teal-800">CCU {ccu}</span></h1>
+                <h1 className="text-2xl font-semibold tracking-tight text-gray-900">{nome} <span className="ml-1 rounded-lg bg-teal-50 px-2 py-0.5 align-middle text-sm font-semibold tabular-nums text-teal-800">CCU {ccu}</span>{rotuloGrupo && <span className="ml-1.5 rounded-lg bg-gray-100 px-2 py-0.5 align-middle text-xs font-medium text-gray-600">{rotuloGrupo}</span>}</h1>
                 <p className="mt-0.5 text-[14px] text-gray-500">Custo de pessoal CLT: quanto gasta com o quê, mês a mês, e a folha dentro do centro de custo.</p>
               </div>
               <div className="flex items-center gap-3 text-xs text-gray-500">{atualizado && <span>{atualizado}</span>}<BotaoExcel arquivo={`custo-de-pessoal-${ccu}`} gerar={abasDoCentro} /></div>
@@ -151,6 +163,7 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
         {ccuFixo && <div className="flex items-center justify-end gap-3 text-xs text-gray-500">{atualizado && <span>{atualizado}</span>}<BotaoExcel arquivo={`custo-de-pessoal-${ccu}`} gerar={abasDoCentro} /></div>}
 
         <SeletorPeriodo meses={todosMeses} de={de} ate={ate} onMudar={mudarPeriodo} />
+        <FaixaMemoria fechados={mesesFechados} abertos={mesesAbertos} fechadoDoMes={fechadoDoMes} />
 
         {comDados.length === 0 ? (
           <Cartao titulo="Sem folha CLT neste centro de custo"><p className="text-sm text-gray-600">Não há folha CLT em {nome} no período. Se as pessoas deste centro são prestadores (PJ), o custo delas está em <b>Serviços Terceiros PJ</b> no Custo por Centro de Custo.</p></Cartao>
@@ -229,14 +242,21 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
   }
 
   // ---------------------------------------------------------------- visao geral
-  const linhasPeriodo = (dados.linhas ?? []).filter((l) => mesesJ.includes(l.mes));
+  const contagemPorGrupo = new Map<GrupoCentro, number>();
+  for (const c of dados.centros) if (mapa.has(c.codccu) || c.grupo === "NUCLEO_ADM") contagemPorGrupo.set(c.grupo, (contagemPorGrupo.get(c.grupo) ?? 0) + 1);
+  const grupoParam = params.get("grupo");
+  const grupo: GrupoCentro | null = GRUPOS_CENTRO.some((g) => g.id === grupoParam) ? (grupoParam as GrupoCentro) : null;
+  const rotuloEscopo = grupo ? GRUPOS_CENTRO.find((g) => g.id === grupo)!.rotulo : "todos os centros de custo";
+  const centrosDoEscopo = dados.centros.filter((c) => (!grupo || c.grupo === grupo) && (mapa.has(c.codccu) || c.grupo === "NUCLEO_ADM"));
+  const codigosDoEscopo = new Set(centrosDoEscopo.map((c) => c.codccu));
+  const linhasPeriodo = (dados.linhas ?? []).filter((l) => mesesJ.includes(l.mes) && codigosDoEscopo.has(l.codccu));
   const totalPorMes = porMes(linhasPeriodo, mesesJ);
   const geral = totalDoPeriodo([...totalPorMes.values()]);
   const temProLabore = geral.proLabore > 0;
   const base = temProLabore ? geral.totalComProLabore : geral.total;
   const mesesComFolha = mesesJ.filter((m) => (totalPorMes.get(m)?.pessoas ?? 0) > 0);
   const ultimoMes = mesesJ[mesesJ.length - 1];
-  const centros = dados.nucleos
+  const centros = centrosDoEscopo
     .map((n) => {
       const celulas = mesesJ.map((m) => mapa.get(n.codccu)?.get(m));
       const tot = totalDoPeriodo(celulas);
@@ -248,15 +268,16 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
   const provisoes = geral.provFerias + geral.provTerco + geral.prov13 + geral.provInss + geral.provFgts;
 
   const abasGeral = () => {
-    const por: (string | number)[][] = [["Núcleo", "CCU", ...mesesJ.map(mesCurto), "Total do período"]];
-    for (const c of centros) por.push([c.n.nome, c.n.codccu, ...c.celulas.map((x) => x?.totalComProLabore ?? 0), c.valor]);
-    por.push(["TOTAL DOS NÚCLEOS ADM", "", ...mesesJ.map((m) => totalPorMes.get(m)?.totalComProLabore ?? 0), geral.totalComProLabore]);
+    const rotuloDoGrupo = (g: GrupoCentro) => GRUPOS_CENTRO.find((x) => x.id === g)!.rotulo;
+    const por: (string | number)[][] = [["Centro de custo", "CCU", "Grupo", ...mesesJ.map(mesCurto), "Total do período"]];
+    for (const c of centros) por.push([c.n.nome, c.n.codccu, rotuloDoGrupo(c.n.grupo), ...c.celulas.map((x) => x?.totalComProLabore ?? 0), c.valor]);
+    por.push([`TOTAL (${rotuloEscopo})`, "", "", ...mesesJ.map((m) => totalPorMes.get(m)?.totalComProLabore ?? 0), geral.totalComProLabore]);
     const comp: (string | number)[][] = [["Componente", ...mesesJ.map(mesCurto), "Total do período"]];
     for (const c of COMPONENTES) comp.push([c.rotulo, ...mesesJ.map((m) => totalPorMes.get(m)?.[c.id] ?? 0), geral[c.id]]);
     comp.push(["TOTAL (regra do Rito)", ...mesesJ.map((m) => totalPorMes.get(m)?.total ?? 0), geral.total]);
     return [
-      abaDeLinhas("Por centro e mês", por, "Custo de pessoal CLT dos núcleos ADM (com pró-labore da diretoria). Regra do Rito de Gestão, calculada ao vivo no Senior.", true),
-      abaDeLinhas("Componentes por mês", comp, "Total dos núcleos ADM por componente.", true),
+      abaDeLinhas("Por centro e mês", por, `Custo de pessoal CLT · ${rotuloEscopo} (com pró-labore da diretoria). Regra do Rito de Gestão, calculada no Senior.`, true),
+      abaDeLinhas("Componentes por mês", comp, `Total de ${rotuloEscopo} por componente.`, true),
     ];
   };
 
@@ -265,21 +286,33 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Custo de pessoal por centro de custo</h1>
-          <p className="mt-1 max-w-3xl text-[14px] text-gray-500">Folha, encargos e provisões dos CLT, calculados ao vivo no Senior. Por enquanto só os núcleos ADM. Clique num valor para ver quem compõe o total, ou no centro de custo para abrir a folha dele.</p>
+          <p className="mt-1 max-w-3xl text-[14px] text-gray-500">Folha, encargos e provisões dos CLT, calculados no Senior pela regra do Rito de Gestão. Clique num valor para ver quem compõe o total, ou no centro de custo para abrir a folha dele.</p>
         </div>
-        <div className="flex items-center gap-3 text-xs text-gray-500">{atualizado && <span>{atualizado}</span>}<BotaoExcel arquivo="custo-de-pessoal-adm" gerar={abasGeral} /></div>
+        <div className="flex items-center gap-3 text-xs text-gray-500">{atualizado && <span>{atualizado}</span>}<BotaoExcel arquivo={`custo-de-pessoal-${grupo ? grupo.toLowerCase().replace("_", "-") : "todos"}`} gerar={abasGeral} /></div>
       </header>
 
       <SeletorPeriodo meses={todosMeses} de={de} ate={ate} onMudar={mudarPeriodo} />
+      <FaixaMemoria fechados={mesesFechados} abertos={mesesAbertos} fechadoDoMes={fechadoDoMes} />
+
+      <nav aria-label="Grupo de centros de custo" className="flex flex-wrap items-center gap-1.5">
+        {[{ id: null as GrupoCentro | null, rotulo: "Todos" }, ...GRUPOS_CENTRO.filter((g) => contagemPorGrupo.has(g.id))].map((g) => {
+          const n = g.id ? contagemPorGrupo.get(g.id) ?? 0 : [...contagemPorGrupo.values()].reduce((a, b) => a + b, 0);
+          return (
+            <button key={g.rotulo} type="button" onClick={() => mudarUrl({ grupo: g.id })} aria-pressed={grupo === g.id} className={`rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition ${grupo === g.id ? "border-brand bg-brand text-white" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}>
+              {g.rotulo} <span className={grupo === g.id ? "text-white/80" : "text-gray-400"}>{n}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi rotulo="Custo de pessoal no período" valor={moedaCompacta(base)} detalhe={`${mesesComFolha.length} ${mesesComFolha.length === 1 ? "mês" : "meses"} · núcleos ADM`} destaque />
+        <Kpi rotulo="Custo de pessoal no período" valor={moedaCompacta(base)} detalhe={`${mesesComFolha.length} ${mesesComFolha.length === 1 ? "mês" : "meses"} · ${rotuloEscopo}`} destaque />
         <Kpi rotulo="Média por mês" valor={moedaCompacta(mesesComFolha.length ? base / mesesComFolha.length : 0)} detalhe="nos meses com folha" />
         <Kpi rotulo={`Pessoas em ${mesCurto(ultimoMes)}`} valor={String(totalPorMes.get(ultimoMes)?.pessoas ?? 0)} detalhe="CLT com folha no mês" />
         <Kpi rotulo="Provisões" valor={base ? percentual(provisoes / base, 1) : "–"} detalhe="do total vira provisão (férias, 1/3, 13º e encargos)" />
       </div>
 
-      <Cartao titulo="Mês a mês" subtitulo="Todos os núcleos ADM, por grupo de custo">
+      <Cartao titulo="Mês a mês" subtitulo={`${rotuloEscopo[0].toUpperCase()}${rotuloEscopo.slice(1)}, por grupo de custo`}>
         <div className="mb-2"><LegendaEmpilhado grupos={temProLabore ? ["folha", "provisoes", "prolabore"] : ["folha", "provisoes"]} /></div>
         <GraficoEmpilhado pontos={pontos} />
       </Cartao>
@@ -301,6 +334,7 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
                   <td className="sticky left-0 z-10 bg-white px-3 py-1.5">
                     <button type="button" onClick={() => mudarUrl({ ccu: c.n.codccu })} className="text-left font-medium text-gray-900 hover:text-brand">{c.n.nome}</button>
                     <span className="ml-2 text-[11px] text-gray-400">CCU {c.n.codccu}</span>
+                    {!grupo && <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">{GRUPOS_CENTRO.find((g) => g.id === c.n.grupo)!.rotulo}</span>}
                     {!c.temFolha && <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500" title="As pessoas deste centro são prestadores (PJ): o custo está em Serviços Terceiros PJ">sem CLT</span>}
                   </td>
                   {c.celulas.map((x, i) => {
@@ -318,7 +352,7 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
                 </tr>
               ))}
               <tr className="border-t-2 border-gray-200 bg-gray-50/80 font-semibold text-gray-900">
-                <td className="sticky left-0 z-10 bg-gray-50 px-3 py-2">Total dos núcleos ADM</td>
+                <td className="sticky left-0 z-10 bg-gray-50 px-3 py-2">Total · {rotuloEscopo}</td>
                 {mesesJ.map((m) => <td key={m} className="px-2.5 py-2 text-right" title={moeda(totalPorMes.get(m)?.totalComProLabore ?? 0)}>{curto(totalPorMes.get(m)?.totalComProLabore ?? 0)}</td>)}
                 <td className="border-l border-gray-200 px-3 py-2 text-right" title={moeda(geral.totalComProLabore)}>{moedaCompacta(geral.totalComProLabore)}</td>
                 <td className="px-3 py-2 text-right">100%</td>
@@ -326,7 +360,7 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
             </tbody>
           </table>
         </div>
-        <p className="mt-3 text-[12px] leading-snug text-gray-500">Só pessoas CLT. Prestadores PJ (como o grupo ADM) já estão em Serviços Terceiros PJ no Custo por Centro de Custo e não entram aqui. A diretoria recebe pró-labore (sem provisão), que está somado nos valores acima.</p>
+        <p className="mt-3 text-[12px] leading-snug text-gray-500">Só pessoas CLT. Prestadores PJ (como o grupo ADM) já estão em Serviços Terceiros PJ no Custo por Centro de Custo e não entram aqui. A diretoria recebe pró-labore (sem provisão), que está somado nos valores acima.{todosMeses.some((m) => m < "2026-03") && ' Em janeiro e fevereiro, quem estava no centro único "ADM" foi distribuído para o núcleo em que está desde março (marcado como "distribuído" na folha).'}</p>
       </Cartao>
 
       {gaveta && (
@@ -335,7 +369,7 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
             <header className="flex items-start justify-between gap-4 border-b border-gray-100 bg-gradient-to-r from-brand/10 to-transparent px-6 py-4">
               <div className="min-w-0">
                 <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Quem compõe o total · {mesLongo(gaveta.mes)}</p>
-                <h2 className="truncate text-lg font-semibold text-gray-900">{NOME_DO_NUCLEO.get(gaveta.ccu)} <span className="text-sm font-normal text-gray-400">CCU {gaveta.ccu}</span></h2>
+                <h2 className="truncate text-lg font-semibold text-gray-900">{centroPorCodigo.get(gaveta.ccu)?.nome ?? gaveta.ccu} <span className="text-sm font-normal text-gray-400">CCU {gaveta.ccu}</span></h2>
                 <p className="text-sm text-gray-600">Total do mês: <b className="tabular-nums text-gray-900">{moeda(mapa.get(gaveta.ccu)?.get(gaveta.mes)?.totalComProLabore ?? 0)}</b></p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -348,6 +382,21 @@ export default function CustoPessoalView({ ccuFixo }: { ccuFixo?: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+const dataCurta = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+/** A "memoria": meses fechados nao mudam mais; so' os meses seguintes sao acrescentados. */
+function FaixaMemoria({ fechados, abertos, fechadoDoMes }: { fechados: string[]; abertos: string[]; fechadoDoMes: Map<string, Fechamento> }) {
+  if (fechados.length === 0) return null;
+  const datas = Array.from(new Set(fechados.map((m) => dataCurta(fechadoDoMes.get(m)!.fechadoEm))));
+  const intervalo = fechados.length === 1 ? mesCurto(fechados[0]) : `${mesCurto(fechados[0])} a ${mesCurto(fechados[fechados.length - 1])}`;
+  return (
+    <p className="rounded-xl border border-teal-100 bg-teal-50/60 px-4 py-2.5 text-[13px] leading-snug text-teal-900" role="note">
+      <b>Meses fechados: {intervalo}</b> (fechado em {datas.join(", ")}). Esses meses não mudam mais, mesmo que o cadastro do Senior mude depois (troca de centro de custo, desligamento).
+      {abertos.length > 0 ? ` Em aberto: ${abertos.map(mesCurto).join(", ")}.` : " Só os meses seguintes serão acrescentados."}
+    </p>
   );
 }
 

@@ -2046,6 +2046,7 @@ model CustoPessoalMes {
   id           String   @id @default(cuid())
   codccu       String // centro de custo no SISTEMA (ERP)
   ccuHcm       String // centro de custo no HCM (ADM MARKETING: 21 no HCM, 17 no sistema)
+  nomeCentro   String? // nome do centro de custo no Senior (para centros que nao estao no cadastro de areas)
   competencia  DateTime // dia 1 do mes
   matricula    String
   nome         String
@@ -2053,7 +2054,7 @@ model CustoPessoalMes {
   situacao     String? // situacao ATUAL no Senior (Trabalhando, Ferias, Demitido...)
   dataSituacao String?
   admissao     String?
-  origemCc     String? // ledger | cc_atual | confirmada: de onde veio o centro de custo daquele mes
+  origemCc     String? // historico_hcm | confirmado_joao | distribuido_nucleo: de onde veio o centro de custo daquele mes
   salarioBase  Float    @default(0)
   liquido      Float    @default(0) // liquido da folha normal (rubricas 3065 + 2454)
   rescisao     Float    @default(0) // rescisao paga pelo ERP (E501, conta 80)
@@ -2072,4 +2073,17 @@ model CustoPessoalMes {
   @@unique([codccu, competencia, matricula])
   @@index([competencia])
   @@index([codccu, competencia])
+}
+
+// Memoria do custo de pessoal: mes FECHADO nao muda mais. A carga recusa (409) qualquer mes que esteja aqui; a `impressao` (SHA-256 das linhas do mes) prova
+// depois que nada foi alterado. Reabrir so' pela rota de fechamento, com motivo, e fica na auditoria.
+model CustoPessoalFechamento {
+  mes        String   @id // aaaa-mm
+  fechadoEm  DateTime @default(now())
+  fechadoPor String
+  linhas     Int
+  pessoas    Int
+  total      Float // regra do Rito (sem pro-labore)
+  impressao  String
+  observacao String?
 }

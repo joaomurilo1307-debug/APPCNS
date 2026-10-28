@@ -1,7 +1,6 @@
 // Validacao da carga do custo de pessoal (PURO): o que a rota de sincronizacao recusa. Recusa a carga INTEIRA se algo estiver errado, para nunca
 // gravar uma folha pela metade (a carga substitui os meses enviados).
 
-import { CCUS_ADM } from "./escopo";
 import { totalDoRito, type Componentes } from "./componentes";
 
 export type ItemDaCarga = { codccu: string; mes: string; matricula: string; total: number } & Pick<Componentes, "liquido" | "rescisao" | "inss" | "fgts" | "irrf" | "provFerias" | "provTerco" | "prov13" | "provInss" | "provFgts">;
@@ -12,7 +11,7 @@ export function problemasDaCarga(meses: ReadonlyArray<string>, itens: ReadonlyAr
   const problemas: string[] = [];
   for (const i of itens) {
     if (!permitidos.has(i.mes)) problemas.push(`${i.matricula} ${i.mes}: mês fora da lista de meses enviada`);
-    if (!CCUS_ADM.has(i.codccu)) problemas.push(`${i.matricula} ${i.mes}: centro de custo ${i.codccu} não é ADM`);
+    if (!/^\d{1,9}$/.test(i.codccu)) problemas.push(`${i.matricula} ${i.mes}: centro de custo "${i.codccu}" inválido (use o código numérico do sistema)`);
     const k = `${i.codccu}|${i.mes}|${i.matricula}`;
     if (chaves.has(k)) problemas.push(`${i.matricula} ${i.mes}: linha repetida no centro ${i.codccu}`);
     chaves.add(k);
