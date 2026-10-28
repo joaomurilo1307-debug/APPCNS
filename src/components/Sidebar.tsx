@@ -60,6 +60,7 @@ const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: 
   { href: "/medicao", module: "financeiro", label: "Receita e Medição", icon: IconBarChart, modulos: ["medicao"] },
   { href: "/previsao", module: "financeiro", label: "Previsão por Centro de Custo", icon: IconBarChart, modulos: ["previsao"] },
   { href: "/p0", module: "financeiro", label: "P0 dos Contratos", icon: IconFolders, modulos: ["p0"] },
+  { href: "/contestacoes", module: "financeiro", label: "Contestações", icon: IconCheckCircle, modulos: ["contestacoes_custo", "custos", "contratos"] },
   { href: "/resultado-operacional", module: "financeiro", label: "Resultado Operacional", icon: IconBarChart, modulos: ["medicao"] },
   { href: "/usuarios", module: "comum", label: "Usuários", icon: IconShieldUser, modulos: ["usuarios"] },
   { href: "/usuarios/senior", module: "comum", label: "Usuários do Senior", icon: IconShieldUser, modulos: ["usuarios_senior"] },

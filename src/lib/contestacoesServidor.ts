@@ -26,12 +26,21 @@ export async function destinatariosDaRevisao(): Promise<string[]> {
   return admins.map((a) => a.id);
 }
 
-export async function avisar(userIds: string[], aviso: { title: string; body: string; tipo?: "APROVACAO_PENDENTE" | "OUTRO" }) {
+/** Aviso dentro do sistema (sino de notificacoes); o link abre a contestacao na tela Contestacoes. */
+export async function avisar(userIds: string[], aviso: { title: string; body: string; tipo?: "APROVACAO_PENDENTE" | "OUTRO" }, contestacaoId?: string) {
   const unicos = Array.from(new Set(userIds));
   if (!unicos.length) return;
+  const link = contestacaoId ? `/contestacoes?id=${contestacaoId}` : "/contestacoes";
   await prisma.notification.createMany({
-    data: unicos.map((userId) => ({ userId, type: aviso.tipo ?? "OUTRO", title: aviso.title, body: aviso.body, link: "/aprovacoes#contestacoes" })),
+    data: unicos.map((userId) => ({ userId, type: aviso.tipo ?? "OUTRO", title: aviso.title, body: aviso.body, link })),
   });
+}
+
+/** Registra um evento no historico da contestacao. Nunca derruba quem chamou. */
+export async function registrarEvento(contestacaoId: string, e: { tipo: "CRIADA" | "STATUS" | "NOTA"; status?: StatusContestacao | null; porNome: string; via?: "sistema" | "e-mail"; texto?: string | null }) {
+  await prisma.contestacaoEvento
+    .create({ data: { contestacaoId, tipo: e.tipo, status: e.status ?? null, porNome: e.porNome, via: e.via ?? "sistema", texto: e.texto?.trim() || null } })
+    .catch((err) => console.error("Falha ao registrar o histórico da contestação:", err));
 }
 
 // ---------------------------------------------------------------- e-mail
@@ -108,7 +117,8 @@ export async function decidirContestacao(
     select: { id: true, status: true },
   });
   const aviso = notificacaoDecisao({ fornecedor: c.fornecedor, numTit: c.numTit, numOcp: c.numOcp, valor: c.valor, ccuNome: c.ccuNome, codccu: c.codccu }, status, quem.nome, parecer);
-  await avisar([c.autorId, ...(c.indicadoId ? [c.indicadoId] : [])].filter((u) => u !== quem.userId), aviso);
+  await avisar([c.autorId, ...(c.indicadoId ? [c.indicadoId] : [])].filter((u) => u !== quem.userId), aviso, c.id);
+  await registrarEvento(c.id, { tipo: "STATUS", status, porNome: quem.nome, via: quem.via, texto: parecer });
   const acao = status === "ACEITA" ? "aceitar" : status === "REALOCADA" ? "realocar" : "rejeitar";
   await logAudit({ userId: quem.userId, action: `contestacao.${acao}`, entityType: "ContestacaoCusto", entityId: c.id, metadata: { chave: c.chave, codccu: c.codccu, via: quem.via } });
   return { ok: true, id: atual.id, status: atual.status };

@@ -1,4 +1,22 @@
-# Contestação de custo: resposta por e-mail
+# Contestação de custo: tela Contestações (pelo sistema) e resposta por e-mail
+
+## A tela Contestações (`/contestacoes`, menu Contestações)
+
+Tudo pelo sistema, **sem e-mail** e separado de Aprovações:
+
+- **A Mônica (entra como Julimar, que tem o módulo "Aprovar contestações de custo")** vê as contestações de **todos**, muda a etapa (**OK, vou realocar** → **Já realocado no Senior**, ou **Rejeitar** com motivo) e escreve o **andamento** ("estou ajustando no Senior…"). O ajuste no Senior é feito por ela; aqui ela marca como realocado. O sistema não altera o Senior.
+- **Cada pessoa** vê só as **suas** contestações (e as em que foi indicada), com o histórico, e pode mandar um recado para o financeiro.
+- **Avisos pelo sino:** a cada decisão ou recado o outro lado é avisado, e o aviso abre a contestação na tela. Quem contestou vê também o selo da etapa no próprio lançamento da tela **Ao vivo** (clicar no selo abre a contestação).
+- **Resumo e filtros:** contadores por etapa, "em andamento", busca (fornecedor, OC, título, contrato, pessoa), centro de custo e pessoa; as pendentes vêm primeiro (a que espera há mais tempo no topo). Atualiza sozinha a cada 1 minuto.
+- **Histórico** (`ContestacaoEvento`): abertura, cada mudança de etapa e cada recado, com quem fez e quando. Contestações antigas, sem histórico, ganham a linha de abertura a partir dos próprios dados.
+- Acesso à tela: módulos `contestacoes_custo`, `custos` ou `contratos`. A lista de e-mails que recebem o pedido fica numa seção recolhida (só administrador): "Envio por e-mail (a configurar depois)".
+- A conta **Julimar** recebe o acesso de revisora por seed de início (`prisma/seed-contestacoes-email.ts`, uma vez, só se houver exatamente um usuário ativo com esse nome); o log de inicialização diz se ficou LIBERADO.
+
+Regras puras e testes: `src/lib/contestacoesTela.ts`, `tests/contestacoes-tela.test.ts`. API: `GET /api/contestacoes?visao=aprovacao`, `PATCH /api/contestacoes/[id]`, `POST /api/contestacoes/[id]/andamento`.
+
+---
+
+## Resposta por e-mail (a configurar depois: o servidor de e-mail ainda recusa o login do sistema)
 
 Quem acompanha um contrato contesta um lançamento na tela **Ao vivo** (botão *Contestar*). O pedido vai por **e-mail** para a Mônica (coordenadora financeira) e para quem revisa no sistema, e ela responde **pelo próprio e-mail**, com um clique, sem precisar de usuário no sistema.
 

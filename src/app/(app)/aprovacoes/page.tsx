@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import ContestacoesDeCusto from "@/components/aprovacoes/ContestacoesDeCusto";
 import PlanosDeAcao from "@/components/aprovacoes/PlanosDeAcao";
 import { useSession } from "next-auth/react";
 import Avatar from "@/components/Avatar";
@@ -235,7 +234,6 @@ export default function AprovacoesPage() {
         )}
       </div>
 
-      <ContestacoesDeCusto />
       <PlanosDeAcao />
 
       {ocSemVinculo && ocsSenior.length === 0 && (

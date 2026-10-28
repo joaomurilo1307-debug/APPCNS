@@ -42,8 +42,8 @@ async function carregar(id: string) {
 export async function GET(req: Request) {
   const p = parametros(new URL(req.url));
   const v = verificarLink(segredo(), p);
-  if (v === "invalido") return pagina("Link inválido", `<h1 class="er">Link inválido</h1><p>Este link não é válido. Use o botão do e-mail original ou a tela Aprovações do sistema.</p>`, 400);
-  if (v === "expirado") return pagina("Link vencido", `<h1 class="er">Link vencido</h1><p>Este link passou da validade (45 dias). Responda pela tela Aprovações do sistema.</p>`, 410);
+  if (v === "invalido") return pagina("Link inválido", `<h1 class="er">Link inválido</h1><p>Este link não é válido. Use o botão do e-mail original ou a tela Contestações do sistema.</p>`, 400);
+  if (v === "expirado") return pagina("Link vencido", `<h1 class="er">Link vencido</h1><p>Este link passou da validade (45 dias). Responda pela tela Contestações do sistema.</p>`, 410);
   const c = await carregar(p.id!);
   if (!c) return pagina("Não encontrada", `<h1 class="er">Contestação não encontrada</h1>`, 404);
   const acao = p.acao as AcaoEmail;
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
   if (!form) return pagina("Pedido inválido", `<h1 class="er">Pedido inválido</h1>`, 400);
   const p = parametros(form);
   const v = verificarLink(segredo(), p);
-  if (v !== "ok") return pagina(v === "expirado" ? "Link vencido" : "Link inválido", `<h1 class="er">${v === "expirado" ? "Link vencido" : "Link inválido"}</h1><p>Responda pela tela Aprovações do sistema.</p>`, v === "expirado" ? 410 : 400);
+  if (v !== "ok") return pagina(v === "expirado" ? "Link vencido" : "Link inválido", `<h1 class="er">${v === "expirado" ? "Link vencido" : "Link inválido"}</h1><p>Responda pela tela Contestações do sistema.</p>`, v === "expirado" ? 410 : 400);
   const parecer = typeof form.get("parecer") === "string" ? (form.get("parecer") as string).trim() : "";
   const novo = ACOES_POR_EMAIL[p.acao as AcaoEmail];
   const r = await decidirContestacao(p.id!, novo, parecer || null, { userId: null, nome: "O financeiro (resposta por e-mail)", via: "e-mail" });
