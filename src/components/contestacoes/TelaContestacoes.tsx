@@ -1,6 +1,6 @@
 "use client";
 
-// Tela "Contestacoes": tudo pelo sistema, sem e-mail. O financeiro (a Monica, entrando como Julimar) ve as contestacoes de TODOS, muda a etapa (OK / ja realocado no Senior / rejeitar)
+// Tela "Contestacoes": tudo pelo sistema, sem e-mail. O financeiro (a Monica, com o proprio usuario) ve as contestacoes de TODOS, muda a etapa (OK / ja realocado no Senior / rejeitar)
 // e escreve o andamento; cada pessoa ve aqui as SUAS contestacoes (e as em que foi indicada) e e' avisada pelo sino a cada mudanca. O Senior nao e' alterado: o financeiro ajusta
 // o lancamento la e marca "Já realocado" aqui.
 

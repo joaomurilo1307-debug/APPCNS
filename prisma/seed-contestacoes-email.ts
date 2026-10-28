@@ -1,6 +1,6 @@
 // Contestacao de custo por e-mail (28/10/2026): garante o endereco da Monica na lista de quem recebe o pedido (uma vez por endereco, sem tirar ninguem e sem desfazer o que o
 // financeiro editou depois) e envia UM e-mail de teste so' para o Joao, para provar que o servidor de e-mail do sistema funciona. O resultado (e, se falhar, o MOTIVO) vai para o log.
-// Tambem garante (uma vez) o acesso de REVISORA das contestacoes na conta JULIMAR, o cadastro que a Monica usa para entrar: ela recebe o aviso e decide dentro do sistema (tela Aprovacoes).
+// Tambem garante (uma vez) o acesso de REVISORA das contestacoes ao usuario PROPRIO da Monica: ela recebe o aviso e decide dentro do sistema (tela Contestacoes).
 // Independente do codigo do app (no contêiner so' existe a pasta prisma): usa so' @prisma/client e nodemailer.
 // Marcas na auditoria: "seed.contestacoes-email.add.<email>", "seed.contestacoes-email.teste" (o teste FUNCIONOU) e "...teste-falhou" (cada tentativa que falhou; para depois de 3,
 // para nao atrasar a inicializacao). Cada tentativa espera no maximo ~20 s.
@@ -40,21 +40,42 @@ async function enviarTeste(): Promise<{ ok: boolean; detalhe: string }> {
   }
 }
 
+const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+
+/**
+ * A revisora das contestacoes e' a MONICA (coordenadora financeira, chapa 2234, "MONICA ADRIANA DE OLIVEIRA B CARNEIRO"), com usuario e e-mail PROPRIOS no sistema; so' o login dela no Senior e' o
+ * antigo do Julimar. Procura os usuarios com "Monica" no nome ou no e-mail, MOSTRA todos no log e so' libera quando ha EXATAMENTE UMA candidata compativel (nome com Adriana ou Carneiro, ou e-mail
+ * monica.oliveira/carneiro/adriana; a bióloga Monica Manoela Tavares de Oliveira Melo, de outro contrato, fica de fora). Liberou, retira o acesso que o seed anterior tinha dado ao usuario do Julimar
+ * (premissa errada: ele nao e' a Monica). Cada passo e' feito uma vez (marca na auditoria).
+ */
 async function garantirRevisora() {
-  const marca = "seed.contestacoes-revisor.julimar";
-  const achados = await prisma.user.findMany({ where: { active: true, name: { contains: "JULIMAR", mode: "insensitive" } }, select: { id: true, name: true, email: true } });
-  if (achados.length !== 1) return console.log(`Contestação: conta JULIMAR (usada pela Mônica) não identificada com certeza (${achados.length} usuário(s) ativo(s) com esse nome); o acesso não foi alterado.`);
-  const u = achados[0];
+  const todos = await prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, email: true, role: true } });
+  const comMonica = todos.filter((u) => semAcento(u.name).includes("MONICA") || semAcento(u.email ?? "").startsWith("MONICA"));
+  console.log(`Contestação: usuários ativos com "Mônica" no nome ou no e-mail (${comMonica.length}): ${comMonica.map((u) => `${u.name} <${u.email}> [${u.role}]`).join("; ") || "nenhum"}.`);
+  const compativeis = comMonica.filter((u) => {
+    const n = semAcento(u.name), e = semAcento(u.email ?? "");
+    const outra = n.includes("MELO") || n.includes("MANOELA") || n.includes("TAVARES");
+    return !outra && (n.includes("ADRIANA") || n.includes("CARNEIRO") || /^MONICA\.(OLIVEIRA|CARNEIRO|ADRIANA)/.test(e));
+  });
+  if (compativeis.length !== 1) return console.log(`Contestação: não identifiquei com certeza o usuário da Mônica (${compativeis.length} compatíveis); o acesso de revisora não foi alterado.`);
+  const m = compativeis[0];
+  const marca = "seed.contestacoes-revisor.monica";
   if (!(await prisma.auditLog.findFirst({ where: { action: marca }, select: { id: true } }))) {
     await prisma.acessoModulo.upsert({
-      where: { userId_modulo: { userId: u.id, modulo: "contestacoes_custo" } },
-      create: { userId: u.id, modulo: "contestacoes_custo", permitido: true, nivel: "EDITAR", concedidoPor: "seed 28/10/2026" },
+      where: { userId_modulo: { userId: m.id, modulo: "contestacoes_custo" } },
+      create: { userId: m.id, modulo: "contestacoes_custo", permitido: true, nivel: "EDITAR", concedidoPor: "seed 28/10/2026" },
       update: { permitido: true, nivel: "EDITAR", concedidoPor: "seed 28/10/2026" },
     });
-    await prisma.auditLog.create({ data: { userId: u.id, action: marca, entityType: "AcessoModulo", metadata: JSON.stringify({ modulo: "contestacoes_custo" }) } });
+    await prisma.auditLog.create({ data: { userId: m.id, action: marca, entityType: "AcessoModulo", metadata: JSON.stringify({ modulo: "contestacoes_custo", email: m.email }) } });
+    // o usuario do Julimar (quem saiu) nao e' a Monica: tira o acesso de revisor que o seed anterior deu a ele
+    const julimar = todos.filter((u) => semAcento(u.name).includes("JULIMAR"));
+    if (julimar.length === 1) {
+      const r = await prisma.acessoModulo.deleteMany({ where: { userId: julimar[0].id, modulo: "contestacoes_custo" } });
+      console.log(`Contestação: retirado o acesso de revisor do usuário "${julimar[0].name}" (${r.count} linha); ele não é a Mônica.`);
+    }
   }
-  const tem = await prisma.acessoModulo.findUnique({ where: { userId_modulo: { userId: u.id, modulo: "contestacoes_custo" } }, select: { permitido: true } });
-  console.log(`Contestação: revisora = conta "${u.name}" (${u.email}); acesso às contestações: ${tem?.permitido ? "LIBERADO" : "BLOQUEADO (alguém tirou; não mexo de novo)"}.`);
+  const tem = await prisma.acessoModulo.findUnique({ where: { userId_modulo: { userId: m.id, modulo: "contestacoes_custo" } }, select: { permitido: true } });
+  console.log(`Contestação: revisora = "${m.name}" (${m.email}); acesso às contestações: ${tem?.permitido ? "LIBERADO" : "BLOQUEADO (alguém tirou; não mexo de novo)"}.`);
 }
 
 async function main() {
