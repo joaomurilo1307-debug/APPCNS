@@ -36,7 +36,7 @@ export async function sobreposicoesDe(userId: string): Promise<Sobreposicoes> {
 export async function podeAcessarModulo(usuario: UsuarioDaSessao, modulo: ModuloId): Promise<boolean> {
   const def = POR_ID.get(modulo);
   if (!def) return false;
-  if (usuario.role === "ADMIN") return true;
+  if (usuario.role === "ADMIN" && !def.exclusivo) return true;
   return moduloPermitido(def, usuario.role, await sobreposicoesDe(usuario.id));
 }
 
@@ -44,7 +44,7 @@ export async function podeAcessarModulo(usuario: UsuarioDaSessao, modulo: Modulo
 export async function podeEditarModulo(usuario: UsuarioDaSessao, modulo: ModuloId): Promise<boolean> {
   const def = POR_ID.get(modulo);
   if (!def) return false;
-  if (usuario.role === "ADMIN") return true;
+  if (usuario.role === "ADMIN" && !def.exclusivo) return true;
   const g = await acessoGravadoDe(usuario.id);
   return nivelDoModulo(def, usuario.role, g.mapa, g.niveis) === "EDITAR";
 }

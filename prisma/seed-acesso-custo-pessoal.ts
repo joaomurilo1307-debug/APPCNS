@@ -1,7 +1,8 @@
-// Libera o modulo restrito "custo_pessoal" (folha, encargos e provisoes dos CLT por centro de custo) para quem o Joao nomeou em 28/10/2026:
-// direcao (Carolina e Andre) e o pessoal do DP. Os administradores (papel ADMIN) entram sozinhos. Nivel VER (a tela so' consulta).
-// Roda no boot, uma vez por pessoa (marca "seed.acesso-custo-pessoal.<chapa>" na auditoria); quem nao for encontrada tenta de novo no proximo boot.
-// So' mexe na linha de acesso desse modulo: nao altera papel, senha nem nenhum outro acesso. Mais gente: pelo painel Usuarios > Acesso.
+// Acesso ao modulo EXCLUSIVO "custo_pessoal" (folha, encargos e provisoes dos CLT por centro de custo). Decisao do Joao (28/10/2026): por enquanto SO' ELE
+// (nem os outros ADMIN entram: o modulo exige liberacao gravada ate para ADMIN). Nivel VER (a tela so' consulta).
+//   pessoas : recebe a liberacao (uma vez por pessoa, marca "seed.acesso-custo-pessoal.<chapa>" na auditoria)
+//   revogar : retira a liberacao que o primeiro seed deu a Carolina, Andre, Elaine, Virginia e Kathleen (uma vez por pessoa, marca ".revogar.<chapa>")
+// Quem nao for encontrada tenta de novo no proximo boot. So' mexe na linha de acesso desse modulo. Mais gente: pelo painel Usuarios > Acesso.
 import { PrismaClient } from "@prisma/client";
 import fs from "fs";
 import path from "path";
@@ -9,7 +10,7 @@ import { acharUsuario } from "./achar-usuario";
 
 const prisma = new PrismaClient();
 const QUEM = "seed 28/10/2026";
-const dados = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "acesso_custo_pessoal.json"), "utf-8")) as { modulo: string; nivel: "VER" | "EDITAR"; pessoas: { chapa: string; nome: string; motivo: string }[] };
+const dados = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "acesso_custo_pessoal.json"), "utf-8")) as { modulo: string; nivel: "VER" | "EDITAR"; pessoas: { chapa: string; nome: string; motivo: string }[]; revogar: { chapa: string; nome: string }[] };
 
 async function main() {
   const usuarios = await prisma.user.findMany({ select: { id: true, name: true } });
@@ -31,7 +32,21 @@ async function main() {
     await prisma.auditLog.create({ data: { userId: achado.id, action: marca, entityType: "AcessoModulo", metadata: JSON.stringify({ modulo: dados.modulo, nivel: dados.nivel, motivo: p.motivo, via: achado.via }) } });
     liberados.push(`${p.chapa} ${p.nome} (via ${achado.via})`);
   }
+  const retirados: string[] = [];
+  for (const p of dados.revogar) {
+    const marca = `seed.acesso-custo-pessoal.revogar.${p.chapa}`;
+    if (await prisma.auditLog.findFirst({ where: { action: marca }, select: { id: true } })) continue;
+    const achado = await acharUsuario(prisma, p.chapa, p.nome, usuarios);
+    if (!achado) {
+      naoAchados.push(`${p.chapa} ${p.nome} (revogar)`);
+      continue;
+    }
+    const apagadas = await prisma.acessoModulo.deleteMany({ where: { userId: achado.id, modulo: dados.modulo } });
+    await prisma.auditLog.create({ data: { userId: achado.id, action: marca, entityType: "AcessoModulo", metadata: JSON.stringify({ modulo: dados.modulo, retiradas: apagadas.count, via: achado.via }) } });
+    retirados.push(`${p.chapa} ${p.nome} (${apagadas.count} linha(s), via ${achado.via})`);
+  }
   console.log(`Custo de pessoal: ${liberados.length} liberado(s)${liberados.length ? ": " + liberados.join("; ") : ""}.`);
+  console.log(`Custo de pessoal: ${retirados.length} acesso(s) retirado(s)${retirados.length ? ": " + retirados.join("; ") : ""}.`);
   if (naoAchados.length) console.log(`Custo de pessoal: ${naoAchados.length} sem usuario no sistema (tenta de novo no proximo boot): ${naoAchados.join("; ")}.`);
 }
 
