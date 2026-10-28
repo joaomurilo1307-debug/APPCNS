@@ -342,8 +342,8 @@
     },
     {
       "chapa": "MONICA.OLIVEIRA",
-      "nome": "E-mail monica.olivera (coordenadora financeira; assim esta no cadastro e no Outlook)",
-      "emailPrefixo": "monica.olivera",
+      "nome": "E-mail monica.oliveira (coordenadora financeira; o certo e' o do Outlook; o cadastro no sistema tinha monica.olivera e foi corrigido)",
+      "emailPrefixo": "monica.oliveira",
       "perfil": "revisor_contestacao",
       "marca": "contestacoes"
     },
@@ -426,6 +426,6 @@
     }
   ],
   "configuracoes": {
-    "contestacoes.emails": "monica.olivera@consominas.com.br"
+    "contestacoes.emails": "monica.oliveira@consominas.com.br"
   }
 }

@@ -11,7 +11,7 @@ import path from "path";
 
 const prisma = new PrismaClient();
 const CHAVE = "contestacoes.emails";
-const dados = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "contestacoes_inicial.json"), "utf-8")) as { emails: { email: string; nome: string }[]; remover?: string[]; testePara: { email: string; nome: string } };
+const dados = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "contestacoes_inicial.json"), "utf-8")) as { emails: { email: string; nome: string }[]; remover?: string[]; versao?: string; corrigirEmailDoUsuario?: { de: string; para: string }; testePara: { email: string; nome: string } };
 
 const lerEmails = (texto: string | null | undefined) => Array.from(new Set((texto ?? "").split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))));
 
@@ -78,12 +78,27 @@ async function garantirRevisora() {
   console.log(`Contestação: revisora = "${m.name}" (${m.email}); acesso às contestações: ${tem?.permitido ? "LIBERADO" : "BLOQUEADO (alguém tirou; não mexo de novo)"}.`);
 }
 
+/** O cadastro da Monica no sistema esta com o e-mail errado (monica.olivera@); o certo e' o do Outlook (monica.oliveira@). Corrige uma vez, so' se o endereco certo estiver livre. */
+async function corrigirEmailDoUsuario() {
+  const c = dados.corrigirEmailDoUsuario;
+  if (!c) return;
+  const marca = `seed.contestacoes-email.corrigir-usuario.${c.de}`;
+  if (await prisma.auditLog.findFirst({ where: { action: marca }, select: { id: true } })) return;
+  const usuario = await prisma.user.findFirst({ where: { email: { equals: c.de, mode: "insensitive" } }, select: { id: true, name: true, email: true } });
+  if (!usuario) return console.log(`Contestação: e-mail do usuário a corrigir (${c.de}) não encontrado; nada feito.`);
+  if (await prisma.user.findFirst({ where: { email: { equals: c.para, mode: "insensitive" } }, select: { id: true } })) return console.log(`Contestação: já existe outro usuário com ${c.para}; não troquei o e-mail de "${usuario.name}".`);
+  await prisma.user.update({ where: { id: usuario.id }, data: { email: c.para } });
+  await prisma.auditLog.create({ data: { userId: usuario.id, action: marca, entityType: "User", entityId: usuario.id, metadata: JSON.stringify({ de: c.de, para: c.para }) } });
+  console.log(`Contestação: e-mail do usuário "${usuario.name}" corrigido de ${c.de} para ${c.para} (ela passa a entrar com o endereço certo).`);
+}
+
 async function main() {
+  await corrigirEmailDoUsuario();
   await garantirRevisora();
   const lista = lerEmails((await prisma.configuracao.findUnique({ where: { chave: CHAVE }, select: { valor: true } }))?.valor);
   const adicionados: string[] = [];
   for (const e of dados.emails) {
-    const marca = `seed.contestacoes-email.add.${e.email}`;
+    const marca = `seed.contestacoes-email.add.${dados.versao ? `${dados.versao}.` : ""}${e.email}`;
     if (await prisma.auditLog.findFirst({ where: { action: marca }, select: { id: true } })) continue;
     const jaEstava = lista.includes(e.email);
     if (!jaEstava) {
@@ -92,10 +107,10 @@ async function main() {
     }
     await prisma.auditLog.create({ data: { action: marca, entityType: "Configuracao", entityId: CHAVE, metadata: JSON.stringify({ nome: e.nome, jaEstava }) } });
   }
-  // enderecos errados que entraram na lista (o e-mail da Monica e' monica.olivera@, sem o "i"): tira, uma vez, para o pedido nao ir a um endereco que nao e' dela
+  // enderecos errados que entraram na lista (o e-mail da Monica no Outlook e' monica.oliveira@; "olivera", sem o i, e' erro de cadastro): tira, uma vez, para o pedido nao ir a um endereco que nao e' dela
   const removidos: string[] = [];
   for (const e of dados.remover ?? []) {
-    const marca = `seed.contestacoes-email.remover.${e}`;
+    const marca = `seed.contestacoes-email.remover.${dados.versao ? `${dados.versao}.` : ""}${e}`;
     if (await prisma.auditLog.findFirst({ where: { action: marca }, select: { id: true } })) continue;
     const k = lista.indexOf(e);
     if (k >= 0) {
