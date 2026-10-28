@@ -1945,10 +1945,14 @@ model ContestacaoCusto {
   justificativa  String    @db.Text
   // quem, segundo o autor, e' o responsavel pelo custo
   indicadoId     String?
-  status         String    @default("PENDENTE") // PENDENTE | ACEITA | REJEITADA
+  status         String    @default("PENDENTE") // PENDENTE | ACEITA (a realocar no Senior) | REALOCADA | REJEITADA
   parecer        String?   @db.Text
   decididoPorId  String?
   decididoEm     DateTime?
+  decididoVia    String? // "sistema" (tela Aprovacoes) | "e-mail" (link do e-mail; sem usuario)
+  realocadoEm    DateTime?
+  emailEnviadoEm DateTime? // quando o e-mail do pedido foi aceito pelo servidor de e-mail
+  emailEnvio     String? // para quem foi, ou o motivo de nao ter ido (fica visivel na tela Aprovacoes)
 
   autor       User               @relation("ContestacaoAutor", fields: [autorId], references: [id])
   indicado    User?              @relation("ContestacaoIndicado", fields: [indicadoId], references: [id], onDelete: SetNull)

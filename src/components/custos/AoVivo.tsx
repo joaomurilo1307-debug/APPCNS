@@ -5,6 +5,7 @@
 // num mes a lista mostra so' aquele mes), filtra por linha de custo e abre a OC. Somente leitura; atualiza sozinho a cada 3 minutos com o que
 // o sistema ja sincronizou do Senior (que roda a cada ~30 min).
 
+import { ROTULO_NO_LANCAMENTO, type StatusContestacao } from "@/lib/contestacoes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import SeletorPeriodo from "@/components/contratos/SeletorPeriodo";
 import { useAbrirOC } from "./AbrirOC";
@@ -226,9 +227,9 @@ export default function AoVivo({ codccu }: { codccu?: string }) {
                       <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-gray-900">{moeda(i.valor)}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-right">
                         {contestadas[i.chave] ? (
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${contestadas[i.chave].status === "ACEITA" ? "bg-emerald-100 text-emerald-800" : contestadas[i.chave].status === "REJEITADA" ? "bg-gray-200 text-gray-700" : "bg-amber-100 text-amber-800"}`}
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${contestadas[i.chave].status === "REALOCADA" ? "bg-emerald-100 text-emerald-800" : contestadas[i.chave].status === "ACEITA" ? "bg-sky-100 text-sky-800" : contestadas[i.chave].status === "REJEITADA" ? "bg-gray-200 text-gray-700" : "bg-amber-100 text-amber-800"}`}
                             title={contestadas[i.chave].indicado ? `Responsável indicado: ${contestadas[i.chave].indicado}` : undefined}>
-                            Contestado · {contestadas[i.chave].status === "ACEITA" ? "aceita" : contestadas[i.chave].status === "REJEITADA" ? "rejeitada" : "aguardando o financeiro"}
+                            {ROTULO_NO_LANCAMENTO[contestadas[i.chave].status as StatusContestacao] ?? "Contestado"}
                           </span>
                         ) : (
                           <button type="button" onClick={() => { setAvisoContestacao(""); setContestando({ chave: i.chave, fornecedor: i.fornecedor, numTit: i.numTit, numOcp: i.numOcp, valor: i.valor, linhaCusto: i.linhaCusto, ccu: i.ccu, ccuNome: i.ccuNome ?? (dados?.centros.find((c) => c.codccu === i.ccu)?.nome ?? null) }); }}

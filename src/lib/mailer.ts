@@ -123,13 +123,14 @@ async function sendIcsMail(opts: {
   }
 }
 
+/** Envia pelo SMTP padrao. Devolve true se o servidor de e-mail aceitou a mensagem; false se faltou configuracao ou o envio falhou (quem nao liga pro resultado pode ignorar). */
 export async function sendNotificationEmail(opts: {
   to: { email: string; name: string }[];
   subject: string;
   text: string;
-}) {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return;
-  if (opts.to.length === 0) return;
+}): Promise<boolean> {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return false;
+  if (opts.to.length === 0) return false;
 
   try {
     await getTransporter().sendMail({
@@ -138,8 +139,10 @@ export async function sendNotificationEmail(opts: {
       subject: opts.subject,
       text: opts.text,
     });
+    return true;
   } catch (err) {
     console.error("Falha ao enviar e-mail de notificação:", err);
+    return false;
   }
 }
 

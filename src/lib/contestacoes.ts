@@ -1,14 +1,24 @@
 // Contestacao de custo na tela Ao vivo (regras PURAS, sem banco): validacao do pedido e textos das notificacoes.
-// O fluxo: quem acompanha o contrato contesta um lancamento -> o financeiro (modulo "Aprovar contestacoes de custo") aceita ou rejeita.
-// O sistema NAO altera o Senior: "aceita" registra a decisao e o financeiro ajusta o lancamento la.
+// O fluxo: quem acompanha o contrato contesta um lancamento -> o financeiro (a Monica) recebe por e-mail e responde pelo proprio e-mail (ou pela tela Aprovacoes):
+//   Contestado (PENDENTE) -> Aceita, a realocar no Senior (ACEITA) -> Realocado (REALOCADA); ou Rejeitada. A tela Ao vivo mostra cada etapa no proprio lancamento.
+// O sistema NAO altera o Senior: "aceita" e "realocado" registram o que o financeiro fez; o ajuste do lancamento e' feito la.
 
-export const STATUS_CONTESTACAO = ["PENDENTE", "ACEITA", "REJEITADA"] as const;
+export const STATUS_CONTESTACAO = ["PENDENTE", "ACEITA", "REALOCADA", "REJEITADA"] as const;
 export type StatusContestacao = (typeof STATUS_CONTESTACAO)[number];
 
 export const ROTULO_STATUS: Record<StatusContestacao, string> = {
   PENDENTE: "Aguardando o financeiro",
-  ACEITA: "Aceita",
+  ACEITA: "Aceita, a realocar no Senior",
+  REALOCADA: "Realocado",
   REJEITADA: "Rejeitada",
+};
+
+/** Texto do selo no proprio lancamento (tela Ao vivo). */
+export const ROTULO_NO_LANCAMENTO: Record<StatusContestacao, string> = {
+  PENDENTE: "Contestado · aguardando o financeiro",
+  ACEITA: "Contestado · aceita, a realocar",
+  REALOCADA: "Realocado",
+  REJEITADA: "Contestado · rejeitada",
 };
 
 export const LIMITES = {
@@ -33,10 +43,14 @@ export function validarPedido(p: { chave?: string | null; justificativa?: string
   return null;
 }
 
-/** Mensagem de erro da decisao do financeiro, ou null. Rejeitar exige o motivo; so' se decide o que esta pendente. */
+/**
+ * Mensagem de erro da decisao do financeiro, ou null. Rejeitar exige o motivo. Do pendente se vai para aceita, realocada (ja resolveu no Senior) ou rejeitada;
+ * da aceita so' se vai para realocada. Rejeitada e realocada sao finais.
+ */
 export function validarDecisao(statusAtual: string, novo: string, parecer?: string | null): string | null {
-  if (statusAtual !== "PENDENTE") return "Esta contestação já foi decidida.";
-  if (novo !== "ACEITA" && novo !== "REJEITADA") return "Decisão inválida.";
+  if (novo !== "ACEITA" && novo !== "REJEITADA" && novo !== "REALOCADA") return "Decisão inválida.";
+  const permitidos: Record<string, string[]> = { PENDENTE: ["ACEITA", "REALOCADA", "REJEITADA"], ACEITA: ["REALOCADA"] };
+  if (!(permitidos[statusAtual] ?? []).includes(novo)) return statusAtual === "ACEITA" ? "Esta contestação já foi decidida (aceita): falta só marcar como realocado." : "Esta contestação já foi decidida.";
   const p = (parecer ?? "").trim();
   if (novo === "REJEITADA" && p.length < LIMITES.parecerMin) return "Para rejeitar, escreva o motivo.";
   if (p.length > LIMITES.parecerMax) return `O parecer passou de ${LIMITES.parecerMax} caracteres.`;
@@ -64,7 +78,7 @@ const dataBr = (iso?: string | null) => (iso ? iso.slice(0, 10).split("-").rever
 /** E-mail enviado ao financeiro quando alguem contesta um custo: traz a OC, o titulo e a descricao, para decidir (ou ajustar no Senior) sem abrir o sistema. */
 export function emailDaContestacao(
   c: DadosDoEmail,
-  p: { autor: string; justificativa: string; indicado?: string | null; anexos?: string[]; dominio?: string | null }
+  p: { autor: string; justificativa: string; indicado?: string | null; anexos?: string[]; dominio?: string | null; links?: { ok: string; realocado: string; discordo: string } | null }
 ): { subject: string; text: string } {
   const link = p.dominio ? `https://${p.dominio}/aprovacoes#contestacoes` : null;
   const linhas = [
@@ -85,8 +99,17 @@ export function emailDaContestacao(
     "",
     ...(p.indicado ? [`Responsável indicado por quem contestou: ${p.indicado}`] : []),
     ...(p.anexos && p.anexos.length ? [`Arquivos anexados (para baixar no sistema): ${p.anexos.join(", ")}`] : []),
-    ...(link ? ["", `Para aceitar ou rejeitar: ${link}`] : []),
-    "Aceitar registra a decisão; o ajuste no Senior é feito pelo financeiro (o sistema não altera o Senior).",
+    ...(p.links
+      ? [
+          "",
+          "RESPONDA POR AQUI (um clique, sem precisar entrar no sistema; o status aparece na tela Ao vivo para quem contestou):",
+          `  1) OK, vou realocar no Senior: ${p.links.ok}`,
+          `  2) Já realocado no Senior: ${p.links.realocado}`,
+          `  3) Não concordo com a contestação: ${p.links.discordo}`,
+        ]
+      : []),
+    ...(link ? ["", `Ou na tela Aprovações do sistema: ${link}`] : []),
+    "OK e realocado registram o andamento; o ajuste no Senior é feito pelo financeiro (o sistema não altera o Senior).",
   ];
   return { subject: `Contestação de custo: ${referenciaDoLancamento(c)} · ${moeda(c.valor)}`, text: linhas.join("\n") };
 }
@@ -113,7 +136,8 @@ export function notificacaoIndicado(c: ResumoLancamento, autor: string) {
 }
 
 export function notificacaoDecisao(c: ResumoLancamento, status: StatusContestacao, quem: string, parecer?: string | null) {
+  if (status === "REALOCADA") return { title: "Custo realocado", body: `${quem} realocou no Senior: ${descricaoDoLancamento(c)}.${parecer ? ` Observação: ${parecer}` : ""}` };
   const acao = status === "ACEITA" ? "aceitou" : "rejeitou";
-  const fim = status === "ACEITA" ? " O financeiro ajusta o lançamento no Senior." : "";
+  const fim = status === "ACEITA" ? " O financeiro ajusta o lançamento no Senior; quando estiver realocado, o status muda aqui." : "";
   return { title: `Contestação ${status === "ACEITA" ? "aceita" : "rejeitada"}`, body: `${quem} ${acao} a contestação de ${descricaoDoLancamento(c)}.${parecer ? ` Parecer: ${parecer}` : ""}${fim}` };
 }

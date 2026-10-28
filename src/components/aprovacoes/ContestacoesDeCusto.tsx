@@ -10,18 +10,19 @@ import { moeda } from "@/lib/custos/formato";
 type Contestacao = {
   id: string; criadoEm: string; codccu: string; ccuNome: string | null; origem: string; numTit: string | null; numOcp: string | null; fornecedor: string;
   linhaCusto: string | null; valor: number; dataLancamento: string | null; justificativa: string; status: StatusContestacao; parecer: string | null; decididoEm: string | null;
+  decididoVia: string | null; realocadoEm: string | null; emailEnviadoEm: string | null; emailEnvio: string | null;
   autor: { id: string; name: string }; indicado: { id: string; name: string } | null; decididoPor: { id: string; name: string } | null;
   anexos: { id: string; nome: string; tamanho: number }[];
 };
 
-const COR: Record<StatusContestacao, string> = { PENDENTE: "bg-amber-100 text-amber-800", ACEITA: "bg-emerald-100 text-emerald-800", REJEITADA: "bg-gray-200 text-gray-700" };
+const COR: Record<StatusContestacao, string> = { PENDENTE: "bg-amber-100 text-amber-800", ACEITA: "bg-sky-100 text-sky-800", REALOCADA: "bg-emerald-100 text-emerald-800", REJEITADA: "bg-gray-200 text-gray-700" };
 const dataHora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
 
 export default function ContestacoesDeCusto() {
   const [itens, setItens] = useState<Contestacao[] | null>(null);
   const [revisor, setRevisor] = useState(false);
-  const [decidindo, setDecidindo] = useState<{ id: string; status: "ACEITA" | "REJEITADA" } | null>(null);
+  const [decidindo, setDecidindo] = useState<{ id: string; status: "ACEITA" | "REALOCADA" | "REJEITADA" } | null>(null);
   const [parecer, setParecer] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -66,8 +67,9 @@ export default function ContestacoesDeCusto() {
   }
 
   if (!itens || (itens.length === 0 && !revisor)) return null;
-  const pendentes = itens.filter((c) => c.status === "PENDENTE");
-  const decididas = itens.filter((c) => c.status !== "PENDENTE");
+  // em andamento = ainda falta o financeiro (pendente) ou falta realocar no Senior (aceita); decididas = realocado ou rejeitada
+  const pendentes = itens.filter((c) => c.status === "PENDENTE" || c.status === "ACEITA");
+  const decididas = itens.filter((c) => c.status !== "PENDENTE" && c.status !== "ACEITA");
 
   const cartao = (c: Contestacao) => (
     <li key={c.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -94,13 +96,18 @@ export default function ContestacoesDeCusto() {
           ))}
         </ul>
       )}
-      {c.status !== "PENDENTE" && (
-        <p className="mt-2 text-sm text-gray-600">{c.decididoPor?.name ?? "Financeiro"} {c.status === "ACEITA" ? "aceitou" : "rejeitou"} em {c.decididoEm ? dataHora(c.decididoEm) : ""}.{c.parecer ? ` Parecer: ${c.parecer}` : ""}{c.status === "ACEITA" ? " O ajuste no Senior é feito pelo financeiro." : ""}</p>
-      )}
       {revisor && c.status === "PENDENTE" && (
+        <p className={`mt-2 text-xs ${c.emailEnviadoEm ? "text-gray-500" : "text-amber-700"}`}>
+          {c.emailEnvio ? `E-mail: ${c.emailEnvio}` : "E-mail: sem registro de envio."}
+        </p>
+      )}
+      {c.status !== "PENDENTE" && (
+        <p className="mt-2 text-sm text-gray-600">{c.decididoPor?.name ?? (c.decididoVia === "e-mail" ? "O financeiro (resposta por e-mail)" : "Financeiro")} {c.status === "ACEITA" ? "aceitou" : c.status === "REALOCADA" ? "marcou como realocado" : "rejeitou"} em {c.decididoEm ? dataHora(c.decididoEm) : ""}.{c.parecer ? ` Parecer: ${c.parecer}` : ""}{c.status === "ACEITA" ? " O ajuste no Senior é feito pelo financeiro." : ""}</p>
+      )}
+      {revisor && (c.status === "PENDENTE" || c.status === "ACEITA") && (
         decidindo?.id === c.id ? (
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-            <p className="mb-1 text-sm font-medium text-gray-700">{decidindo.status === "ACEITA" ? "Aceitar a contestação" : "Rejeitar a contestação"}</p>
+            <p className="mb-1 text-sm font-medium text-gray-700">{decidindo.status === "ACEITA" ? "Aceitar a contestação (vou realocar no Senior)" : decidindo.status === "REALOCADA" ? "Marcar como realocado no Senior" : "Rejeitar a contestação"}</p>
             <textarea value={parecer} onChange={(e) => setParecer(e.target.value)} rows={3} maxLength={LIMITES.parecerMax} placeholder={decidindo.status === "REJEITADA" ? "Motivo da rejeição (obrigatório)" : "Parecer (opcional)"} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
             {erro && <p role="alert" className="mt-1 text-sm text-red-700">{erro}</p>}
             <div className="mt-2 flex gap-2">
@@ -110,8 +117,9 @@ export default function ContestacoesDeCusto() {
           </div>
         ) : (
           <div className="mt-3 flex gap-2">
-            <button onClick={() => { setDecidindo({ id: c.id, status: "ACEITA" }); setParecer(""); setErro(""); }} className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700">Aceitar</button>
-            <button onClick={() => { setDecidindo({ id: c.id, status: "REJEITADA" }); setParecer(""); setErro(""); }} className="rounded-md border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Rejeitar</button>
+            {c.status === "PENDENTE" && <button onClick={() => { setDecidindo({ id: c.id, status: "ACEITA" }); setParecer(""); setErro(""); }} className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-sky-700">OK, vou realocar</button>}
+            <button onClick={() => { setDecidindo({ id: c.id, status: "REALOCADA" }); setParecer(""); setErro(""); }} className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700">Já realocado</button>
+            {c.status === "PENDENTE" && <button onClick={() => { setDecidindo({ id: c.id, status: "REJEITADA" }); setParecer(""); setErro(""); }} className="rounded-md border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Rejeitar</button>}
           </div>
         )
       )}
