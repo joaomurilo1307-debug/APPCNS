@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { saveUploadedFile, UPLOAD_DIR } from "@/lib/uploadValidation";
 import { unlink } from "fs/promises";
 import path from "path";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Ingestão dos dossiês de OC gerados pela automação do n8n.
 //
@@ -58,7 +59,7 @@ function dataOuNull(v: string | null | undefined) {
 
 export async function POST(req: Request) {
   const chaveSync = req.headers.get("x-sync-key");
-  if (!chaveSync || chaveSync !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chaveSync)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
@@ -170,7 +171,7 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   const chaveSync = req.headers.get("x-sync-key");
-  if (!chaveSync || chaveSync !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chaveSync)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
   const [total, publicados] = await Promise.all([

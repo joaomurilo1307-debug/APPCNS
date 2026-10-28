@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Espelho de consulta do ledger IMUTAVEL rito_financeiro.historico_ccu_colaborador
 // (Postgres do Rito, VPS 2.25.191.135) -- qual CC cada colaborador CLT tinha em
@@ -28,7 +29,7 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
   const total = await prisma.historicoCcuColaborador.count();

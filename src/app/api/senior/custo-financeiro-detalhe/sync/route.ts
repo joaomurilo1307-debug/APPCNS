@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { seniorDiretoAssumiu } from "@/lib/custos/atualizacaoCusto";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Detalhe titulo-a-titulo por tras de cada linha de Custo por Plano de
 // Contas -- pedido do Joao 15/09/2026: "abrir a conta financeira e ver os
@@ -39,7 +40,7 @@ const CUSTO_CONTRATO_A_PARTIR_DE = new Date("2026-01-01T00:00:00.000Z");
 
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
@@ -89,7 +90,7 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
   const total = await prisma.custoFinanceiroDetalhe.count();

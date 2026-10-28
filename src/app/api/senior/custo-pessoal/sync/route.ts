@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { problemasDaCarga } from "@/lib/custoPessoal/validarCarga";
 import { impressaoDoMes, mesesFechadosNaCarga, resumoDoMes } from "@/lib/custoPessoal/fechamento";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Carga do custo de pessoal CLT de TODOS os centros de custo (espelho da folha do Senior, calculado fora com a regra do Rito: scratchpad/custo_pessoal_senior.py
 // e sincronizado por scratchpad/sync_custo_pessoal.py). Substitui os meses enviados (apaga o mes e grava de novo), porque o centro de custo de uma pessoa pode
@@ -43,7 +44,7 @@ const bodySchema = z.object({ meses: z.array(MES).min(1), itens: z.array(itemSch
 
 const chaveValida = (req: Request) => {
   const chave = req.headers.get("x-sync-key");
-  return !!chave && chave === process.env.SENIOR_SYNC_KEY;
+  return chaveSyncValida(chave);
 };
 
 export async function POST(req: Request) {

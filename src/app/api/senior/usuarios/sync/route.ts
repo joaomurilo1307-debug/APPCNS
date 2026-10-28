@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { chaveNome, normalizarNome } from "@/lib/nomes";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // De-para dos usuarios do Senior. Recebe [{codigo, nome, email?, login?}]
 // -- do E099USU (via script Python) ou colado na tela /usuarios/senior --
@@ -35,7 +36,7 @@ function nomeDeLogin(login: string): string {
 
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 

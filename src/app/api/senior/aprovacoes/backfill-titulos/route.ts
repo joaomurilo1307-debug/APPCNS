@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Backfill ÚNICO (14/09/2026) de USU_NUMTIT/USU_NUMNFC em TODAS as OCs do
 // Senior -- não é o sync recorrente (esse continua em /aprovacoes/sync,
@@ -30,7 +31,7 @@ const SITUACOES_RESOLVIDAS = new Set(["APR", "REP", "CAN"]);
 
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
   const body = await req.json().catch(() => null);

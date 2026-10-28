@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dispararMedicao, estadoMedicao } from "@/lib/medicao/sincronizar";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Disparo e estado da atualizacao da Medicao para agendadores externos / conferencia: autentica pela chave compartilhada SENIOR_SYNC_KEY,
 // como os outros /api/senior/*. Roda em segundo plano e respeita a trava de "uma por vez". O GET devolve tambem o resumo da ultima leitura
@@ -9,7 +10,7 @@ const nao = () => NextResponse.json({ error: "Nao autorizado" }, { status: 401 }
 
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) return nao();
+  if (!chaveSyncValida(chave)) return nao();
   const forcar = new URL(req.url).searchParams.get("forcar") === "1";
   const r = await dispararMedicao("agendador (chave de sincronização)", { forcar });
   return NextResponse.json({ ...r, estado: await estadoMedicao() });
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) return nao();
+  if (!chaveSyncValida(chave)) return nao();
   const e = await estadoMedicao();
   return NextResponse.json({
     emCurso: e.emCurso && { etapa: e.emCurso.etapa, progresso: e.emCurso.progresso, iniciadoEm: e.emCurso.iniciadoEm },

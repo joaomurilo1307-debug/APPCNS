@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/auditLog";
 import { impressaoDoMes, MES_VALIDO, resumoDoMes } from "@/lib/custoPessoal/fechamento";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Fechamento dos meses do custo de pessoal (a "memoria": mes fechado nao muda). Mesma chave de sincronizacao das cargas.
 //  - acao "fechar": fecha meses que ja estao carregados, guardando resumo e impressao (SHA-256) das linhas. Mes sem folha ou ja fechado e' recusado.
@@ -16,7 +17,7 @@ const bodySchema = z.object({
 
 const chaveValida = (req: Request) => {
   const chave = req.headers.get("x-sync-key");
-  return !!chave && chave === process.env.SENIOR_SYNC_KEY;
+  return chaveSyncValida(chave);
 };
 
 export async function POST(req: Request) {

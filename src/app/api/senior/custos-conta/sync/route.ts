@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { seniorDiretoAssumiu } from "@/lib/custos/atualizacaoCusto";
 import { auditarCustos } from "@/lib/custos/auditoria";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Sincronizacao do custo por plano de contas (conta_financeira), agregado
 // por CCU/mes, a partir de rito_financeiro.composicao_custo_financeiro.
@@ -46,7 +47,7 @@ const CUSTO_CONTRATO_A_PARTIR_DE = new Date("2026-01-01T00:00:00.000Z");
 
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
@@ -145,7 +146,7 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
   // conferencia: ?resumo=1 devolve o total por mes de toda a tabela; ?codccu=190 o total por mes daquele CCU

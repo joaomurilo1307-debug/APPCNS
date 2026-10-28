@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Programação de Contas a Pagar por título (E501TCP, Senior). Traz abertos
 // (SITTIT='AB') e pagos (SITTIT='LQ') -- pedido do João 13/09/2026: ver o
@@ -98,7 +99,7 @@ async function emLotes<T>(items: T[], tamanho: number, fn: (item: T) => Promise<
 
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
@@ -219,7 +220,7 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
   const total = await prisma.tituloContasAPagar.count();

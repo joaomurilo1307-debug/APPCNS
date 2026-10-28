@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dispararCiclo, estadoAutomatico } from "@/lib/dossie/automatico";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Mesmo estado/disparo de /api/dossies/automatico para monitores e agendadores externos: autentica pela chave
 // compartilhada SENIOR_SYNC_KEY, como os outros /api/senior/*. Serve para conferir de fora se a geracao automatica
@@ -7,7 +8,7 @@ import { dispararCiclo, estadoAutomatico } from "@/lib/dossie/automatico";
 
 function naoAutorizado(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  return !chave || chave !== process.env.SENIOR_SYNC_KEY;
+  return !chaveSyncValida(chave);
 }
 
 export async function GET(req: Request) {

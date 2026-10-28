@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { chaveSyncValida } from "@/lib/senior/chaveSync";
 
 // Sincronizacao periodica das Ordens de Compra pendentes de aprovacao no
 // Senior (E420OCP). Chamado pelo script Python que roda no VPS do Rito de
@@ -53,7 +54,7 @@ const SITUACOES_RESOLVIDAS = new Set(["APR", "REP", "CAN"]);
 
 export async function POST(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
@@ -245,7 +246,7 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   const chave = req.headers.get("x-sync-key");
-  if (!chave || chave !== process.env.SENIOR_SYNC_KEY) {
+  if (!chaveSyncValida(chave)) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
   const pendentesRows = await prisma.aprovacaoSenior.findMany({
