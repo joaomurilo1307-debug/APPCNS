@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import { podeAcessarModulo, type UsuarioDaSessao } from "@/lib/acesso/servidor";
 import { sendAvisoEmail, sendNotificationEmail } from "@/lib/mailer";
-import { emailDaContestacao, lerListaDeEmails, type DadosDoEmail } from "@/lib/contestacoes";
+import { emailDaContestacao, lerListaDeEmails, notificacaoDecisao, validarDecisao, type DadosDoEmail, type StatusContestacao } from "@/lib/contestacoes";
+import { logAudit } from "@/lib/auditLog";
 
 /** Revisa quem e' ADMIN ou tem o modulo "Aprovar contestacoes de custo" (liberado na tela Usuarios > Acesso). */
 export async function ehRevisorDeContestacao(usuario: UsuarioDaSessao): Promise<boolean> {
@@ -59,15 +60,56 @@ export async function enderecosDaRevisao(): Promise<{ email: string; name: strin
   return Array.from(mapa.entries()).map(([email, name]) => ({ email, name }));
 }
 
-/** Envia o pedido por e-mail (OC, titulo e descricao). Tenta o remetente de avisos automaticos e, se nao houver, o remetente padrao. Nunca derruba o pedido. */
-export async function enviarEmailDaContestacao(c: DadosDoEmail, p: { autor: string; justificativa: string; indicado?: string | null; anexos?: string[] }) {
+/**
+ * Envia o pedido por e-mail (OC, titulo, descricao e os links de resposta). Tenta o remetente de avisos automaticos e, se nao houver, o remetente padrao. Nunca derruba o pedido.
+ * O resultado (para quem foi, ou por que nao foi) fica gravado na contestacao e aparece na tela Aprovacoes: nada de e-mail "que talvez foi".
+ */
+export async function enviarEmailDaContestacao(
+  c: DadosDoEmail,
+  p: { autor: string; justificativa: string; indicado?: string | null; anexos?: string[]; links?: { ok: string; realocado: string; discordo: string } | null },
+  contestacaoId?: string
+) {
+  const gravar = async (enviado: boolean, texto: string) => {
+    if (!contestacaoId) return;
+    await prisma.contestacaoCusto.update({ where: { id: contestacaoId }, data: { emailEnviadoEm: enviado ? new Date() : null, emailEnvio: texto.slice(0, 500) } }).catch(() => {});
+  };
   try {
     const para = await enderecosDaRevisao();
-    if (!para.length) return;
+    if (!para.length) return gravar(false, "Não enviado: ninguém está configurado para receber (tela Aprovações > e-mails que recebem).");
     const { subject, text } = emailDaContestacao(c, { ...p, dominio: process.env.APP_DOMAIN });
-    const enviou = await sendAvisoEmail({ to: para, subject, text });
-    if (!enviou) await sendNotificationEmail({ to: para, subject, text });
+    const enviou = (await sendAvisoEmail({ to: para, subject, text })) || (await sendNotificationEmail({ to: para, subject, text }));
+    await gravar(enviou, enviou ? `Enviado para: ${para.map((d) => d.email).join(", ")}` : `Não enviado: o servidor de e-mail recusou ou não está configurado (destinatários: ${para.map((d) => d.email).join(", ")}).`);
   } catch (e) {
     console.error("Falha ao enviar o e-mail da contestação:", e);
+    await gravar(false, `Não enviado: ${(e as Error)?.message ?? "erro desconhecido"}`);
   }
+}
+
+export type QuemDecide = { userId: string | null; nome: string; via: "sistema" | "e-mail" };
+
+/**
+ * Registra a decisao do financeiro (aceitar, realocado, rejeitar) vinda da tela Aprovacoes ou do link do e-mail: valida a etapa, grava, avisa quem contestou (e o indicado) dentro do sistema
+ * e registra na auditoria. O Senior nao e' alterado.
+ */
+export async function decidirContestacao(
+  id: string,
+  status: Exclude<StatusContestacao, "PENDENTE">,
+  parecer: string | null | undefined,
+  quem: QuemDecide
+): Promise<{ ok: true; id: string; status: string } | { ok: false; erro: string; codigo: number }> {
+  const c = await prisma.contestacaoCusto.findUnique({ where: { id } });
+  if (!c) return { ok: false, erro: "Contestação não encontrada", codigo: 404 };
+  const erro = validarDecisao(c.status, status, parecer);
+  if (erro) return { ok: false, erro, codigo: c.status === "PENDENTE" ? 422 : 409 };
+  const agora = new Date();
+  const atual = await prisma.contestacaoCusto.update({
+    where: { id: c.id },
+    data: { status, parecer: parecer?.trim() || c.parecer || null, decididoPorId: quem.userId, decididoEm: agora, decididoVia: quem.via, ...(status === "REALOCADA" ? { realocadoEm: agora } : {}) },
+    select: { id: true, status: true },
+  });
+  const aviso = notificacaoDecisao({ fornecedor: c.fornecedor, numTit: c.numTit, numOcp: c.numOcp, valor: c.valor, ccuNome: c.ccuNome, codccu: c.codccu }, status, quem.nome, parecer);
+  await avisar([c.autorId, ...(c.indicadoId ? [c.indicadoId] : [])].filter((u) => u !== quem.userId), aviso);
+  const acao = status === "ACEITA" ? "aceitar" : status === "REALOCADA" ? "realocar" : "rejeitar";
+  await logAudit({ userId: quem.userId, action: `contestacao.${acao}`, entityType: "ContestacaoCusto", entityId: c.id, metadata: { chave: c.chave, codccu: c.codccu, via: quem.via } });
+  return { ok: true, id: atual.id, status: atual.status };
 }

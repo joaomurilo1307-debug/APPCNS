@@ -9,6 +9,7 @@ import { carregarAoVivo, nomesDosCentros } from "@/lib/contratos/aoVivoServidor"
 import { notificacaoIndicado, notificacaoNova, validarPedido } from "@/lib/contestacoes";
 import { avisar, destinatariosDaRevisao, ehRevisorDeContestacao, enviarEmailDaContestacao } from "@/lib/contestacoesServidor";
 import { saveUploadedFile, validateUploadFile } from "@/lib/uploadValidation";
+import { linkDaAcao } from "@/lib/contestacoesToken";
 import { logAudit } from "@/lib/auditLog";
 
 // Contestacao de custo (tela Ao vivo). POST cria (multipart: chave, justificativa, indicadoId opcional, arquivos). GET devolve:
@@ -17,7 +18,7 @@ import { logAudit } from "@/lib/auditLog";
 
 const selecao = {
   id: true, criadoEm: true, chave: true, codccu: true, ccuNome: true, origem: true, numTit: true, numOcp: true, fornecedor: true, linhaCusto: true, valor: true,
-  dataLancamento: true, justificativa: true, status: true, parecer: true, decididoEm: true,
+  dataLancamento: true, justificativa: true, status: true, parecer: true, decididoEm: true, decididoVia: true, realocadoEm: true, emailEnviadoEm: true, emailEnvio: true,
   autor: { select: { id: true, name: true } },
   indicado: { select: { id: true, name: true } },
   decididoPor: { select: { id: true, name: true } },
@@ -116,9 +117,14 @@ export async function POST(req: Request) {
   if (indicadoId && indicadoId !== user.id) await avisar([indicadoId], notificacaoIndicado(resumo, user.name ?? "Alguém"));
   // e-mail para o financeiro com a OC, o titulo e a descricao: ele decide (ou ajusta no Senior) sem precisar abrir o sistema
   const indicadoNome = indicadoId ? (await prisma.user.findUnique({ where: { id: indicadoId }, select: { name: true } }))?.name ?? null : null;
+  // links de resposta com um clique (a Monica responde pelo e-mail, sem usuario no sistema): OK / ja realocado / nao concordo
+  const base = process.env.APP_DOMAIN ? `https://${process.env.APP_DOMAIN}` : null;
+  const segredo = process.env.NEXTAUTH_SECRET;
+  const links = base && segredo ? { ok: linkDaAcao(base, segredo, criada.id, "ok"), realocado: linkDaAcao(base, segredo, criada.id, "realocado"), discordo: linkDaAcao(base, segredo, criada.id, "discordo") } : null;
   void enviarEmailDaContestacao(
     { ...resumo, linhaCusto: item.linhaCusto, dataLancamento: item.data ? item.data.slice(0, 10) : null },
-    { autor: user.name ?? "Alguém", justificativa, indicado: indicadoNome, anexos: arquivos.map((a) => a.name) }
+    { autor: user.name ?? "Alguém", justificativa, indicado: indicadoNome, anexos: arquivos.map((a) => a.name), links },
+    criada.id
   );
   await logAudit({ userId: user.id, action: "contestacao.criar", entityType: "ContestacaoCusto", entityId: criada.id, metadata: { chave, codccu: item.ccu, indicadoId, anexos: arquivos.length } });
   return NextResponse.json({ id: criada.id }, { status: 201 });
