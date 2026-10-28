@@ -5,7 +5,7 @@
 // bloquear qualquer modulo para uma pessoa (tela Usuarios > Acesso).
 //
 // Regra (moduloPermitido):
-//   1. ADMIN entra em tudo.
+//   1. ADMIN entra em tudo (menos nos modulos EXCLUSIVOS, que exigem liberacao gravada ate para ADMIN).
 //   2. Se ha uma liberacao/bloqueio gravado para a pessoa naquele modulo, vale ele.
 //   3. Modulo RESTRITO sem liberacao: bloqueado (nao importa o papel).
 //   4. Modulo comum sem liberacao: vale o padrao do papel (o mesmo que o menu ja usava).
@@ -28,6 +28,8 @@ export type ModuloDef = {
   grupo: GrupoModulo;
   /** true = so' entra quem recebeu a liberacao (nem o papel basta). */
   restrito: boolean;
+  /** true = nem o ADMIN entra sozinho: so' quem tem a liberacao gravada (dado de remuneracao). */
+  exclusivo?: boolean;
   /** papeis que entram quando NAO ha liberacao/bloqueio gravado (ignorado nos restritos). */
   padraoPapeis: ReadonlyArray<string>;
   descricao: string;
@@ -59,7 +61,7 @@ export const MODULOS: ReadonlyArray<ModuloDef> = [
   { id: "alertas_financeiro", href: "/alertas-financeiro", label: "Alertas do financeiro", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Avisos de pagamento" },
   { id: "notas_fiscais", href: "/notas-fiscais", label: "Notas fiscais recebidas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Notas contra o CNPJ da empresa" },
   { id: "contestacoes_custo", href: "/aprovacoes", label: "Aprovar contestações de custo", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Recebe e decide as contestações de custo feitas na tela Ao vivo" },
-  { id: "custo_pessoal", href: "/custo-pessoal", label: "Custo de pessoal", grupo: "pessoal", restrito: true, padraoPapeis: [], descricao: "Folha, encargos e provisões dos CLT por centro de custo (por enquanto só os núcleos ADM). Dado de remuneração: só DP, direção e administradores" },
+  { id: "custo_pessoal", href: "/custo-pessoal", label: "Custo de pessoal", grupo: "pessoal", restrito: true, exclusivo: true, padraoPapeis: [], descricao: "Folha, encargos e provisões dos CLT por centro de custo (por enquanto só os núcleos ADM). Dado de remuneração: só DP, direção e administradores" },
   { id: "aprovacoes_oc_todas", href: "/aprovacoes/senior", label: "Aprovações de OC: ver todas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Sem isto, a pessoa vê só as OCs em que está envolvida" },
   // ---- aprovacoes de OC (cada um ve as suas; liberada pessoa a pessoa, por enquanto so' para poucos) e contratos (seguem o papel)
   { id: "aprovacoes_oc", href: "/aprovacoes/senior", label: "Aprovações de OC", grupo: "contratos", restrito: true, padraoPapeis: [], descricao: "As OCs do Senior em que a pessoa está envolvida (precisa do vínculo com o usuário do Senior)" },
@@ -119,7 +121,7 @@ export function acessosEfetivos(papel: string, sobre: Sobreposicoes, niveis: Niv
 }
 
 export function moduloPermitido(def: ModuloDef, papel: string, sobre: Sobreposicoes): boolean {
-  if (papel === "ADMIN") return true;
+  if (papel === "ADMIN" && !def.exclusivo) return true;
   if (def.grupo === "admin") return false; // administracao e' so' do ADMIN, nao se libera por pessoa
   const gravado = sobre.get(def.id);
   if (gravado !== undefined) return gravado;
@@ -147,7 +149,10 @@ export function sobreposicoesParaGravar(
   desejados: ReadonlyArray<string>,
   niveisDesejados: Readonly<Record<string, NivelAcesso | undefined>> = {}
 ): { modulo: string; permitido: boolean; nivel?: NivelAcesso }[] {
-  if (papel === "ADMIN") return [];
+  if (papel === "ADMIN") {
+    // ADMIN entra em tudo sem linhas; so' os modulos EXCLUSIVOS precisam da liberacao gravada (senao salvar o painel de um admin a apagaria)
+    return MODULOS.filter((m) => m.exclusivo && desejados.includes(m.id)).map((m) => ({ modulo: m.id, permitido: true, nivel: niveisDesejados[m.id] ?? "VER" }));
+  }
   const quer = new Set(desejados);
   const padraoNivel = nivelPadraoDoPapel(papel);
   const saida: { modulo: string; permitido: boolean; nivel?: NivelAcesso }[] = [];

@@ -7,7 +7,7 @@ import { mesesDasLinhas, mesesDoPeriodo, porCentroEMes, porMes, totalDoPeriodo, 
 import { CCUS_ADM, NOME_DO_NUCLEO, NUCLEOS_ADM } from "../src/lib/custoPessoal/escopo";
 import { nomeBonito, situacaoTexto, tomDaSituacao } from "../src/lib/custoPessoal/formato";
 import { problemasDaCarga, type ItemDaCarga } from "../src/lib/custoPessoal/validarCarga";
-import { MODULOS, POR_ID, moduloPermitido } from "../src/lib/acesso/catalogo";
+import { MODULOS, POR_ID, moduloPermitido, modulosEfetivos, nivelDoModulo, sobreposicoesParaGravar } from "../src/lib/acesso/catalogo";
 
 const comp = (p: Partial<Componentes>): Componentes => ({ ...zerar(), ...p });
 const linha = (codccu: string, mes: string, pessoas: number, p: Partial<Componentes>): LinhaCentroMes => ({ codccu, mes, pessoas, ...comp(p) });
@@ -96,20 +96,32 @@ test("carga: recusa mes fora da lista, centro que nao e' ADM, linha repetida e t
   assert.deepEqual(problemasDaCarga(["2026-09"], [item({ total: 3619.87 })]), [], "diferenca de 1 centavo e' arredondamento");
 });
 
-test("modulo custo_pessoal: restrito (so' liberado por pessoa), ADMIN entra sozinho e nenhum papel entra por padrao", () => {
+test("modulo custo_pessoal: exclusivo (nem ADMIN entra sozinho), liberado so' por linha gravada e nenhum papel entra por padrao", () => {
   const def = POR_ID.get("custo_pessoal")!;
-  assert.ok(def && def.restrito && def.grupo === "pessoal", "grupo proprio: o time financeiro nao ganha salarios de brinde");
-  assert.equal(moduloPermitido(def, "ADMIN", new Map()), true);
-  for (const papel of ["DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"]) assert.equal(moduloPermitido(def, papel, new Map()), false, `${papel} nao entra sem liberacao`);
-  assert.equal(moduloPermitido(def, "COLABORADOR", new Map([["custo_pessoal", true]])), true, "liberado pessoa a pessoa");
+  assert.ok(def && def.restrito && def.exclusivo && def.grupo === "pessoal", "grupo proprio: o time financeiro nao ganha salarios de brinde");
+  for (const papel of ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"]) assert.equal(moduloPermitido(def, papel, new Map()), false, `${papel} nao entra sem liberacao`);
+  for (const papel of ["ADMIN", "COLABORADOR"]) assert.equal(moduloPermitido(def, papel, new Map([["custo_pessoal", true]])), true, `${papel} entra quando liberado`);
+  assert.equal(moduloPermitido(def, "ADMIN", new Map([["custo_pessoal", false]])), false, "bloqueio gravado vale ate para ADMIN");
+  assert.ok(!modulosEfetivos("ADMIN", new Map()).includes("custo_pessoal"), "o menu do ADMIN nao mostra o modulo sem liberacao");
+  assert.ok(modulosEfetivos("ADMIN", new Map([["custo_pessoal", true]])).includes("custo_pessoal"));
+  assert.ok(modulosEfetivos("ADMIN", new Map()).includes("p0"), "os demais modulos continuam abertos ao ADMIN");
+  assert.equal(nivelDoModulo(def, "ADMIN", new Map(), new Map()), null);
   assert.ok(MODULOS.filter((m) => m.id === "custo_pessoal").length === 1);
+  assert.equal(POR_ID.get("p0")!.exclusivo, undefined, "so' o custo de pessoal e' exclusivo");
 });
 
-test("acesso inicial: so' direcao e DP, nivel VER, modulo existente e sem repetir pessoa", () => {
-  const d = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "acesso_custo_pessoal.json"), "utf-8")) as { modulo: string; nivel: string; pessoas: { chapa: string; nome: string; motivo: string }[] };
+test("painel de acesso: salvar um ADMIN nao apaga a liberacao do modulo exclusivo e nao grava linhas dos outros modulos", () => {
+  assert.deepEqual(sobreposicoesParaGravar("ADMIN", ["p0", "contratos"], {}), []);
+  assert.deepEqual(sobreposicoesParaGravar("ADMIN", ["p0", "custo_pessoal"], { custo_pessoal: "VER" }), [{ modulo: "custo_pessoal", permitido: true, nivel: "VER" }]);
+  assert.deepEqual(sobreposicoesParaGravar("COLABORADOR", ["custo_pessoal"], { custo_pessoal: "VER" }).filter((l) => l.modulo === "custo_pessoal"), [{ modulo: "custo_pessoal", permitido: true, nivel: "VER" }]);
+});
+
+test("acesso inicial: so' o Joao (nivel VER); Carolina, Andre e o DP tem a liberacao retirada; sem repetir pessoa", () => {
+  const d = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "acesso_custo_pessoal.json"), "utf-8")) as { modulo: string; nivel: string; pessoas: { chapa: string; nome: string; motivo: string }[]; revogar: { chapa: string; nome: string }[] };
   assert.ok(POR_ID.has(d.modulo));
   assert.equal(d.nivel, "VER");
-  assert.equal(new Set(d.pessoas.map((p) => p.chapa)).size, d.pessoas.length);
+  assert.deepEqual(d.pessoas.map((p) => p.chapa), ["2074"]);
   assert.ok(d.pessoas.every((p) => p.chapa && p.nome && p.motivo));
-  assert.ok(d.pessoas.some((p) => p.chapa === "1") && d.pessoas.some((p) => p.chapa === "2"), "Carolina e Andre");
+  assert.deepEqual(d.revogar.map((p) => p.chapa).sort(), ["1", "2", "22", "2094", "683"].sort());
+  assert.ok(!d.revogar.some((r) => d.pessoas.some((q) => q.chapa === r.chapa)), "ninguem e' liberado e revogado ao mesmo tempo");
 });

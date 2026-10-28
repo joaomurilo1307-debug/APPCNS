@@ -2,10 +2,13 @@
   "modulo": "custo_pessoal",
   "nivel": "VER",
   "pessoas": [
-    { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO", "motivo": "diretoria" },
-    { "chapa": "2", "nome": "ANDRE SILVA PERES", "motivo": "diretoria" },
-    { "chapa": "22", "nome": "ELAINE MARIA RIBEIRO DE CARVALHO", "motivo": "coordenadora do ADM DEPARTAMENTO PESSOAL" },
-    { "chapa": "683", "nome": "VIRGINIA DIAS DOS SANTOS", "motivo": "supervisora de departamento pessoal" },
-    { "chapa": "2094", "nome": "KATHLEEN THAIS FERREIRA", "motivo": "analista de departamento pessoal" }
+    { "chapa": "2074", "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA", "motivo": "dono do sistema; unico com acesso por enquanto (decisao de 28/10/2026)" }
+  ],
+  "revogar": [
+    { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO" },
+    { "chapa": "2", "nome": "ANDRE SILVA PERES" },
+    { "chapa": "22", "nome": "ELAINE MARIA RIBEIRO DE CARVALHO" },
+    { "chapa": "683", "nome": "VIRGINIA DIAS DOS SANTOS" },
+    { "chapa": "2094", "nome": "KATHLEEN THAIS FERREIRA" }
   ]
 }

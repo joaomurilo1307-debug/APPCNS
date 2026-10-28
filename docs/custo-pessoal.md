@@ -18,7 +18,9 @@ Calculado ao vivo no Senior e comparado com o que o Rito já tinha guardado (mar
 
 ## Acesso (dado de remuneração)
 
-Módulo **restrito** `custo_pessoal` (grupo próprio "Custo de pessoal" no painel Usuários > Acesso): só entra quem foi liberado pessoa a pessoa; **ADMIN entra sozinho**. Nenhum perfil pronto o inclui (nem o "financeiro"). `prisma/seed-acesso-custo-pessoal.ts` libera, no 1º boot, nível VER para: Carolina e André (direção) e o DP (Elaine, Virginia, Kathleen). Mais gente: painel de Acesso. As APIs devolvem 403 sem o módulo e a página redireciona para o início. Cada abertura da folha de um centro (`/api/custo-pessoal/pessoas`) é registrada na auditoria (`custo_pessoal.ver_folha`).
+Módulo **exclusivo** `custo_pessoal` (grupo próprio "Custo de pessoal" no painel Usuários > Acesso): **nem o ADMIN entra sozinho**; só quem tem a liberação gravada. Nenhum perfil pronto o inclui (nem o "financeiro"). **Decisão do João (28/10/2026): por enquanto só ele.** `prisma/seed-acesso-custo-pessoal.ts` libera, no boot, nível VER para a matrícula 2074 e retira (uma vez) as liberações dadas antes a Carolina, André, Elaine, Virginia e Kathleen. As APIs devolvem 403 sem o módulo e a página redireciona para o início. Cada abertura da folha de um centro (`/api/custo-pessoal/pessoas`) é registrada na auditoria (`custo_pessoal.ver_folha`).
+
+**Para liberar mais gente:** painel Usuários > Acesso, módulo "Custo de pessoal" (vale também para outro administrador). Salvar o painel de um ADMIN mantém a liberação dele (`sobreposicoesParaGravar`). O servidor guarda o acesso em memória por 20 s, então uma mudança leva até 20 s para valer.
 
 ## Dados e atualização
 
