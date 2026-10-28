@@ -120,7 +120,7 @@ function Pagina() {
       {aba === "acoes" && <PainelMetasContrato key={`acoes:${ficha.codccu}`} codccu={ficha.codccu} modo="acoes" />}
       {aba === "medicao" && <AbaMedicaoDoContrato key={ficha.codccu} estado={medicao} periodo={periodo} onPeriodo={mudarPeriodo} />}
       {aba === "custos" && <CustoPorContratoView ccuFixo={ficha.codccu} />}
-      {aba === "pessoal" && <AbaPessoal />}
+      {aba === "pessoal" && <AbaPessoal codccu={ficha.codccu} />}
       {aba === "p0" && <AbaP0 key={ficha.codccu} codccu={ficha.codccu} nomeContrato={ficha.nome} />}
       {aba === "previsao" && <AbaPrevisao codccu={ficha.codccu} />}
 

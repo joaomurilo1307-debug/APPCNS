@@ -167,7 +167,8 @@
     "medicao",
     "previsao",
     "p0",
-    "contestacoes_custo"
+    "contestacoes_custo",
+    "custo_pessoal"
   ],
   "pessoas": [
     {
