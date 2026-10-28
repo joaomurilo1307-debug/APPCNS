@@ -45,7 +45,7 @@ const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, 
 /**
  * A revisora das contestacoes e' a MONICA (coordenadora financeira, chapa 2234, "MONICA ADRIANA DE OLIVEIRA B CARNEIRO"), com usuario e e-mail PROPRIOS no sistema; so' o login dela no Senior e' o
  * antigo do Julimar. Procura os usuarios com "Monica" no nome ou no e-mail, MOSTRA todos no log e so' libera quando ha EXATAMENTE UMA candidata compativel (nome com Adriana ou Carneiro, ou e-mail
- * monica.oliveira/carneiro/adriana; a bióloga Monica Manoela Tavares de Oliveira Melo, de outro contrato, fica de fora). Liberou, retira o acesso que o seed anterior tinha dado ao usuario do Julimar
+ * monica.olive..., monica.carneiro ou monica.adriana (o cadastro dela esta como monica.olivera@, sem o i); a bióloga Monica Manoela Tavares de Oliveira Melo, de outro contrato, fica de fora). Liberou, retira o acesso que o seed anterior tinha dado ao usuario do Julimar
  * (premissa errada: ele nao e' a Monica). Cada passo e' feito uma vez (marca na auditoria).
  */
 async function garantirRevisora() {
@@ -55,7 +55,7 @@ async function garantirRevisora() {
   const compativeis = comMonica.filter((u) => {
     const n = semAcento(u.name), e = semAcento(u.email ?? "");
     const outra = n.includes("MELO") || n.includes("MANOELA") || n.includes("TAVARES");
-    return !outra && (n.includes("ADRIANA") || n.includes("CARNEIRO") || /^MONICA\.(OLIVEIRA|CARNEIRO|ADRIANA)/.test(e));
+    return !outra && (n.includes("ADRIANA") || n.includes("CARNEIRO") || /^MONICA\.(OLIVE|CARNEIRO|ADRIANA)/.test(e));
   });
   if (compativeis.length !== 1) return console.log(`Contestação: não identifiquei com certeza o usuário da Mônica (${compativeis.length} compatíveis); o acesso de revisora não foi alterado.`);
   const m = compativeis[0];
