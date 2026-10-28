@@ -27,6 +27,7 @@
 // consultas concorrentes) e SO' LE.
 
 import { CONTAS_FORA_DO_CUSTO, contaConhecida, nomeConta, registrarConta } from "./planoContas";
+import { centroReatribuido } from "./reatribuicoes";
 
 export type LinhaSenior = Record<string, string>;
 export type Consulta = (sql: string, timeoutMs?: number) => Promise<LinhaSenior[]>;
@@ -167,13 +168,15 @@ export function calcularCusto(
       continue;
     }
     const valor = numeroSenior(r.vlrRat);
-    const chave = `${r.codCcu}|${r.ctaFin}|${mes}`;
+    // excecao decidida pelo Joao (ver reatribuicoes.ts): o centro do CUSTO pode diferir do rateio do Senior; a competencia da nota continua olhando o rateio original
+    const ccuDoCusto = centroReatribuido(r) ?? r.codCcu;
+    const chave = `${ccuDoCusto}|${r.ctaFin}|${mes}`;
     soma.set(chave, (soma.get(chave) ?? 0) + valor);
     const baixa = baixas.get(chaveBaixa(r.numTit, r.codFil, r.codTpt, r.codFor, r.seqMov));
     if (!baixa?.dataPagamento) descartadas.semDataPagamento++;
     const mesNota = entradaCc.get(`${chaveTitulo(r)}|${r.codCcu}|${r.ctaFin}`) ?? entradaC.get(`${chaveTitulo(r)}|${r.codCcu}`) ?? null;
     detalhe.push({
-      codccu: r.codCcu,
+      codccu: ccuDoCusto,
       contaCodigo: r.ctaFin,
       contaFinanceira: rotuloConta(r.ctaFin),
       competencia: `${mes}-01`,
