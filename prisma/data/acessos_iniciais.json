@@ -341,16 +341,9 @@
       ]
     },
     {
-      "chapa": "JULIMAR",
-      "nome": "JULIMAR (cadastro usado pela Monica, coordenadora financeira)",
-      "palavraNoNome": "JULIMAR",
-      "perfil": "revisor_contestacao",
-      "marca": "contestacoes"
-    },
-    {
       "chapa": "MONICA.OLIVEIRA",
-      "nome": "E-mail monica.oliveira (coordenadora financeira)",
-      "emailPrefixo": "monica.oliveira",
+      "nome": "E-mail monica.olivera (coordenadora financeira; assim esta no cadastro e no Outlook)",
+      "emailPrefixo": "monica.olivera",
       "perfil": "revisor_contestacao",
       "marca": "contestacoes"
     },
@@ -433,6 +426,6 @@
     }
   ],
   "configuracoes": {
-    "contestacoes.emails": "monica.oliveira@consominas.com.br"
+    "contestacoes.emails": "monica.olivera@consominas.com.br"
   }
 }

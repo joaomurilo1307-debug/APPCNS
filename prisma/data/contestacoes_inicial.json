@@ -1,6 +1,7 @@
 {
   "emails": [
-    { "email": "monica.oliveira@consominas.com.br", "nome": "Mônica (coordenadora financeira)" }
+    { "email": "monica.olivera@consominas.com.br", "nome": "Mônica (coordenadora financeira)" }
   ],
+  "remover": ["monica.oliveira@consominas.com.br"],
   "testePara": { "email": "joao.oliveira@consominas.com.br", "nome": "João Murilo" }
 }
