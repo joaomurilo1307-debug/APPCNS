@@ -53,5 +53,5 @@ test("e-mail: traz OC, titulo, valor, motivo e os tres links de resposta; sem li
   for (const trecho of ["Posto Alfa", "OC: 15994", "Título: 008034", "R$", "Este custo é do contrato 3687.", links.ok, links.realocado, links.discordo, "RESPONDA POR AQUI", "Já realocado", "Não concordo"]) assert.ok(text.includes(trecho), trecho);
   const antigo = emailDaContestacao(lanc, { autor: "Ana", justificativa: "Este custo é do contrato 3687.", dominio: "gestao.exemplo.com.br" });
   assert.ok(!antigo.text.includes("RESPONDA POR AQUI"));
-  assert.ok(antigo.text.includes("/aprovacoes#contestacoes"));
+  assert.ok(antigo.text.includes("/contestacoes"));
 });

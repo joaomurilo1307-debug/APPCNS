@@ -21,7 +21,7 @@ test("e-mail: traz OC, titulo, valor, contrato, descricao, indicado, anexos e o 
   for (const trecho of [
     "OC: 15994", "Título: 008034", "Fornecedor: MERCADO LIVRE", "AGA CT 15140/2025 CB (CCU 102185)", "Linha de custo: Despesas Diversas",
     "Data do lançamento: 22/10/2026", "Ana contestou", "Este custo é do contrato da engenharia.", "Bruno Teixeira", "req.pdf",
-    "https://gestao.exemplo.com/aprovacoes#contestacoes", "o sistema não altera o Senior",
+    "https://gestao.exemplo.com/contestacoes", "o sistema não altera o Senior",
   ]) {
     assert.ok(text.includes(trecho), `faltou: ${trecho}`);
   }

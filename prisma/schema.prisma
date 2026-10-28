@@ -1958,12 +1958,29 @@ model ContestacaoCusto {
   indicado    User?              @relation("ContestacaoIndicado", fields: [indicadoId], references: [id], onDelete: SetNull)
   decididoPor User?              @relation("ContestacaoDecisor", fields: [decididoPorId], references: [id], onDelete: SetNull)
   anexos      ContestacaoAnexo[]
+  eventos     ContestacaoEvento[]
 
   @@index([chave])
   @@index([status])
   @@index([autorId])
   @@index([indicadoId])
   @@index([codccu])
+}
+
+// Historico de uma contestacao (tela Contestacoes): quando foi aberta, cada mudanca de status e cada recado de andamento, com quem fez.
+model ContestacaoEvento {
+  id            String   @id @default(cuid())
+  contestacaoId String
+  em            DateTime @default(now())
+  tipo          String // CRIADA | STATUS | NOTA
+  status        String? // status depois do evento (CRIADA e STATUS)
+  porNome       String
+  via           String   @default("sistema")
+  texto         String?  @db.Text
+
+  contestacao ContestacaoCusto @relation(fields: [contestacaoId], references: [id], onDelete: Cascade)
+
+  @@index([contestacaoId, em])
 }
 
 model ContestacaoAnexo {

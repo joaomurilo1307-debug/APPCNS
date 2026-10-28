@@ -1,5 +1,5 @@
 // Contestacao de custo na tela Ao vivo (regras PURAS, sem banco): validacao do pedido e textos das notificacoes.
-// O fluxo: quem acompanha o contrato contesta um lancamento -> o financeiro (a Monica) recebe por e-mail e responde pelo proprio e-mail (ou pela tela Aprovacoes):
+// O fluxo: quem acompanha o contrato contesta um lancamento -> o financeiro (a Monica) recebe por e-mail e responde pelo proprio e-mail (ou pela tela Contestacoes):
 //   Contestado (PENDENTE) -> Aceita, a realocar no Senior (ACEITA) -> Realocado (REALOCADA); ou Rejeitada. A tela Ao vivo mostra cada etapa no proprio lancamento.
 // O sistema NAO altera o Senior: "aceita" e "realocado" registram o que o financeiro fez; o ajuste do lancamento e' feito la.
 
@@ -80,7 +80,7 @@ export function emailDaContestacao(
   c: DadosDoEmail,
   p: { autor: string; justificativa: string; indicado?: string | null; anexos?: string[]; dominio?: string | null; links?: { ok: string; realocado: string; discordo: string } | null }
 ): { subject: string; text: string } {
-  const link = p.dominio ? `https://${p.dominio}/aprovacoes#contestacoes` : null;
+  const link = p.dominio ? `https://${p.dominio}/contestacoes` : null;
   const linhas = [
     "Olá,",
     "",
@@ -108,7 +108,7 @@ export function emailDaContestacao(
           `  3) Não concordo com a contestação: ${p.links.discordo}`,
         ]
       : []),
-    ...(link ? ["", `Ou na tela Aprovações do sistema: ${link}`] : []),
+    ...(link ? ["", `Ou na tela Contestações do sistema: ${link}`] : []),
     "OK e realocado registram o andamento; o ajuste no Senior é feito pelo financeiro (o sistema não altera o Senior).",
   ];
   return { subject: `Contestação de custo: ${referenciaDoLancamento(c)} · ${moeda(c.valor)}`, text: linhas.join("\n") };

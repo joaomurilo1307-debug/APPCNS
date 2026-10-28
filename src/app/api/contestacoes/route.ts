@@ -7,7 +7,7 @@ import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { hojeBR } from "@/lib/financeiro/alertas";
 import { carregarAoVivo, nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
 import { notificacaoIndicado, notificacaoNova, validarPedido } from "@/lib/contestacoes";
-import { avisar, destinatariosDaRevisao, ehRevisorDeContestacao, enviarEmailDaContestacao } from "@/lib/contestacoesServidor";
+import { avisar, destinatariosDaRevisao, ehRevisorDeContestacao, enviarEmailDaContestacao, registrarEvento } from "@/lib/contestacoesServidor";
 import { saveUploadedFile, validateUploadFile } from "@/lib/uploadValidation";
 import { linkDaAcao } from "@/lib/contestacoesToken";
 import { logAudit } from "@/lib/auditLog";
@@ -23,6 +23,7 @@ const selecao = {
   indicado: { select: { id: true, name: true } },
   decididoPor: { select: { id: true, name: true } },
   anexos: { select: { id: true, nome: true, tamanho: true } },
+  eventos: { orderBy: { em: "asc" as const }, select: { id: true, em: true, tipo: true, status: true, porNome: true, via: true, texto: true } },
 } as const;
 
 export async function GET(req: Request) {
@@ -53,7 +54,7 @@ export async function GET(req: Request) {
   });
   // as pendentes primeiro (a ordem alfabetica do status poria ACEITA antes); dentro de cada grupo, a mais nova primeiro
   itens.sort((x, y) => Number(y.status === "PENDENTE") - Number(x.status === "PENDENTE"));
-  return NextResponse.json({ revisor, itens });
+  return NextResponse.json({ revisor, admin: user.role === "ADMIN", itens }); // `admin`: so' o administrador ve a situacao do envio de e-mail
 }
 
 export async function POST(req: Request) {
@@ -113,8 +114,9 @@ export async function POST(req: Request) {
   const resumo = { fornecedor: item.fornecedor, numTit: item.numTit, numOcp: item.numOcp, valor: item.valor, ccuNome, codccu: item.ccu };
   const revisores = (await destinatariosDaRevisao()).filter((id) => id !== user.id);
   const n = notificacaoNova(resumo, user.name ?? "Alguém");
-  await avisar(revisores, { ...n, tipo: "APROVACAO_PENDENTE" });
-  if (indicadoId && indicadoId !== user.id) await avisar([indicadoId], notificacaoIndicado(resumo, user.name ?? "Alguém"));
+  await registrarEvento(criada.id, { tipo: "CRIADA", status: "PENDENTE", porNome: user.name ?? "Alguém", texto: justificativa });
+  await avisar(revisores, { ...n, tipo: "APROVACAO_PENDENTE" }, criada.id);
+  if (indicadoId && indicadoId !== user.id) await avisar([indicadoId], notificacaoIndicado(resumo, user.name ?? "Alguém"), criada.id);
   // e-mail para o financeiro com a OC, o titulo e a descricao: ele decide (ou ajusta no Senior) sem precisar abrir o sistema
   const indicadoNome = indicadoId ? (await prisma.user.findUnique({ where: { id: indicadoId }, select: { name: true } }))?.name ?? null : null;
   // links de resposta com um clique (a Monica responde pelo e-mail, sem usuario no sistema): OK / ja realocado / nao concordo
