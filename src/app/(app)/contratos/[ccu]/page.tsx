@@ -8,6 +8,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from "next/navigat
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import CustoPorContratoView from "@/components/custos/CustoPorContratoView";
 import { AbaP0, AbaPessoal, AbaPrevisao, AbaFichaContrato } from "@/components/contratos/AbasContrato";
+import ResultadoOperacionalView from "@/components/resultado/ResultadoOperacionalView";
 import FichaEditor, { type FichaContrato } from "@/components/contratos/FichaEditor";
 import BotaoDossie from "@/components/contratos/BotaoDossie";
 import { AbaMedicaoDoContrato, useMedicaoDoContrato } from "@/components/contratos/MedicaoDoContrato";
@@ -27,6 +28,7 @@ const ABAS = [
   { id: "pessoal", nome: "Custo de pessoal" },
   { id: "p0", nome: "P0" },
   { id: "previsao", nome: "Previsão" },
+  { id: "resultado", nome: "Resultado" },
 ] as const;
 
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
@@ -123,6 +125,7 @@ function Pagina() {
       {aba === "pessoal" && <AbaPessoal codccu={ficha.codccu} />}
       {aba === "p0" && <AbaP0 key={ficha.codccu} codccu={ficha.codccu} nomeContrato={ficha.nome} />}
       {aba === "previsao" && <AbaPrevisao codccu={ficha.codccu} />}
+      {aba === "resultado" && <ResultadoOperacionalView key={ficha.codccu} ccuFixo={ficha.codccu} />}
 
       {editando && <FichaEditor ficha={ficha} onSalvo={(f) => { setFicha(f); setEditando(false); }} onFechar={() => setEditando(false)} />}
     </div>
