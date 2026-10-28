@@ -89,6 +89,7 @@ type Titulo = {
   dataPagamento: string | null;
   ccuNome: string | null;
   codccu?: string | null;
+  ccuOrigem?: "rateio" | null; // centro vindo do rateio do Senior (o cabecalho do titulo esta sem centro de custo)
   ocRelacionada: OcRelacionada | null;
   ocCodFil?: string | null;
   vinculoManual?: { numOcp: string; por: string; em: string } | null;
@@ -1473,7 +1474,14 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                 </td>
                 <td className="px-1.5 py-1.5 text-gray-500">
                   {t.ccuNome ? (
-                    t.ccuNome
+                    <>
+                      {t.ccuNome}
+                      {t.ccuOrigem === "rateio" && (
+                        <span className="ml-1 cursor-help rounded bg-sky-50 px-1 text-[10px] font-medium text-sky-700" title="O cabeçalho do título está sem centro de custo; este é o centro do rateio do Senior (o mesmo do Custo por Centro de Custo).">
+                          rateio
+                        </span>
+                      )}
+                    </>
                   ) : (
                     <span className="cursor-help underline decoration-dotted underline-offset-2" title="O título não trouxe CC no sincronismo do rateio E501RAT.">
                       Sem CC
