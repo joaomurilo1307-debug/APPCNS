@@ -56,6 +56,7 @@ const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: 
   { href: "/notas-fiscais", module: "financeiro", label: "Notas Fiscais recebidas", icon: IconCheckCircle, modulos: ["notas_fiscais"] },
   { href: "/contratos", module: "financeiro", label: "Contratos", icon: IconFolders, modulos: ["contratos"] },
   { href: "/custos/plano-de-contas", module: "financeiro", label: "Custo por Centro de Custo", icon: IconBarChart, modulos: ["custos"] },
+  { href: "/custo-pessoal", module: "financeiro", label: "Custo de Pessoal", icon: IconUsers, modulos: ["custo_pessoal"] },
   { href: "/medicao", module: "financeiro", label: "Receita e Medição", icon: IconBarChart, modulos: ["medicao"] },
   { href: "/previsao", module: "financeiro", label: "Previsão por Centro de Custo", icon: IconBarChart, modulos: ["previsao"] },
   { href: "/p0", module: "financeiro", label: "P0 dos Contratos", icon: IconFolders, modulos: ["p0"] },

@@ -68,7 +68,9 @@ test("achar usuario: nome completo unico, nome curto cadastrado, e duvida devolv
 });
 
 test("seed de acessos: acesso completo so' para as 6 pessoas indicadas; pagamento so' em financeiro, completo e coordenacao financeira", () => {
-  assert.deepEqual([...dados.perfis.completo].sort(), [...dados.todosOsModulos].sort());
+  // custo_pessoal (remuneracao) nunca vai por perfil: so' pessoa a pessoa, pelo seed proprio (prisma/seed-acesso-custo-pessoal.ts)
+  assert.deepEqual([...dados.perfis.completo].sort(), [...dados.todosOsModulos].filter((m: string) => m !== "custo_pessoal").sort());
+  for (const [perfil, modulos] of Object.entries(dados.perfis as Record<string, string[]>)) assert.ok(!modulos.includes("custo_pessoal"), `perfil ${perfil} nao pode ter custo_pessoal`);
   const completos = dados.pessoas.filter((p: any) => p.perfil === "completo").map((p: any) => p.chapa).sort();
   assert.deepEqual(completos, ["1", "2", "2074", "2155", "2174", "46"].sort());
   const pag = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc"];

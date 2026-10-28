@@ -11,11 +11,12 @@
 //   4. Modulo comum sem liberacao: vale o padrao do papel (o mesmo que o menu ja usava).
 // Este arquivo e' PURO (sem banco): testavel e usado tanto pelo menu quanto pelas rotas.
 
-export type GrupoModulo = "gestao" | "financeiro" | "contratos" | "admin";
+export type GrupoModulo = "gestao" | "financeiro" | "contratos" | "pessoal" | "admin";
 
 export type ModuloId =
   | "painel" | "projetos" | "tarefas" | "sprint" | "gantt" | "calendario" | "chat" | "equipes" | "nucleos" | "metas" | "relatorios" | "pdi" | "aprovacoes_projetos"
   | "programacao_pagamento" | "pagamentos_itau" | "conferencia_oc" | "despesas_recorrentes" | "alertas_financeiro" | "notas_fiscais" | "aprovacoes_oc_todas" | "contestacoes_custo"
+  | "custo_pessoal"
   | "aprovacoes_oc"
   | "contratos" | "custos" | "medicao" | "previsao" | "p0"
   | "usuarios" | "usuarios_senior";
@@ -58,6 +59,7 @@ export const MODULOS: ReadonlyArray<ModuloDef> = [
   { id: "alertas_financeiro", href: "/alertas-financeiro", label: "Alertas do financeiro", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Avisos de pagamento" },
   { id: "notas_fiscais", href: "/notas-fiscais", label: "Notas fiscais recebidas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Notas contra o CNPJ da empresa" },
   { id: "contestacoes_custo", href: "/aprovacoes", label: "Aprovar contestações de custo", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Recebe e decide as contestações de custo feitas na tela Ao vivo" },
+  { id: "custo_pessoal", href: "/custo-pessoal", label: "Custo de pessoal", grupo: "pessoal", restrito: true, padraoPapeis: [], descricao: "Folha, encargos e provisões dos CLT por centro de custo (por enquanto só os núcleos ADM). Dado de remuneração: só DP, direção e administradores" },
   { id: "aprovacoes_oc_todas", href: "/aprovacoes/senior", label: "Aprovações de OC: ver todas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Sem isto, a pessoa vê só as OCs em que está envolvida" },
   // ---- aprovacoes de OC (cada um ve as suas; liberada pessoa a pessoa, por enquanto so' para poucos) e contratos (seguem o papel)
   { id: "aprovacoes_oc", href: "/aprovacoes/senior", label: "Aprovações de OC", grupo: "contratos", restrito: true, padraoPapeis: [], descricao: "As OCs do Senior em que a pessoa está envolvida (precisa do vínculo com o usuário do Senior)" },
@@ -77,6 +79,7 @@ export const GRUPOS: ReadonlyArray<{ id: GrupoModulo; nome: string; ajuda: strin
   { id: "gestao", nome: "Gestão de projetos", ajuda: "Projetos, tarefas, equipes e núcleos" },
   { id: "financeiro", nome: "Financeiro restrito", ajuda: "Só o time financeiro: pagamentos, SISPAG, conferência de OC e programação" },
   { id: "contratos", nome: "Contratos e aprovações de OC", ajuda: "Contratos, custo, receita e as OCs em que a pessoa está envolvida" },
+  { id: "pessoal", nome: "Custo de pessoal", ajuda: "Remuneração dos colaboradores: só DP, direção e administradores (liberado pessoa a pessoa)" },
   { id: "admin", nome: "Administração", ajuda: "Cadastro de usuários" },
 ];
 

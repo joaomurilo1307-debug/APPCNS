@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import P0CustosContrato from "@/components/p0/P0CustosContrato";
 import P0PessoaisContrato from "@/components/p0/P0PessoaisContrato";
+import CustoPessoalView from "@/components/custoPessoal/CustoPessoalView";
+import { NOME_DO_NUCLEO } from "@/lib/custoPessoal/escopo";
 import ClientesDoContrato from "./ClientesDoContrato";
 import ProjetosDoContrato from "./ProjetosDoContrato";
 import PrevisaoMensal from "./PrevisaoMensal";
@@ -88,13 +90,15 @@ export function AbaFichaContrato({ ficha, irParaAba }: { ficha: FichaContrato; i
   );
 }
 
-// ---------------------------------------------------------------- Custo de pessoal (estrutura)
-export function AbaPessoal() {
+// ---------------------------------------------------------------- Custo de pessoal
+// Por enquanto so' os centros de custo ADM (folha CLT lida do Senior, conferida ao centavo); o acesso e' o do modulo restrito "custo_pessoal".
+export function AbaPessoal({ codccu }: { codccu: string }) {
+  if (NOME_DO_NUCLEO.has(codccu)) return <CustoPessoalView ccuFixo={codccu} />;
   return (
     <Cartao titulo="Custo de pessoal" sub="Base para o gestor entender quanto o time do contrato custa e como isso se compara ao resultado">
       <Vazio
-        titulo="Esta aba ainda não recebe dados."
-        texto="Aqui vai ficar o custo de pessoal do contrato, lido do Senior: equipe alocada, folha e provisões, mês a mês. Os valores só entram depois de validados ao centavo contra o Senior, para que cada número seja claro e rastreável."
+        titulo="Esta aba ainda não recebe dados deste centro de custo."
+        texto="O custo de pessoal (folha, encargos e provisões, lido do Senior) já está disponível para os centros de custo administrativos. Os centros de contrato entram depois, quando cada número estiver validado ao centavo contra o Senior."
       />
     </Cartao>
   );

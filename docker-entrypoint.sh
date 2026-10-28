@@ -64,6 +64,8 @@ npx tsx prisma/seed-nucleos-pessoas.ts || true
 # Acessos iniciais do novo controle de acesso (financeiro por pessoa; Denise; Allan e Vitor): uma vez por pessoa, sem variavel de ambiente.
 echo "Aplicando acessos iniciais (uma vez por pessoa)..."
 npx tsx prisma/seed-acessos-iniciais.ts || true
+echo "Liberando o acesso ao custo de pessoal (DP e direcao)..."
+npx tsx prisma/seed-acesso-custo-pessoal.ts || true
 
 # (25/10/2026) O vinculo ao Senior por e-mail igual agora e' AUTOMATICO e dinamico (src/lib/acesso/vinculoSenior.ts), sem gravar nada: o vinculo
 # gravado fica so' para o que o administrador escolhe. O seed antigo (prisma/seed-vinculos-senior-email.ts) nao roda mais no boot.

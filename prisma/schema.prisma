@@ -2037,3 +2037,39 @@ model P0Linha {
 
   @@index([p0Id, tipo, competencia])
 }
+
+// Custo de pessoal CLT por pessoa e mes dos centros de custo ADM (27/10/2026, pedido do Joao): espelho da folha do Senior (HCM/Rubi + ERP),
+// calculado com a regra do Rito (liquido da folha + rescisao + INSS + FGTS + IRRF + 4 provisoes do mes) e conferido ao centavo contra ele.
+// So' CLT: prestadores PJ ja estao em Servicos Terceiros PJ no Custo por Centro de Custo. Diretoria recebe pro-labore (coluna a parte, fora do total do Rito).
+// Dado sensivel (nome e valores por pessoa): so' o modulo "custo_pessoal" le. A carga e' SEMPRE uma substituicao dos meses enviados (espelho).
+model CustoPessoalMes {
+  id           String   @id @default(cuid())
+  codccu       String // centro de custo no SISTEMA (ERP)
+  ccuHcm       String // centro de custo no HCM (ADM MARKETING: 21 no HCM, 17 no sistema)
+  competencia  DateTime // dia 1 do mes
+  matricula    String
+  nome         String
+  cargo        String?
+  situacao     String? // situacao ATUAL no Senior (Trabalhando, Ferias, Demitido...)
+  dataSituacao String?
+  admissao     String?
+  origemCc     String? // ledger | cc_atual | confirmada: de onde veio o centro de custo daquele mes
+  salarioBase  Float    @default(0)
+  liquido      Float    @default(0) // liquido da folha normal (rubricas 3065 + 2454)
+  rescisao     Float    @default(0) // rescisao paga pelo ERP (E501, conta 80)
+  inss         Float    @default(0) // rubrica 2000
+  fgts         Float    @default(0) // rubrica 2500
+  irrf         Float    @default(0) // rubrica 2004
+  provFerias   Float    @default(0) // provisao de ferias (base)
+  provTerco    Float    @default(0) // provisao do 1/3 constitucional de ferias
+  prov13       Float    @default(0) // provisao de 13o
+  provInss     Float    @default(0) // INSS sobre as provisoes
+  provFgts     Float    @default(0) // FGTS sobre as provisoes
+  proLabore    Float    @default(0) // rubrica 1600 (so' diretoria); fora do total
+  total        Float    @default(0) // regra do Rito: liquido + rescisao + inss + fgts + irrf + provisoes (sem pro-labore)
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([codccu, competencia, matricula])
+  @@index([competencia])
+  @@index([codccu, competencia])
+}

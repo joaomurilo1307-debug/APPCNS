@@ -1,0 +1,11 @@
+{
+  "modulo": "custo_pessoal",
+  "nivel": "VER",
+  "pessoas": [
+    { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO", "motivo": "diretoria" },
+    { "chapa": "2", "nome": "ANDRE SILVA PERES", "motivo": "diretoria" },
+    { "chapa": "22", "nome": "ELAINE MARIA RIBEIRO DE CARVALHO", "motivo": "coordenadora do ADM DEPARTAMENTO PESSOAL" },
+    { "chapa": "683", "nome": "VIRGINIA DIAS DOS SANTOS", "motivo": "supervisora de departamento pessoal" },
+    { "chapa": "2094", "nome": "KATHLEEN THAIS FERREIRA", "motivo": "analista de departamento pessoal" }
+  ]
+}
