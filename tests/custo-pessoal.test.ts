@@ -130,11 +130,13 @@ test("painel de acesso: salvar um ADMIN nao apaga a liberacao do modulo exclusiv
   assert.deepEqual(sobreposicoesParaGravar("COLABORADOR", ["custo_pessoal"], { custo_pessoal: "VER" }).filter((l) => l.modulo === "custo_pessoal"), [{ modulo: "custo_pessoal", permitido: true, nivel: "VER" }]);
 });
 
-test("acesso inicial: so' o Joao (nivel VER); Carolina, Andre e o DP tem a liberacao retirada; sem repetir pessoa", () => {
-  const d = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "acesso_custo_pessoal.json"), "utf-8")) as { modulo: string; nivel: string; pessoas: { chapa: string; nome: string; motivo: string }[]; revogar: { chapa: string; nome: string }[] };
+test("acesso inicial: so' o Joao e a conta administrativa dele (nivel VER); Carolina, Andre e o DP tem a liberacao retirada; sem repetir pessoa", () => {
+  const d = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "acesso_custo_pessoal.json"), "utf-8")) as { modulo: string; nivel: string; contas: { email: string; nome: string; motivo: string }[]; pessoas: { chapa: string; nome: string; motivo: string }[]; revogar: { chapa: string; nome: string }[] };
   assert.ok(POR_ID.has(d.modulo));
   assert.equal(d.nivel, "VER");
   assert.deepEqual(d.pessoas.map((p) => p.chapa), ["2074"]);
+  assert.deepEqual(d.contas.map((c) => c.email), ["admin@consominas.com.br"], "o usuario administrativo que o Joao usa");
+  assert.ok(d.contas.every((c) => /^[^@\s]+@[^@\s]+$/.test(c.email) && c.nome && c.motivo));
   assert.ok(d.pessoas.every((p) => p.chapa && p.nome && p.motivo));
   assert.deepEqual(d.revogar.map((p) => p.chapa).sort(), ["1", "2", "22", "2094", "683"].sort());
   assert.ok(!d.revogar.some((r) => d.pessoas.some((q) => q.chapa === r.chapa)), "ninguem e' liberado e revogado ao mesmo tempo");

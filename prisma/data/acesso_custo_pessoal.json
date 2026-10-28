@@ -1,6 +1,9 @@
 {
   "modulo": "custo_pessoal",
   "nivel": "VER",
+  "contas": [
+    { "email": "admin@consominas.com.br", "nome": "usuario administrativo", "motivo": "conta administrativa que o Joao usa para regular o sistema e validar os dados (pedido de 28/10/2026)" }
+  ],
   "pessoas": [
     { "chapa": "2074", "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA", "motivo": "dono do sistema; unico com acesso por enquanto (decisao de 28/10/2026)" }
   ],
