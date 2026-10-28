@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { COMPONENTES, IDS_COMPONENTES, somarComponentes, totalComProLabore, totalDoGrupo, totalDoRito, zerar, type Componentes } from "../src/lib/custoPessoal/componentes";
 import { mesesDasLinhas, mesesDoPeriodo, porCentroEMes, porMes, totalDoPeriodo, type LinhaCentroMes } from "../src/lib/custoPessoal/agregar";
-import { CCUS_ADM, NOME_DO_NUCLEO, NUCLEOS_ADM } from "../src/lib/custoPessoal/escopo";
+import { CCUS_ADM, GRUPOS_CENTRO, NOME_DO_NUCLEO, NUCLEOS_ADM, grupoDoCentro, nomeDoCentro } from "../src/lib/custoPessoal/escopo";
+import { impressaoDoMes, mesesFechadosNaCarga, resumoDoMes, type LinhaDoMes } from "../src/lib/custoPessoal/fechamento";
 import { nomeBonito, situacaoTexto, tomDaSituacao } from "../src/lib/custoPessoal/formato";
 import { problemasDaCarga, type ItemDaCarga } from "../src/lib/custoPessoal/validarCarga";
 import { MODULOS, POR_ID, moduloPermitido, modulosEfetivos, nivelDoModulo, sobreposicoesParaGravar } from "../src/lib/acesso/catalogo";
@@ -58,16 +59,29 @@ test("agregacao: centro x mes, total por mes e total do periodo", () => {
   assert.deepEqual(mesesDoPeriodo(["2026-03", "2026-04", "2026-05"], "2026-04", "2026-05"), ["2026-04", "2026-05"]);
 });
 
-test("escopo: 15 nucleos ADM, ADM MARKETING e' o 17 no sistema (21 no HCM) e centros de contrato ficam de fora", () => {
+test("escopo: 15 nucleos ADM, ADM MARKETING e' o 17 no sistema (21 no HCM) e centros de contrato nao sao nucleos", () => {
   assert.equal(NUCLEOS_ADM.length, 15);
   assert.equal(CCUS_ADM.size, 15);
   const mk = NUCLEOS_ADM.find((n) => n.nome === "ADM MARKETING")!;
   assert.equal(mk.codccu, "17");
   assert.equal(mk.ccuHcm, "21");
   assert.equal(NOME_DO_NUCLEO.get("260"), "ADM");
-  assert.ok(!CCUS_ADM.has("210") && !CCUS_ADM.has("102335"), "centros de contrato nao entram");
+  assert.ok(!CCUS_ADM.has("210") && !CCUS_ADM.has("102335"), "centros de contrato nao sao nucleos ADM");
   const dados = JSON.parse(fs.readFileSync(path.join(process.cwd(), "prisma", "data", "nucleos_adm_listagem.json"), "utf-8")) as { name: string }[];
   assert.deepEqual([...NUCLEOS_ADM.map((n) => n.nome)].sort(), dados.map((d) => d.name).sort(), "os mesmos 15 nomes dos nucleos ADM do sistema");
+});
+
+test("grupos: nucleo ADM, area do contrato (Engenharia/Ambiental) e Outros; nome do centro vem do cadastro ou do Senior", () => {
+  assert.deepEqual(GRUPOS_CENTRO.map((g) => g.id), ["NUCLEO_ADM", "ENGENHARIA", "AMBIENTAL", "OUTROS"]);
+  assert.equal(grupoDoCentro("260"), "NUCLEO_ADM");
+  assert.equal(grupoDoCentro("17"), "NUCLEO_ADM", "ADM MARKETING pelo codigo do sistema");
+  assert.equal(grupoDoCentro("190"), "AMBIENTAL", "MRN CT 3748/2023");
+  assert.equal(grupoDoCentro("90"), "ENGENHARIA", "SUDECAP DJ 029/2022");
+  assert.equal(grupoDoCentro("99999"), "OUTROS", "centro novo sem area definida");
+  assert.equal(nomeDoCentro("102265"), "ADM FINANCEIRO");
+  assert.equal(nomeDoCentro("190"), "MRN CT 3748/2023");
+  assert.equal(nomeDoCentro("99999", " CONTRATO NOVO "), "CONTRATO NOVO");
+  assert.equal(nomeDoCentro("99999"), "CCU 99999");
 });
 
 test("nomes e situacao: titulo, preposicoes em minuscula, ferias em amarelo, desligado em vermelho", () => {
@@ -87,10 +101,10 @@ test("carga: caminho feliz passa", () => {
   assert.deepEqual(problemasDaCarga(["2026-09"], [item(), item({ matricula: "858" })]), []);
 });
 
-test("carga: recusa mes fora da lista, centro que nao e' ADM, linha repetida e total que nao bate", () => {
+test("carga: aceita centro de contrato; recusa mes fora da lista, codigo de centro invalido, linha repetida e total que nao bate", () => {
   assert.equal(problemasDaCarga(["2026-08"], [item()]).length, 1);
-  const naoAdm = problemasDaCarga(["2026-09"], [item({ codccu: "210" })]);
-  assert.ok(naoAdm.some((p) => p.includes("não é ADM")));
+  assert.deepEqual(problemasDaCarga(["2026-09"], [item({ codccu: "190" })]), [], "centros de contrato tambem entram");
+  assert.ok(problemasDaCarga(["2026-09"], [item({ codccu: "ADM" })]).some((p) => p.includes("inválido")));
   assert.ok(problemasDaCarga(["2026-09"], [item(), item()]).some((p) => p.includes("repetida")));
   assert.ok(problemasDaCarga(["2026-09"], [item({ total: 9999 })]).some((p) => p.includes("não bate")));
   assert.deepEqual(problemasDaCarga(["2026-09"], [item({ total: 3619.87 })]), [], "diferenca de 1 centavo e' arredondamento");
@@ -124,4 +138,25 @@ test("acesso inicial: so' o Joao (nivel VER); Carolina, Andre e o DP tem a liber
   assert.ok(d.pessoas.every((p) => p.chapa && p.nome && p.motivo));
   assert.deepEqual(d.revogar.map((p) => p.chapa).sort(), ["1", "2", "22", "2094", "683"].sort());
   assert.ok(!d.revogar.some((r) => d.pessoas.some((q) => q.chapa === r.chapa)), "ninguem e' liberado e revogado ao mesmo tempo");
+});
+
+const linhaMes = (p: Partial<LinhaDoMes> = {}): LinhaDoMes => ({ codccu: "190", matricula: "100", salarioBase: 2000, ...zerar(), liquido: 1800, inss: 200, total: 2000, ...p });
+
+test("fechamento: a impressao nao depende da ordem, muda com 1 centavo e com troca de centro, e ignora o que nao e' custo", () => {
+  const a = linhaMes();
+  const b = linhaMes({ matricula: "101", codccu: "310", liquido: 900.5, total: 1100.5 });
+  const base = impressaoDoMes([a, b]);
+  assert.match(base, /^[0-9a-f]{64}$/);
+  assert.equal(impressaoDoMes([b, a]), base, "ordem das linhas nao muda a impressao");
+  assert.notEqual(impressaoDoMes([a, linhaMes({ matricula: "101", codccu: "310", liquido: 900.51, total: 1100.51 })]), base, "1 centavo muda");
+  assert.notEqual(impressaoDoMes([a, linhaMes({ matricula: "101", codccu: "190", liquido: 900.5, total: 1100.5 })]), base, "pessoa em outro centro muda");
+  assert.equal(impressaoDoMes([{ ...a, nome: "Outro nome", situacao: "Demitido" } as LinhaDoMes, b]), base, "nome e situacao atual nao entram");
+  assert.equal(impressaoDoMes([a, { ...b, liquido: 900.5000000001 }]), base, "ruido de ponto flutuante abaixo do centavo nao muda");
+});
+
+test("fechamento: resumo do mes e meses fechados dentro da carga", () => {
+  assert.deepEqual(resumoDoMes([{ matricula: "100", total: 1000.105 }, { matricula: "100", total: 500 }, { matricula: "101", total: 0.2 }]), { linhas: 3, pessoas: 2, total: 1500.31 });
+  assert.deepEqual(resumoDoMes([]), { linhas: 0, pessoas: 0, total: 0 });
+  assert.deepEqual(mesesFechadosNaCarga(["2026-10", "2026-03", "2026-04"], new Set(["2026-04", "2026-03", "2025-12"])), ["2026-03", "2026-04"]);
+  assert.deepEqual(mesesFechadosNaCarga(["2026-10"], new Set(["2026-03"])), []);
 });

@@ -8,13 +8,19 @@ import { COMPONENTES, GRUPOS_COMPONENTE, totalComProLabore, somarComponentes, ze
 import { nomeBonito, situacaoTexto, tomDaSituacao } from "@/lib/custoPessoal/formato";
 
 export type PessoaDaFolha = {
-  mes: string; matricula: string; nome: string; cargo: string | null; situacao: string | null; dataSituacao: string | null; admissao: string | null; salarioBase: number;
+  mes: string; matricula: string; nome: string; cargo: string | null; situacao: string | null; dataSituacao: string | null; admissao: string | null; origemCc: string | null; salarioBase: number;
   total: number; totalComProLabore: number;
 } & Componentes;
 
 const CURTO: Record<ComponenteId, string> = { liquido: "Líquido", rescisao: "Rescisão", inss: "INSS", fgts: "FGTS", irrf: "IRRF", provFerias: "Férias", provTerco: "1/3 de férias", prov13: "13º", provInss: "INSS s/ prov.", provFgts: "FGTS s/ prov.", proLabore: "Pró-labore" };
 
 const SELO = { neutro: "bg-gray-100 text-gray-600", aviso: "bg-amber-100 text-amber-800", alerta: "bg-red-100 text-red-700" } as const;
+
+// De onde veio o centro de custo do mes, quando nao e' o historico do Senior sem mais (origemCc = historico_hcm).
+const ORIGEM_DO_CENTRO: Record<string, { rotulo: string; ajuda: string }> = {
+  distribuido_nucleo: { rotulo: "distribuído", ajuda: "Até fevereiro todo o pessoal ADM ficava no centro único ADM; o custo foi distribuído para o núcleo em que a pessoa está desde março." },
+  confirmado_joao: { rotulo: "centro confirmado", ajuda: "Centro de custo confirmado pelo João (o cadastro do Senior indica outro)." },
+};
 
 export function usePessoasDoCentro(ccu: string, mes: string | null) {
   const [dados, setDados] = useState<PessoaDaFolha[] | null>(null);
@@ -79,6 +85,7 @@ export default function FolhaDoCentro({ ccu, mes }: { ccu: string; mes: string }
                   <p className="text-[12px] text-gray-500">
                     {[nomeBonito(p.cargo), `mat. ${p.matricula}`].filter(Boolean).join(" · ")}
                     {sit && <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-medium ${SELO[tomDaSituacao(p.situacao)]}`}>{sit}</span>}
+                    {p.origemCc && ORIGEM_DO_CENTRO[p.origemCc] && <span title={ORIGEM_DO_CENTRO[p.origemCc].ajuda} className="ml-2 rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-800">{ORIGEM_DO_CENTRO[p.origemCc].rotulo}</span>}
                   </p>
                 </td>
                 {colunas.map((c) => (c.grupo === "prolabore" ? null : <td key={c.id} className={`whitespace-nowrap px-2.5 py-2 text-right tabular-nums ${p[c.id] ? "text-gray-800" : "text-gray-300"} ${c.id === "provFerias" ? "border-l border-gray-100" : ""}`}>{p[c.id] ? moedaSemSimbolo(p[c.id]) : "–"}</td>))}
