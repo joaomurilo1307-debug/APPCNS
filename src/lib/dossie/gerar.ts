@@ -9,6 +9,7 @@ import { NOME_SAIDA, executarFluxo, type Item } from "./motor";
 import { NOS } from "./nos/index.js";
 import { emFilaSenior } from "@/lib/senior/getDbInfo";
 import { chaveDaOc, registrarFalha, salvarDossie } from "./salvar";
+import { aplicarComplemento, coletarComplemento, montarHtmlComplemento } from "./complemento";
 
 const URL_SENIOR = "https://web01s1p.seniorcloud.com.br:30901/g5-senior-services/sapiens_Synccom_senior_g5_co_ger_db";
 
@@ -49,7 +50,12 @@ export async function htmlParaPdf(html: string, fetchImpl: typeof fetch = fetch)
   return bytes;
 }
 
-export type Dependencias = { http?: (corpo: string) => Promise<string>; pdf?: (html: string) => Promise<Buffer> };
+export type Dependencias = {
+  http?: (corpo: string) => Promise<string>;
+  pdf?: (html: string) => Promise<Buffer>;
+  /** Consulta da Senior usada pelo complemento (dados da OC, NF/DANFE). Padrao: consultarSenior (fila unica). */
+  consultar?: Parameters<typeof coletarComplemento>[2];
+};
 
 /** Executa o fluxo e devolve o HTML + o registro pronto para gravar (sem tocar no banco). */
 export async function montarDossie(oc: { codEmp?: number; codFil: number; numOcp: number }, deps: Dependencias = {}) {
@@ -63,9 +69,17 @@ export async function montarDossie(oc: { codEmp?: number; codFil: number; numOcp
   if (typeof gerador.html !== "string" || gerador.html.length < 200 || gerador.error) {
     throw new Error(`Nao foi possivel montar o dossie${gerador.error ? `: ${gerador.error}` : " (HTML vazio)"}.`);
   }
+  // Complemento: dados completos da OC, aviso de reembolso/sem NF e DANFE (ver complemento.ts). Parte do dossie, nao opcional.
+  const final: any = estado.get("Consolidar Dossiê Final")?.[0]?.[0]?.json ?? {};
+  const complemento = await coletarComplemento(
+    { codEmp: oc.codEmp ?? 1, codFil: oc.codFil, numOcp: oc.numOcp },
+    { produtos: final.produtos ?? [], servicos: final.servicos ?? [], documentosFiscais: final.documentosFiscais ?? [] },
+    deps.consultar
+  );
+  const html = aplicarComplemento(gerador.html, montarHtmlComplemento(complemento));
   const nomeArquivo: string =
     gerador.arquivoPdf || (gerador.nomeBase ? `${gerador.nomeBase}.pdf` : null) || `DOSSIE_OC_${gerador.identificacao?.ordemCompra ?? oc.numOcp}.pdf`;
-  const pdf = await (deps.pdf ?? htmlParaPdf)(gerador.html);
+  const pdf = await (deps.pdf ?? htmlParaPdf)(html);
 
   // Empacota com o proprio no do workflow ("Montar Envio do Dossie"), alimentado pelo resultado desta execucao.
   const $ = (nome: string) => {
@@ -77,7 +91,7 @@ export async function montarDossie(oc: { codEmp?: number; codFil: number; numOcp
   const desfecho: Item = { json: { status: "SUCESSO", mensagem: "Dossie gerado pelo APPCNS" } };
   const [saida] = await (NOS as Record<string, Function>)["Montar Envio do Dossiê"]({ first: () => desfecho, all: () => [desfecho] }, $, desfecho.json);
   const envio = saida.json.envio;
-  return { html: gerador.html as string, pdf, nomeArquivo, envio };
+  return { html, pdf, nomeArquivo, envio };
 }
 
 // ---------- fila: uma geracao por vez ----------

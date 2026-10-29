@@ -10,8 +10,9 @@
 // Aqui o criterio e' a OC, nao a emissao do titulo, e e' reavaliado a cada poucos minutos:
 //   ELEGIVEL = OC aprovada (SITAPR=APR) e nao cancelada (SITOCP<>5) que
 //     (a) tem titulo ABERTO na Senior (AB/PE) citado em USU_NUMTIT, ou associado a mao na Programacao de Pagamento, ou
-//     (b) vence (USU_DATVECT) de N dias atras a N dias a frente (padrao 30 / 45), ou
-//     (c) ja' esta PAGA (marca AprovacaoSenior.pago) e venceu ate 90 dias atras -- o dossie final do antigo vigia de OC quitada.
+//     (b) ja' esta PAGA (marca AprovacaoSenior.pago) e venceu ate 90 dias atras -- o dossie final do antigo vigia de OC quitada.
+//   So' depois que a OC VIRA TITULO (29/10/2026): antes, a regra "vence nos proximos 45 dias" gerava o dossie de OC sem titulo, e
+//   o PDF saia sem a nota fiscal (a nota e' achada pelo titulo) mesmo quando a nota viria logo depois.
 //   Para cada elegivel compara o dossie guardado com o estado atual ("assinatura" = aprovacao, situacao, valor, titulos e NF
 //   digitados e quais titulos ainda estao abertos): sem dossie -> gera; PDF sumiu -> gera; falhou -> tenta de novo com
 //   intervalo crescente (5 min ... 24 h, nunca desiste); mudou (titulo novo, titulo pago, NF, valor) -> gera de novo.
@@ -172,9 +173,9 @@ export function janelaDeVencimento(hoje: string, diasAtras: number, diasFrente: 
   return { de: dia(-diasAtras), ate: dia(diasFrente) };
 }
 
-export type MotivoElegivel = "TITULO_ABERTO" | "VINCULO_MANUAL" | "VENCIMENTO_NO_PERIODO" | "OC_PAGA_RECENTE";
+export type MotivoElegivel = "TITULO_ABERTO" | "VINCULO_MANUAL" | "OC_PAGA_RECENTE";
 
-/** Precisa de dossie? null = nao (reprovada, cancelada, ou fora do periodo e sem titulo aberto). */
+/** Precisa de dossie? null = nao (reprovada, cancelada, ou ainda sem titulo). */
 export function motivoDeElegibilidade(
   oc: Pick<OcAlvo, "sitApr" | "sitOcp" | "vencimento">,
   contexto: { temTituloAberto: boolean; temVinculoManual: boolean; de: string; ate: string; paga?: boolean; dePagas?: string }
@@ -183,7 +184,6 @@ export function motivoDeElegibilidade(
   if (oc.sitOcp === "5") return null; // cancelada
   if (contexto.temTituloAberto) return "TITULO_ABERTO";
   if (contexto.temVinculoManual) return "VINCULO_MANUAL";
-  if (oc.vencimento && oc.vencimento >= contexto.de && oc.vencimento <= contexto.ate) return "VENCIMENTO_NO_PERIODO";
   if (contexto.paga && contexto.dePagas && oc.vencimento && oc.vencimento >= contexto.dePagas && oc.vencimento <= contexto.ate) return "OC_PAGA_RECENTE";
   return null;
 }

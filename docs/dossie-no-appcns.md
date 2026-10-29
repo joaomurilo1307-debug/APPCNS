@@ -62,11 +62,10 @@ OC quitada. Agora o próprio servidor faz isso: `src/lib/dossie/agendador.ts` co
 
 ### O que o sistema faz agora
 
-**Quem precisa de dossiê** (OC aprovada, `SITAPR = APR`, e não cancelada, `SITOCP <> 5`, de qualquer filial) — qualquer uma destas:
+**Quem precisa de dossiê** (OC aprovada, `SITAPR = APR`, e não cancelada, `SITOCP <> 5`, de qualquer filial) — **só depois que a OC virou título** (29/10/2026; a regra "vence nos próximos 45 dias" foi retirada, gerava PDF sem a nota fiscal, que é achada pelo título) — qualquer uma destas:
 1. tem **título em aberto** (AB/PE) citado em `USU_NUMTIT` (casamento por número exato, zeros à esquerda, parcela e base da parcela) **ou** associado à mão na
    Programação de Pagamento (`TituloOcVinculo`) — vale mesmo que o vencimento da OC seja antigo ou esteja vazio;
-2. vence de **30 dias atrás a 45 dias à frente** (`USU_DATVECT`);
-3. já está **paga** no sistema (`AprovacaoSenior.pago`) e venceu nos últimos **90 dias** — o dossiê final que o vigia gerava.
+2. já está **paga** no sistema (`AprovacaoSenior.pago`) e venceu nos últimos **90 dias** — o dossiê final que o vigia gerava.
 
 **O que faz com cada uma** (compara com o dossiê guardado; `DossieOC.assinatura` = estado da OC quando o PDF foi feito: aprovação, situação, valor,
 títulos e nota digitados e quais títulos ainda estão abertos na Senior):
@@ -102,3 +101,15 @@ mostra "o serviço que converte o dossiê em PDF (Gotenberg) não respondeu" e n
 O job das 6h (`Disparo Dossiê pelo 201`) continua gravando pela mesma chave por OC. Gerar de novo substitui o
 PDF anterior (o antigo sai do disco). Quando o botão estiver validado em produção, os jobs do n8n podem ser
 desativados (o que deixa de existir: a publicação no GED).
+
+## Conteúdo completo do dossiê (29/10/2026)
+
+`src/lib/dossie/complemento.ts` + `danfe.ts` acrescentam ao HTML do fluxo (o gerador deixa os marcadores `<!--COMPLEMENTO_OC-->` e `<!--COMPLEMENTO_DANFE-->`; `gerar.ts` troca):
+
+- **Dados da Ordem de Compra:** fornecedor, CNPJ/CPF, endereço, inscrição estadual, condição de pagamento (E028CPG), forma de pagamento (**só o código** — não achei a tabela de descrição via GetDBInfo), valor da OC e saldo, **observações da OC** (`OBSOCP`). Rateio, aprovadores e itens já vinham do fluxo.
+- **Item reembolsável:** aviso + itens e valores + CNPJ do fornecedor quando algum rateio tem conta financeira **>= 180** (`CONTA_REEMBOLSAVEL_A_PARTIR_DE`) ou `USU_REEMB = 'S'`.
+- **Sem nota fiscal:** aviso destacado quando o título não leva a nenhuma nota no ERP.
+- **DANFE completa por nota**, montada com os dados da nota na Senior (E440NFC/E440IPC/E440ISC, emitente E095FOR, destinatário E070FIL, transportadora E073TRA). **Não é o PDF oficial** (o ERP não guarda protocolo de autorização nem XML — a página diz isso). Nota sem chave NF-e sai como "espelho da nota fiscal".
+- **OC liquidada:** a Senior zera o saldo (`VLRLIQ`) e o valor fica em `VLRORI`/`VLRBRU`; o gerador agora usa o primeiro valor > 0 (antes mostrava R$ 0,00).
+- Falha em qualquer consulta do complemento = dossiê em ERRO e nova tentativa automática (não sai PDF parecendo completo e incompleto).
+- O `gerar-html-do-dossie.js` **foi alterado** em relação ao n8n (espelho simples removido, marcadores, valores). Não regenerar com `dossie-extrair-n8n.py` sem refazer isso. O teste `dossie-motor` contra o gabarito do n8n vai divergir no nó "Gerar HTML do Dossiê" por esse motivo.
