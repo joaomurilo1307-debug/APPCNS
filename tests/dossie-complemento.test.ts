@@ -84,3 +84,10 @@ test("Marcadores: troca no HTML do gerador; sem marcador (gerador desatualizado)
   assert.equal(out, "<style>a{}.c{}</style>OC!xDANFE!");
   assert.throws(() => aplicarComplemento("<style></style>sem marcador", { oc: "", danfe: "", css: "" }), /marcadores/);
 });
+
+test("Titulo da OC e' buscado por numero E fornecedor (OC 16113: o titulo 39A1 existe em 6 fornecedores e o dossie trouxe 6 notas)", async () => {
+  const { default: fluxo } = await import("../src/lib/dossie/fluxo.json");
+  const corpo = (fluxo as any).nos["Coletar Títulos Financeiros"].body as string;
+  assert.match(corpo, /NUMTIT=:NumTit AND CODFOR=:CodFor/);
+  assert.match(corpo, /&lt;name&gt;CodFor&lt;\/name&gt;/);
+});
