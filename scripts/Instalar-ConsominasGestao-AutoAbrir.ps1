@@ -23,7 +23,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$appUrl      = "https://gestao.srv1834707.hstgr.cloud/dashboard"
+$appUrl      = "https://gestao.consominas.com.br/dashboard"
 $appName     = "Consominas Gestao"
 $iconDestDir = "$env:ProgramData\ConsominasGestao"
 $iconDest    = "$iconDestDir\icon.ico"
