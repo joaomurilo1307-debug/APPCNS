@@ -1,5 +1,5 @@
 // @ts-nocheck
-// No Code do workflow n8n "Gerar HTML do Dossiê" (Dossie OC SeniorX v6.4). ALTERADO em 29/10/2026: o espelho fiscal simples e o aviso de
+// No Code do workflow n8n "Gerar HTML do Dossiê" (Dossie OC SeniorX v6.4). ALTERADO em 29/10/2026: sai a secao "Validacoes"; o espelho fiscal simples e o aviso de
 // "sem espelho" sairam; no lugar ficam os marcadores COMPLEMENTO_OC e COMPLEMENTO_DANFE, trocados em gerar.ts por
 // complemento.ts (dados completos da OC, reembolso, sem nota, DANFE). Nao regenerar a partir do n8n sem refazer isso.
 // Globais do n8n: $input, $ (como $('Outro no')), $json e items (= $input.all()).
@@ -752,26 +752,8 @@ const linhasMovimentacoes = movimentacoes.length
   : linhaVazia(5, 'Nenhuma movimentação financeira encontrada.');
 
 // ============================================================
-// VALIDAÇÕES E ALERTAS
+// ALERTAS (a secao de validacoes foi retirada do dossie em 29/10/2026)
 // ============================================================
-
-const validacoes = arr(dados.validacoes);
-
-const linhasValidacoes = validacoes.length
-  ? validacoes
-      .map((v) => {
-        const status = v.ok ? 'OK' : coalesce(v.severidade, 'DIVERGENTE');
-        const classe = v.ok ? 'status status-ok' : 'status status-alerta';
-        return [
-          '<tr>',
-          `<td>${esc(coalesce(v.codigo, v.tipo))}</td>`,
-          `<td><span class="${classe}">${esc(status)}</span></td>`,
-          `<td>${esc(v.descricao)}</td>`,
-          '</tr>',
-        ].join('');
-      })
-      .join('')
-  : linhaVazia(3, 'Nenhuma validação executada.');
 
 const alertas = arr(dados.alertas);
 
@@ -970,12 +952,6 @@ const html = `<!DOCTYPE html>
 <table>
 <thead><tr><th>Título</th><th>Movimento</th><th>Data</th><th>Valor</th><th>Evidência</th></tr></thead>
 <tbody>${linhasMovimentacoes}</tbody>
-</table>
-
-<h2>Validações</h2>
-<table>
-<thead><tr><th>Tipo</th><th>Status</th><th>Descrição</th></tr></thead>
-<tbody>${linhasValidacoes}</tbody>
 </table>
 
 ${
