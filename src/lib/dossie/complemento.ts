@@ -136,6 +136,21 @@ export function chavesDasNotas(docs: any[], codFilOc: number, codForOc: number):
   return [...vistas.values()];
 }
 
+/**
+ * Fornecedores do MESMO GRUPO DE EMPRESAS do fornecedor da OC (E095FOR.CODGRE > 0), incluindo ele proprio. Marketplace (Mercado Livre,
+ * Magalu, Salu...) tem um cadastro por vendedor, e o titulo pode estar em qualquer um deles. Sem grupo = so' o fornecedor da OC.
+ */
+export async function codigosDoGrupoDoFornecedor(oc: { codEmp?: number; codFil: number; numOcp: number }, consultar: Consultar = consultarSenior): Promise<number[]> {
+  const emp = oc.codEmp ?? COD_EMP;
+  const cab = await um(consultar, `SELECT CODFOR FROM E420OCP WHERE CODEMP = ${emp} AND CODFIL = ${oc.codFil} AND NUMOCP = ${oc.numOcp}`);
+  const codFor = Number(cab?.CODFOR);
+  if (!Number.isInteger(codFor) || codFor <= 0) return [];
+  const grupo = Number((await um(consultar, `SELECT CODGRE FROM E095FOR WHERE CODFOR = ${codFor}`))?.CODGRE);
+  if (!Number.isInteger(grupo) || grupo <= 0) return [codFor];
+  const membros = (await consultar(`SELECT CODFOR FROM E095FOR WHERE CODGRE = ${grupo}`)).map((l) => Number(l.CODFOR)).filter((n) => Number.isInteger(n) && n > 0);
+  return [...new Set([codFor, ...membros])];
+}
+
 const aspas = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 export async function coletarComplemento(
