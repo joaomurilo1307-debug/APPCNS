@@ -359,6 +359,16 @@ test("Ciclo: OC ja' PAGA no sistema entra por 90 dias (dossie final); a nao paga
   assert.equal(r.elegiveis, 1);
 });
 
+test("Ciclo: titulo em outro cadastro do MESMO GRUPO de empresas (marketplace) conta para a OC; fora do grupo nao", async () => {
+  const { deps, geradas } = montar({
+    ocs: [oc("1", { codFor: "609066", numTit: "ML9" }), oc("2", { codFor: "100", numTit: "ML9" })],
+    abertos: [{ codFil: "1", numTit: "ML9", codTpt: "DUP", codFor: "712492" }],
+  });
+  deps.gruposFornecedores = async () => new Map([["609066", "2"], ["712492", "2"]]);
+  await executarCiclo(deps, opcoes);
+  assert.deepEqual(geradas.map((g) => g.numOcp), [1]);
+});
+
 test("Ciclo: OC associada a mao a titulo aberto entra mesmo fora da janela de leitura e sem vencimento", async () => {
   const fora = oc("999", { vencimento: null, codFor: "200" });
   const { deps, geradas, porNumero } = montar({

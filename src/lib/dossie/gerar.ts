@@ -9,7 +9,7 @@ import { NOME_SAIDA, executarFluxo, type Item } from "./motor";
 import { NOS } from "./nos/index.js";
 import { emFilaSenior } from "@/lib/senior/getDbInfo";
 import { chaveDaOc, registrarFalha, salvarDossie } from "./salvar";
-import { aplicarComplemento, coletarComplemento, montarHtmlComplemento } from "./complemento";
+import { aplicarComplemento, codigosDoGrupoDoFornecedor, coletarComplemento, montarHtmlComplemento } from "./complemento";
 
 const URL_SENIOR = "https://web01s1p.seniorcloud.com.br:30901/g5-senior-services/sapiens_Synccom_senior_g5_co_ger_db";
 
@@ -61,9 +61,11 @@ export type Dependencias = {
 export async function montarDossie(oc: { codEmp?: number; codFil: number; numOcp: number }, deps: Dependencias = {}) {
   // Cada chamada entra na fila unica da Senior (uma por vez no processo): o agendador de dossies, as telas e a leitura
   // dos custos nao disputam o web service, que atende mal consultas simultaneas.
+  // O titulo da OC pode estar no cadastro de outro fornecedor do mesmo grupo de empresas (marketplace): o fluxo recebe a lista.
+  const grupo = await codigosDoGrupoDoFornecedor({ codEmp: oc.codEmp ?? 1, codFil: oc.codFil, numOcp: oc.numOcp }, deps.consultar);
   const estado = await executarFluxo(
     { codEmp: oc.codEmp ?? 1, codFil: oc.codFil, numOcp: oc.numOcp },
-    { http: (_nome, corpo) => (deps.http ?? ((c: string) => emFilaSenior(() => chamarSenior(c))))(corpo) }
+    { extras: { "Grupo do Fornecedor": [{ json: { codigos: grupo } }] }, http: (_nome, corpo) => (deps.http ?? ((c: string) => emFilaSenior(() => chamarSenior(c))))(corpo) }
   );
   const gerador: any = estado.get(NOME_SAIDA)?.[0]?.[0]?.json ?? {};
   if (typeof gerador.html !== "string" || gerador.html.length < 200 || gerador.error) {

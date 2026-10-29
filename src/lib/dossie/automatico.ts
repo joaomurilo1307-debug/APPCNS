@@ -301,6 +301,8 @@ export type Dependencias = {
   gerar: (oc: { codFil: number; numOcp: number }, extras: { assinatura: string; origem: string }) => Promise<{ ok: boolean; motivo?: string }>;
   /** O servico que converte HTML em PDF responde? (Sem ele, gerar so' enche a lista de erros.) */
   conversorDePdfDisponivel: () => Promise<boolean>;
+  /** Grupo de empresas (E095FOR.CODGRE > 0) de cada fornecedor: codigo sem zeros -> codigo do grupo. Marketplace tem um cadastro por vendedor. */
+  gruposFornecedores?: () => Promise<Map<string, string>>;
   /** Nome (E095FOR) de cada codigo de fornecedor, para a lista do que falta. */
   nomesFornecedores: (codigos: string[]) => Promise<Map<string, string>>;
 };
@@ -321,7 +323,13 @@ async function nomesDosFornecedores(codigos: string[]): Promise<Map<string, stri
   return nomesEmMemoria;
 }
 
+async function lerGruposFornecedores(): Promise<Map<string, string>> {
+  const linhas = await consultarSenior("SELECT CODFOR, CODGRE FROM E095FOR WHERE CODGRE > 0");
+  return new Map(linhas.map((l) => [String(Number(l.CODFOR)), String(Number(l.CODGRE))]));
+}
+
 export const dependenciasPadrao: Dependencias = {
+  gruposFornecedores: lerGruposFornecedores,
   agora: () => new Date(),
   lerOcs: () => lerOcsRecentes(Number(process.env.DOSSIE_AUTO_JANELA_OCS) || JANELA_OCS_PADRAO),
   lerOcsPorNumero,
@@ -382,7 +390,15 @@ export async function executarCiclo(deps: Dependencias = dependenciasPadrao, opc
 
   const abertosPorFornecedor = new Map<string, TituloAbertoSenior[]>();
   for (const t of abertos) for (const chave of chavesFornecedor(t.codFor)) abertosPorFornecedor.set(chave, [...(abertosPorFornecedor.get(chave) ?? []), t]);
-  const abertosDoFornecedor = (codFor: string) => [...new Map(chavesFornecedor(codFor).flatMap((c) => abertosPorFornecedor.get(c) ?? []).map((t) => [`${t.codFil}|${t.codTpt}|${t.numTit}`, t])).values()];
+  // O titulo pode estar no cadastro de outro fornecedor do mesmo grupo de empresas (Mercado Livre, Magalu...): procura em todos.
+  const grupos = (await deps.gruposFornecedores?.()) ?? new Map<string, string>();
+  const membrosDoGrupo = new Map<string, string[]>();
+  for (const [cod, g] of grupos) membrosDoGrupo.set(g, [...(membrosDoGrupo.get(g) ?? []), cod]);
+  const codigosDoGrupo = (codFor: string) => {
+    const g = grupos.get(String(Number(codFor)));
+    return g ? [codFor, ...(membrosDoGrupo.get(g) ?? [])] : [codFor];
+  };
+  const abertosDoFornecedor = (codFor: string) => [...new Map(codigosDoGrupo(codFor).flatMap((cod) => chavesFornecedor(cod)).flatMap((c) => abertosPorFornecedor.get(c) ?? []).map((t) => [`${t.codFil}|${t.codTpt}|${t.numTit}`, t])).values()];
   const estaAberto = (codFor: string, codFil: string, numTit: string) => abertosDoFornecedor(codFor).some((t) => Number(t.codFil) === Number(codFil) && t.numTit === numTit);
 
   // 2) OCs associadas a mao a um titulo ABERTO que ficaram fora da janela de leitura

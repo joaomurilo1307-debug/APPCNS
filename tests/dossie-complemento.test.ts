@@ -1,7 +1,7 @@
 // Complemento do dossie (dados completos da OC, reembolso, sem nota, DANFE). Sem banco nem Senior: a consulta e' simulada.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MARCADOR_DANFE, MARCADOR_OC, aplicarComplemento, chavesDasNotas, coletarComplemento, motivoReembolso, montarHtmlComplemento } from "../src/lib/dossie/complemento";
+import { MARCADOR_DANFE, MARCADOR_OC, aplicarComplemento, chavesDasNotas, codigosDoGrupoDoFornecedor, coletarComplemento, motivoReembolso, montarHtmlComplemento } from "../src/lib/dossie/complemento";
 import { cnpjCpf } from "../src/lib/dossie/formatar";
 
 const CHAVE = "15260902464837000117550010000630861345857990";
@@ -78,6 +78,18 @@ test("Falha: Senior fora do ar ou OC inexistente derruba a coleta (o dossie vai 
   await assert.rejects(coletarComplemento(oc, fluxo(), async (sql) => linhas(sql, { semOc: true })), /não encontrada/);
 });
 
+test("Grupo de empresas: fornecedor sem grupo = so' ele; com grupo = todos os cadastros do grupo (marketplace); sem CODFOR = nada", async () => {
+  const consultar = async (sql: string) => {
+    if (/FROM E420OCP/.test(sql)) return [{ CODFOR: sql.endsWith("= 1") ? "10" : sql.endsWith("= 2") ? "609066" : "" }];
+    if (/SELECT CODGRE/.test(sql)) return [{ CODGRE: /= 609066/.test(sql) ? "2" : "0" }];
+    if (/WHERE CODGRE = 2/.test(sql)) return [{ CODFOR: "617268" }, { CODFOR: "609066" }, { CODFOR: "712492" }];
+    return [];
+  };
+  assert.deepEqual(await codigosDoGrupoDoFornecedor({ codFil: 1, numOcp: 1 }, consultar), [10]);
+  assert.deepEqual(await codigosDoGrupoDoFornecedor({ codFil: 1, numOcp: 2 }, consultar), [609066, 617268, 712492]);
+  assert.deepEqual(await codigosDoGrupoDoFornecedor({ codFil: 1, numOcp: 3 }, consultar), []);
+});
+
 test("Marcadores: troca no HTML do gerador; sem marcador (gerador desatualizado) da erro", () => {
   const html = `<style>a{}</style>${MARCADOR_OC}x${MARCADOR_DANFE}`;
   const out = aplicarComplemento(html, { oc: "OC!", danfe: "DANFE!", css: ".c{}" });
@@ -88,6 +100,5 @@ test("Marcadores: troca no HTML do gerador; sem marcador (gerador desatualizado)
 test("Titulo da OC e' buscado por numero E fornecedor (OC 16113: o titulo 39A1 existe em 6 fornecedores e o dossie trouxe 6 notas)", async () => {
   const { default: fluxo } = await import("../src/lib/dossie/fluxo.json");
   const corpo = (fluxo as any).nos["Coletar Títulos Financeiros"].body as string;
-  assert.match(corpo, /NUMTIT=:NumTit AND CODFOR=:CodFor/);
-  assert.match(corpo, /&lt;name&gt;CodFor&lt;\/name&gt;/);
+  assert.match(corpo, /NUMTIT=:NumTit AND CODFOR IN \(\{\{\$json\.codForGrupo\}\}\)/);
 });
