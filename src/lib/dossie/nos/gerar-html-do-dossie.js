@@ -1,5 +1,7 @@
 // @ts-nocheck
-// No Code do workflow n8n "Gerar HTML do Dossiê" (Dossie OC SeniorX v6.4), codigo original sem alteracoes.
+// No Code do workflow n8n "Gerar HTML do Dossiê" (Dossie OC SeniorX v6.4). ALTERADO em 29/10/2026: o espelho fiscal simples e o aviso de
+// "sem espelho" sairam; no lugar ficam os marcadores COMPLEMENTO_OC e COMPLEMENTO_DANFE, trocados em gerar.ts por
+// complemento.ts (dados completos da OC, reembolso, sem nota, DANFE). Nao regenerar a partir do n8n sem refazer isso.
 // Globais do n8n: $input, $ (como $('Outro no')), $json e items (= $input.all()).
 export default async function ($input, $, $json) {
 // ============================================================
@@ -39,6 +41,14 @@ function num(v) {
   const limpo = String(v).trim().replace(/\./g, '').replace(',', '.');
   const n = Number(limpo);
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Primeiro valor MAIOR QUE ZERO (ou 0). Em OC liquidada a Senior zera o saldo (VLRLIQ) e o valor so' sobrevive em
+ * VLRORI/VLRBRU; coalesce() pararia no 0 e o dossie mostraria R$ 0,00 numa compra de milhares (visto na OC 15500).
+ */
+function positivo(...valores) {
+  return valores.find((x) => num(x) > 0) ?? 0;
 }
 
 function moeda(v) {
@@ -372,7 +382,7 @@ const servicos = arr(dados.servicos);
 const rateios = arr(dados.rateios);
 
 const totalProdutos = produtos.reduce(
-  (t, p) => t + num(coalesce(p.valores?.liquido, p.valores?.bruto, p.valorTotal)),
+  (t, p) => t + num(positivo(p.valores?.liquido, p.valores?.original, p.valores?.bruto, p.valorTotal)),
   0,
 );
 
@@ -380,9 +390,10 @@ const totalServicos = servicos.reduce(
   (t, s) =>
     t +
     num(
-      coalesce(
+      positivo(
         s.valores?.liquidoServico,
         s.valores?.liquido,
+        s.valores?.original,
         s.valores?.bruto,
         s.valorTotal,
       ),
@@ -396,8 +407,9 @@ const totalNotas = documentosFiscais.reduce(
 );
 
 const valorOC = num(
-  coalesce(
+  positivo(
     ordemCompra.valores?.liquido,
+    ordemCompra.valores?.original,
     dados.resumo?.valores?.ordemCompra,
     totalProdutos + totalServicos,
   ),
@@ -424,7 +436,7 @@ const linhasProdutos = produtos.length
           )}</td>`,
           `<td class="num">${esc(moeda(coalesce(v.unitario, item.valorUnitario)))}</td>`,
           `<td class="num">${esc(
-            moeda(coalesce(v.liquido, v.bruto, item.valorTotal)),
+            moeda(positivo(v.liquido, v.original, v.bruto, item.valorTotal)),
           )}</td>`,
           '</tr>',
         ].join('');
@@ -453,7 +465,7 @@ const linhasServicos = servicos.length
           )}</td>`,
           `<td class="num">${esc(moeda(coalesce(v.unitario, item.valorUnitario)))}</td>`,
           `<td class="num">${esc(
-            moeda(coalesce(v.liquidoServico, v.liquido, v.bruto, item.valorTotal)),
+            moeda(positivo(v.liquidoServico, v.liquido, v.original, v.bruto, item.valorTotal)),
           )}</td>`,
           '</tr>',
         ].join('');
@@ -485,7 +497,14 @@ const linhasRateios = rateios.length
             percentual(coalesce(v.percentualRateio, v.percentualConta, item.percentual)),
           )}</td>`,
           `<td class="num">${esc(
-            moeda(coalesce(v.valorRateado, v.valorConta, item.valor)),
+            moeda(
+              positivo(
+                v.valorRateado,
+                v.valorConta,
+                item.valor,
+                (num(coalesce(v.percentualRateio, v.percentualConta, item.percentual)) / 100) * valorOC,
+              ),
+            ),
           )}</td>`,
           '</tr>',
         ].join('');
@@ -770,115 +789,6 @@ const linhasAlertas = alertas.length
   : linhaVazia(2, 'Nenhum alerta registrado.');
 
 // ============================================================
-// ESPELHOS FISCAIS
-// ============================================================
-
-/** Unifica itens de produto e de serviço de uma nota em uma só lista. */
-function itensDaNota(nota) {
-  const itens = nota.itens;
-  if (Array.isArray(itens)) return itens;
-  const bloco = obj(itens);
-
-  const deProduto = arr(bloco.produtos).map((i) => ({
-    codigo: coalesce(i.produto?.codigo, i.codigo),
-    descricao: coalesce(i.produto?.descricao, i.descricao),
-    quantidade: coalesce(i.quantidade?.recebida, i.quantidade?.estoque, i.qtd),
-    unidade: coalesce(i.quantidade?.unidadeNota, i.quantidade?.unidadeMedida, i.unidade),
-    valor: coalesce(i.valores?.liquido, i.valores?.bruto, i.valor),
-  }));
-
-  const deServico = arr(bloco.servicos).map((i) => ({
-    codigo: coalesce(i.servico?.codigo, i.codigo),
-    descricao: coalesce(i.servico?.descricao, i.descricao),
-    quantidade: coalesce(i.quantidade?.recebida, i.qtd),
-    unidade: coalesce(i.quantidade?.unidade, i.unidade),
-    valor: coalesce(i.valores?.liquido, i.valores?.bruto, i.valor),
-  }));
-
-  return [...deProduto, ...deServico];
-}
-
-const notasParaEspelho = documentosFiscais.filter(
-  (n) => n.espelhoFiscal?.gerar !== false,
-);
-
-const espelhosFiscais = notasParaEspelho
-  .map((nota, indice) => {
-    const v = obj(nota.valores);
-    const itens = itensDaNota(nota);
-    const chave = chaveFormatada(
-      coalesce(nota.fiscal?.chaveEletronica, nota.chaveEletronica),
-    );
-
-    const linhasItens = itens.length
-      ? itens
-          .map((i) =>
-            [
-              '<tr>',
-              `<td>${esc(i.codigo)}</td>`,
-              `<td>${esc(i.descricao)}</td>`,
-              `<td class="num">${esc(quantidade(i.quantidade))}</td>`,
-              `<td>${esc(i.unidade)}</td>`,
-              `<td class="num">${esc(moeda(i.valor))}</td>`,
-              '</tr>',
-            ].join(''),
-          )
-          .join('')
-      : linhaVazia(5, 'Itens não disponibilizados.');
-
-    return `
-<div class="espelho-fiscal">
-<div class="espelho-topo">
-<div class="espelho-topo-esquerda">
-<div class="espelho-anexo">ANEXO FISCAL ${indice + 1} DE ${notasParaEspelho.length}</div>
-<div class="espelho-titulo">ESPELHO DA NOTA FISCAL</div>
-<div class="espelho-aviso">Fornecedor: ${esc(fornecedorExtensoFiscal)}<br>Documento fiscal relacionado à Ordem de Compra: ${esc(numeroOC)}</div>
-</div>
-<div class="espelho-numero">
-<div class="rotulo-fiscal">NOTA</div>
-<div class="numero-nota">${esc(nota.numero)}</div>
-<div>Série: ${esc(nota.serie)}</div>
-</div>
-</div>
-<div class="titulo-secao-fiscal">IDENTIFICAÇÃO DA NOTA FISCAL</div>
-<table class="tabela-fiscal">
-<tr><th>Fornecedor</th><td colspan="3">${esc(fornecedorExtensoFiscal)}</td></tr>
-<tr><th>Número</th><td>${esc(nota.numero)}</td><th>Série</th><td>${esc(nota.serie)}</td></tr>
-<tr><th>Emissão</th><td>${esc(dataBR(nota.datas?.emissao))}</td><th>Valor</th><td>${esc(
-      moeda(coalesce(v.liquido, v.informado)),
-    )}</td></tr>
-</table>
-<div class="titulo-secao-fiscal">CHAVE ELETRÔNICA</div>
-<div class="chave-eletronica">${chave ? esc(chave) : 'Não informada'}</div>
-<div class="titulo-secao-fiscal">ITENS DA NOTA FISCAL</div>
-<table class="tabela-fiscal tabela-itens-fiscais">
-<thead><tr><th>Código</th><th>Descrição</th><th>Quantidade</th><th>Unidade</th><th>Valor</th></tr></thead>
-<tbody>${linhasItens}</tbody>
-</table>
-<div class="titulo-secao-fiscal">TRIBUTOS E INFORMAÇÕES FISCAIS</div>
-<table class="tabela-fiscal">
-<tr><th>Situação</th><td>${esc(nota.situacao?.descricao)}</td><th>Tipo</th><td>${esc(
-      coalesce(nota.documento?.natureza, nota.espelhoFiscal?.tipo),
-    )}</td></tr>
-<tr><th>Estratégia</th><td colspan="3">${esc(estrategiaDocumento(nota))}</td></tr>
-</table>
-<div class="titulo-secao-fiscal">TOTAIS</div>
-<table class="tabela-fiscal">
-<tr><th>Valor Total da Nota</th><td class="total-nota">${esc(
-      moeda(coalesce(v.liquido, v.informado)),
-    )}</td></tr>
-</table>
-<div class="rodape-fiscal">${esc(
-      coalesce(
-        nota.espelhoFiscal?.aviso,
-        'Espelho fiscal gerado automaticamente pelo Dossiê de Ordem de Compra.',
-      ),
-    )}</div>
-</div>`;
-  })
-  .join('');
-
-// ============================================================
 // CSS — LAYOUT APROVADO (INALTERADO)
 // ============================================================
 
@@ -995,6 +905,8 @@ const html = `<!DOCTYPE html>
 <div class="card"><div class="rotulo">Notas Fiscais</div><div class="valor">${esc(moeda(totalNotas))}</div></div>
 </div>
 
+<!--COMPLEMENTO_OC-->
+
 <h2>Produtos</h2>
 <table>
 <thead><tr><th>Seq.</th><th>Código</th><th>Descrição</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th></tr></thead>
@@ -1075,16 +987,7 @@ ${
 </table>
 </div>`
 }
-${
-  notasParaEspelho.length
-    ? ''
-    : `
-<div class="bloco">
-<h2>Espelho Fiscal</h2>
-<div class="sem-alerta">Nenhum espelho fiscal foi gerado: não há nota fiscal vinculada a esta Ordem de Compra na E440NFC. O espelho é montado a partir do documento fiscal registrado no ERP — enquanto a nota não for lançada, não existe conteúdo a anexar.</div>
-</div>`
-}
-${espelhosFiscais}
+<!--COMPLEMENTO_DANFE-->
 
 <div class="rodape">Documento gerado automaticamente pelo GERAR_HTML_DOSSIE v6.3.</div>
 

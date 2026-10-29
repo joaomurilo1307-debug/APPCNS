@@ -43,7 +43,7 @@ const AGORA = new Date("2026-10-20T15:00:00Z");
 const opcoes: Opcoes = { hoje: HOJE, diasAtras: 30, diasFrente: 45, diasAtrasPagas: 90, lote: 12 };
 
 const oc = (numOcp: string, extra: Partial<OcAlvo> = {}): OcAlvo => ({
-  numOcp, codFil: "1", codFor: "100", fornecedorNome: `FORNECEDOR ${numOcp}`, vencimento: HOJE, sitApr: "APR", sitOcp: "1", numTit: null, numNfc: null, valor: 1000, ...extra,
+  numOcp, codFil: "1", codFor: "100", fornecedorNome: `FORNECEDOR ${numOcp}`, vencimento: HOJE, sitApr: "APR", sitOcp: "1", numTit: `T${numOcp}`, numNfc: null, valor: 1000, ...extra,
 });
 const reg = (numOcp: string, extra: Partial<RegistroDossie> = {}): RegistroDossie => ({
   chave: chaveDaOc(1, numOcp), numOcp, status: "PUBLICADO", motivo: null, assinatura: null, tentativas: 0, arquivoPath: `dossies/${numOcp}.pdf`, titulos: [], atualizadoEm: new Date(AGORA.getTime() - 3_600_000), ...extra,
@@ -104,9 +104,9 @@ test("Janela de vencimento e elegibilidade", () => {
   const { de, ate } = janelaDeVencimento(HOJE, 30, 45);
   assert.deepEqual([de, ate], ["2026-09-20", "2026-12-04"]);
   const ctx = (extra = {}) => ({ temTituloAberto: false, temVinculoManual: false, de, ate, ...extra });
-  assert.equal(motivoDeElegibilidade(oc("1"), ctx()), "VENCIMENTO_NO_PERIODO");
-  assert.equal(motivoDeElegibilidade(oc("1", { vencimento: "2026-09-20" }), ctx()), "VENCIMENTO_NO_PERIODO"); // limite inclusivo
-  assert.equal(motivoDeElegibilidade(oc("1", { vencimento: "2026-12-05" }), ctx()), null);
+  // 29/10/2026: so' depois que a OC vira titulo -- vencer no periodo NAO basta (o PDF sairia sem a nota fiscal)
+  assert.equal(motivoDeElegibilidade(oc("1"), ctx()), null);
+  assert.equal(motivoDeElegibilidade(oc("1", { vencimento: "2026-09-20" }), ctx()), null);
   assert.equal(motivoDeElegibilidade(oc("1", { vencimento: "2026-01-10" }), ctx({ temTituloAberto: true })), "TITULO_ABERTO");
   assert.equal(motivoDeElegibilidade(oc("1", { vencimento: null }), ctx({ temVinculoManual: true })), "VINCULO_MANUAL");
   assert.equal(motivoDeElegibilidade(oc("1", { vencimento: null }), ctx()), null);
@@ -217,7 +217,8 @@ function montar(c: Cenario) {
     agora: () => AGORA,
     lerOcs: async () => c.ocs,
     lerOcsPorNumero: async (nums) => (porNumero.push(nums), (c.foraDaJanela ?? []).filter((o) => nums.includes(o.numOcp))),
-    lerTitulosAbertos: async () => c.abertos ?? [],
+    // sem lista explicita: toda OC que cita um titulo (numTit) tem esse titulo aberto na Senior -- o dossie so' sai depois que a OC vira titulo
+    lerTitulosAbertos: async () => c.abertos ?? c.ocs.filter((o) => o.numTit).map((o) => ({ codFil: o.codFil, numTit: o.numTit!, codTpt: "DUP", codFor: o.codFor })),
     vinculosManuais: async () => c.vinculos ?? [],
     ocsPagas: async () => new Set(c.pagas ?? []),
     registros: async (nums) => (c.registros ?? []).filter((r) => r.numOcp && nums.includes(r.numOcp)),
@@ -237,16 +238,16 @@ function montar(c: Cenario) {
 test("Ciclo: gera quem falta (OC aprovada no periodo OU com titulo aberto) e ignora o resto", async () => {
   const { deps, geradas, marcadas } = montar({
     ocs: [
-      oc("1"), // no periodo, sem dossie -> gera
-      oc("2", { vencimento: "2026-03-01" }), // fora do periodo e sem titulo aberto -> ignora
+      oc("1"), // com titulo aberto, sem dossie -> gera
+      oc("2", { numTit: null }), // no periodo, mas ainda sem titulo -> ignora (o PDF sairia sem a nota fiscal)
       oc("3", { vencimento: "2026-03-01", numTit: "T3" }), // fora do periodo MAS com titulo aberto -> gera
       oc("4", { sitApr: "ANA" }), // nao aprovada
       oc("5", { sitApr: "CAN" }),
       oc("6", { sitOcp: "5" }), // cancelada
-      oc("7", { vencimento: null }), // sem vencimento e sem titulo
+      oc("7", { vencimento: null, numTit: null }), // sem vencimento e sem titulo
       oc("8", { codFil: "2" }), // outra filial tambem entra (o n8n so' via a filial 1)
     ],
-    abertos: [{ codFil: "1", numTit: "T3", codTpt: "DUP", codFor: "100" }],
+    abertos: ["T1", "T3", "T8"].map((numTit) => ({ codFil: numTit === "T8" ? "2" : "1", numTit, codTpt: "DUP", codFor: "100" })),
   });
   const r = await executarCiclo(deps, opcoes);
   assert.deepEqual(geradas.map((g) => g.numOcp).sort(), [1, 3, 8]);
@@ -260,11 +261,12 @@ test("Ciclo: gera quem falta (OC aprovada no periodo OU com titulo aberto) e ign
 
 test("Ciclo: o que ja esta em dia nao e refeito; sem assinatura adota; assinatura diferente refaz; PDF sumido refaz", async () => {
   const o1 = oc("1", { numTit: "T1" });
-  const ab: TituloAbertoSenior[] = [{ codFil: "1", numTit: "T1", codTpt: "DUP", codFor: "100" }];
+  const ab: TituloAbertoSenior[] = ["T1", "T3", "T4", "T5"].map((numTit) => ({ codFil: "1", numTit, codTpt: "DUP", codFor: "100" }));
   const assinatura1 = assinaturaDaOc(o1, ["T1"]);
   const { deps, geradas, adotadas } = montar({
-    ocs: [o1, oc("2"), oc("3"), oc("4"), oc("5")],
+    ocs: [o1, oc("2", { numTit: null }), oc("3"), oc("4"), oc("5")], // 2 entra por ja' estar paga (nao cita titulo)
     abertos: ab,
+    pagas: ["2"],
     registros: [
       reg("1", { assinatura: assinatura1 }), // em dia
       reg("2", { titulos: [] }), // n8n/botao sem assinatura, sem titulo na OC -> adota
@@ -349,11 +351,11 @@ test("Ciclo: tres falhas seguidas param o ciclo (nao insiste); sucesso no meio z
 
 test("Ciclo: OC ja' PAGA no sistema entra por 90 dias (dossie final); a nao paga com o mesmo vencimento fica de fora", async () => {
   const { deps, geradas } = montar({
-    ocs: [oc("1", { vencimento: "2026-08-15" }), oc("2", { vencimento: "2026-08-15" }), oc("3", { vencimento: "2026-06-01" })],
+    ocs: [oc("1", { vencimento: "2026-08-15", numTit: null }), oc("2", { vencimento: "2026-08-15", numTit: null }), oc("3", { vencimento: "2026-06-01", numTit: null })],
     pagas: ["1", "3"],
   });
   const r = await executarCiclo(deps, opcoes);
-  assert.deepEqual(geradas.map((g) => g.numOcp), [1]); // 2: nao paga e fora de -30d; 3: paga, mas venceu ha mais de 90 dias
+  assert.deepEqual(geradas.map((g) => g.numOcp), [1]); // 2: nao paga e sem titulo; 3: paga, mas venceu ha mais de 90 dias
   assert.equal(r.elegiveis, 1);
 });
 
