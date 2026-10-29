@@ -526,6 +526,9 @@ const indiceAprovadores = new Map(
   cadastroAprovadores.map((a) => [String(a.codigoUsuario), a]),
 );
 
+// Nome do nível de aprovação (regra do financeiro, 29/10/2026); outro nível aparece como número.
+const NOME_NIVEL = { 1: 'Nível 1 - Coordenador', 2: 'Nível 2 - Gerência', 3: 'Nível 3 - Diretoria' };
+
 const linhasAprovacoes = niveisAprovacao.length
   ? niveisAprovacao
       .map((nivel) => {
@@ -539,7 +542,7 @@ const linhasAprovacoes = niveisAprovacao.length
         const usuario = coalesce(cadastro.usuario, cadastro.login);
         return [
           '<tr>',
-          `<td>${esc(coalesce(nivel.nivel, nivel.sequenciaNivel, '-'))}</td>`,
+          `<td>${esc(NOME_NIVEL[Number(coalesce(nivel.nivel, nivel.sequenciaNivel))] ?? coalesce(nivel.nivel, nivel.sequenciaNivel, '-'))}</td>`,
           `<td>${esc(
             usuario && codigoUsuario !== null
               ? `${codigoUsuario} - ${usuario}`
