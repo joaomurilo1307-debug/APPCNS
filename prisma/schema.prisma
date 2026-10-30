@@ -610,6 +610,23 @@ model TituloContasAPagar {
   @@index([codFor])
 }
 
+// Vinculos Titulo <-> OC que a PROPRIA Senior ja registra (unica fonte do motor automatico
+// de vinculoOcTitulo.ts): origem "NF" = OC gravada nos itens da NF de compra (E440IPC/E440ISC.NUMOCP,
+// chave = NUMNFC do titulo); origem "TITULO" = E501TCP.USU_NUMOCP (chave = NUMTIT). Tabela inteira
+// refeita por src/lib/senior/vinculosOc.ts -- nao guarda nada digitado no app.
+model VinculoOcSenior {
+  id           String   @id @default(cuid())
+  origem       String // "NF" | "TITULO"
+  codFil       String
+  codFor       String
+  chave        String
+  numOcp       String
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  @@unique([origem, codFil, codFor, chave, numOcp])
+  @@index([origem, codFor, chave])
+}
+
 // Associacao manual Titulo <-> OC feita na Programacao de Pagamento. Chave natural
 // (sem FK) de proposito: o sincronismo apaga e recria TituloContasAPagar, e o vinculo
 // nao pode se perder junto. Tem prioridade sobre o motor automatico e sobre

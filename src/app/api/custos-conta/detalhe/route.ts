@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
 import { COMPETENCIA_FISCAL_ATIVA } from "@/lib/custos/competenciaDaPlanilha";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
@@ -62,7 +63,7 @@ export async function GET(req: Request) {
   const codToNome: Record<string, string> = {};
   for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
 
-  const motor = criarMotorVinculo(ocs);
+  const motor = criarMotorVinculo(ocs, await carregarVinculosOc(prisma));
 
   // detalhe (composicao_custo_financeiro) não carrega tipo/NF/valor real
   // do título -- só o valor RATEADO pra este CCU. Bug real encontrado pelo
@@ -101,8 +102,7 @@ export async function GET(req: Request) {
             codFor: real.codFor,
             fornecedorNome: real.fornecedorNome,
             tipo: real.tipo,
-            numOcp: real.numOcp,
-            filOcp: real.filOcp,
+            codFil: real.codFil,
             numNfc: real.numNfc,
             valorOriginal: real.valorOriginal,
             dataEmissao: real.dataEmissao,
@@ -115,8 +115,7 @@ export async function GET(req: Request) {
             codFor: l.codFor,
             fornecedorNome: l.fornecedorNome,
             tipo: "",
-            numOcp: null,
-            filOcp: null,
+            codFil: "",
             numNfc: null,
             valorOriginal: l.valorRateado,
             dataEmissao: l.dataEntrada ?? l.competencia,

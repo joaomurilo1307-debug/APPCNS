@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
+import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
 import { aplicarCorrecaoManual, criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 import { buscarDadosPagamento, type PedidoTitulo } from "@/lib/senior/dadosPagamentoTitulos";
 import { sincronizacaoEmCurso } from "@/lib/senior/formasPagamento";
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
 
   // OC do titulo: mesma regra da Programacao de Pagamento (so' vinculo com prova
   // -- referencia, NF, parcela ou correcao manual --, nunca "parece que e' essa").
-  const motor = criarMotorVinculo(ocs);
+  const motor = criarMotorVinculo(ocs, await carregarVinculosOc(prisma));
   const ocPorNumero = new Map(ocs.map((o) => [o.numOcp, o]));
   const naoPagamento = titulos.filter((t) => t.tipo === "PRV"); // provisao contabil: nao ha o que buscar
   const ocDoTitulo = new Map<string, string | null>();

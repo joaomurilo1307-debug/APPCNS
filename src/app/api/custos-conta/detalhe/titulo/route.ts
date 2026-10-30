@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 import { escolherTituloReal, type CandidatoTitulo } from "@/lib/escolherTituloReal";
@@ -77,15 +78,14 @@ export async function GET(req: Request) {
   // pra explicar, dentro do próprio dossiê do título, se tem OC ou não e
   // por quê (pedido do João 15/09/2026: "se foi aprovado por alguém como
   // que não tem OC, isso que eu não to conseguindo visualizar").
-  const motor = criarMotorVinculo(ocs);
+  const motor = criarMotorVinculo(ocs, await carregarVinculosOc(prisma));
   const vinculo = tituloReal
     ? motor.ocRelacionadaDe({
         numTit: tituloReal.numTit,
         codFor: tituloReal.codFor,
         fornecedorNome: tituloReal.fornecedorNome,
         tipo: tituloReal.tipo,
-        numOcp: tituloReal.numOcp,
-        filOcp: tituloReal.filOcp,
+        codFil: tituloReal.codFil,
         numNfc: tituloReal.numNfc,
         valorOriginal: tituloReal.valorOriginal,
         dataEmissao: tituloReal.dataEmissao,
