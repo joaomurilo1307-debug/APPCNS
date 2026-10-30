@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
+import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
 import {
   criarMotorVinculo,
   aplicarCorrecaoManual,
@@ -66,7 +67,7 @@ export async function GET(req: Request) {
     (oc) => oc.previsaoPagamento && oc.previsaoPagamento >= inicio && oc.previsaoPagamento <= fim
   );
 
-  const motor = criarMotorVinculo(todasOcs);
+  const motor = criarMotorVinculo(todasOcs, await carregarVinculosOc(prisma));
   const ocPorNumero = new Map(todasOcs.map((o) => [o.numOcp, o]));
 
   // Índice fornecedor -> títulos, só pra esta rota (não mexe no motor
@@ -81,7 +82,7 @@ export async function GET(req: Request) {
     }
   }
 
-  function filialCompativelOc(titulo: TituloParaVinculo, oc: OcParaVinculo) {
+  function filialCompativelOc(titulo: { filOcp: string | null }, oc: OcParaVinculo) {
     const filialTitulo = normalizarReferencia(titulo.filOcp);
     const filialOC = normalizarReferencia(oc.codFil);
     return !filialTitulo || !filialOC || filialTitulo === filialOC;

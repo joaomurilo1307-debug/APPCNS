@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
 import { escopoAprovacoesOC, podeAbrirOC } from "@/lib/acesso/aprovacoesOc";
 import { criarMotorVinculo, aplicarCorrecaoManual, chavesFornecedor, dataCompativel, mesmoValor } from "@/lib/vinculoOcTitulo";
 import { carregarCatalogoFormasPagamento, garantirFormasPagamentoAtualizadas } from "@/lib/senior/formasPagamento";
@@ -74,7 +75,7 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
       },
     }),
   ]);
-  const motor = criarMotorVinculo(todasOcs);
+  const motor = criarMotorVinculo(todasOcs, await carregarVinculosOc(prisma));
   const ocPorNumero = new Map(todasOcs.map((o) => [o.numOcp, o]));
   const titulosVinculados = titulos
     .filter((t) => aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada?.numOcp === params.numOcp)

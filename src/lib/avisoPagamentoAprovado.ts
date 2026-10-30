@@ -10,6 +10,7 @@
 // Nunca derruba a aprovacao: qualquer falha vira { enviado: false, motivo }.
 
 import { prisma } from "@/lib/prisma";
+import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
 import { consultarSenior } from "@/lib/senior/getDbInfo";
 import { sendAvisoEmail } from "@/lib/mailer";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
@@ -84,7 +85,7 @@ export async function avisarCriadorOc(tituloId: string, aprovadoPor: string): Pr
       },
     });
     const porNumero = new Map(ocs.map((o) => [o.numOcp, o]));
-    const vinculo = aplicarCorrecaoManual(titulo, (n) => porNumero.get(n), criarMotorVinculo(ocs).ocRelacionadaDe(titulo));
+    const vinculo = aplicarCorrecaoManual(titulo, (n) => porNumero.get(n), criarMotorVinculo(ocs, await carregarVinculosOc(prisma)).ocRelacionadaDe(titulo));
     const oc = vinculo.ocRelacionada ? porNumero.get(vinculo.ocRelacionada.numOcp) : undefined;
     if (!oc) return { enviado: false, motivo: "Título sem OC vinculada" };
 

@@ -6,11 +6,10 @@
 // aparecer". Um só motor pros dois sentidos evita as duas pontas
 // divergirem com o tempo.
 //
-// Cruzamento com OC: o vínculo só é exibido como confirmado quando existe
-// uma relação identificável na origem do Senior: NUMOCP/FILOCP no título,
-// USU_NUMTIT/USU_NUMNFC digitado na OC ou parcela confirmável pela
-// referência-base. Fornecedor + valor + data serve apenas para explicar uma
-// possível candidata; nunca cria um vínculo por si só.
+// Cruzamento com OC (regra de 30/10/2026): o vínculo automático vem só de
+// USU_NUMOCP do título ou da OC gravada na NF de compra do título -- ver
+// criarMotorVinculo. As funções de referência/parcela abaixo continuam
+// exportadas porque o dossiê e o aviso de candidatas ainda as usam.
 
 export type OcParaVinculo = {
   numOcp: string;
@@ -30,11 +29,10 @@ export type OcParaVinculo = {
 
 export type TituloParaVinculo = {
   numTit: string;
+  codFil: string;
   codFor: string;
   fornecedorNome: string | null;
   tipo: string;
-  numOcp: string | null;
-  filOcp: string | null;
   numNfc: string | null;
   valorOriginal: number;
   dataEmissao: Date;
@@ -203,91 +201,35 @@ export function tituloPodeTerOC(titulo: TituloParaVinculo) {
   return true;
 }
 
-// Motor: recebe TODAS as OCs uma vez (monta os índices) e devolve uma
-// função que resolve o vínculo de QUALQUER título contra esse conjunto --
-// usado tanto pra listar títulos (uma chamada por título) quanto pro mapa
-// da OC (filtra o resultado por numOcp, sentido inverso).
-export function criarMotorVinculo(ocs: OcParaVinculo[]) {
-  function adicionarIndice(mapa: Map<string, OcParaVinculo[]>, chave: string, oc: OcParaVinculo) {
-    const lista = mapa.get(chave) ?? [];
-    if (!lista.some((item) => item.numOcp === oc.numOcp)) lista.push(oc);
-    mapa.set(chave, lista);
-  }
+export type VinculoSenior = { origem: string; codFil: string; codFor: string; chave: string; numOcp: string };
 
+// Motor: recebe TODAS as OCs e os vinculos que a Senior registra (ver
+// src/lib/senior/vinculosOc.ts) e devolve uma funcao que resolve o vinculo de
+// QUALQUER titulo -- usado tanto pra listar titulos quanto pro mapa da OC
+// (filtra o resultado por numOcp, sentido inverso).
+//
+// Regra (pedido 30/10/2026): o vinculo automatico vem EXCLUSIVAMENTE de
+//  1) E501TCP.USU_NUMOCP do titulo, ou
+//  2) OC gravada na NF de compra do titulo (E440IPC/E440ISC.NUMOCP via NUMNFC).
+// Nada de referencia digitada na OC, parcela, nem fornecedor+valor+data.
+export function criarMotorVinculo(ocs: OcParaVinculo[], vinculos: VinculoSenior[]) {
   const ocPorNumero = new Map<string, OcParaVinculo>();
-  const ocPorReferenciaFornecedor = new Map<string, OcParaVinculo[]>();
-  const ocPorPrefixoParcelaFornecedor = new Map<string, OcParaVinculo[]>();
-  const ocPorBaseFornecedor = new Map<string, OcParaVinculo[]>();
-  const ocPorBaseParcelaFornecedor = new Map<string, OcParaVinculo[]>();
-  const ocsPorFornecedor = new Map<string, OcParaVinculo[]>();
+  for (const oc of ocs) ocPorNumero.set(normalizarReferencia(oc.numOcp), oc);
 
-  for (const oc of ocs) {
-    ocPorNumero.set(normalizarReferencia(oc.numOcp), oc);
-    const fornecedores = chavesFornecedor(oc.fornecedorCodigo, oc.fornecedorNome);
-    for (const fornecedor of fornecedores) {
-      adicionarIndice(ocsPorFornecedor, fornecedor, oc);
-    }
-
-    for (const campo of [oc.usuNumTit, oc.usuNumNfc]) {
-      for (const referencia of variantesReferencia(campo)) {
-        for (const fornecedor of fornecedores) {
-          adicionarIndice(ocPorReferenciaFornecedor, `${fornecedor}|${referencia}`, oc);
-        }
-        const prefixo = prefixoParcela(referencia);
-        const bases = prefixo ? variantesReferencia(prefixo) : [referencia];
-        for (const fornecedor of fornecedores) {
-          for (const base of bases) adicionarIndice(ocPorBaseFornecedor, `${fornecedor}|${base}`, oc);
-          if (!prefixo) continue;
-          for (const base of bases) {
-            adicionarIndice(ocPorPrefixoParcelaFornecedor, `${fornecedor}|${base}`, oc);
-            adicionarIndice(ocPorBaseParcelaFornecedor, `${fornecedor}|${base}`, oc);
-          }
-        }
-      }
-    }
+  const chaveVinculo = (origem: string, codFil: string, codFor: string, chave: string) =>
+    `${origem}|${normalizarReferencia(codFil)}|${normalizarReferencia(codFor)}|${normalizarReferencia(chave)}`;
+  const indice = new Map<string, Set<string>>();
+  for (const v of vinculos) {
+    const k = chaveVinculo(v.origem, v.codFil, v.codFor, v.chave);
+    (indice.get(k) ?? indice.set(k, new Set()).get(k)!).add(normalizarReferencia(v.numOcp));
   }
-
-  function buscarIndice(mapa: Map<string, OcParaVinculo[]>, fornecedores: string[], referencias: string[]) {
-    const resultado = new Map<string, OcParaVinculo>();
-    for (const fornecedor of fornecedores) {
-      for (const referencia of referencias) {
-        for (const oc of mapa.get(`${fornecedor}|${referencia}`) ?? []) resultado.set(oc.numOcp, oc);
-      }
-    }
-    return [...resultado.values()];
-  }
+  const buscar = (origem: string, titulo: TituloParaVinculo, chave: string | null | undefined) =>
+    referenciaPreenchida(chave) ? [...(indice.get(chaveVinculo(origem, titulo.codFil, titulo.codFor, chave!)) ?? [])] : [];
 
   function fornecedorCompativel(titulo: TituloParaVinculo, oc: OcParaVinculo) {
     const doTitulo = chavesFornecedor(titulo.codFor, titulo.fornecedorNome);
     const daOC = chavesFornecedor(oc.fornecedorCodigo, oc.fornecedorNome);
     return doTitulo.some((chave) => daOC.includes(chave));
-  }
-
-  function filialCompativel(titulo: TituloParaVinculo, oc: OcParaVinculo) {
-    const filialTitulo = normalizarReferencia(titulo.filOcp);
-    const filialOC = normalizarReferencia(oc.codFil);
-    return !referenciaPreenchida(filialTitulo) || !referenciaPreenchida(filialOC) || filialTitulo === filialOC;
-  }
-
-  function filtrarCandidatasValidas(titulo: TituloParaVinculo, candidatas: OcParaVinculo[]) {
-    return candidatas.filter((oc) => fornecedorCompativel(titulo, oc) && filialCompativel(titulo, oc));
-  }
-
-  // Uma referência pode aparecer em mais de uma OC (reprocessamento, compra
-  // parcial ou preenchimento repetido). Só escolhemos automaticamente quando
-  // outra evidência independente deixa uma única candidata. Situação APR não
-  // desempata relação: uma OC aprovada não vira "a certa" só por estar verde.
-  function escolherCandidata(candidatas: OcParaVinculo[], titulo: TituloParaVinculo) {
-    const unicas = [...new Map(candidatas.map((oc) => [oc.numOcp, oc])).values()];
-    if (unicas.length === 1) return unicas[0];
-
-    const porValor = unicas.filter((oc) => mesmoValor(oc.valor, titulo.valorOriginal));
-    if (porValor.length === 1) return porValor[0];
-
-    const porData = unicas.filter((oc) => dataCompativel(oc, titulo));
-    if (porData.length === 1) return porData[0];
-
-    return null;
   }
 
   function centroCustoDaOC(oc: OcParaVinculo) {
@@ -303,13 +245,13 @@ export function criarMotorVinculo(ocs: OcParaVinculo[]) {
     );
   }
 
-  function resultadoComOC(oc: OcParaVinculo, titulo: TituloParaVinculo, parcela: boolean, motivo: string): ResultadoVinculo {
+  function resultadoComOC(oc: OcParaVinculo, titulo: TituloParaVinculo, motivo: string): ResultadoVinculo {
     return {
       ocRelacionada: {
         numOcp: oc.numOcp,
         situacao: oc.situacaoAtual,
         situacaoLabel: situacaoLabel(oc.situacaoAtual),
-        parcela,
+        parcela: false,
         motivo,
         centroCusto: centroCustoDaOC(oc),
       },
@@ -339,7 +281,7 @@ export function criarMotorVinculo(ocs: OcParaVinculo[]) {
     }
     return {
       ocRelacionada: null,
-      motivoSemOC: detalhe || "Não foi possível identificar a OC. Verifique a referência do título/NF na própria OC e o histórico sincronizado.",
+      motivoSemOC: detalhe || "Sem OC: o título não tem USU_NUMOCP e a NF dele não está ligada a nenhuma OC no Senior.",
       ocEsperada: true,
     };
   }
@@ -347,99 +289,28 @@ export function criarMotorVinculo(ocs: OcParaVinculo[]) {
   function ocRelacionadaDe(titulo: TituloParaVinculo): ResultadoVinculo {
     if (!tituloPodeTerOC(titulo)) return semOC(titulo);
 
-    const fornecedores = chavesFornecedor(titulo.codFor, titulo.fornecedorNome);
-    const referenciasTitulo = [
-      ...new Set([...variantesReferencia(titulo.numTit), ...variantesReferencia(titulo.numNfc)]),
-    ];
-
-    // 1) Se a origem gravou NUMOCP no título, esse é o vínculo mais forte.
-    if (referenciaPreenchida(titulo.numOcp)) {
-      const direta = ocPorNumero.get(normalizarReferencia(titulo.numOcp));
-      if (!direta) {
-        return semOC(titulo, `O título informa a OC ${titulo.numOcp}, mas essa OC não foi sincronizada para o sistema.`);
+    // 1) Campo USU_NUMOCP do proprio titulo.
+    const doCampo = buscar("TITULO", titulo, titulo.numTit);
+    if (doCampo.length > 0) {
+      if (doCampo.length > 1) return semOC(titulo, `O USU_NUMOCP do título aparece com ${doCampo.length} OCs diferentes; não vinculei nenhuma.`);
+      const oc = ocPorNumero.get(doCampo[0]);
+      if (!oc) return semOC(titulo, `O título informa a OC ${doCampo[0]} (USU_NUMOCP), mas essa OC não foi sincronizada para o sistema.`);
+      if (!fornecedorCompativel(titulo, oc)) {
+        return semOC(titulo, `Conflito: o título informa a OC ${doCampo[0]} (USU_NUMOCP), mas o fornecedor da OC não é o mesmo do título.`);
       }
-      if (!fornecedorCompativel(titulo, direta)) {
-        return semOC(titulo, `Conflito: o título informa a OC ${titulo.numOcp}, mas o fornecedor da OC não é o mesmo do título.`);
-      }
-      if (!filialCompativel(titulo, direta)) {
-        return semOC(titulo, `Conflito: o título informa a OC ${titulo.numOcp}, mas a filial da OC não é a mesma do título.`);
-      }
-      return resultadoComOC(direta, titulo, false, "Vínculo direto: o título informa esta OC.");
+      return resultadoComOC(oc, titulo, "Vínculo direto: o título informa esta OC (USU_NUMOCP).");
     }
 
-    // 2) Referência exata em qualquer campo de origem: número do título ou NF.
-    const exatas = filtrarCandidatasValidas(titulo, buscarIndice(ocPorReferenciaFornecedor, fornecedores, referenciasTitulo));
-    if (exatas.length > 0) {
-      const escolhida = escolherCandidata(exatas, titulo);
-      if (escolhida) {
-        return resultadoComOC(escolhida, titulo, false, "Vínculo exato: a OC referencia o número do título/NF e o fornecedor.");
-      }
-      return semOC(titulo, `A referência do título/NF aparece em ${exatas.length} OCs; não vinculei nenhuma sem a filial, valor ou data confirmar a OC certa.`);
+    // 2) OC gravada na NF de compra do titulo.
+    const daNf = buscar("NF", titulo, titulo.numNfc);
+    if (daNf.length > 1) return semOC(titulo, `A NF ${titulo.numNfc} está ligada a ${daNf.length} OCs no Senior (${daNf.join(", ")}); não vinculei nenhuma.`);
+    if (daNf.length === 1) {
+      const oc = ocPorNumero.get(daNf[0]);
+      if (!oc) return semOC(titulo, `A NF ${titulo.numNfc} está ligada à OC ${daNf[0]} no Senior, mas essa OC não foi sincronizada para o sistema.`);
+      return resultadoComOC(oc, titulo, `Vínculo pela NF ${titulo.numNfc}: a nota está ligada a esta OC no Senior.`);
     }
 
-    // 3) Parcelas: o comprador costuma informar $01/_01 na OC e o contas a
-    // pagar recebe $02, $03... Como o valor de cada parcela pode ser diferente
-    // do total da OC, o número-base é a evidência principal. Se houver uma
-    // única OC para o número-base, ela é vinculada mesmo com valor diferente.
-    const prefixo = prefixoParcela(titulo.numTit);
-    if (prefixo) {
-      const candidatasParcelaMap = new Map<string, OcParaVinculo>();
-      for (const oc of [
-        ...buscarIndice(ocPorPrefixoParcelaFornecedor, fornecedores, variantesReferencia(prefixo)),
-        ...buscarIndice(ocPorBaseFornecedor, fornecedores, variantesReferencia(prefixo)),
-      ]) {
-        if (fornecedorCompativel(titulo, oc) && filialCompativel(titulo, oc)) candidatasParcelaMap.set(oc.numOcp, oc);
-      }
-      const candidatasParcela = [...candidatasParcelaMap.values()];
-      if (candidatasParcela.length > 0) {
-        const escolhida = escolherCandidata(candidatasParcela, titulo);
-        if (!escolhida) {
-          return semOC(titulo, `O número-base da parcela aparece em ${candidatasParcela.length} OCs; falta a referência completa para escolher a certa.`);
-        }
-        const motivo = mesmoValor(escolhida.valor, titulo.valorOriginal)
-          ? "Vínculo por parcela: fornecedor, número-base e valor conferem."
-          : "Vínculo por parcela: fornecedor e número-base conferem; o valor é o da parcela, não o total da OC.";
-        return resultadoComOC(escolhida, titulo, true, motivo);
-      }
-    }
-
-    // 4) O título pode não ter sufixo, enquanto a OC registra a primeira
-    // parcela. Procuramos a mesma base somente entre referências parceladas.
-    const basesParceladas = filtrarCandidatasValidas(titulo, buscarIndice(ocPorBaseParcelaFornecedor, fornecedores, referenciasTitulo));
-    if (basesParceladas.length > 0) {
-      const escolhida = escolherCandidata(basesParceladas, titulo);
-      if (escolhida) return resultadoComOC(escolhida, titulo, true, "Vínculo por número-base: a OC registra a parcela desta NF.");
-      return semOC(titulo, `O número-base aparece em ${basesParceladas.length} OCs; falta a referência completa para escolher a certa.`);
-    }
-
-    const fornecedorOcs = new Map<string, OcParaVinculo>();
-    for (const fornecedor of fornecedores) {
-      for (const oc of ocsPorFornecedor.get(fornecedor) ?? []) fornecedorOcs.set(oc.numOcp, oc);
-    }
-    const todasDoFornecedor = filtrarCandidatasValidas(titulo, [...fornecedorOcs.values()]);
-
-    // 5) Fornecedor + valor + data não é uma relação Senior. Mantemos a
-    // análise apenas para explicar a pendência e orientar o backfill da
-    // referência correta; não transformamos a candidata em OC vinculada.
-    const porValorEData = todasDoFornecedor.filter((oc) => {
-      if (!mesmoValor(oc.valor, titulo.valorOriginal)) return false;
-      return dataCompativel(oc, titulo);
-    });
-
-    if (todasDoFornecedor.length === 0) {
-      return semOC(titulo, "Não há OC sincronizada para este fornecedor. Verifique o histórico/backfill do Senior.");
-    }
-    if (porValorEData.length > 1) {
-      return semOC(titulo, `Há ${porValorEData.length} OCs com fornecedor, valor e data compatíveis, mas isso não prova a relação; falta a referência do título/NF.`);
-    }
-    if (porValorEData.length === 1) {
-      return semOC(titulo, `Há uma OC candidata (${porValorEData[0].numOcp}) com fornecedor, valor e data compatíveis, mas não a marquei como vínculo sem a referência do título/NF.`);
-    }
-    const mesmoValorFornecedor = todasDoFornecedor.filter((oc) => mesmoValor(oc.valor, titulo.valorOriginal));
-    if (mesmoValorFornecedor.length > 0) {
-      return semOC(titulo, `Existe(m) ${mesmoValorFornecedor.length} OC(s) com fornecedor e valor compatíveis, mas falta a referência do título/NF para provar qual é a certa.`);
-    }
-    return semOC(titulo, "Há OCs deste fornecedor, mas nenhuma referência do título/NF, parcela ou valor/data permitiu identificar a OC correta.");
+    return semOC(titulo);
   }
 
   return { ocRelacionadaDe };

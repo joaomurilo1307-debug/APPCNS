@@ -7,6 +7,7 @@ import { aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { motorDeOcs } from "@/lib/cache/ocsMotor";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
 import { garantirFormasPagamentoAtualizadas, carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
+import { garantirVinculosOcAtualizados } from "@/lib/senior/vinculosOc";
 import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
 import { nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
 import { centroDoRateio } from "@/lib/titulos/centroDoRateio";
