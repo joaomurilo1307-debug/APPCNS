@@ -27,7 +27,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string; it
   if (!c.gerir && !c.dono) return NextResponse.json({ error: "Somente a gestão (ou quem pediu, enquanto a demanda é nova) altera a lista" }, { status: 403 });
   const item = await prisma.demandaItem.update({ where: { id: params.itemId }, data: parsed.data });
   // com projeto aberto, concluir o item conclui a tarefa correspondente (e vice-versa e' feito no projeto)
-  if (parsed.data.concluido !== undefined && item.taskId) await prisma.task.update({ where: { id: item.taskId }, data: { status: parsed.data.concluido ? "FEITO" : "A_FAZER" } }).catch(() => {});
+  if (parsed.data.concluido !== undefined && item.taskId) {
+    const novo = parsed.data.concluido ? "FEITO" : "A_FAZER";
+    const antes = await prisma.task.findUnique({ where: { id: item.taskId }, select: { status: true } });
+    await prisma.task.update({ where: { id: item.taskId }, data: { status: novo } }).catch(() => {});
+    if (antes && antes.status !== novo) await prisma.tarefaStatusEvento.create({ data: { taskId: item.taskId, userId: null, de: antes.status, para: novo } }).catch(() => {});
+  }
   return NextResponse.json(item);
 }
 

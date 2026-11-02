@@ -114,7 +114,7 @@ function ConteudoProjetosPage() {
       fetch("/api/pessoas").then((r) => (r.ok ? r.json() : [])),
       fetch("/api/teams").then((r) => (r.ok ? r.json() : [])),
     ]);
-    if (o) setContratos(o.contratos ?? []);
+    if (o) setContratos(o.centrosParaProjeto ?? o.contratos ?? []);
     setOpcoesPessoas(Array.isArray(ps) ? ps : []);
     setNucleos(Array.isArray(n) ? n : []);
     setTeams(Array.isArray(t) ? t : []);
@@ -237,11 +237,12 @@ function ConteudoProjetosPage() {
             <input id="novo-projeto-nome" required minLength={2} maxLength={modoPlano ? 150 : undefined} disabled={carregandoPlano} placeholder="Ex.: Medição de dados do contrato" value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
           </div>
           <div>
-            <label htmlFor="novo-projeto-contrato" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Contrato</label>
+            <label htmlFor="novo-projeto-contrato" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Centro de custo (contrato, administrativo ou proposta)</label>
             {modoPlano ? <input id="novo-projeto-contrato" readOnly value={planoMeta?.contrato ? `${planoMeta.contrato.codccu} · ${planoMeta.contrato.nome || "Contrato"}` : "Sem contrato (projeto interno)"} className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm" /> : <select id="novo-projeto-contrato" value={codccu} onChange={(e) => setCodccu(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
-              <option value="">Sem contrato (projeto interno)</option>
+              <option value="">Sem centro de custo (não entra no Timesheet)</option>
               {contratos.map((c) => <option key={c.codccu} value={c.codccu}>{c.codccu} · {c.nome}</option>)}
             </select>}
+            {!modoPlano && <p className="mt-1 text-[12px] text-gray-500">Ligue o projeto a um centro de custo: é nele que caem as horas do Timesheet automático das tarefas do projeto.</p>}
           </div>
           {modoPlano && <div><label htmlFor="novo-projeto-prazo" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Prazo do projeto (opcional)</label><input id="novo-projeto-prazo" type="date" value={prazoPlano} onChange={(e) => setPrazoPlano(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" /></div>}
           {!modoPlano && nucleos.length > 0 && (

@@ -14,7 +14,7 @@
 export type GrupoModulo = "gestao" | "financeiro" | "contratos" | "pessoal" | "admin";
 
 export type ModuloId =
-  | "painel" | "projetos" | "tarefas" | "sprint" | "gantt" | "calendario" | "chat" | "equipes" | "nucleos" | "metas" | "relatorios" | "pdi" | "aprovacoes_projetos"
+  | "painel" | "projetos" | "tarefas" | "sprint" | "gantt" | "calendario" | "chat" | "equipes" | "nucleos" | "metas" | "relatorios" | "pdi" | "aprovacoes_projetos" | "timesheet_auto"
   | "programacao_pagamento" | "pagamentos_itau" | "conferencia_oc" | "despesas_recorrentes" | "alertas_financeiro" | "notas_fiscais" | "aprovacoes_oc_todas" | "contestacoes_custo"
   | "custo_pessoal"
   | "aprovacoes_oc"
@@ -65,6 +65,7 @@ export const MODULOS: ReadonlyArray<ModuloDef> = [
   { id: "metas", href: "/metas", label: "Metas e Planos de Ação", grupo: "gestao", restrito: false, usoPessoal: true, padraoPapeis: TODOS, descricao: "Metas gerais e de contratos, indicadores e planos de ação vinculados aos projetos" },
   { id: "relatorios", href: "/relatorios", label: "Relatórios", grupo: "gestao", restrito: false, usoPessoal: true, padraoPapeis: TODOS, descricao: "Relatórios de projetos" },
   { id: "pdi", href: "/pdi", label: "PDI", grupo: "gestao", restrito: false, usoPessoal: true, padraoPapeis: TODOS, descricao: "Desenvolvimento individual" },
+  { id: "timesheet_auto", href: "/timesheet", label: "Timesheet automático", grupo: "gestao", restrito: false, usoPessoal: true, padraoPapeis: TODOS, descricao: "Horas e % de dedicação por centro de custo, deduzidos das suas tarefas (opcional: você ativa)" },
   { id: "aprovacoes_projetos", href: "/aprovacoes", label: "Aprovações de projetos", grupo: "gestao", restrito: false, usoPessoal: true, padraoPapeis: TODOS, descricao: "Pedidos de aprovação dentro do sistema" },
   // ---- financeiro RESTRITO (so' quem foi liberado, pelo time financeiro)
   { id: "programacao_pagamento", href: "/programacao-pagamento", label: "Programação de pagamento", grupo: "financeiro", restrito: true, padraoPapeis: SO_MASTER, descricao: "Contas a pagar por título" },
@@ -205,7 +206,7 @@ export type PerfilPronto = {
   verTodosContratos?: boolean;
 };
 
-const GESTAO_IDS: ModuloId[] = ["painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "chat", "metas", "relatorios", "pdi", "aprovacoes_projetos"];
+const GESTAO_IDS: ModuloId[] = ["painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "chat", "metas", "relatorios", "pdi", "aprovacoes_projetos", "timesheet_auto"];
 const FINANCEIRO_IDS: ModuloId[] = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas", "contestacoes_custo"];
 const CONTRATOS_IDS: ModuloId[] = ["aprovacoes_oc", "contratos", "custos", "medicao", "previsao", "p0"];
 
@@ -213,7 +214,7 @@ export const PERFIS_PRONTOS: ReadonlyArray<PerfilPronto> = [
   { id: "financeiro", nome: "Time financeiro", descricao: "Tudo do financeiro, contratos e todas as aprovações de OC", papel: "APROVADOR", modulos: [...GESTAO_IDS, ...FINANCEIRO_IDS, ...CONTRATOS_IDS], escopoProjetos: "PROPRIOS" },
   { id: "gerente_nucleo", nome: "Gerente de núcleo", descricao: "Gere o núcleo (equipe, demandas e projetos associados a ele) e os projetos em que participa; sem financeiro", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "equipes", "nucleos", "aprovacoes_oc", "contratos"], escopoProjetos: "PROPRIOS" },
   { id: "coordenador_nucleo", nome: "Coordenador de núcleo", descricao: "Gere tarefas e demandas do núcleo e os projetos em que participa; sem financeiro", papel: "COORDENADOR", modulos: [...GESTAO_IDS, "equipes", "nucleos", "aprovacoes_oc", "contratos"], escopoProjetos: "PROPRIOS" },
-  { id: "membro_projetos", nome: "Membro de projetos", descricao: "Só acompanha projetos e tarefas; sem financeiro nem contratos", papel: "COLABORADOR", modulos: ["painel", "projetos", "tarefas", "sprint", "calendario", "chat", "metas", "pdi"], escopoProjetos: "PROPRIOS" },
+  { id: "membro_projetos", nome: "Membro de projetos", descricao: "Só acompanha projetos e tarefas; sem financeiro nem contratos", papel: "COLABORADOR", modulos: ["painel", "projetos", "tarefas", "sprint", "calendario", "chat", "metas", "pdi", "timesheet_auto"], escopoProjetos: "PROPRIOS" },
   { id: "gestor_contratos", nome: "Gestor de contratos", descricao: "Projetos e gestão, mais contratos, custos, medição e previsão; sem financeiro de pagamento", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "aprovacoes_oc", "contratos", "custos", "medicao", "previsao", "p0"], escopoProjetos: "PROPRIOS" },
   { id: "visao_total", nome: "Visão total (sem pagamentos)", descricao: "Vê todas as telas, núcleos e contratos (os projetos continuam particulares); fora só o financeiro de pagamento (SISPAG, programação, conferência de OC...)", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "equipes", "nucleos", ...CONTRATOS_IDS], escopoProjetos: "PROPRIOS", verTodosContratos: true },
   { id: "consulta", nome: "Somente consulta", descricao: "Vê projetos e contratos, sem alterar nada", papel: "VISUALIZADOR", modulos: ["painel", "projetos", "tarefas", "sprint", "gantt", "calendario", "metas", "relatorios", "contratos", "custos", "medicao", "previsao"], escopoProjetos: "PROPRIOS", nivel: "VER" },

@@ -35,6 +35,7 @@ const LIBERADOS: ReadonlyArray<string> = [
   "/api/attachments",
   "/api/pdi",
   "/api/pdi-items",
+  "/api/timesheet-auto",
   "/api/projetos-acesso",
   // POSTs que so' leem ou geram arquivo
   "/api/conferencia-oc/dossies-zip",

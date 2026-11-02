@@ -16,6 +16,13 @@ export async function GET() {
     select: { codccu: true, nome: true, cliente: true },
     orderBy: { nome: "asc" },
   });
+  // Centros de custo para o PROJETO (code + nome, sem valores): qualquer pessoa liga o projeto dela a qualquer centro ativo, porque e' ele que recebe as horas do
+  // Timesheet automatico. Nao confundir com `contratos` (dados de custo e demanda, limitados ao acesso da pessoa).
+  const centrosParaProjeto = u.role === "CLIENTE" ? [] : await prisma.contrato.findMany({
+    where: { acompanharResultados: true, status: "ATIVO" },
+    select: { codccu: true, nome: true, tipo: true },
+    orderBy: [{ tipo: "asc" }, { nome: "asc" }],
+  });
   const gerir = await podeGerirDemandas(u);
   // quem foi indicado para atender alguma demanda aberta tambem aceita: anexa a um projeto ou abre um projeto novo nas equipes dele
   const atendeAlguma = u.role === "CLIENTE" ? false : (await prisma.demandaAtendente.count({ where: { userId: u.id, demanda: { status: { in: ["NOVA", "EM_ANALISE"] } } } })) > 0;
@@ -33,5 +40,5 @@ export async function GET() {
   const projetos = u.role === "CLIENTE" || !(gerir || atendeAlguma)
     ? []
     : await prisma.project.findMany({ where: { ...(await visibleProjectWhere(u.id, u.role)), status: { not: "CONCLUIDO" } }, select: { id: true, name: true, team: { select: { name: true } } }, orderBy: { name: "asc" }, take: 300 });
-  return NextResponse.json({ contratos, equipes, nucleos, pessoas: pessoas.map((p) => ({ id: p.id, name: p.name, cargo: p.cargo, nucleo: p.nucleo?.name ?? null })), projetos: projetos.map((p) => ({ id: p.id, name: p.name, equipe: p.team?.name ?? null })), podeGerir: gerir || atendeAlguma });
+  return NextResponse.json({ contratos, centrosParaProjeto, equipes, nucleos, pessoas: pessoas.map((p) => ({ id: p.id, name: p.name, cargo: p.cargo, nucleo: p.nucleo?.name ?? null })), projetos: projetos.map((p) => ({ id: p.id, name: p.name, equipe: p.team?.name ?? null })), podeGerir: gerir || atendeAlguma });
 }
