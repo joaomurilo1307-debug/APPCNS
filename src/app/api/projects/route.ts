@@ -25,8 +25,9 @@ export async function GET() {
     where = { clients: { some: { userId } } };
   } else if (role === "APROVADOR") {
     const base = await visibleProjectWhere(userId, role);
-    where = Object.keys(base).length === 0 ? {} : { OR: [...(base.OR ?? [base]), { approverId: userId }] };
-  } else if (role !== "ADMIN") {
+    where = { OR: [...(base.OR ?? [base]), { approverId: userId }] };
+  } else {
+    // todos os papeis, inclusive ADMIN: so' os projetos da propria pessoa e da equipe dela (02/11/2026)
     where = await visibleProjectWhere(userId, role);
   }
 
