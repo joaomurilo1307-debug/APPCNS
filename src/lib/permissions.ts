@@ -27,12 +27,12 @@ export async function geroNucleoDoProjeto(userId: string, projectId: string): Pr
  * Regra de visibilidade de PROJETOS (decisao do Joao, 19/10/2026, reforcada em 25/10/2026): cada pessoa -- inclusive Diretoria e Gerencia --
  * so ve o projeto que CRIOU (ownerId) ou em que PARTICIPA: e' membro da equipe do projeto, foi convidada como
  * diretor/coordenador do projeto ou recebeu convite individual (tela Usuarios > Projetos), gerencia um nucleo vinculado ao projeto, tem tarefa atribuida ou e' o aprovador.
- * So' o ADMIN (administrador do sistema) ve todos. Cliente tem regra propria (ProjectClient) nas rotas.
+ * Ninguem ve projeto alheio, nem o ADMIN nem o Diretor Master (decisao do Joao, 02/11/2026: "projetos e' um modulo muito individual"; antes so' o
+ * ADMIN via todos). Cliente tem regra propria (ProjectClient) nas rotas.
  * Retorna um filtro Prisma pronto para `Project.findMany({ where })` ou, para outros modelos, `{ project: <isto> }`.
  */
-export async function visibleProjectWhere(userId: string, role: string): Promise<any> {
-  if (role === "ADMIN") return {};
-  // 25/10/2026 (Joao): projetos sao PARTICULARES. A antiga "visao de projetos" por pessoa (do nucleo / todos) deixou de valer: so' o administrador ve todos.
+export async function visibleProjectWhere(userId: string, _role?: string): Promise<any> {
+  // 25/10/2026 (Joao): projetos sao PARTICULARES (visao por nucleo / "todos" deixou de valer). 02/11/2026: vale tambem para o administrador.
   return filtroProjetosDaPessoa(userId, await getUserTeamIds(userId));
 }
 
@@ -70,7 +70,6 @@ export function filtroProjetosDaPessoa(userId: string, teamIds: string[]) {
 
 /** Pode ver este projeto? (mesma regra da lista, para as rotas que buscam por id) */
 export async function canViewProject(userId: string, role: string, projectId: string): Promise<boolean> {
-  if (role === "ADMIN") return true;
   if (role === "CLIENTE") {
     return (await prisma.project.count({ where: { id: projectId, clients: { some: { userId } } } })) > 0;
   }
@@ -79,11 +78,10 @@ export async function canViewProject(userId: string, role: string, projectId: st
 }
 
 /**
- * Equipes que a pessoa enxerga: so' as de que faz parte e as dos projetos que ela ve (mesma regra de `visibleProjectWhere`).
- * So' o ADMIN ve todas. (Antes Diretoria e Gerencia viam todas as equipes e seus integrantes.)
+ * Equipes que a pessoa enxerga: so' as de que faz parte e as dos projetos que ela ve (mesma regra de `visibleProjectWhere`), inclusive o ADMIN.
+ * (Antes Diretoria e Gerencia viam todas as equipes e seus integrantes.)
  */
-export async function visibleTeamWhere(userId: string, role: string): Promise<any> {
-  if (role === "ADMIN") return {};
+export async function visibleTeamWhere(userId: string, _role?: string): Promise<any> {
   const teamIds = await getUserTeamIds(userId);
   return { OR: [{ id: { in: teamIds } }, { projects: { some: filtroProjetosDaPessoa(userId, teamIds) } }] };
 }
@@ -126,8 +124,7 @@ export async function canManagePdiFor(userId: string, role: string, targetUserId
   return ids.includes(targetUserId);
 }
 
-export async function isTeamMember(userId: string, role: string, teamId: string): Promise<boolean> {
-  if (role === "ADMIN") return true;
+export async function isTeamMember(userId: string, _role: string, teamId: string): Promise<boolean> {
   const membership = await prisma.userTeam.findUnique({ where: { userId_teamId: { userId, teamId } } });
   return !!membership;
 }
@@ -139,8 +136,7 @@ export async function isTeamManager(userId: string, teamId: string): Promise<boo
   return membership?.role === "GESTOR";
 }
 
-export async function canManageTeam(userId: string, role: string, teamId: string) {
-  if (role === "ADMIN") return true;
+export async function canManageTeam(userId: string, _role: string, teamId: string) {
   return isTeamManager(userId, teamId);
 }
 
