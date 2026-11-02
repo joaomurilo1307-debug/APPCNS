@@ -86,7 +86,8 @@ export default function SprintPage() {
 
   async function load() {
     if (!userId) return;
-    const url = isManager ? "/api/tasks" : `/api/tasks?assigneeId=${userId}`;
+    // o Sprint e' pessoal: so' as tarefas atribuidas a mim, em todos os projetos (inclusive para gestor e administrador)
+    const url = `/api/tasks?assigneeId=${userId}`;
     const res = await fetch(url);
     setTasks(await res.json());
   }
