@@ -56,6 +56,8 @@ const updateSchema = z.object({
   diretorIds: z.array(z.string()).optional(),
   coordenadorIds: z.array(z.string()).optional(),
   kanbanColumns: z.string().max(4000).nullable().optional(),
+  // centro de custo (contrato, administrativo, proposta): recebe as horas do Timesheet automatico das tarefas do projeto
+  codccu: z.string().regex(/^\d+$/).nullable().optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -76,6 +78,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
   const { nucleoIds, diretorIds, coordenadorIds, ...rest } = parsed.data;
+  if (parsed.data.codccu) {
+    const centro = await prisma.contrato.findUnique({ where: { codccu: parsed.data.codccu }, select: { acompanharResultados: true } });
+    if (!centro) return NextResponse.json({ error: "Centro de custo não encontrado" }, { status: 404 });
+    if (!centro.acompanharResultados) return NextResponse.json({ error: "Este centro de custo está fora do acompanhamento para novas iniciativas." }, { status: 422 });
+  }
   const data: any = { ...rest };
   if (parsed.data.startDate !== undefined) data.startDate = parsed.data.startDate ? new Date(parsed.data.startDate) : null;
   if (parsed.data.endDate !== undefined) data.endDate = parsed.data.endDate ? new Date(parsed.data.endDate) : null;

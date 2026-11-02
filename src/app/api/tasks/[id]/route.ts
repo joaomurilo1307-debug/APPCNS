@@ -125,6 +125,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const updated = await prisma.$transaction(async (tx) => {
     let result = await tx.task.update({ where: { id: params.id }, data });
+    // historico de status: o timesheet automatico so' conta os dias em que a tarefa esteve "Fazendo"
+    if (parsed.data.status !== undefined && parsed.data.status !== task.status) {
+      await tx.tarefaStatusEvento.create({ data: { taskId: params.id, userId, de: task.status, para: parsed.data.status } });
+    }
     if (customFieldValues) {
       for (const [customFieldId, value] of Object.entries(customFieldValues)) {
         await tx.taskCustomFieldValue.upsert({
