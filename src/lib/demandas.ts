@@ -56,12 +56,28 @@ export async function contratosDoUsuario(u: UsuarioSessao): Promise<{ todos: boo
   return { todos: escopo.todos, ccus: new Set(escopo.ccus) };
 }
 
+/**
+ * Contratos cujas demandas a pessoa VE. Demanda e' do modulo Projetos, que e' individual (Joao, 02/11/2026): so' as da propria pessoa, as que ela atende,
+ * as dos nucleos que ela gere e as dos contratos que lhe foram liberados ou que sao das equipes dela. O atalho "ve todos os custos" (Administrador, Diretor Master,
+ * "ver todos os custos") vale para custo e medicao, nao para demanda. Cliente segue a regra propria.
+ */
+export async function contratosParaVerDemandas(u: UsuarioSessao): Promise<{ todos: boolean; ccus: Set<string> }> {
+  if (ehCliente(u)) return contratosDoUsuario(u);
+  const eu = await prisma.user.findUnique({
+    where: { id: u.id },
+    select: { acessosCentroCusto: { select: { codccu: true, area: true } }, teams: { select: { team: { select: { codccu: true } } } } },
+  });
+  const ccus = new Set<string>();
+  for (const a of eu?.acessosCentroCusto ?? []) if (!a.area || a.area === "AMBOS" || a.area === "PROJETOS") ccus.add(a.codccu);
+  for (const t of eu?.teams ?? []) if (t.team.codccu) ccus.add(t.team.codccu);
+  return { todos: false, ccus };
+}
+
 export async function podeVerDemanda(u: UsuarioSessao, d: { id?: string; solicitanteId: string; nucleoId?: string | null; contrato: { codccu: string } }): Promise<boolean> {
   if (d.solicitanteId === u.id) return true;
-  if (u.role === "ADMIN") return true;
   if (d.id && (await ehAtendente(u, d.id))) return true;
   if (d.nucleoId && !ehCliente(u) && (await nucleoIdsQueGere(u.id)).includes(d.nucleoId)) return true;
-  const c = await contratosDoUsuario(u);
+  const c = await contratosParaVerDemandas(u);
   return c.todos || c.ccus.has(d.contrato.codccu);
 }
 

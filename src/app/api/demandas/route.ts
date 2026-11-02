@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { avisarPessoas, contratosDoUsuario, ehCliente, pessoasValidas, PRIORIDADES, STATUS_DEMANDA } from "@/lib/demandas";
+import { avisarPessoas, contratosDoUsuario, contratosParaVerDemandas, ehCliente, pessoasValidas, PRIORIDADES, STATUS_DEMANDA } from "@/lib/demandas";
 import { nucleoIdsQueGere } from "@/lib/permissions";
 import { z } from "zod";
 
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   const codccu = searchParams.get("contrato");
   const nucleo = searchParams.get("nucleo");
 
-  const alvo = await contratosDoUsuario(u);
+  const alvo = await contratosParaVerDemandas(u); // lista pessoal: so' as demandas com relacao com a pessoa (ver lib/demandas.ts)
   const where: any = { AND: [] };
   const meusNucleos = ehCliente(u) ? [] : await nucleoIdsQueGere(u.id);
   where.AND.push(alvo.todos ? {} : { OR: [{ contrato: { codccu: { in: Array.from(alvo.ccus) } } }, { solicitanteId: u.id }, ...(meusNucleos.length ? [{ nucleoId: { in: meusNucleos } }] : []), ...(ehCliente(u) ? [] : [{ atendentes: { some: { userId: u.id } } }])] });
