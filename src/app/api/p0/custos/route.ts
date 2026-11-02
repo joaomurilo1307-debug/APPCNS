@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { contasDoP0, periodoDoP0, type P0Resposta } from "@/lib/p0/montar";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // P0 de um contrato (a versao ativa mais nova), no mesmo formato das contas da tela Custo por Contrato. So' le o que foi cadastrado a partir da
 // planilha da area; nao estima nada. Por padrao devolve o CUSTO DE CONTRATO; com `?tipo=pessoal` devolve o P0 de CUSTOS PESSOAIS (salario CLT,
@@ -12,6 +13,7 @@ import { contasDoP0, periodoDoP0, type P0Resposta } from "@/lib/p0/montar";
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "p0", "contratos"); if (negado) return negado; }
   const url = new URL(req.url);
   const ccu = url.searchParams.get("ccu");
   if (!ccu) return NextResponse.json({ error: "Informe o centro de custo (ccu)" }, { status: 400 });

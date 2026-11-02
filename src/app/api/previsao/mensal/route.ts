@@ -10,6 +10,7 @@ import { SEM_CCU, mesesEntre, montarMensal, prepararItens, type NaturezaPrevisao
 import { DIMENSOES, chaveDaDim, montarPlanilha, type DimPlanilha } from "@/lib/contratos/previsaoPlanilha";
 import { nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
 import { itensDePrevisao } from "@/lib/contratos/titulosPrevistos";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Previsao mes a mes (SOMENTE LEITURA): o que o Senior ja tem programado (titulos em aberto e OCs com data) e o que esta previsto (PRV),
 // por mes, com filtro de periodo, centro de custo e linha de custo, e o detalhe de qualquer mes. Cada pessoa so' ve os centros de custo liberados.
@@ -20,6 +21,7 @@ const CATEGORIA = new Set<string>(CATEGORIAS.map((c) => c.chave));
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "previsao", "resultado_operacional"); if (negado) return negado; }
   const escopo = await escopoDeCustos(prisma, session.user as any);
   if (escopo.tipo === "nenhum") return NextResponse.json({ error: "Sem centros de custo liberados para você" }, { status: 403 });
 

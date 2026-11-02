@@ -16,6 +16,7 @@ import { normalizarPeriodoConsolidado } from "@/lib/medicao/consolidado";
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negadoModulo = await negarSemModulo(session.user as any, "medicao", "resultado_operacional"); if (negadoModulo) return negadoModulo; }
   const params = new URL(req.url).searchParams;
   if (params.get("opcoes") === "1") {
     const negado = await negarSemModulo(session.user as any, "medicao");

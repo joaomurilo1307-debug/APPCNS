@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { escopoDeCustos } from "@/lib/custos/acesso";
 import { estadoAtualizacao } from "@/lib/custos/atualizacaoCusto";
 import { auditarCustos } from "@/lib/custos/auditoria";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Conferencia da ULTIMA leitura do Senior, para quem olha a tela de custos (diretoria/coordenacao): as checagens automaticas que
 // provam que o numero mostrado e' a soma exata dos lancamentos lidos do Senior. Somente leitura. O historico mes a mes (totais da
@@ -12,6 +13,7 @@ import { auditarCustos } from "@/lib/custos/auditoria";
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "custos", "contratos", "resultado_operacional"); if (negado) return negado; }
   const user = session.user as any;
   const vePodeTudo = (await escopoDeCustos(prisma, user)).todos;
 

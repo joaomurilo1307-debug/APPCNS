@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { COMPETENCIA_FISCAL_ATIVA } from "@/lib/custos/competenciaDaPlanilha";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { codigoPeloNome } from "@/lib/custos/planoContas";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Lancamentos (titulo a titulo) de um centro de custo num periodo, no mesmo layout do Rel114 do Senior, para conferir contra a
 // planilha da area (Denise): Numero do Titulo, Codigo e Descricao do Fornecedor, Data de Vencimento, Conta Financeira, Centro de
@@ -12,6 +13,7 @@ import { codigoPeloNome } from "@/lib/custos/planoContas";
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "custos", "contratos", "resultado_operacional"); if (negado) return negado; }
   const user = session.user as any;
 
   const { searchParams } = new URL(req.url);

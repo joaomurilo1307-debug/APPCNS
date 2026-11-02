@@ -7,6 +7,7 @@ import { hojeBR } from "@/lib/financeiro/alertas";
 import { nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
 import { somaMes } from "@/lib/medicao/competencia";
 import { conciliar } from "@/lib/medicao/conciliacao";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Receita do contrato mes a mes: medicao (notas fiscais) + notas de debito, bruta e liquida, conferida com as linhas dos pedidos do contrato.
 // O contrato vale pelos SEUS pedidos (nunca pelo centro de custo do rateio do item); as notas valem pelo centro de custo principal do contrato.
@@ -18,6 +19,7 @@ const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
 export async function GET(req: Request, { params }: { params: { numCtr: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "medicao", "resultado_operacional"); if (negado) return negado; }
   const escopo = await escopoDeCustos(prisma, session.user as any);
 
   const c = await prisma.medicaoContrato.findUnique({ where: { numCtr: params.numCtr } });

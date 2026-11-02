@@ -3,12 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Linhas do P0 por tras de UMA celula (conta x mes) da tabela "Plano de contas x mes" do P0: de onde vem cada valor previsto (item do quantitativo,
 // "recorrentes da CPU"...). Mesma regra de acesso de /api/p0/custos. So' custo de contrato.
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "p0", "contratos"); if (negado) return negado; }
   const sp = new URL(req.url).searchParams;
   const ccu = sp.get("ccu");
   const conta = sp.get("conta");

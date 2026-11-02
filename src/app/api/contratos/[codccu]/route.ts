@@ -6,10 +6,12 @@ import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { z } from "zod";
 import { logAudit } from "@/lib/auditLog";
 import { limparCacheDeAcompanhamento } from "@/lib/custos/acesso";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 export async function GET(_req: Request, { params }: { params: { codccu: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "contratos", "custos", "medicao", "previsao", "p0", "resultado_operacional"); if (negado) return negado; }
   const user = session.user as any;
   const escopo = await escopoDeCustos(prisma, user);
   if (!podeVerCcu(escopo, params.codccu)) return NextResponse.json({ error: "Sem permissão para este contrato" }, { status: 403 });
@@ -36,6 +38,7 @@ const patchSchema = z.object({
 export async function PATCH(req: Request, { params }: { params: { codccu: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "contratos", "custos", "medicao", "previsao", "p0", "resultado_operacional"); if (negado) return negado; }
   if ((session.user as any).role !== "ADMIN") return NextResponse.json({ error: "Somente administrador edita a ficha do contrato" }, { status: 403 });
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });

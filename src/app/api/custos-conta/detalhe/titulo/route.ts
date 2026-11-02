@@ -6,6 +6,7 @@ import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 import { escolherTituloReal, type CandidatoTitulo } from "@/lib/escolherTituloReal";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Rateio completo de UM título entre todos os centros de custo -- pedido do
 // João 15/09/2026: "poder clicar no título e abrir ele, pra entender", a
@@ -21,6 +22,7 @@ import { escolherTituloReal, type CandidatoTitulo } from "@/lib/escolherTituloRe
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "custos", "contratos", "resultado_operacional"); if (negado) return negado; }
   const user = session.user as any;
 
   const { searchParams } = new URL(req.url);

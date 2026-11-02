@@ -4,11 +4,13 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { z } from "zod";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Contratantes (usuarios CLIENTE) que acompanham o contrato e podem registrar demandas para ele. So' ADMIN liga/desliga.
 export async function GET(_req: Request, { params }: { params: { codccu: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "contratos", "custos", "medicao", "previsao", "p0", "resultado_operacional"); if (negado) return negado; }
   const u = session.user as any;
   if (!podeVerCcu(await escopoDeCustos(prisma, u), params.codccu)) return NextResponse.json({ error: "Sem permissão para este contrato" }, { status: 403 });
   const contrato = await prisma.contrato.findUnique({ where: { codccu: params.codccu }, select: { id: true } });
@@ -20,6 +22,7 @@ export async function GET(_req: Request, { params }: { params: { codccu: string 
 export async function POST(req: Request, { params }: { params: { codccu: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "contratos", "custos", "medicao", "previsao", "p0", "resultado_operacional"); if (negado) return negado; }
   if ((session.user as any).role !== "ADMIN") return NextResponse.json({ error: "Somente administrador liga o contratante ao contrato" }, { status: 403 });
   const parsed = z.object({ email: z.string().trim().toLowerCase().email() }).safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "Informe um e-mail válido" }, { status: 422 });
@@ -37,6 +40,7 @@ export async function POST(req: Request, { params }: { params: { codccu: string 
 export async function DELETE(req: Request, { params }: { params: { codccu: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "contratos", "custos", "medicao", "previsao", "p0", "resultado_operacional"); if (negado) return negado; }
   if ((session.user as any).role !== "ADMIN") return NextResponse.json({ error: "Somente administrador" }, { status: 403 });
   const userId = new URL(req.url).searchParams.get("userId");
   const contrato = await prisma.contrato.findUnique({ where: { codccu: params.codccu }, select: { id: true } });

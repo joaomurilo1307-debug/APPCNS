@@ -6,6 +6,7 @@ import { escopoDeCustos, escopoDeVisao, podeVerCcu } from "@/lib/custos/acesso";
 import { hojeBR } from "@/lib/financeiro/alertas";
 import { FILTROS_SITUACAO, montarAoVivo, type FiltroSituacao } from "@/lib/contratos/aoVivo";
 import { carregarAoVivo, nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // "Ao vivo" do Custo por Centro de Custo (SOMENTE LEITURA): titulos e OCs do Senior ligados ao centro de custo, com status de pagamento e de OC.
 // Mesmo controle de acesso da tela de custos: so' os centros de custo que a pessoa pode ver.
@@ -13,6 +14,7 @@ import { carregarAoVivo, nomesDosCentros } from "@/lib/contratos/aoVivoServidor"
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "custos", "contratos", "resultado_operacional"); if (negado) return negado; }
   const escopo = await escopoDeCustos(prisma, session.user as any);
   if (escopo.tipo === "nenhum") return NextResponse.json({ error: "Sem centros de custo liberados para você" }, { status: 403 });
 

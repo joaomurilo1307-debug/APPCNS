@@ -3,12 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Quais contratos ja' tem P0 cadastrado (a versao ativa mais nova de cada um), com o periodo e o total do custo de contrato.
 // Mostra so' os contratos que a pessoa pode ver (mesma regra dos custos).
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "p0", "contratos"); if (negado) return negado; }
   const escopo = await escopoDeCustos(prisma, session.user as any);
 
   const versoes = await prisma.p0Versao.findMany({ where: { ativa: true }, orderBy: [{ codccu: "asc" }, { versao: "desc" }], select: { id: true, codccu: true, versao: true, rotulo: true } });

@@ -7,6 +7,7 @@ import { COMPETENCIA_FISCAL_ATIVA } from "@/lib/custos/competenciaDaPlanilha";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
 import { escolherTituloReal, type CandidatoTitulo } from "@/lib/escolherTituloReal";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Detalhe titulo-a-titulo de UMA linha de Custo por Plano de Contas (um
 // codccu+contaFinanceira+competencia), com a OC relacionada de cada titulo
@@ -16,6 +17,7 @@ import { escolherTituloReal, type CandidatoTitulo } from "@/lib/escolherTituloRe
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "custos", "contratos", "resultado_operacional"); if (negado) return negado; }
   const user = session.user as any;
 
   const { searchParams } = new URL(req.url);

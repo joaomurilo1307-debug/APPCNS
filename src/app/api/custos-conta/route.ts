@@ -7,6 +7,7 @@ import { aplicarSelecaoAoEscopo, escopoDeCustos, escopoDeVisao, podeVerCcu } fro
 import { estadoAtualizacao } from "@/lib/custos/atualizacaoCusto";
 import { COMPETENCIA_PISO } from "@/lib/custos/motorCustoContrato";
 import { codigoPeloNome, contaInativa, eReembolsavel, grupoDaConta } from "@/lib/custos/planoContas";
+import { negarSemModulo } from "@/lib/acesso/servidor";
 
 // Custo por plano de contas (conta_financeira), por contrato/CCU e mes.
 // Visibilidade: ADMIN/DIRETOR veem todos os contratos; qualquer outro
@@ -38,6 +39,7 @@ function mesesDoPisoAteHoje(): { meses: string[]; mesCorrente: string } {
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  { const negado = await negarSemModulo(session.user as any, "custos", "contratos", "resultado_operacional"); if (negado) return negado; }
 
   const user = session.user as any;
   const { meses: mesesDoPeriodo, mesCorrente } = mesesDoPisoAteHoje();

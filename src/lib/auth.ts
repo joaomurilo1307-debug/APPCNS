@@ -43,13 +43,16 @@ function recordSuccess(email: string) {
 
 const PAPEL_VALIDADE_MS = 5 * 60_000;
 const papeis = new Map<string, { role: string; ate: number }>();
+function guardarPapel(userId: string, role: string) {
+  papeis.set(userId, { role, ate: Date.now() + PAPEL_VALIDADE_MS });
+}
 async function papelAtualDe(userId: string): Promise<string | null> {
   const guardado = papeis.get(userId);
   if (guardado && guardado.ate > Date.now()) return guardado.role;
   try {
     const u = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
     if (!u) return null;
-    papeis.set(userId, { role: u.role, ate: Date.now() + PAPEL_VALIDADE_MS });
+    guardarPapel(userId, u.role);
     return u.role;
   } catch {
     return guardado?.role ?? null; // banco indisponivel: segue com o papel que ja estava no token
@@ -106,6 +109,7 @@ export const authOptions: AuthOptions = {
         token.id = (user as any).id;
         token.role = (user as any).role;
         token.primeiroAcesso = (user as any).primeiroAcesso;
+        guardarPapel((user as any).id, (user as any).role); // login traz o papel do banco: vale na hora, sem esperar a guarda anterior expirar
       }
       // O papel vive no token por 7 dias; quando o administrador troca o tipo de acesso de alguem (ex.: virou Diretor Master, ou deixou de ser Admin),
       // vale em ate 5 minutos, sem esperar novo login. A leitura do banco e' guardada em memoria para nao pesar em toda chamada.
