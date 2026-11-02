@@ -17,6 +17,10 @@ enum UserRole {
   COLABORADOR
   CLIENTE
   VISUALIZADOR
+  // Tipos de acesso de 02/11/2026 (matriz validada com a diretoria): COLABORADOR = "Usuario", GESTOR_PROJETO = "Gestor", DIRETOR = "Diretor".
+  COORDENADOR
+  // Diretor Master (Carolina e Andre): ve todos os contratos e o financeiro, somente leitura em todo o sistema (src/lib/acesso/somenteLeitura.ts)
+  DIRETOR_MASTER
 }
 
 enum Horizon {

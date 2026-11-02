@@ -26,8 +26,8 @@ type Dados = {
 };
 
 const PAPEL_ROTULO: Record<string, string> = {
-  ADMIN: "Administrador", DIRETOR: "Diretor", GESTOR_PROJETO: "Gestor de projeto", APROVADOR: "Aprovador",
-  COLABORADOR: "Colaborador", VISUALIZADOR: "Visualizador (só leitura)", CLIENTE: "Cliente (portal)",
+  ADMIN: "Administrador", DIRETOR_MASTER: "Diretor Master (só leitura)", DIRETOR: "Diretor", GESTOR_PROJETO: "Gestor", COORDENADOR: "Coordenador",
+  APROVADOR: "Aprovador (legado)", COLABORADOR: "Usuário", VISUALIZADOR: "Visualizador (só leitura)", CLIENTE: "Cliente (portal)",
 };
 const ESCOPO_ROTULO: Record<Escopo, { nome: string; ajuda: string }> = {
   PROPRIOS: { nome: "Só os projetos dele", ajuda: "Os que criou ou em que participa (equipe, tarefa, convite)." },

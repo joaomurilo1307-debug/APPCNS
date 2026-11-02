@@ -24,8 +24,8 @@ test("catalogo: ids unicos e cada modulo tem rota", () => {
   assert.ok(MODULOS.every((m) => m.href.startsWith("/")));
 });
 
-test("financeiro restrito: nenhum papel entra sem liberacao, nem DIRETOR, GESTOR_PROJETO ou APROVADOR", () => {
-  for (const papel of ["DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR", "CLIENTE"]) {
+test("financeiro restrito: nenhum papel entra sem liberacao, nem DIRETOR, GESTOR_PROJETO, COORDENADOR ou APROVADOR (so' o Diretor Master le, e o Admin)", () => {
+  for (const papel of ["DIRETOR", "GESTOR_PROJETO", "COORDENADOR", "APROVADOR", "COLABORADOR", "VISUALIZADOR", "CLIENTE"]) {
     for (const id of FINANCEIRO_RESTRITO) assert.equal(moduloPermitido(POR_ID.get(id)!, papel, nenhuma), false, `${papel} nao deveria entrar em ${id}`);
   }
 });
@@ -37,11 +37,61 @@ test("financeiro restrito: ADMIN entra sempre; quem recebeu liberacao entra, qua
   assert.equal(moduloPermitido(POR_ID.get("pagamentos_itau")!, "COLABORADOR", liberada), false, "liberar um nao libera os outros");
 });
 
-test("modulos comuns seguem o papel como antes", () => {
-  assert.equal(moduloPermitido(POR_ID.get("contratos")!, "COLABORADOR", nenhuma), true);
+test("modulos comuns seguem o papel (Usuario so' tem Projetos; equipes e nucleos a partir de Coordenador)", () => {
+  assert.equal(moduloPermitido(POR_ID.get("contratos")!, "COLABORADOR", nenhuma), false, "Usuario nao entra em Contratos");
   assert.equal(moduloPermitido(POR_ID.get("equipes")!, "COLABORADOR", nenhuma), false);
+  assert.equal(moduloPermitido(POR_ID.get("equipes")!, "COORDENADOR", nenhuma), true);
   assert.equal(moduloPermitido(POR_ID.get("equipes")!, "GESTOR_PROJETO", nenhuma), true);
   assert.equal(moduloPermitido(POR_ID.get("tarefas")!, "APROVADOR", nenhuma), false);
+});
+
+// Matriz de acessos de 02/11/2026 (HTML validado com a diretoria): o que cada tipo entra por padrao e com qual nivel.
+const GESTAO_PROJETOS: ModuloId[] = ["painel", "projetos", "tarefas", "sprint", "calendario", "chat", "metas", "relatorios", "pdi", "aprovacoes_projetos"];
+const FIN_RESTRITO: ModuloId[] = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas"];
+const ids = (papel: string) => new Set(modulosEfetivos(papel, nenhuma));
+const tem = (papel: string, lista: string[]) => lista.every((m) => ids(papel).has(m));
+const naoTem = (papel: string, lista: string[]) => lista.every((m) => !ids(papel).has(m));
+
+test("matriz: Usuario (COLABORADOR) tem so' o modulo Projetos", () => {
+  assert.ok(tem("COLABORADOR", GESTAO_PROJETOS));
+  assert.ok(naoTem("COLABORADOR", ["gantt", "equipes", "nucleos", "contratos", "custos", "medicao", "previsao", "p0", "resultado_operacional", "custo_pessoal", "usuarios", ...FIN_RESTRITO]));
+});
+
+test("matriz: Coordenador = Usuario + equipes, nucleos, Gantt, contratos e custo por centro de custo; sem medicao, previsao, P0 nem resultado", () => {
+  assert.ok(tem("COORDENADOR", [...GESTAO_PROJETOS, "equipes", "nucleos", "gantt", "contratos", "custos"]));
+  assert.ok(naoTem("COORDENADOR", ["medicao", "previsao", "p0", "resultado_operacional", ...FIN_RESTRITO]));
+});
+
+test("matriz: Gestor = Coordenador + receita e medicao, previsao e P0; sem resultado operacional", () => {
+  assert.ok(tem("GESTOR_PROJETO", [...GESTAO_PROJETOS, "equipes", "nucleos", "contratos", "custos", "medicao", "previsao", "p0"]));
+  assert.ok(naoTem("GESTOR_PROJETO", ["resultado_operacional", ...FIN_RESTRITO]));
+});
+
+test("matriz: Diretor = Gestor + resultado operacional; financeiro de pagamentos so' por nome", () => {
+  assert.ok(tem("DIRETOR", [...GESTAO_PROJETOS, "contratos", "custos", "medicao", "previsao", "p0", "resultado_operacional"]));
+  assert.ok(naoTem("DIRETOR", [...FIN_RESTRITO, "custo_pessoal"]));
+});
+
+test("matriz: Diretor Master le tudo (contratos, medicao, resultado e todo o financeiro), SEM editar; chat e calendario normais; custo de pessoal e administracao nao", () => {
+  assert.ok(tem("DIRETOR_MASTER", [...GESTAO_PROJETOS, "contratos", "custos", "medicao", "previsao", "p0", "resultado_operacional", ...FIN_RESTRITO]));
+  assert.ok(naoTem("DIRETOR_MASTER", ["custo_pessoal", "usuarios", "usuarios_senior", "contestacoes_custo"]), "remuneracao exige liberacao nominal; contestacao so' decide quem edita");
+  for (const m of ["contratos", "custos", "medicao", "resultado_operacional", "programacao_pagamento", "pagamentos_itau", "projetos", "tarefas"]) {
+    assert.equal(nivelDoModulo(POR_ID.get(m)!, "DIRETOR_MASTER", nenhuma, new Map()), "VER", `Master so' consulta ${m}`);
+  }
+  for (const m of ["chat", "calendario"]) assert.equal(nivelDoModulo(POR_ID.get(m)!, "DIRETOR_MASTER", nenhuma, new Map()), "EDITAR", `Master usa ${m}`);
+});
+
+test("matriz: Administrador entra em tudo (menos custo de pessoal, que exige liberacao nominal) e edita", () => {
+  assert.ok(tem("ADMIN", [...GESTAO_PROJETOS, "equipes", "nucleos", "contratos", "custos", "medicao", "previsao", "p0", "resultado_operacional", "usuarios", "usuarios_senior", ...FIN_RESTRITO]));
+  assert.ok(naoTem("ADMIN", ["custo_pessoal"]));
+  assert.equal(nivelDoModulo(POR_ID.get("resultado_operacional")!, "ADMIN", nenhuma, new Map()), "EDITAR");
+});
+
+test("matriz: liberacao por nome continua valendo em cima do tipo (Usuario + time financeiro) e bloqueio vence o padrao do Master", () => {
+  const libera = new Map([["conferencia_oc", true]]);
+  assert.equal(moduloPermitido(POR_ID.get("conferencia_oc")!, "COLABORADOR", libera), true);
+  assert.equal(moduloPermitido(POR_ID.get("pagamentos_itau")!, "COLABORADOR", libera), false);
+  assert.equal(moduloPermitido(POR_ID.get("pagamentos_itau")!, "DIRETOR_MASTER", new Map([["pagamentos_itau", false]])), false);
 });
 
 test("Aprovacoes de OC (as da pessoa) so' entra quem foi liberado, por enquanto; liberado, entra qualquer papel", () => {
@@ -85,10 +135,11 @@ test("sobreposicoesParaGravar: so' grava a diferenca (padrao do papel nao gera l
 
 test("nivel: padrao do papel (VISUALIZADOR so' ve), ADMIN sempre edita, gravado vence, sem acesso = null", () => {
   const nenhum = new Map();
-  assert.equal(nivelDoModulo(POR_ID.get("contratos")!, "COLABORADOR", nenhuma, nenhum), "EDITAR");
-  assert.equal(nivelDoModulo(POR_ID.get("contratos")!, "VISUALIZADOR", nenhuma, nenhum), "VER");
+  assert.equal(nivelDoModulo(POR_ID.get("contratos")!, "GESTOR_PROJETO", nenhuma, nenhum), "EDITAR");
+  assert.equal(nivelDoModulo(POR_ID.get("contratos")!, "COLABORADOR", nenhuma, nenhum), null, "Usuario nao entra em Contratos");
+  assert.equal(nivelDoModulo(POR_ID.get("contratos")!, "VISUALIZADOR", new Map([["contratos", true]]), nenhum), "VER");
   assert.equal(nivelDoModulo(POR_ID.get("contratos")!, "ADMIN", nenhuma, new Map([["contratos", "VER"]])), "EDITAR");
-  assert.equal(nivelDoModulo(POR_ID.get("contratos")!, "COLABORADOR", nenhuma, new Map([["contratos", "VER"]])), "VER");
+  assert.equal(nivelDoModulo(POR_ID.get("contratos")!, "GESTOR_PROJETO", nenhuma, new Map([["contratos", "VER"]])), "VER");
   assert.equal(nivelDoModulo(POR_ID.get("conferencia_oc")!, "COLABORADOR", nenhuma, nenhum), null);
 });
 

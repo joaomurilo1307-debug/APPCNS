@@ -18,7 +18,7 @@ export type ModuloId =
   | "programacao_pagamento" | "pagamentos_itau" | "conferencia_oc" | "despesas_recorrentes" | "alertas_financeiro" | "notas_fiscais" | "aprovacoes_oc_todas" | "contestacoes_custo"
   | "custo_pessoal"
   | "aprovacoes_oc"
-  | "contratos" | "custos" | "medicao" | "previsao" | "p0"
+  | "contratos" | "custos" | "medicao" | "previsao" | "p0" | "resultado_operacional"
   | "usuarios" | "usuarios_senior";
 
 export type ModuloDef = {
@@ -30,23 +30,36 @@ export type ModuloDef = {
   restrito: boolean;
   /** true = nem o ADMIN entra sozinho: so' quem tem a liberacao gravada (dado de remuneracao). */
   exclusivo?: boolean;
-  /** papeis que entram quando NAO ha liberacao/bloqueio gravado (ignorado nos restritos). */
+  /** papeis que entram quando NAO ha liberacao/bloqueio gravado. Num modulo restrito vale so' para os papeis listados aqui (ex.: Diretor Master le o financeiro). */
   padraoPapeis: ReadonlyArray<string>;
   descricao: string;
+  /** true = comunicacao (chat, calendario): nao e' dado de gestao, entao o Diretor Master, que so' le, continua podendo usar. */
+  comunicacao?: boolean;
 };
 
-const TODOS = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] as const;
-const GESTAO = ["ADMIN", "DIRETOR", "GESTOR_PROJETO"] as const;
+// Tipos de acesso (matriz de 02/11/2026). Cada degrau herda o anterior: Usuario (COLABORADOR) < Coordenador < Gestor (GESTOR_PROJETO) < Diretor;
+// Diretor Master (so' leitura) e Administrador ficam fora da escada.
+const TODOS = ["ADMIN", "DIRETOR", "DIRETOR_MASTER", "GESTOR_PROJETO", "COORDENADOR", "APROVADOR", "COLABORADOR", "VISUALIZADOR"] as const;
+/** Equipes, nucleos, Gantt geral: a partir de Coordenador. */
+const GESTAO = ["ADMIN", "DIRETOR", "DIRETOR_MASTER", "GESTOR_PROJETO", "COORDENADOR"] as const;
+/** Contratos e custo por centro de custo: a partir de Coordenador (so' os centros de custo dele). */
+const A_PARTIR_DE_COORDENADOR = GESTAO;
+/** Receita e medicao, previsao e P0: a partir de Gestor. */
+const A_PARTIR_DE_GESTOR = ["ADMIN", "DIRETOR", "DIRETOR_MASTER", "GESTOR_PROJETO"] as const;
+/** Resultado operacional: so' Diretor (do nucleo dele), Diretor Master e Administrador. */
+const DIRETORIA = ["ADMIN", "DIRETOR", "DIRETOR_MASTER"] as const;
+/** Financeiro de pagamentos: por nome (time financeiro); o Diretor Master le tudo, sem editar. */
+const SO_MASTER = ["DIRETOR_MASTER"] as const;
 
 export const MODULOS: ReadonlyArray<ModuloDef> = [
   // ---- gestao de projetos
   { id: "painel", href: "/dashboard", label: "Painel", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Visão geral dos projetos" },
   { id: "projetos", href: "/projetos", label: "Projetos", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Projetos, quadro e cronograma" },
-  { id: "tarefas", href: "/tarefas", label: "Tarefas", grupo: "gestao", restrito: false, padraoPapeis: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "COLABORADOR", "VISUALIZADOR"], descricao: "Tarefas e subtarefas" },
+  { id: "tarefas", href: "/tarefas", label: "Tarefas", grupo: "gestao", restrito: false, padraoPapeis: ["ADMIN", "DIRETOR", "DIRETOR_MASTER", "GESTOR_PROJETO", "COORDENADOR", "COLABORADOR", "VISUALIZADOR"], descricao: "Tarefas e subtarefas" },
   { id: "sprint", href: "/sprint", label: "Sprint da semana", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Planejamento semanal" },
-  { id: "gantt", href: "/gantt", label: "Gantt", grupo: "gestao", restrito: false, padraoPapeis: ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "VISUALIZADOR"], descricao: "Cronograma" },
-  { id: "calendario", href: "/calendario", label: "Calendário", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Eventos e prazos" },
-  { id: "chat", href: "/chat", label: "Chat", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Conversas e equipes" },
+  { id: "gantt", href: "/gantt", label: "Gantt", grupo: "gestao", restrito: false, padraoPapeis: ["ADMIN", "DIRETOR", "DIRETOR_MASTER", "GESTOR_PROJETO", "COORDENADOR", "APROVADOR", "VISUALIZADOR"], descricao: "Cronograma" },
+  { id: "calendario", href: "/calendario", label: "Calendário", grupo: "gestao", restrito: false, comunicacao: true, padraoPapeis: TODOS, descricao: "Eventos e prazos" },
+  { id: "chat", href: "/chat", label: "Chat", grupo: "gestao", restrito: false, comunicacao: true, padraoPapeis: TODOS, descricao: "Conversas e equipes" },
   { id: "equipes", href: "/equipes", label: "Equipes", grupo: "gestao", restrito: false, padraoPapeis: GESTAO, descricao: "Equipes e pessoas dos projetos" },
   { id: "nucleos", href: "/nucleos", label: "Núcleos", grupo: "gestao", restrito: false, padraoPapeis: GESTAO, descricao: "Núcleos, coordenadores e demandas" },
   { id: "metas", href: "/metas", label: "Metas e Planos de Ação", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Metas gerais e de contratos, indicadores e planos de ação vinculados aos projetos" },
@@ -54,22 +67,23 @@ export const MODULOS: ReadonlyArray<ModuloDef> = [
   { id: "pdi", href: "/pdi", label: "PDI", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Desenvolvimento individual" },
   { id: "aprovacoes_projetos", href: "/aprovacoes", label: "Aprovações de projetos", grupo: "gestao", restrito: false, padraoPapeis: TODOS, descricao: "Pedidos de aprovação dentro do sistema" },
   // ---- financeiro RESTRITO (so' quem foi liberado, pelo time financeiro)
-  { id: "programacao_pagamento", href: "/programacao-pagamento", label: "Programação de pagamento", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Contas a pagar por título" },
-  { id: "pagamentos_itau", href: "/pagamentos-itau", label: "Pagamentos Itaú (SISPAG)", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Remessas e retornos do banco" },
-  { id: "conferencia_oc", href: "/conferencia-oc", label: "Conferência de OC", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "OC, nota e título" },
-  { id: "despesas_recorrentes", href: "/despesas-recorrentes", label: "Despesas recorrentes", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Contas fixas" },
-  { id: "alertas_financeiro", href: "/alertas-financeiro", label: "Alertas do financeiro", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Avisos de pagamento" },
-  { id: "notas_fiscais", href: "/notas-fiscais", label: "Notas fiscais recebidas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Notas contra o CNPJ da empresa" },
+  { id: "programacao_pagamento", href: "/programacao-pagamento", label: "Programação de pagamento", grupo: "financeiro", restrito: true, padraoPapeis: SO_MASTER, descricao: "Contas a pagar por título" },
+  { id: "pagamentos_itau", href: "/pagamentos-itau", label: "Pagamentos Itaú (SISPAG)", grupo: "financeiro", restrito: true, padraoPapeis: SO_MASTER, descricao: "Remessas e retornos do banco" },
+  { id: "conferencia_oc", href: "/conferencia-oc", label: "Conferência de OC", grupo: "financeiro", restrito: true, padraoPapeis: SO_MASTER, descricao: "OC, nota e título" },
+  { id: "despesas_recorrentes", href: "/despesas-recorrentes", label: "Despesas recorrentes", grupo: "financeiro", restrito: true, padraoPapeis: SO_MASTER, descricao: "Contas fixas" },
+  { id: "alertas_financeiro", href: "/alertas-financeiro", label: "Alertas do financeiro", grupo: "financeiro", restrito: true, padraoPapeis: SO_MASTER, descricao: "Avisos de pagamento" },
+  { id: "notas_fiscais", href: "/notas-fiscais", label: "Notas fiscais recebidas", grupo: "financeiro", restrito: true, padraoPapeis: SO_MASTER, descricao: "Notas contra o CNPJ da empresa" },
   { id: "contestacoes_custo", href: "/aprovacoes", label: "Aprovar contestações de custo", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Recebe e decide as contestações de custo feitas na tela Ao vivo" },
   { id: "custo_pessoal", href: "/custo-pessoal", label: "Custo de pessoal", grupo: "pessoal", restrito: true, exclusivo: true, padraoPapeis: [], descricao: "Folha, encargos e provisões dos CLT por centro de custo (por enquanto só os núcleos ADM). Dado de remuneração: só DP, direção e administradores" },
-  { id: "aprovacoes_oc_todas", href: "/aprovacoes/senior", label: "Aprovações de OC: ver todas", grupo: "financeiro", restrito: true, padraoPapeis: [], descricao: "Sem isto, a pessoa vê só as OCs em que está envolvida" },
+  { id: "aprovacoes_oc_todas", href: "/aprovacoes/senior", label: "Aprovações de OC: ver todas", grupo: "financeiro", restrito: true, padraoPapeis: SO_MASTER, descricao: "Sem isto, a pessoa vê só as OCs em que está envolvida" },
   // ---- aprovacoes de OC (cada um ve as suas; liberada pessoa a pessoa, por enquanto so' para poucos) e contratos (seguem o papel)
   { id: "aprovacoes_oc", href: "/aprovacoes/senior", label: "Aprovações de OC", grupo: "contratos", restrito: true, padraoPapeis: [], descricao: "As OCs do Senior em que a pessoa está envolvida (precisa do vínculo com o usuário do Senior)" },
-  { id: "contratos", href: "/contratos", label: "Contratos", grupo: "contratos", restrito: false, padraoPapeis: TODOS, descricao: "Contratos e centros de custo" },
-  { id: "custos", href: "/custos/plano-de-contas", label: "Custo por centro de custo", grupo: "contratos", restrito: false, padraoPapeis: TODOS, descricao: "Custo realizado do Senior" },
-  { id: "medicao", href: "/medicao", label: "Receita e medição", grupo: "contratos", restrito: false, padraoPapeis: TODOS, descricao: "Medição, notas e recebimento" },
-  { id: "previsao", href: "/previsao", label: "Previsão por centro de custo", grupo: "contratos", restrito: false, padraoPapeis: TODOS, descricao: "Previsão mensal" },
-  { id: "p0", href: "/p0", label: "P0 dos contratos", grupo: "contratos", restrito: false, padraoPapeis: TODOS, descricao: "Ficha do contrato" },
+  { id: "contratos", href: "/contratos", label: "Contratos", grupo: "contratos", restrito: false, padraoPapeis: A_PARTIR_DE_COORDENADOR, descricao: "Contratos e centros de custo" },
+  { id: "custos", href: "/custos/plano-de-contas", label: "Custo por centro de custo", grupo: "contratos", restrito: false, padraoPapeis: A_PARTIR_DE_COORDENADOR, descricao: "Custo realizado do Senior" },
+  { id: "medicao", href: "/medicao", label: "Receita e medição", grupo: "contratos", restrito: false, padraoPapeis: A_PARTIR_DE_GESTOR, descricao: "Medição, notas e recebimento" },
+  { id: "previsao", href: "/previsao", label: "Previsão por centro de custo", grupo: "contratos", restrito: false, padraoPapeis: A_PARTIR_DE_GESTOR, descricao: "Previsão mensal" },
+  { id: "p0", href: "/p0", label: "P0 dos contratos", grupo: "contratos", restrito: false, padraoPapeis: A_PARTIR_DE_GESTOR, descricao: "Ficha do contrato" },
+  { id: "resultado_operacional", href: "/resultado-operacional", label: "Resultado operacional", grupo: "contratos", restrito: false, padraoPapeis: DIRETORIA, descricao: "Receita menos custo por centro de custo. Diretor vê o do núcleo dele; Diretor Master e Administrador veem todos" },
   // ---- administracao (so' ADMIN)
   { id: "usuarios", href: "/usuarios", label: "Usuários", grupo: "admin", restrito: true, padraoPapeis: [], descricao: "Cadastro e acesso" },
   { id: "usuarios_senior", href: "/usuarios/senior", label: "Usuários do Senior", grupo: "admin", restrito: true, padraoPapeis: [], descricao: "Vínculo com o Senior" },
@@ -85,7 +99,13 @@ export const GRUPOS: ReadonlyArray<{ id: GrupoModulo; nome: string; ajuda: strin
   { id: "admin", nome: "Administração", ajuda: "Cadastro de usuários" },
 ];
 
-export const PAPEIS_DO_SISTEMA = ["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "VISUALIZADOR", "CLIENTE"] as const;
+export const PAPEIS_DO_SISTEMA = ["ADMIN", "DIRETOR_MASTER", "DIRETOR", "GESTOR_PROJETO", "COORDENADOR", "APROVADOR", "COLABORADOR", "VISUALIZADOR", "CLIENTE"] as const;
+
+/** Nome do tipo de acesso na tela (o papel do banco continua sendo o que as rotas conhecem). */
+export const NOME_DO_PAPEL: Readonly<Record<string, string>> = {
+  ADMIN: "Administrador", DIRETOR_MASTER: "Diretor Master", DIRETOR: "Diretor", GESTOR_PROJETO: "Gestor", COORDENADOR: "Coordenador",
+  COLABORADOR: "Usuário", APROVADOR: "Aprovador (legado)", VISUALIZADOR: "Somente consulta", CLIENTE: "Cliente (portal)",
+};
 
 /** Liberacoes e bloqueios gravados para a pessoa: modulo -> true (libera) | false (bloqueia). */
 export type Sobreposicoes = ReadonlyMap<string, boolean>;
@@ -94,8 +114,12 @@ export type Sobreposicoes = ReadonlyMap<string, boolean>;
 export type NivelAcesso = "VER" | "EDITAR";
 export type Niveis = ReadonlyMap<string, NivelAcesso>;
 
-/** Nivel quando nada foi gravado: VISUALIZADOR so' consulta, os demais papeis consultam e alteram (como sempre foi). */
-export function nivelPadraoDoPapel(papel: string): NivelAcesso {
+/**
+ * Nivel quando nada foi gravado: VISUALIZADOR e DIRETOR_MASTER so' consultam, os demais papeis consultam e alteram (como sempre foi).
+ * Chat e calendario (comunicacao) o Diretor Master usa normalmente.
+ */
+export function nivelPadraoDoPapel(papel: string, def?: Pick<ModuloDef, "comunicacao">): NivelAcesso {
+  if (papel === "DIRETOR_MASTER") return def?.comunicacao ? "EDITAR" : "VER";
   return papel === "VISUALIZADOR" ? "VER" : "EDITAR";
 }
 
@@ -103,7 +127,7 @@ export function nivelPadraoDoPapel(papel: string): NivelAcesso {
 export function nivelDoModulo(def: ModuloDef, papel: string, sobre: Sobreposicoes, niveis: Niveis): NivelAcesso | null {
   if (!moduloPermitido(def, papel, sobre)) return null;
   if (papel === "ADMIN") return "EDITAR";
-  return niveis.get(def.id) ?? nivelPadraoDoPapel(papel);
+  return niveis.get(def.id) ?? nivelPadraoDoPapel(papel, def);
 }
 
 export function lerNiveis(linhas: ReadonlyArray<{ modulo: string; permitido: boolean; nivel?: string | null }>): Map<string, NivelAcesso> {
@@ -125,8 +149,7 @@ export function moduloPermitido(def: ModuloDef, papel: string, sobre: Sobreposic
   if (def.grupo === "admin") return false; // administracao e' so' do ADMIN, nao se libera por pessoa
   const gravado = sobre.get(def.id);
   if (gravado !== undefined) return gravado;
-  if (def.restrito) return false;
-  return def.padraoPapeis.includes(papel);
+  return def.padraoPapeis.includes(papel); // modulo restrito: padraoPapeis traz so' quem entra por papel (Diretor Master); os demais, por nome
 }
 
 /** Ids dos modulos que a pessoa enxerga, na ordem do catalogo. */
@@ -154,11 +177,11 @@ export function sobreposicoesParaGravar(
     return MODULOS.filter((m) => m.exclusivo && desejados.includes(m.id)).map((m) => ({ modulo: m.id, permitido: true, nivel: niveisDesejados[m.id] ?? "VER" }));
   }
   const quer = new Set(desejados);
-  const padraoNivel = nivelPadraoDoPapel(papel);
   const saida: { modulo: string; permitido: boolean; nivel?: NivelAcesso }[] = [];
   for (const m of MODULOS) {
     if (m.grupo === "admin") continue;
-    const padrao = !m.restrito && m.padraoPapeis.includes(papel);
+    const padraoNivel = nivelPadraoDoPapel(papel, m);
+    const padrao = m.padraoPapeis.includes(papel);
     const q = quer.has(m.id);
     const nivel = niveisDesejados[m.id] ?? padraoNivel;
     if (q !== padrao || (q && nivel !== padraoNivel)) saida.push(q ? { modulo: m.id, permitido: true, nivel } : { modulo: m.id, permitido: false });
@@ -189,7 +212,7 @@ const CONTRATOS_IDS: ModuloId[] = ["aprovacoes_oc", "contratos", "custos", "medi
 export const PERFIS_PRONTOS: ReadonlyArray<PerfilPronto> = [
   { id: "financeiro", nome: "Time financeiro", descricao: "Tudo do financeiro, contratos e todas as aprovações de OC", papel: "APROVADOR", modulos: [...GESTAO_IDS, ...FINANCEIRO_IDS, ...CONTRATOS_IDS], escopoProjetos: "PROPRIOS" },
   { id: "gerente_nucleo", nome: "Gerente de núcleo", descricao: "Gere o núcleo (equipe, demandas e projetos associados a ele) e os projetos em que participa; sem financeiro", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "equipes", "nucleos", "aprovacoes_oc", "contratos"], escopoProjetos: "PROPRIOS" },
-  { id: "coordenador_nucleo", nome: "Coordenador de núcleo", descricao: "Gere tarefas e demandas do núcleo e os projetos em que participa; sem financeiro", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "equipes", "nucleos", "aprovacoes_oc", "contratos"], escopoProjetos: "PROPRIOS" },
+  { id: "coordenador_nucleo", nome: "Coordenador de núcleo", descricao: "Gere tarefas e demandas do núcleo e os projetos em que participa; sem financeiro", papel: "COORDENADOR", modulos: [...GESTAO_IDS, "equipes", "nucleos", "aprovacoes_oc", "contratos"], escopoProjetos: "PROPRIOS" },
   { id: "membro_projetos", nome: "Membro de projetos", descricao: "Só acompanha projetos e tarefas; sem financeiro nem contratos", papel: "COLABORADOR", modulos: ["painel", "projetos", "tarefas", "sprint", "calendario", "chat", "metas", "pdi"], escopoProjetos: "PROPRIOS" },
   { id: "gestor_contratos", nome: "Gestor de contratos", descricao: "Projetos e gestão, mais contratos, custos, medição e previsão; sem financeiro de pagamento", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "aprovacoes_oc", "contratos", "custos", "medicao", "previsao", "p0"], escopoProjetos: "PROPRIOS" },
   { id: "visao_total", nome: "Visão total (sem pagamentos)", descricao: "Vê todas as telas, núcleos e contratos (os projetos continuam particulares); fora só o financeiro de pagamento (SISPAG, programação, conferência de OC...)", papel: "GESTOR_PROJETO", modulos: [...GESTAO_IDS, "equipes", "nucleos", ...CONTRATOS_IDS], escopoProjetos: "PROPRIOS", verTodosContratos: true },

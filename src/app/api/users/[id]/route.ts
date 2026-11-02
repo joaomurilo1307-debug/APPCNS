@@ -7,7 +7,7 @@ import { z } from "zod";
 import { logAudit } from "@/lib/auditLog";
 
 const updateUserSchema = z.object({
-  role: z.enum(["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR"]).optional(),
+  role: z.enum(["ADMIN", "DIRETOR", "GESTOR_PROJETO", "APROVADOR", "COLABORADOR", "CLIENTE", "VISUALIZADOR", "COORDENADOR", "DIRETOR_MASTER"]).optional(),
   active: z.boolean().optional(),
   verTodosCustos: z.boolean().optional(),
   name: z.string().min(2).max(150).optional(),

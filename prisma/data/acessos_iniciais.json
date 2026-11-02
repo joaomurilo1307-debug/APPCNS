@@ -102,6 +102,7 @@
       "medicao",
       "previsao",
       "p0",
+      "resultado_operacional",
       "contestacoes_custo"
     ],
     "coordenacao_financeira": [
@@ -167,6 +168,7 @@
     "medicao",
     "previsao",
     "p0",
+    "resultado_operacional",
     "contestacoes_custo",
     "custo_pessoal"
   ],

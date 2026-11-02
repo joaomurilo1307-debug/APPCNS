@@ -16,6 +16,7 @@ import ControleAcompanhamentoContrato from "@/components/contratos/ControleAcomp
 import AvisoCentroDeCusto from "@/components/contratos/AvisoCentroDeCusto";
 import PainelMetasContrato from "@/components/contractGoals/PainelMetasContrato";
 import GraficosDoContrato from "@/components/contratos/GraficosDoContrato";
+import type { ModuloId } from "@/lib/acesso/catalogo";
 import { normalizarPeriodoConsolidado } from "@/lib/medicao/consolidado";
 
 const ABAS = [
@@ -31,6 +32,11 @@ const ABAS = [
   { id: "resultado", nome: "Resultado" },
 ] as const;
 
+// Cada aba depende de um modulo do catalogo de acessos: quem nao entra no modulo nao ve a aba (Coordenador, por exemplo, nao ve Medicao, P0, Previsao nem Resultado).
+const MODULO_DA_ABA: Partial<Record<(typeof ABAS)[number]["id"], ModuloId>> = {
+  medicao: "medicao", custos: "custos", pessoal: "custo_pessoal", p0: "p0", previsao: "previsao", resultado: "resultado_operacional",
+};
+
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
 
 function Pagina() {
@@ -38,7 +44,15 @@ function Pagina() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const aba = (ABAS.find((a) => a.id === params.get("aba"))?.id ?? "visao") as (typeof ABAS)[number]["id"];
+  const [liberados, setLiberados] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/users/me/acesso").then((r) => (r.ok ? r.json() : null)).then((d) => { if (vivo && d?.modulos) setLiberados(new Set<string>(d.modulos)); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  // enquanto a lista de modulos nao chega, mostra todas (como antes); depois esconde as que a pessoa nao acessa
+  const abasVisiveis = ABAS.filter((a) => { const m = MODULO_DA_ABA[a.id]; return !m || liberados === null || liberados.has(m); });
+  const aba = (abasVisiveis.find((a) => a.id === params.get("aba"))?.id ?? "visao") as (typeof ABAS)[number]["id"];
 
   const [ficha, setFicha] = useState<FichaContrato | null>(null);
   const [podeEditar, setPodeEditar] = useState(false);
@@ -109,7 +123,7 @@ function Pagina() {
       <AvisoCentroDeCusto codccus={[ficha.codccu]} />
 
       <nav className="mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-gray-200" aria-label="Seções do contrato">
-        {ABAS.map((a) => (
+        {abasVisiveis.map((a) => (
           <button key={a.id} onClick={() => irParaAba(a.id)} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-[14px] font-medium transition ${aba === a.id ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-800"}`}>
             {a.nome}
           </button>

@@ -1,7 +1,9 @@
 import { withAuth } from "next-auth/middleware";
-import { NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
+import { NextResponse, type NextRequest } from "next/server";
+import { bloqueiaEscrita } from "@/lib/acesso/somenteLeitura";
 
-export default withAuth(
+const paginas = withAuth(
   function middleware(req) {
     const token = req.nextauth.token as any;
     const path = req.nextUrl.pathname;
@@ -18,6 +20,18 @@ export default withAuth(
   }
 );
 
+export default async function middleware(req: NextRequest, evento: any) {
+  // API: nao redireciona ninguem (as rotas respondem 401 sozinhas, e as de sincronismo usam chave propria). So' barra a escrita de quem e' somente leitura.
+  if (req.nextUrl.pathname.startsWith("/api/")) {
+    const token = await getToken({ req });
+    if (token && bloqueiaEscrita(token.role as string | undefined, req.method, req.nextUrl.pathname)) {
+      return NextResponse.json({ error: "Seu acesso é somente de consulta: o Diretor Master não edita dados." }, { status: 403 });
+    }
+    return NextResponse.next();
+  }
+  return (paginas as any)(req, evento);
+}
+
 export const config = {
   matcher: [
     "/dashboard/:path*",
@@ -33,5 +47,6 @@ export const config = {
     "/inicio",
     "/portal-cliente/:path*",
     "/completar-cadastro",
+    "/api/:path*",
   ],
 };

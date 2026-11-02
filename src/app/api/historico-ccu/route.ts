@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  if (!["ADMIN", "DIRETOR"].includes(user.role)) {
+  if (!["ADMIN", "DIRETOR", "DIRETOR_MASTER"].includes(user.role)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 

@@ -41,6 +41,21 @@ function recordSuccess(email: string) {
   loginAttempts.delete(email);
 }
 
+const PAPEL_VALIDADE_MS = 5 * 60_000;
+const papeis = new Map<string, { role: string; ate: number }>();
+async function papelAtualDe(userId: string): Promise<string | null> {
+  const guardado = papeis.get(userId);
+  if (guardado && guardado.ate > Date.now()) return guardado.role;
+  try {
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (!u) return null;
+    papeis.set(userId, { role: u.role, ate: Date.now() + PAPEL_VALIDADE_MS });
+    return u.role;
+  } catch {
+    return guardado?.role ?? null; // banco indisponivel: segue com o papel que ja estava no token
+  }
+}
+
 export const authOptions: AuthOptions = {
   session: { strategy: "jwt", maxAge: 7 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
@@ -91,6 +106,12 @@ export const authOptions: AuthOptions = {
         token.id = (user as any).id;
         token.role = (user as any).role;
         token.primeiroAcesso = (user as any).primeiroAcesso;
+      }
+      // O papel vive no token por 7 dias; quando o administrador troca o tipo de acesso de alguem (ex.: virou Diretor Master, ou deixou de ser Admin),
+      // vale em ate 5 minutos, sem esperar novo login. A leitura do banco e' guardada em memoria para nao pesar em toda chamada.
+      if (token.id) {
+        const atual = await papelAtualDe(token.id as string);
+        if (atual) token.role = atual;
       }
       // depois de completar o cadastro, o front chama update() da sessao --
       // reconsulta o banco pra refletir primeiroAcesso=false sem exigir novo login

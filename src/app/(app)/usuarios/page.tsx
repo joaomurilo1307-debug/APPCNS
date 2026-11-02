@@ -32,11 +32,13 @@ type UserRow = {
 type NucleoOption = { id: string; name: string };
 
 const roleLabel: Record<string, string> = {
-  ADMIN: "Admin",
+  ADMIN: "Administrador",
+  DIRETOR_MASTER: "Diretor Master (só leitura)",
   DIRETOR: "Diretor",
-  GESTOR_PROJETO: "Gestor de Projeto",
-  APROVADOR: "Aprovador",
-  COLABORADOR: "Colaborador",
+  GESTOR_PROJETO: "Gestor",
+  COORDENADOR: "Coordenador",
+  APROVADOR: "Aprovador (legado)",
+  COLABORADOR: "Usuário",
   CLIENTE: "Cliente",
   VISUALIZADOR: "Visualizador (só leitura)",
 };

@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       ccusNovos: novos,
       ccusRemovidos: removidos,
       ccusDesconhecidos: desconhecidos,
-      avisoPapel: ["ADMIN", "DIRETOR"].includes(u.role) && !l.todos ? "já vê todos os centros de custo pelo papel" : undefined,
+      avisoPapel: ["ADMIN", "DIRETOR_MASTER"].includes(u.role) && !l.todos ? "já vê todos os centros de custo pelo papel" : undefined,
     });
     if (aplicar) {
       if (l.todos) operacoes.push(() => prisma.user.update({ where: { id: u.id }, data: { verTodosCustos: true } }));
