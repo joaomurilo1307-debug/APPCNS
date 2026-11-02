@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { DIA_VALIDO } from "@/lib/timesheetAuto/servidor";
+import { DIA_VALIDO, mesesDoPeriodo } from "@/lib/timesheetAuto/servidor";
 
 // Dias sem expediente da pessoa (ferias, atestado, folga): saem da divisao das horas do timesheet automatico.
 const schema = z.object({ de: z.string().regex(DIA_VALIDO), ate: z.string().regex(DIA_VALIDO), motivo: z.string().trim().max(120).optional() });
@@ -21,8 +21,7 @@ export async function POST(req: Request) {
   if (ate < de) return NextResponse.json({ error: "A data final não pode ser antes da inicial" }, { status: 422 });
   if (!(await prisma.timesheetAuto.findUnique({ where: { userId: u.id } }))) return NextResponse.json({ error: "Ative o timesheet primeiro" }, { status: 409 });
   // mes fechado nao muda: a ausencia nao pode cair em um mes ja fechado
-  const meses = new Set([de.slice(0, 7), ate.slice(0, 7)]);
-  if (await prisma.timesheetAutoFechamento.count({ where: { userId: u.id, competencia: { in: [...meses] } } })) {
+  if (await prisma.timesheetAutoFechamento.count({ where: { userId: u.id, competencia: { in: mesesDoPeriodo(de, ate) } } })) {
     return NextResponse.json({ error: "Há mês fechado nesse período: peça ao administrador para reabrir" }, { status: 409 });
   }
   const a = await prisma.timesheetAutoAusencia.create({ data: { userId: u.id, de: new Date(`${de}T00:00:00.000Z`), ate: new Date(`${ate}T00:00:00.000Z`), motivo: motivo || null } });
@@ -39,8 +38,7 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ error: "Informe a ausência" }, { status: 422 });
   const a = await prisma.timesheetAutoAusencia.findUnique({ where: { id } });
   if (!a || a.userId !== u.id) return NextResponse.json({ error: "Ausência não encontrada" }, { status: 404 });
-  const meses = new Set([a.de.toISOString().slice(0, 7), a.ate.toISOString().slice(0, 7)]);
-  if (await prisma.timesheetAutoFechamento.count({ where: { userId: u.id, competencia: { in: [...meses] } } })) {
+  if (await prisma.timesheetAutoFechamento.count({ where: { userId: u.id, competencia: { in: mesesDoPeriodo(a.de.toISOString().slice(0, 10), a.ate.toISOString().slice(0, 10)) } } })) {
     return NextResponse.json({ error: "Há mês fechado nesse período: peça ao administrador para reabrir" }, { status: 409 });
   }
   await prisma.timesheetAutoAusencia.delete({ where: { id } });
