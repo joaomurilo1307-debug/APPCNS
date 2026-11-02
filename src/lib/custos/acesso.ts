@@ -1,6 +1,6 @@
 // Quem enxerga quais centros de custo (CCU) na tela Custo por Centro de Custo -- UM so' lugar para a regra, usado por todas as
 // rotas. Cada pessoa tem:
-//   - TODOS: papel ADMIN/DIRETOR_MASTER ou User.verTodosCustos (o DIRETOR comum ve so' os centros do nucleo dele: liberados + equipes);
+//   - TODOS: papel ADMIN/ACESSO_MASTER ou User.verTodosCustos (o DIRETOR comum ve so' os centros do nucleo dele: liberados + equipes);
 //   - ou um conjunto de CCUs = os liberados para ela (AcessoCentroCusto) + os das equipes de que participa (Team.codccu);
 //   - conjunto vazio = NENHUM.
 
@@ -47,7 +47,7 @@ export async function ccusForaDosResultados(db: typeof prismaReal): Promise<Set<
  */
 export async function escopoDeCustos(db: typeof prismaReal, usuario: { id: string; role?: string }, area: "FINANCEIRO" | "PROJETOS" = "FINANCEIRO"): Promise<EscopoCustos> {
   // Situacao e acompanhamento sao escolhas de gestao, nunca concessoes/revogacoes de acesso.
-  if (usuario.role === "ADMIN" || usuario.role === "DIRETOR_MASTER") return montarEscopo(true, []);
+  if (usuario.role === "ADMIN" || usuario.role === "ACESSO_MASTER") return montarEscopo(true, []);
   const eu = await db.user.findUnique({
     where: { id: usuario.id },
     select: {

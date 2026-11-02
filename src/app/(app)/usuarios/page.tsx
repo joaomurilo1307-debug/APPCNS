@@ -33,7 +33,7 @@ type NucleoOption = { id: string; name: string };
 
 const roleLabel: Record<string, string> = {
   ADMIN: "Administrador",
-  DIRETOR_MASTER: "Diretor Master (só leitura)",
+  ACESSO_MASTER: "Acesso Master (só leitura)",
   DIRETOR: "Diretor",
   GESTOR_PROJETO: "Gestor",
   COORDENADOR: "Coordenador",

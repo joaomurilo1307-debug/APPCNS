@@ -1,10 +1,11 @@
-// Papeis que so' consultam, em TODO o sistema (matriz de acessos de 02/11/2026): o Diretor Master (Carolina e Andre) ve todos os contratos e o
-// financeiro, mas "nao pode editar nada". A regra fica na entrada (middleware), antes de qualquer rota, para valer tambem para rotas novas.
-// Continuam liberadas so' as chamadas que nao sao dado de gestao: login, presenca, chat, calendario, o proprio perfil e o primeiro acesso,
-// mais os POSTs que so' leem ou geram arquivo (exportar, dossie, zip, "Atualizar" da tela, simulacao de meta).
+// Papeis que so' consultam fora de Projetos (matriz de acessos de 02/11/2026): o Acesso Master (Carolina e Andre) ve tudo, todos os contratos e o financeiro,
+// e EDITA so' a parte de Projetos (a dele: projetos, tarefas, demandas, aprovacoes, metas, PDI). Todo o resto e' so' leitura.
+// A regra fica na entrada (middleware), antes de qualquer rota, para valer tambem para rotas novas. Continuam liberadas: login, presenca, chat,
+// calendario, o proprio perfil e o primeiro acesso, as rotas de Projetos (cada uma ja limita ao que e' da pessoa) e os POSTs que so' leem ou
+// geram arquivo (exportar, dossie, zip, "Atualizar" da tela, simulacao de meta).
 // Este arquivo e' PURO (sem banco): testavel e usado pelo middleware (runtime Edge).
 
-export const PAPEIS_SO_LEITURA: ReadonlyArray<string> = ["DIRETOR_MASTER"];
+export const PAPEIS_SO_LEITURA: ReadonlyArray<string> = ["ACESSO_MASTER"];
 
 const METODOS_QUE_GRAVAM = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -18,6 +19,23 @@ const LIBERADOS: ReadonlyArray<string> = [
   "/api/users/me",
   "/api/completar-cadastro",
   "/api/upload",
+  // parte de Projetos (a dele): cada rota ja mostra so' o que tem relacao com a pessoa
+  "/api/projects",
+  "/api/tasks",
+  "/api/tarefas",
+  "/api/task-dependencies",
+  "/api/teams",
+  "/api/demandas",
+  "/api/approval-requests",
+  "/api/goals",
+  "/api/contract-goals",
+  "/api/sector-goals",
+  "/api/fields",
+  "/api/folders",
+  "/api/attachments",
+  "/api/pdi",
+  "/api/pdi-items",
+  "/api/projetos-acesso",
   // POSTs que so' leem ou geram arquivo
   "/api/conferencia-oc/dossies-zip",
   "/api/contract-goals/preview",

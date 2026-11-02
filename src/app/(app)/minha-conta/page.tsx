@@ -21,7 +21,7 @@ type Me = {
 
 const roleLabel: Record<string, string> = {
   ADMIN: "Administrador",
-  DIRETOR_MASTER: "Diretor Master",
+  ACESSO_MASTER: "Acesso Master",
   DIRETOR: "Diretor",
   GESTOR_PROJETO: "Gestor",
   COORDENADOR: "Coordenador",

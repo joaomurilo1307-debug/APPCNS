@@ -26,7 +26,7 @@ type Dados = {
 };
 
 const PAPEL_ROTULO: Record<string, string> = {
-  ADMIN: "Administrador", DIRETOR_MASTER: "Diretor Master (só leitura)", DIRETOR: "Diretor", GESTOR_PROJETO: "Gestor", COORDENADOR: "Coordenador",
+  ADMIN: "Administrador", ACESSO_MASTER: "Acesso Master (só leitura)", DIRETOR: "Diretor", GESTOR_PROJETO: "Gestor", COORDENADOR: "Coordenador",
   APROVADOR: "Aprovador (legado)", COLABORADOR: "Usuário", VISUALIZADOR: "Visualizador (só leitura)", CLIENTE: "Cliente (portal)",
 };
 const ESCOPO_ROTULO: Record<Escopo, { nome: string; ajuda: string }> = {

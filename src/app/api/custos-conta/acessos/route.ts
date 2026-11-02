@@ -49,7 +49,7 @@ export async function GET() {
   const pessoas = usuarios.map((u) => {
     const liberados = u.acessosCentroCusto.map((a) => a.codccu);
     const viaEquipe = u.teams.map((t) => t.team.codccu).filter((c): c is string => !!c);
-    const verTudo = u.role === "ADMIN" || u.role === "DIRETOR_MASTER" || u.verTodosCustos;
+    const verTudo = u.role === "ADMIN" || u.role === "ACESSO_MASTER" || u.verTodosCustos;
     return { id: u.id, nome: u.name, email: u.email, papel: u.role, ativo: u.active, cargo: u.cargo, verTodosCustos: u.verTodosCustos, verTudoPeloPapel: u.role === "ADMIN" || u.role === "DIRETOR", verTudo, liberados, viaEquipe };
   });
 

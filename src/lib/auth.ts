@@ -111,7 +111,7 @@ export const authOptions: AuthOptions = {
         token.primeiroAcesso = (user as any).primeiroAcesso;
         guardarPapel((user as any).id, (user as any).role); // login traz o papel do banco: vale na hora, sem esperar a guarda anterior expirar
       }
-      // O papel vive no token por 7 dias; quando o administrador troca o tipo de acesso de alguem (ex.: virou Diretor Master, ou deixou de ser Admin),
+      // O papel vive no token por 7 dias; quando o administrador troca o tipo de acesso de alguem (ex.: virou Acesso Master, ou deixou de ser Admin),
       // vale em ate 5 minutos, sem esperar novo login. A leitura do banco e' guardada em memoria para nao pesar em toda chamada.
       if (token.id) {
         const atual = await papelAtualDe(token.id as string);

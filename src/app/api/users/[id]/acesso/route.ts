@@ -72,7 +72,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       disponiveis: Array.from(nomesCentro.entries()).map(([codccu, nome]) => ({ codccu, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
       liberados: alvo.acessosCentroCusto.map((a) => ({ codccu: a.codccu, area: a.area })),
       verTodos: alvo.verTodosCustos,
-      verTodosPeloPapel: alvo.role === "ADMIN" || alvo.role === "DIRETOR_MASTER",
+      verTodosPeloPapel: alvo.role === "ADMIN" || alvo.role === "ACESSO_MASTER",
     },
     nucleos: {
       todos: nucleos,

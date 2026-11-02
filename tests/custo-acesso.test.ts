@@ -23,9 +23,9 @@ test("podeVerCcu: so' o que foi liberado; todos ve tudo", () => {
   assert.ok(!podeVerCcu(montarEscopo(false, []), "190"));
 });
 
-test("escopoDeCustos: ADMIN e Diretor Master veem tudo sem consultar; o Diretor comum so' os centros dele; verTodosCustos ve tudo", async () => {
+test("escopoDeCustos: ADMIN e Acesso Master veem tudo sem consultar; o Diretor comum so' os centros dele; verTodosCustos ve tudo", async () => {
   assert.equal((await escopoDeCustos(bancoFalso(null), { id: "1", role: "ADMIN" })).tipo, "todos");
-  assert.equal((await escopoDeCustos(bancoFalso(null), { id: "1", role: "DIRETOR_MASTER" })).tipo, "todos");
+  assert.equal((await escopoDeCustos(bancoFalso(null), { id: "1", role: "ACESSO_MASTER" })).tipo, "todos");
   assert.equal((await escopoDeCustos(bancoFalso(null), { id: "1", role: "DIRETOR" })).tipo, "nenhum", "Diretor sem centros liberados nao ve nenhum");
   const dir = await escopoDeCustos(bancoFalso({ verTodosCustos: false, acessosCentroCusto: [{ codccu: "190" }], teams: [] }), { id: "1", role: "DIRETOR" });
   assert.deepEqual(Array.from(dir.ccus), ["190"], "Diretor ve os centros do nucleo dele (liberados), nao todos");
@@ -65,8 +65,8 @@ bruno@consominas.com.br;abc
 test("situacao e acompanhamento nao retiram permissoes de consulta do historico", async () => {
   const admin = await escopoDeCustos(bancoFalso(null, ["190"]), { id: "1", role: "ADMIN" });
   assert.ok(podeVerCcu(admin, "190"), "admin continua vendo o encerrado");
-  const diretor = await escopoDeCustos(bancoFalso(null, ["190"]), { id: "2", role: "DIRETOR_MASTER" });
-  assert.ok(podeVerCcu(diretor, "190") && podeVerCcu(diretor, "230"), "Diretor Master continua consultando o historico");
+  const diretor = await escopoDeCustos(bancoFalso(null, ["190"]), { id: "2", role: "ACESSO_MASTER" });
+  assert.ok(podeVerCcu(diretor, "190") && podeVerCcu(diretor, "230"), "Acesso Master continua consultando o historico");
   assert.equal(diretor.tipo, "todos");
   const todosCustos = await escopoDeCustos(bancoFalso({ verTodosCustos: true, acessosCentroCusto: [], teams: [] }, ["190"]), { id: "3", role: "APROVADOR" });
   assert.ok(podeVerCcu(todosCustos, "190") && podeVerCcu(todosCustos, "270"));

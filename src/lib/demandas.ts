@@ -58,7 +58,7 @@ export async function contratosDoUsuario(u: UsuarioSessao): Promise<{ todos: boo
 
 /**
  * Contratos cujas demandas a pessoa VE. Demanda e' do modulo Projetos, que e' individual (Joao, 02/11/2026): so' as da propria pessoa, as que ela atende,
- * as dos nucleos que ela gere e as dos contratos que lhe foram liberados ou que sao das equipes dela. O atalho "ve todos os custos" (Administrador, Diretor Master,
+ * as dos nucleos que ela gere e as dos contratos que lhe foram liberados ou que sao das equipes dela. O atalho "ve todos os custos" (Administrador, Acesso Master,
  * "ver todos os custos") vale para custo e medicao, nao para demanda. Cliente segue a regra propria.
  */
 export async function contratosParaVerDemandas(u: UsuarioSessao): Promise<{ todos: boolean; ccus: Set<string> }> {

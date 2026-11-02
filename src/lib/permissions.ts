@@ -27,7 +27,7 @@ export async function geroNucleoDoProjeto(userId: string, projectId: string): Pr
  * Regra de visibilidade de PROJETOS (decisao do Joao, 19/10/2026, reforcada em 25/10/2026): cada pessoa -- inclusive Diretoria e Gerencia --
  * so ve o projeto que CRIOU (ownerId) ou em que PARTICIPA: e' membro da equipe do projeto, foi convidada como
  * diretor/coordenador do projeto ou recebeu convite individual (tela Usuarios > Projetos), gerencia um nucleo vinculado ao projeto, tem tarefa atribuida ou e' o aprovador.
- * Ninguem ve projeto alheio, nem o ADMIN nem o Diretor Master (decisao do Joao, 02/11/2026: "projetos e' um modulo muito individual"; antes so' o
+ * Ninguem ve projeto alheio, nem o ADMIN nem o Acesso Master (decisao do Joao, 02/11/2026: "projetos e' um modulo muito individual"; antes so' o
  * ADMIN via todos). Cliente tem regra propria (ProjectClient) nas rotas.
  * Retorna um filtro Prisma pronto para `Project.findMany({ where })` ou, para outros modelos, `{ project: <isto> }`.
  */

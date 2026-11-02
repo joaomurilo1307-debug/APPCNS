@@ -25,7 +25,7 @@ export default async function middleware(req: NextRequest, evento: any) {
   if (req.nextUrl.pathname.startsWith("/api/")) {
     const token = await getToken({ req });
     if (token && bloqueiaEscrita(token.role as string | undefined, req.method, req.nextUrl.pathname)) {
-      return NextResponse.json({ error: "Seu acesso é somente de consulta: o Diretor Master não edita dados." }, { status: 403 });
+      return NextResponse.json({ error: "Seu acesso é somente de consulta fora de Projetos: o Acesso Master só edita a parte de Projetos." }, { status: 403 });
     }
     return NextResponse.next();
   }

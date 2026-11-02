@@ -22,7 +22,7 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const user = session.user as any;
-  // Resultado operacional e' uma permissao propria (Diretor, Diretor Master e Administrador); os dados seguem o escopo de centros de custo da pessoa.
+  // Resultado operacional e' uma permissao propria (Diretor, Acesso Master e Administrador); os dados seguem o escopo de centros de custo da pessoa.
   const negado = await negarSemModulo(user, "resultado_operacional");
   if (negado) return negado;
   const escopo = await escopoDeCustos(prisma, user);
