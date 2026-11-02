@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canViewProject } from "@/lib/permissions";
 import { sendNotificationEmail } from "@/lib/mailer";
 import { z } from "zod";
 
@@ -20,10 +19,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const project = await prisma.project.findUnique({ where: { id: params.id } });
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
-  // o administrador so' decide em projeto que ele proprio enxerga (projetos sao individuais, 02/11/2026)
-  const canApprove = (role === "ADMIN" && (await canViewProject(userId, role, params.id))) || (role === "APROVADOR" && project.approverId === userId);
+  // Aprovacao e' relacionada a pessoa: so' decide quem foi designado aprovador do projeto, inclusive administrador (02/11/2026)
+  const canApprove = (role === "ADMIN" || role === "APROVADOR") && project.approverId === userId;
   if (!canApprove) {
-    return NextResponse.json({ error: "Só o aprovador designado (ou Admin) pode decidir" }, { status: 403 });
+    return NextResponse.json({ error: "Só o aprovador designado do projeto pode decidir" }, { status: 403 });
   }
 
   const body = await req.json();
