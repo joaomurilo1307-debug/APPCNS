@@ -48,7 +48,7 @@ test("modulos comuns seguem o papel (Usuario so' tem Projetos; equipes e nucleos
 // Matriz de acessos de 02/11/2026 (HTML validado com a diretoria): o que cada tipo entra por padrao e com qual nivel.
 const GESTAO_PROJETOS: ModuloId[] = ["painel", "projetos", "tarefas", "sprint", "calendario", "chat", "metas", "relatorios", "pdi", "aprovacoes_projetos"];
 const FIN_RESTRITO: ModuloId[] = ["programacao_pagamento", "pagamentos_itau", "conferencia_oc", "despesas_recorrentes", "alertas_financeiro", "notas_fiscais", "aprovacoes_oc_todas"];
-const ids = (papel: string) => new Set(modulosEfetivos(papel, nenhuma));
+const ids = (papel: string): Set<string> => new Set<string>(modulosEfetivos(papel, nenhuma));
 const tem = (papel: string, lista: string[]) => lista.every((m) => ids(papel).has(m));
 const naoTem = (papel: string, lista: string[]) => lista.every((m) => !ids(papel).has(m));
 
