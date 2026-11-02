@@ -1225,6 +1225,8 @@ model Task {
   outlookEventId    String?           @unique
   actualStartedAt   DateTime?
   actualEndedAt     DateTime?
+  // horas que a pessoa dedicou a tarefa inteira (declaradas antes de concluir): ancoram o Timesheet automatico e o custo do projeto
+  horasDedicadas    Float?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -1239,6 +1241,7 @@ model Task {
   predecessorLinks TaskDependency[] @relation("DependencySuccessor")
   successorLinks   TaskDependency[] @relation("DependencyPredecessor")
   statusEventos    TarefaStatusEvento[]
+  responsavelEventos TarefaResponsavelEvento[]
 
   @@index([projectId])
   @@index([assigneeId])
@@ -2191,4 +2194,17 @@ model TarefaStatusEvento {
 
   @@index([taskId, em])
   @@index([em])
+}
+
+// Cada troca de responsavel de uma tarefa: o esforco de um periodo e' de quem era o responsavel NAQUELE periodo (nao de quem e' hoje).
+model TarefaResponsavelEvento {
+  id        String   @id @default(cuid())
+  taskId    String
+  deUserId  String?
+  paraUserId String?
+  porUserId String?
+  em        DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, em])
 }

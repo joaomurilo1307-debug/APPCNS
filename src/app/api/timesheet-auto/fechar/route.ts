@@ -4,11 +4,12 @@ import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { primeiroDia, ultimoDia } from "@/lib/timesheetAuto/calculo";
 import { COMPETENCIA_VALIDA, competenciaAtual, relatorioDaPessoa } from "@/lib/timesheetAuto/servidor";
 import { logAudit } from "@/lib/auditLog";
 
-// Fecha o mes: grava a fotografia do relatorio. Depois disso, mexer nas tarefas nao muda mais o que foi fechado (a distribuicao do salario nao "anda").
-// A pessoa fecha o proprio mes (so' de mes ja encerrado); o Administrador fecha e REABRE o de qualquer um.
+// Fecha o mes: grava a fotografia do relatorio (inclusive a matriz dia x tarefa). Depois disso, mexer nas tarefas nao muda mais o que foi fechado (a
+// distribuicao do salario nao "anda"). A pessoa fecha o proprio mes (so' de mes ja encerrado); o Administrador fecha e REABRE o de qualquer um.
 const schema = z.object({ competencia: z.string().regex(COMPETENCIA_VALIDA), userId: z.string().optional() });
 
 export async function POST(req: Request) {
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
   if (await prisma.timesheetAutoFechamento.findUnique({ where: { userId_competencia: { userId: alvoId, competencia } } })) {
     return NextResponse.json({ error: "Este mês já está fechado" }, { status: 409 });
   }
-  const rel = await relatorioDaPessoa(alvoId, competencia);
+  const rel = await relatorioDaPessoa(alvoId, primeiroDia(competencia), ultimoDia(competencia), { semCongelar: [competencia] });
   if (!rel) return NextResponse.json({ error: "A pessoa não ativou o timesheet" }, { status: 409 });
   await prisma.timesheetAutoFechamento.create({ data: { userId: alvoId, competencia, resultado: rel.resultado as any, fechadoPorId: u.id } });
   await logAudit({ userId: u.id, action: "timesheet.fechar", entityType: "TimesheetAuto", entityId: alvoId, metadata: { competencia, horasAlocadas: rel.resultado.horasAlocadas } });

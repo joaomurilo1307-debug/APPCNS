@@ -78,6 +78,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
 
   const { nucleoIds, diretorIds, coordenadorIds, ...rest } = parsed.data;
+  // centro de custo e' obrigatorio: pode trocar, nao pode tirar (projetos antigos sem centro continuam como estao ate alguem definir)
+  if (parsed.data.codccu === null && project.codccu) return NextResponse.json({ error: "O projeto precisa ter um centro de custo. Troque por outro em vez de remover.", code: "CENTRO_DE_CUSTO_OBRIGATORIO" }, { status: 422 });
   if (parsed.data.codccu) {
     const centro = await prisma.contrato.findUnique({ where: { codccu: parsed.data.codccu }, select: { acompanharResultados: true } });
     if (!centro) return NextResponse.json({ error: "Centro de custo não encontrado" }, { status: 404 });

@@ -10,6 +10,7 @@ import { canManageTeam, canModifyTaskScoped, canViewProject } from "@/lib/permis
 import { podeEditarModulo } from "@/lib/acesso/servidor";
 import { duracaoEntreDatas, rescheduleAndPersist } from "@/lib/reschedule";
 import { reconcileTaskOutlook } from "@/lib/taskOutlookSync";
+import { registrarMudancas } from "@/lib/timesheetAuto/historico";
 import { Prisma } from "@prisma/client";
 import { dataDoItem, diaDoItem, fimRealDoItem, lerDetalhesDoPlano, type DetalhesDoPlano } from "@/lib/contractGoals/planDetails";
 
@@ -93,6 +94,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             ...(currentTask.status !== status && status === "FEITO" ? { actualEndedAt: planDetails?.actualCompletion ? fimRealDoItem(planDetails.actualCompletion, currentTask.actualStartedAt) : new Date(), ...(!currentTask.actualStartedAt ? { actualStartedAt: dataDoItem(planDetails?.plannedStart || planDetails?.actualCompletion) ?? new Date() } : {}) } : {}),
             ...(currentTask.status === "FEITO" && status !== "FEITO" ? { actualEndedAt: null } : {}),
           } });
+          await registrarMudancas(tx, { taskId: task.id, porUserId: usuario.id, antes: { status: currentTask.status, assigneeId: currentTask.assigneeId }, depois: { status: result.status, assigneeId: result.assigneeId } });
           if (mudouCronograma && result.projectId) {
             await rescheduleAndPersist(tx, result.projectId);
             result = await tx.task.findUniqueOrThrow({ where: { id: task.id } });

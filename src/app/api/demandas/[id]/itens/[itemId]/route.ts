@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { podeGerirDemandas, podeVerDemanda } from "@/lib/demandas";
 import { z } from "zod";
+import { registrarMudancas } from "@/lib/timesheetAuto/historico";
 
 async function carregar(id: string, itemId: string) {
   const session = await getServerSession(authOptions);
@@ -29,9 +30,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string; it
   // com projeto aberto, concluir o item conclui a tarefa correspondente (e vice-versa e' feito no projeto)
   if (parsed.data.concluido !== undefined && item.taskId) {
     const novo = parsed.data.concluido ? "FEITO" : "A_FAZER";
-    const antes = await prisma.task.findUnique({ where: { id: item.taskId }, select: { status: true } });
+    const antes = await prisma.task.findUnique({ where: { id: item.taskId }, select: { status: true, assigneeId: true } });
     await prisma.task.update({ where: { id: item.taskId }, data: { status: novo } }).catch(() => {});
-    if (antes && antes.status !== novo) await prisma.tarefaStatusEvento.create({ data: { taskId: item.taskId, userId: null, de: antes.status, para: novo } }).catch(() => {});
+    if (antes && antes.status !== novo) await registrarMudancas(prisma, { taskId: item.taskId, porUserId: null, antes, depois: { status: novo, assigneeId: antes.assigneeId } }).catch(() => {});
   }
   return NextResponse.json(item);
 }
