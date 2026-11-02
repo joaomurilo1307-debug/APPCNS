@@ -7,6 +7,7 @@ import { dispararAtualizacao, encerrarExecucoesOrfas, estadoAtualizacao } from "
 import { dispararMedicao, estadoMedicao } from "@/lib/medicao/sincronizar";
 import { prisma } from "@/lib/prisma";
 import { verificarCargas } from "@/lib/vigia/sincronizacao";
+import { garantirVinculosOcAtualizados } from "@/lib/senior/vinculosOc";
 
 export const INTERVALO_VERIFICACAO_MS = 10 * 60_000;
 export const IDADE_MAXIMA_PARA_REPETIR_MS = 28 * 60_000;
@@ -43,6 +44,7 @@ async function vigiarCargas() {
 
 async function verificar() {
   await vigiarCargas();
+  void garantirVinculosOcAtualizados(); // vinculo Titulo<->OC (a cada 15 min, em segundo plano), mesmo sem ninguem abrir a Programacao de Pagamento
   try {
     const estado = await estadoAtualizacao();
     if (estado.emCurso) return;

@@ -12,6 +12,19 @@ let ultimaExecucao = 0;
 
 const positivo = (v: string | undefined) => !!v && /^\d+$/.test(v.trim()) && Number(v) > 0;
 
+type LinhaVinculo = { origem: string; codFil: string; codFor: string; chave: string; numOcp: string };
+
+/** PURA: junta os itens das NFs (produto e servico) e os titulos com USU_NUMOCP no que a tabela guarda, sem repetir. Valor que nao e' numero positivo e' ignorado. */
+export function montarVinculos(ipc: ReadonlyArray<Record<string, string>>, isc: ReadonlyArray<Record<string, string>>, titulos: ReadonlyArray<Record<string, string>>): LinhaVinculo[] {
+  const unicos = new Map<string, LinhaVinculo>();
+  const add = (origem: string, codFil: string, codFor: string, chave: string, numOcp: string) => {
+    unicos.set([origem, codFil, codFor, chave, numOcp].join("|"), { origem, codFil, codFor, chave, numOcp });
+  };
+  for (const l of [...ipc, ...isc]) if (positivo(l.NUMOCP) && l.NUMNFC) add("NF", l.CODFIL, l.CODFOR, l.NUMNFC, String(Number(l.NUMOCP)));
+  for (const l of titulos) if (positivo(l.USU_NUMOCP) && l.NUMTIT) add("TITULO", l.CODFIL, l.CODFOR, l.NUMTIT, String(Number(l.USU_NUMOCP)));
+  return [...unicos.values()];
+}
+
 export async function atualizarVinculosOc(): Promise<number> {
   const [ipc, isc, titulos] = await Promise.all([
     consultarSenior("SELECT CODFIL, CODFOR, NUMNFC, NUMOCP FROM E440IPC WHERE NUMOCP > 0"),
@@ -19,19 +32,16 @@ export async function atualizarVinculosOc(): Promise<number> {
     consultarSenior("SELECT CODFIL, CODFOR, NUMTIT, USU_NUMOCP FROM E501TCP WHERE USU_NUMOCP > 0"),
   ]);
 
-  const unicos = new Map<string, { origem: string; codFil: string; codFor: string; chave: string; numOcp: string }>();
-  const add = (origem: string, codFil: string, codFor: string, chave: string, numOcp: string) => {
-    unicos.set([origem, codFil, codFor, chave, numOcp].join("|"), { origem, codFil, codFor, chave, numOcp });
-  };
-  for (const l of [...ipc, ...isc]) if (positivo(l.NUMOCP) && l.NUMNFC) add("NF", l.CODFIL, l.CODFOR, l.NUMNFC, String(Number(l.NUMOCP)));
-  for (const l of titulos) if (positivo(l.USU_NUMOCP) && l.NUMTIT) add("TITULO", l.CODFIL, l.CODFOR, l.NUMTIT, String(Number(l.USU_NUMOCP)));
+  const linhas = montarVinculos(ipc, isc, titulos);
+  // A Senior tem milhares de itens com OC; resposta vazia sem erro e' leitura falha, nao "nenhum vinculo": nao apaga o que ja temos.
+  if (linhas.length === 0) throw new Error("a Senior devolveu zero vinculos; mantive a tabela como estava");
 
   // So' troca a tabela depois das tres leituras darem certo: falha da Senior nunca apaga o que ja temos.
   await prisma.$transaction([
     prisma.vinculoOcSenior.deleteMany(),
-    prisma.vinculoOcSenior.createMany({ data: [...unicos.values()] }),
+    prisma.vinculoOcSenior.createMany({ data: linhas }),
   ]);
-  return unicos.size;
+  return linhas.length;
 }
 
 /** Dispara em segundo plano (no maximo uma por vez, a cada 15 min). Falha so' vai pro log. */

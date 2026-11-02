@@ -26,6 +26,9 @@ export async function GET() {
 
   // Mantem o codigo/descricao da forma de pagamento atualizados em segundo plano (aparecem dentro da OC).
   garantirFormasPagamentoAtualizadas(true);
+  // Vinculo Titulo<->OC como a Senior registra (NF e USU_NUMOCP): relido a cada 15 min em segundo plano. Sem esta chamada a tabela nunca era
+  // preenchida e nenhum titulo ganhava OC automatica (achado 31/10/2026: 0 de 20.630 titulos com vinculo, so' os manuais).
+  void garantirVinculosOcAtualizados();
 
   // DESEMPENHO (19/10/2026): a lista tem ~20 mil titulos (~20 MB) e montá-la custava ~4 s de CPU a cada abertura, num servidor de 1 CPU.
   // A resposta e' a mesma para todo mundo que passou na checagem de papel acima; so' muda quando algum dado de origem muda. A "assinatura"
