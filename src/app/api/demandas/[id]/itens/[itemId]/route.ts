@@ -30,9 +30,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string; it
   // com projeto aberto, concluir o item conclui a tarefa correspondente (e vice-versa e' feito no projeto)
   if (parsed.data.concluido !== undefined && item.taskId) {
     const novo = parsed.data.concluido ? "FEITO" : "A_FAZER";
-    const antes = await prisma.task.findUnique({ where: { id: item.taskId }, select: { status: true, assigneeId: true } });
+    const antes = await prisma.task.findUnique({ where: { id: item.taskId }, select: { status: true, assigneeId: true, horasDedicadas: true } });
     await prisma.task.update({ where: { id: item.taskId }, data: { status: novo } }).catch(() => {});
-    if (antes && antes.status !== novo) await registrarMudancas(prisma, { taskId: item.taskId, porUserId: null, antes, depois: { status: novo, assigneeId: antes.assigneeId } }).catch(() => {});
+    if (antes && antes.status !== novo) await registrarMudancas(prisma, { taskId: item.taskId, porUserId: null, antes, depois: { status: novo, assigneeId: antes.assigneeId, horasDedicadas: antes.horasDedicadas } }).catch(() => {});
   }
   return NextResponse.json(item);
 }

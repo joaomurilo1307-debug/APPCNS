@@ -83,6 +83,7 @@ const TEXTO_AVISO: Record<Aviso["tipo"], { titulo: string; dica: string }> = {
   EXCESSO: { titulo: "Horas dedicadas que não cabem", dica: "As horas informadas são maiores do que a jornada dos dias em que a tarefa esteve em andamento. Confira as horas ou as datas." },
   PARADA: { titulo: "Em “Fazendo” sem movimentação", dica: "Ela divide o seu dia com as outras tarefas. Se você não está trabalhando nela, pause (Bloqueado ou A fazer)." },
   ESTIMADO: { titulo: "Horas estimadas", dica: "" },
+  NAO_CONTADA: { titulo: "Trabalho que não entrou na conta", dica: "Tarefa concluída sem nunca ter ficado em “Fazendo” e sem horas, ou só com atividade em fim de semana, feriado ou ausência. Informe as horas dedicadas (ou ajuste as datas) para ela contar." },
 };
 
 function LinhaDoCentro({ c, nomes, cor, aberto, onAlternar }: { c: LinhaCentro; nomes: Record<string, string>; cor: string; aberto: boolean; onAlternar: () => void }) {

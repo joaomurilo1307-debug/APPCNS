@@ -5,14 +5,19 @@ import type { Prisma, TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 type Db = Prisma.TransactionClient | typeof prisma;
-type Estado = { status: TaskStatus; assigneeId: string | null };
+type Estado = { status: TaskStatus; assigneeId: string | null; horasDedicadas: number | null };
 
 export async function registrarMudancas(db: Db, p: { taskId: string; porUserId: string | null; antes: Estado; depois: Estado }): Promise<void> {
   if (p.antes.status !== p.depois.status) {
     await db.tarefaStatusEvento.create({ data: { taskId: p.taskId, userId: p.porUserId, de: p.antes.status, para: p.depois.status } });
   }
   if (p.antes.assigneeId !== p.depois.assigneeId) {
-    await db.tarefaResponsavelEvento.create({ data: { taskId: p.taskId, deUserId: p.antes.assigneeId, paraUserId: p.depois.assigneeId, porUserId: p.porUserId } });
+    // as horas dedicadas pertencem a quem as informou: ficam guardadas no evento (para quem passou a tarefa) e o campo da tarefa zera para o novo dono informar as dele.
+    // Se a mesma alteracao ja trouxe horas novas, elas sao do novo dono e ficam.
+    await db.tarefaResponsavelEvento.create({ data: { taskId: p.taskId, deUserId: p.antes.assigneeId, paraUserId: p.depois.assigneeId, porUserId: p.porUserId, horasDoAnterior: p.antes.horasDedicadas } });
+    if (p.antes.horasDedicadas !== null && p.depois.horasDedicadas === p.antes.horasDedicadas) {
+      await db.task.update({ where: { id: p.taskId }, data: { horasDedicadas: null, horasDedicadasEm: null } });
+    }
   }
 }
 

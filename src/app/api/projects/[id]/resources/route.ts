@@ -68,7 +68,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         assigneeName: uid === t.assigneeId ? t.assignee?.name ?? "" : nomes.get(uid) ?? "",
         hoursSpent: h,
         daysWorked: esforco.get(uid)?.diasPorTarefa.get(t.id) ?? 0,
-        declared: t.horasDedicadas !== null,
+        declared: esforco.get(uid)?.informadas.has(t.id) ?? false,
         hourlyRate: rate,
         cost: arredondar(h * rate),
       });

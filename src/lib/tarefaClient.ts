@@ -12,7 +12,7 @@ export async function patchTarefa(taskId: string, corpo: Record<string, unknown>
   if (res.status === 422) {
     const j = await res.clone().json().catch(() => null);
     if (j?.code === "HORAS_OBRIGATORIAS") {
-      const horas = await pedirHorasDedicadas(titulo, sugerido);
+      const horas = await pedirHorasDedicadas(titulo, sugerido ?? (typeof j.horasAtuais === "number" ? j.horasAtuais : null));
       if (horas === null) return { ok: false, status: 422, cancelado: true };
       res = await enviar({ ...corpo, horasDedicadas: horas });
     }
