@@ -24,7 +24,7 @@ const diaMes = (iso: string) => iso.slice(8, 10) + "/" + iso.slice(5, 7);
 const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "—");
 const hojeBR = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
 const BAIXAS_VELHAS_MS = 20 * 60_000;
-const SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
+const SEMANA_CURTA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
 /** [1,2,3,7] -> "1-3,7" (o formato que a API entende). */
 export function diasParaTexto(dias: number[]): string {
@@ -64,7 +64,8 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
   const mesAtual = hojeBR().slice(0, 7);
   const [mes, setMes] = useState(mesAtual);
   const [dias, setDias] = useState<number[]>([]);
-  const [ultimoClique, setUltimoClique] = useState<number | null>(null);
+  const [abrirDias, setAbrirDias] = useState(false);
+  const diasRef = useRef<HTMLDivElement>(null);
   const [centro, setCentro] = useState("");
   const [situacao, setSituacao] = useState<"todos" | "pago" | "pago_banco">("todos");
   const [busca, setBusca] = useState("");
@@ -157,25 +158,27 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
     while (a < fa || (a === fa && m <= fm)) { lista.push(`${a}-${String(m).padStart(2, "0")}`); m++; if (m > 12) { m = 1; a++; } }
     return lista;
   }, [mesAtual]);
-  const trocarMes = (novo: string) => { setMes(novo); setDias([]); setUltimoClique(null); setPagina(1); setAberta(new Set()); };
+  const trocarMes = (novo: string) => { setMes(novo); setDias([]); setPagina(1); setAberta(new Set()); };
   const indice = meses.indexOf(mes);
 
+  // filtro de dias: lista dos dias do mes que tiveram pagamento (com a quantidade); marcar um ou varios filtra a tabela
   const [anoMes, mesNum] = mes.split("-").map(Number);
-  const primeiroDiaSemana = new Date(Date.UTC(anoMes, mesNum - 1, 1)).getUTCDay();
-  const porDia = new Map((dados?.diasDoMes ?? []).map((d) => [d.dia, d]));
-  const total = dados?.diasDoMes.length ?? new Date(Date.UTC(anoMes, mesNum, 0)).getUTCDate();
-
-  function clicarDia(d: number, shift: boolean) {
+  const diasComPagamento = (dados?.diasDoMes ?? []).filter((d) => d.pagamentos > 0);
+  const opcoesDias = Array.from(new Set([...diasComPagamento.map((d) => d.dia), ...dias])).sort((a, b) => a - b);
+  const infoDia = (d: number) => dados?.diasDoMes.find((x) => x.dia === d);
+  const rotuloDia = (d: number) => `${String(d).padStart(2, "0")}/${String(mesNum).padStart(2, "0")} · ${SEMANA_CURTA[new Date(Date.UTC(anoMes, mesNum - 1, d)).getUTCDay()]}`;
+  function alternarDia(d: number) {
     setPagina(1);
-    if (shift && ultimoClique !== null) {
-      const [de, ate] = [Math.min(ultimoClique, d), Math.max(ultimoClique, d)];
-      const faixa = Array.from({ length: ate - de + 1 }, (_, i) => de + i);
-      setDias((atual) => Array.from(new Set([...atual, ...faixa])).sort((a, b) => a - b));
-    } else {
-      setDias((atual) => (atual.includes(d) ? atual.filter((x) => x !== d) : [...atual, d].sort((a, b) => a - b)));
-    }
-    setUltimoClique(d);
+    setDias((atual) => (atual.includes(d) ? atual.filter((x) => x !== d) : [...atual, d].sort((a, b) => a - b)));
   }
+  useEffect(() => {
+    if (!abrirDias) return;
+    const fora = (e: MouseEvent) => { if (diasRef.current && !diasRef.current.contains(e.target as Node)) setAbrirDias(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setAbrirDias(false); };
+    document.addEventListener("mousedown", fora);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", fora); document.removeEventListener("keydown", esc); };
+  }, [abrirDias]);
   const alternar = (chave: string) => setAberta((s) => { const n = new Set(s); if (n.has(chave)) n.delete(chave); else n.add(chave); return n; });
 
   const linhasPagina = 100;
@@ -218,49 +221,47 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
             <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" /></span>
             Pagos / semana
           </h2>
-          <p className="mt-0.5 max-w-3xl text-[13.5px] text-gray-500">O que foi pago {codccu ? "neste centro de custo" : "nos centros de custo que você acompanha"}, título a título. Escolha um ou mais dias do mês. O valor de cada linha é só o do centro de custo; clique na linha para ver o rateio completo e o cálculo. Pago = baixado no Senior ou confirmado pelo banco.</p>
+          <p className="mt-0.5 max-w-3xl text-[13.5px] text-gray-500">O que foi pago {codccu ? "neste centro de custo" : "nos centros de custo que você acompanha"}, título a título. Escolha o mês e, se quiser, um ou mais dias. O valor de cada linha é só o do centro de custo; clique na linha para ver o rateio completo e o cálculo. Pago = baixado no Senior ou confirmado pelo banco.</p>
         </div>
         {dados && <p className="text-xs text-gray-400">Senior sincronizado — títulos {hora(dados.atualizadoEm.titulos)} · baixas {hora(dados.atualizadoEm.custo)} · acompanha o Senior sozinho{atualizando ? " · lendo as baixas novas agora…" : ""}</p>}
       </header>
 
-      {/* ---------------- mes e dias */}
-      <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => indice > 0 && trocarMes(meses[indice - 1])} disabled={indice <= 0} className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm disabled:opacity-40" aria-label="Mês anterior">‹</button>
-          <select value={mes} onChange={(e) => trocarMes(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium" aria-label="Mês">
-            {meses.map((m) => <option key={m} value={m}>{mesLongo(m)}</option>)}
-          </select>
-          <button type="button" onClick={() => indice < meses.length - 1 && trocarMes(meses[indice + 1])} disabled={indice >= meses.length - 1} className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm disabled:opacity-40" aria-label="Próximo mês">›</button>
-          <span className="ml-2 text-[13px] text-gray-500">{dias.length === 0 ? "Mês todo" : `${dias.length} dia${dias.length === 1 ? "" : "s"}: ${diasParaTexto(dias)}`}</span>
-          <span className="ml-auto flex gap-3 text-[13px]">
-            <button type="button" onClick={() => { setDias((dados?.diasDoMes ?? []).filter((d) => d.pagamentos > 0).map((d) => d.dia)); setPagina(1); }} className="font-medium text-brand hover:text-brand-dark">Só dias com pagamento</button>
-            <button type="button" onClick={() => { setDias([]); setUltimoClique(null); setPagina(1); }} className="font-medium text-brand hover:text-brand-dark">Mês todo</button>
-          </span>
-        </div>
-        <div className="grid grid-cols-7 gap-1.5 sm:max-w-xl" role="group" aria-label="Dias do mês">
-          {SEMANA.map((s, i) => <span key={i} className="text-center text-[11px] font-medium uppercase text-gray-400">{s}</span>)}
-          {Array.from({ length: primeiroDiaSemana }, (_, i) => <span key={`v${i}`} />)}
-          {Array.from({ length: total }, (_, i) => {
-            const d = i + 1;
-            const r = porDia.get(d);
-            const marcado = dias.includes(d);
-            const tem = !!r && r.pagamentos > 0;
-            const futuro = `${mes}-${String(d).padStart(2, "0")}` > hojeBR();
-            return (
-              <button key={d} type="button" onClick={(e) => clicarDia(d, e.shiftKey)} aria-pressed={marcado}
-                title={r ? `${d}/${String(mesNum).padStart(2, "0")}: ${r.pagamentos} pagamento${r.pagamentos === 1 ? "" : "s"} · ${moeda(r.valor)}` : undefined}
-                className={`relative rounded-lg border px-1 py-1.5 text-center text-sm tabular-nums transition ${marcado ? "border-brand bg-brand/10 font-semibold text-gray-900" : tem ? "border-gray-200 bg-white text-gray-800 hover:border-gray-300" : "border-transparent text-gray-300 hover:border-gray-200"} ${futuro ? "opacity-60" : ""}`}>
-                {d}
-                {tem && <span className="block text-[10px] leading-none text-emerald-700">{r.pagamentos}</span>}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-1.5 text-[11px] text-gray-400">Clique em um dia para marcar ou desmarcar; com Shift, marca do último clicado até este. O número em verde é a quantidade de pagamentos do dia.</p>
-      </div>
-
       {/* ---------------- filtros */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => indice > 0 && trocarMes(meses[indice - 1])} disabled={indice <= 0} className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm disabled:opacity-40" aria-label="Mês anterior">‹</button>
+          <select value={mes} onChange={(e) => trocarMes(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium" aria-label="Mês">
+            {meses.map((m) => <option key={m} value={m}>{mesLongo(m)}</option>)}
+          </select>
+          <button type="button" onClick={() => indice < meses.length - 1 && trocarMes(meses[indice + 1])} disabled={indice >= meses.length - 1} className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm disabled:opacity-40" aria-label="Próximo mês">›</button>
+        </div>
+        <div className="relative" ref={diasRef}>
+          <button type="button" onClick={() => setAbrirDias((v) => !v)} aria-expanded={abrirDias} aria-haspopup="listbox"
+            className={`max-w-[260px] truncate rounded-lg border bg-white px-3 py-2 text-sm ${dias.length ? "border-brand font-medium text-gray-900" : "border-gray-200 text-gray-700"}`}>
+            {dias.length === 0 ? "Todos os dias" : `Dias: ${diasParaTexto(dias)}`} ▾
+          </button>
+          {abrirDias && (
+            <div role="listbox" aria-label="Escolher os dias" className="absolute left-0 top-full z-20 mt-1 w-64 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+              <div className="mb-1 flex items-center justify-between px-1 text-[13px]">
+                <button type="button" onClick={() => { setDias(diasComPagamento.map((d) => d.dia)); setPagina(1); }} className="font-medium text-brand hover:text-brand-dark">Marcar todos</button>
+                <button type="button" onClick={() => { setDias([]); setPagina(1); }} className="font-medium text-brand hover:text-brand-dark">Limpar</button>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {opcoesDias.length === 0 && <p className="px-2 py-3 text-[13px] text-gray-400">Nenhum pagamento neste mês.</p>}
+                {opcoesDias.map((d) => {
+                  const r = infoDia(d);
+                  return (
+                    <label key={d} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-50">
+                      <input type="checkbox" checked={dias.includes(d)} onChange={() => alternarDia(d)} className="h-4 w-4 accent-brand" />
+                      <span className="flex-1 tabular-nums text-gray-800">{rotuloDia(d)}</span>
+                      <span className="text-xs text-gray-400">{r && r.pagamentos > 0 ? `${r.pagamentos} pagamento${r.pagamentos === 1 ? "" : "s"}` : "sem pagamento"}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
         {!codccu && (
           <select value={centro} onChange={(e) => { setCentro(e.target.value); setPagina(1); }} className="max-w-[260px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm" aria-label="Centro de custo">
             <option value="">Todos os centros de custo</option>

@@ -102,7 +102,7 @@ por conta passam a comparar aquele mês com o anterior (o balão de cada barra j
 
 Tabela abaixo do "Ao vivo" (tela do centro de custo e visao geral): o que foi **pago** nos dias escolhidos do mes, titulo a titulo e centro de custo a centro de custo. Substitui o relatorio semanal (Rel114 do Senior) que a Grazi/Cris recebiam.
 
-- **Dias:** escolhe-se o mes e um ou varios dias (clique; Shift marca uma faixa). Sem dia marcado = mes todo. A grade mostra quantos pagamentos ha em cada dia.
+- **Dias:** escolhe-se o mes e, no filtro "Dias", uma lista com caixinhas dos dias que tiveram pagamento (com a quantidade de pagamentos de cada um): marcar um ou varios filtra a tabela; sem dia marcado = mes todo. Sem calendario.
 - **Pago =** baixa lancada no Senior (`CustoFinanceiroDetalhe`, a mesma base e regra v2 do custo: 90550 + 90558, data = data do pagamento) **ou** pagamento confirmado pelo retorno do Itau (item de remessa `PAGO`, titulo ainda em aberto no Senior: selo "Pago pelo banco · falta a baixa no Senior").
 - **So' aparece o que foi pago (decisao do Joao, 03/11/2026):** titulo programado, enviado ao banco sem retorno, agendado, rejeitado ou cancelado NAO entra na tabela. Na tela de um centro de custo so' aparecem as linhas daquele centro (o calculo abre o rateio completo do titulo).
 - **Uma linha = uma linha de rateio** do pagamento (como no Rel114, que repete cada linha n x n vezes: aqui cada uma aparece uma vez). `Valor` e' so' o do centro de custo da linha; `Total pago` e' a soma de todos os centros do pagamento; "Calculo" mostra o rateio completo (centro da linha marcado), a conta `total x % = valor` e se a soma fecha com o total.
