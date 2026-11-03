@@ -8,6 +8,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BotaoExcel from "@/components/BotaoExcel";
+import CabecalhoAba from "./CabecalhoAba";
 import { useAbrirOC } from "./AbrirOC";
 import type { AbaExcel } from "@/lib/exportarExcel";
 import { mesLongo, moeda, percentual } from "@/lib/custos/formato";
@@ -64,6 +65,7 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
   const mesAtual = hojeBR().slice(0, 7);
   const [mes, setMes] = useState(mesAtual);
   const [dias, setDias] = useState<number[]>([]);
+  const [abaAberta, setAbaAberta] = useState(false); // fechada por padrao: so' carrega quando a pessoa abre
   const [abrirDias, setAbrirDias] = useState(false);
   const diasRef = useRef<HTMLDivElement>(null);
   const [centro, setCentro] = useState("");
@@ -105,7 +107,7 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
     }
   }, [consulta]);
 
-  useEffect(() => { void carregar(); }, [carregar]);
+  useEffect(() => { if (abaAberta) void carregar(); }, [carregar, abaAberta]);
 
   // pede ao servidor que leia as baixas novas do Senior (a mesma atualizacao do botao "Atualizar" do alto da tela: roda em segundo plano, uma por vez) e,
   // quando ela termina, recarrega a tabela
@@ -135,6 +137,7 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
 
   // acompanha o Senior: relê a cada 3 minutos e quando a aba volta a ficar visivel; baixas lidas ha mais de 20 min pedem uma leitura nova
   useEffect(() => {
+    if (!abaAberta) return;
     const ciclo = async () => {
       if (document.visibilityState !== "visible") return;
       await carregarRef.current();
@@ -145,7 +148,7 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
     const v = () => void ciclo();
     document.addEventListener("visibilitychange", v);
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", v); };
-  }, [pedirAtualizacao]);
+  }, [pedirAtualizacao, abaAberta]);
   useEffect(() => {
     const t = setTimeout(() => { setBuscaAplicada(busca.trim()); setPagina(1); }, 350);
     return () => clearTimeout(t);
@@ -215,16 +218,14 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
 
   return (
     <section className="mt-8 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-label="Pagos por dia">
-      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-            <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" /></span>
-            Pagos / semana
-          </h2>
-          <p className="mt-0.5 max-w-3xl text-[13.5px] text-gray-500">O que foi pago {codccu ? "neste centro de custo" : "nos centros de custo que você acompanha"}, título a título. Escolha o mês e, se quiser, um ou mais dias. O valor de cada linha é só o do centro de custo; clique na linha para ver o rateio completo e o cálculo. Pago = baixado no Senior ou confirmado pelo banco.</p>
-        </div>
-        {dados && <p className="text-xs text-gray-400">Senior sincronizado — títulos {hora(dados.atualizadoEm.titulos)} · baixas {hora(dados.atualizadoEm.custo)} · acompanha o Senior sozinho{atualizando ? " · lendo as baixas novas agora…" : ""}</p>}
-      </header>
+      <CabecalhoAba
+        titulo="Pagos / semana"
+        descricao={`O que foi pago ${codccu ? "neste centro de custo" : "nos centros de custo que você acompanha"}, título a título. Escolha o mês e, se quiser, um ou mais dias. O valor de cada linha é só o do centro de custo; clique na linha para ver o rateio completo e o cálculo. Pago = baixado no Senior ou confirmado pelo banco.`}
+        aberta={abaAberta} aoAlternar={() => setAbaAberta((v) => !v)}
+        direita={dados ? <p className="text-xs text-gray-400">Senior sincronizado — títulos {hora(dados.atualizadoEm.titulos)} · baixas {hora(dados.atualizadoEm.custo)} · acompanha o Senior sozinho{atualizando ? " · lendo as baixas novas agora…" : ""}</p> : undefined}
+      />
+      {abaAberta && (
+      <>
 
       {/* ---------------- filtros */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -379,6 +380,8 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
           </footer>
 
         </>
+      )}
+      </>
       )}
       {janelaOC}
     </section>
