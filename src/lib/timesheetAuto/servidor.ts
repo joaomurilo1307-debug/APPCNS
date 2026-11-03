@@ -4,7 +4,7 @@
 import { prisma } from "@/lib/prisma";
 import { manageablePdiUserIds } from "@/lib/permissions";
 import { NOME_PROJETO_EXEMPLO } from "@/lib/projetos/exemplo";
-import { calcular, diaSP, mandatosDaPessoa, primeiroDia, somaDias, ultimoDia, type CelulaTS, type MetaTarefa, type Relatorio, type StatusTarefa, type TarefaTS } from "./calculo";
+import { calcular, diaSP, horasDoDono, mandatosDaPessoa, primeiroDia, somaDias, ultimoDia, type CelulaTS, type MetaTarefa, type Relatorio, type StatusTarefa, type TarefaTS } from "./calculo";
 
 export const COMPETENCIA_VALIDA = /^\d{4}-(0[1-9]|1[0-2])$/;
 export const DIA_VALIDO = /^\d{4}-\d{2}-\d{2}$/;
@@ -55,12 +55,12 @@ export async function tarefasParaCalculo(userId: string, desde: string): Promise
       ],
     },
     select: {
-      id: true, title: true, projectId: true, status: true, actualStartedAt: true, actualEndedAt: true, horasDedicadas: true,
+      id: true, title: true, projectId: true, status: true, actualStartedAt: true, actualEndedAt: true, horasDedicadas: true, horasDedicadasEm: true, assigneeId: true,
       createdAt: true, updatedAt: true, isEntrega: true,
       project: { select: { name: true, codccu: true } },
       subtasks: { select: { assigneeId: true } },
       statusEventos: { orderBy: { em: "asc" }, select: { em: true, de: true, para: true } },
-      responsavelEventos: { orderBy: { em: "asc" }, select: { em: true, deUserId: true, paraUserId: true } },
+      responsavelEventos: { orderBy: { em: "asc" }, select: { em: true, deUserId: true, paraUserId: true, horasDoAnterior: true } },
     },
   });
   // o projeto de teste que o sistema cria para quem esta aprendendo nao e' trabalho: nao entra na conta
@@ -75,7 +75,9 @@ export async function tarefasParaCalculo(userId: string, desde: string): Promise
     atualizadaEm: diaSP(t.updatedAt),
     actualStartedAt: t.actualStartedAt ? diaSP(t.actualStartedAt) : null,
     actualEndedAt: t.actualEndedAt ? diaSP(t.actualEndedAt) : null,
-    horasDedicadas: t.horasDedicadas,
+    // as horas sao de quem as informou: com troca de responsavel cada dono tem as suas
+    horasDedicadas: horasDoDono(userId, t.assigneeId, t.horasDedicadas, t.responsavelEventos.map((e) => ({ em: diaSP(e.em), de: e.deUserId, para: e.paraUserId, horasDoAnterior: e.horasDoAnterior }))),
+    horasDedicadasEm: t.assigneeId === userId && t.horasDedicadasEm ? diaSP(t.horasDedicadasEm) : null,
     isEntrega: t.isEntrega,
     temSubtarefaDaPessoa: t.subtasks.some((s) => s.assigneeId === userId),
     eventos: t.statusEventos.map((e) => ({ em: diaSP(e.em), de: e.de as StatusTarefa | null, para: e.para as StatusTarefa })),
@@ -160,8 +162,9 @@ export async function relatorioDaPessoa(userId: string, de: string, ate: string,
  * Esforco real (horas) de pessoas por tarefa, pelo MESMO modelo do Timesheet: so' tarefa iniciada, so' enquanto "Fazendo", sem dobrar o dia quando ha
  * tarefas simultaneas. Serve a qualquer tela que precise de "horas gastas" (aba Recursos), tenha a pessoa ativado o Timesheet ou nao.
  */
-export async function esforcoPorPessoa(userIds: string[], ate: string = hojeSP()): Promise<Map<string, { horasPorTarefa: Map<string, number>; diasPorTarefa: Map<string, number>; semHoras: string[] }>> {
-  const saida = new Map<string, { horasPorTarefa: Map<string, number>; diasPorTarefa: Map<string, number>; semHoras: string[] }>();
+export type EsforcoDaPessoa = { horasPorTarefa: Map<string, number>; diasPorTarefa: Map<string, number>; semHoras: string[]; informadas: Set<string> };
+export async function esforcoPorPessoa(userIds: string[], ate: string = hojeSP()): Promise<Map<string, EsforcoDaPessoa>> {
+  const saida = new Map<string, EsforcoDaPessoa>();
   if (!userIds.length) return saida;
   const configs = await prisma.timesheetAuto.findMany({ where: { userId: { in: userIds } } });
   const ausencias = await prisma.timesheetAutoAusencia.findMany({ where: { userId: { in: userIds } } });
@@ -189,6 +192,7 @@ export async function esforcoPorPessoa(userIds: string[], ate: string = hojeSP()
       horasPorTarefa,
       diasPorTarefa: new Map([...dias].map(([k, v]) => [k, v.size])),
       semHoras: r.avisos.filter((a) => a.tipo === "SEM_HORAS" && a.tarefaId).map((a) => a.tarefaId as string),
+      informadas: new Set(tarefas.filter((t) => t.horasDedicadas !== null).map((t) => t.id)),
     });
   }
   return saida;

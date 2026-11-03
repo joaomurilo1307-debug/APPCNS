@@ -1223,6 +1223,8 @@ model Task {
   actualEndedAt     DateTime?
   // horas que a pessoa dedicou a tarefa inteira (declaradas antes de concluir): ancoram o Timesheet automatico e o custo do projeto
   horasDedicadas    Float?
+  // quando as horas dedicadas foram informadas pela ultima vez: ate esse dia elas valem; os dias seguintes de uma tarefa ainda em andamento sao estimados
+  horasDedicadasEm  DateTime?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -2214,6 +2216,8 @@ model TarefaResponsavelEvento {
   deUserId  String?
   paraUserId String?
   porUserId String?
+  // horas dedicadas que quem PASSOU a tarefa tinha informado (as horas pertencem a quem as informou; quem recebe comeca do zero)
+  horasDoAnterior Float?
   em        DateTime @default(now())
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
 

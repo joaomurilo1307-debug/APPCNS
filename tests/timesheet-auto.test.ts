@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  SEM_CENTRO, SEM_PROJETO, arredondarSomando, calcular, distribuirEsforco, diaSP, feriados, janelasDaTarefa, mandatosDaPessoa, motivoDiaNaoUtil, somaDias,
+  SEM_CENTRO, SEM_PROJETO, arredondarSomando, calcular, distribuirEsforco, diaSP, feriados, horasDoDono, janelasDaTarefa, mandatosDaPessoa, motivoDiaNaoUtil, somaDias,
   type EntradaCalculo, type TarefaTS,
 } from "../src/lib/timesheetAuto/calculo";
 
 const tarefa = (id: string, extra: Partial<TarefaTS> = {}): TarefaTS => ({
   id, titulo: `Tarefa ${id}`, projetoId: `p-${id}`, projetoNome: `Projeto ${id}`, codccu: "190", status: "FAZENDO",
-  criadaEm: "2026-01-02", atualizadaEm: "2026-07-31", actualStartedAt: null, actualEndedAt: null, horasDedicadas: null,
+  criadaEm: "2026-01-02", atualizadaEm: "2026-07-31", actualStartedAt: null, actualEndedAt: null, horasDedicadas: null, horasDedicadasEm: null,
   isEntrega: false, temSubtarefaDaPessoa: false, eventos: [], mandatos: null, ...extra,
 });
 const entrada = (extra: Partial<EntradaCalculo> = {}): EntradaCalculo => ({
@@ -369,5 +369,94 @@ test("invariantes do relatorio (300 cenarios aleatorios): jornada, centros, proj
     if (r.horasAlocadas > 0) perto(soma(r.centros.map((c) => c.percentual)), 100, 0.0001);
     perto(r.horasAlocadas + r.horasSemApontamento >= r.horasDisponiveis ? 0 : 1, 0, 0); // alocadas + sem apontamento cobrem a jornada
     assert.ok(r.horasAlocadas <= r.horasDisponiveis + 0.5);
+  }
+});
+
+// ---------------------------------------------------------------- v3: falhas encontradas na auditoria da conta
+
+test("tarefa EM ANDAMENTO com horas informadas: o passado nao escorrega com o passar dos dias", () => {
+  // informou 16 h no dia 08/07 (2 dias de trabalho: 7 e 8); a tarefa continua em Fazendo
+  const t = tarefa("a", { actualStartedAt: "2026-07-07", status: "FAZENDO", horasDedicadas: 16, horasDedicadasEm: "2026-07-08", atualizadaEm: "2026-07-08" });
+  const dia8 = calcular(entrada({ de: "2026-07-01", ate: "2026-07-31", hoje: "2026-07-08", tarefas: [t] }));
+  const dia14 = calcular(entrada({ de: "2026-07-01", ate: "2026-07-31", hoje: "2026-07-14", tarefas: [{ ...t, atualizadaEm: "2026-07-14" }] }));
+  const ate8 = (r: typeof dia8) => r.matriz.filter((c) => c.d <= "2026-07-08").map((c) => `${c.d}:${c.h}`).join(",");
+  assert.equal(ate8(dia8), "2026-07-07:8,2026-07-08:8");
+  assert.equal(ate8(dia14), ate8(dia8), "os dias ja informados nao mudam quando passam mais dias");
+  assert.equal(dia14.horasAlocadas, 16 + 4 * 8, "os dias depois da informacao (9 a 14: 4 dias uteis) sao estimados");
+});
+
+test("tarefa CONCLUIDA com horas: as horas valem pela vida inteira (nao e' dividida)", () => {
+  const t = tarefa("a", { actualStartedAt: "2026-07-07", actualEndedAt: "2026-07-10", status: "FEITO", horasDedicadas: 20, horasDedicadasEm: "2026-07-10" });
+  assert.equal(calcular(entrada({ hoje: "2026-07-31", tarefas: [t] })).horasAlocadas, 20);
+});
+
+test("concluida direto de A fazer para Feito: conta quando ha horas informadas; sem horas nao conta e avisa", () => {
+  const ev = [{ em: "2026-07-08", de: "A_FAZER" as const, para: "FEITO" as const }];
+  const comHoras = tarefa("a", { status: "FEITO", eventos: ev, actualStartedAt: "2026-07-08", actualEndedAt: "2026-07-08", horasDedicadas: 3, horasDedicadasEm: "2026-07-08" });
+  const r1 = calcular(entrada({ hoje: "2026-07-31", tarefas: [comHoras] }));
+  assert.equal(r1.horasAlocadas, 3);
+  const semHoras = tarefa("b", { status: "FEITO", eventos: ev, actualStartedAt: "2026-07-08", actualEndedAt: "2026-07-08" });
+  const r2 = calcular(entrada({ hoje: "2026-07-31", tarefas: [semHoras] }));
+  assert.equal(r2.horasAlocadas, 0);
+  assert.ok(r2.avisos.some((a) => a.tipo === "NAO_CONTADA" && a.tarefaId === "b"));
+});
+
+test("trabalho so' em fim de semana ou feriado nao entra, mas avisa (nao some em silencio)", () => {
+  const sab = tarefa("a", { status: "FEITO", actualStartedAt: "2026-07-04", actualEndedAt: "2026-07-05", horasDedicadas: 6, horasDedicadasEm: "2026-07-05" });
+  const r = calcular(entrada({ hoje: "2026-07-31", tarefas: [sab] }));
+  assert.equal(r.horasAlocadas, 0);
+  assert.ok(r.avisos.some((a) => a.tipo === "NAO_CONTADA" && a.tarefaId === "a"));
+});
+
+test("horas pertencem a quem informou: horasDoDono", () => {
+  const ev = [{ em: "2026-07-10", de: "ana", para: "bia", horasDoAnterior: 12 }];
+  assert.equal(horasDoDono("ana", "bia", null, ev), 12, "quem passou a tarefa mantem as horas que informou");
+  assert.equal(horasDoDono("bia", "bia", null, ev), null, "quem recebeu comeca do zero");
+  assert.equal(horasDoDono("bia", "bia", 5, ev), 5);
+  const volta = [...ev, { em: "2026-07-20", de: "bia", para: "ana", horasDoAnterior: 7 }];
+  assert.equal(horasDoDono("ana", "ana", null, volta), 12, "ao voltar, retoma o que informou antes");
+  assert.equal(horasDoDono("bia", "ana", null, volta), 7);
+  assert.equal(horasDoDono("carla", "ana", 9, volta), null);
+});
+
+test("troca de responsavel: as horas de uma tarefa nao sao contadas duas vezes", () => {
+  const ev = [{ em: "2026-07-14", de: "ana", para: "bia", horasDoAnterior: 24 as number | null }];
+  const base = { actualStartedAt: "2026-07-07", actualEndedAt: "2026-07-21", status: "FEITO" as const };
+  const ana = calcular(entrada({ hoje: "2026-07-31", tarefas: [tarefa("a", { ...base, mandatos: mandatosDaPessoa("ana", ev), horasDedicadas: horasDoDono("ana", "bia", null, ev) })] }));
+  const bia = calcular(entrada({ hoje: "2026-07-31", tarefas: [tarefa("a", { ...base, mandatos: mandatosDaPessoa("bia", ev), horasDedicadas: horasDoDono("bia", "bia", 40, ev), horasDedicadasEm: "2026-07-21" })] }));
+  assert.equal(ana.horasAlocadas, 24, "Ana: o que ela informou, nos dias dela (7 a 13)");
+  assert.equal(bia.horasAlocadas, 40, "Bia: o que ela informou, nos dias dela (14 a 21)");
+});
+
+test("mes fechado nao deriva em centavos: ler a fotografia devolve exatamente os mesmos totais", () => {
+  const ts = [tarefa("a", { codccu: "190", actualStartedAt: "2026-07-01" }), tarefa("b", { codccu: "230", actualStartedAt: "2026-07-01" }), tarefa("c", { codccu: "250", actualStartedAt: "2026-07-01" })];
+  const vivo = calcular(entrada({ tarefas: ts }));
+  const lido = calcular(entrada({ tarefas: [], congelados: { "2026-07": { matriz: JSON.parse(JSON.stringify(vivo.matriz)), metas: vivo.metas } } }));
+  assert.equal(lido.horasAlocadas, vivo.horasAlocadas);
+  assert.deepEqual(lido.centros.map((c) => [c.chave, c.horas, c.percentual]), vivo.centros.map((c) => [c.chave, c.horas, c.percentual]));
+});
+
+test("invariantes com horas em andamento (200 cenarios): jornada nunca estoura e o recorte soma o total", () => {
+  const rnd = aleatorio(4112026);
+  const dia = (n: number) => somaDias("2026-06-15", n);
+  for (let cenario = 0; cenario < 200; cenario++) {
+    const n = 1 + Math.floor(rnd() * 5);
+    const ts: TarefaTS[] = Array.from({ length: n }, (_, i) => {
+      const ini = Math.floor(rnd() * 40);
+      const emAndamento = rnd() < 0.6;
+      return tarefa(`t${i}`, {
+        codccu: ["190", "230", null][Math.floor(rnd() * 3)], status: emAndamento ? "FAZENDO" : "FEITO", actualStartedAt: dia(ini),
+        actualEndedAt: emAndamento ? null : dia(ini + Math.floor(rnd() * 20)),
+        horasDedicadas: rnd() < 0.6 ? Math.round(rnd() * 60) + 2 : null, horasDedicadasEm: dia(ini + Math.floor(rnd() * 12)), atualizadaEm: dia(ini + 3),
+      });
+    });
+    const hoje = "2026-08-15";
+    const mes = calcular(entrada({ de: "2026-07-01", ate: "2026-07-31", hoje, tarefas: ts }));
+    const porDia = new Map<string, number>();
+    for (const c of mes.matriz) porDia.set(c.d, (porDia.get(c.d) ?? 0) + c.h);
+    porDia.forEach((h, d) => assert.ok(h <= 8 + 1e-6, `cenario ${cenario} ${d}: ${h}`));
+    const a = calcular(entrada({ de: "2026-07-01", ate: "2026-07-15", hoje, tarefas: ts }));
+    const b = calcular(entrada({ de: "2026-07-16", ate: "2026-07-31", hoje, tarefas: ts }));
+    perto(a.horasAlocadas + b.horasAlocadas, mes.horasAlocadas, 0.011);
   }
 });

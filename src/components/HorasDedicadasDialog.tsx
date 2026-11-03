@@ -48,7 +48,7 @@ export default function HorasDedicadasDialog() {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="horas-titulo" onKeyDown={(e) => e.key === "Escape" && encerrar(null)}>
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-        <h2 id="horas-titulo" className="text-base font-semibold text-gray-900">Quantas horas você dedicou a esta tarefa?</h2>
+        <h2 id="horas-titulo" className="text-base font-semibold text-gray-900">{pedido.sugerido ? "Confirme o total de horas dedicadas a esta tarefa" : "Quantas horas você dedicou a esta tarefa?"}</h2>
         <p className="mt-1 truncate text-sm text-gray-500" title={pedido.titulo}>{pedido.titulo}</p>
         <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="horas-campo">Horas dedicadas (a tarefa inteira)</label>
         <input
@@ -62,7 +62,7 @@ export default function HorasDedicadasDialog() {
           className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums"
         />
         {erro && <p className="mt-1 text-sm text-red-600" role="alert">{erro}</p>}
-        <p className="mt-2 text-xs text-gray-500">Some o tempo de todos os dias em que você trabalhou nela. Obrigatório para concluir: é a base do seu Timesheet automático e do custo do projeto. Você pode corrigir depois, na lista de tarefas.</p>
+        <p className="mt-2 text-xs text-gray-500">{pedido.sugerido ? "Você já tinha informado este valor; se trabalhou mais desde então, atualize para o total até a conclusão. " : "Some o tempo de todos os dias em que você trabalhou nela. "}Obrigatório para concluir: é a base do seu Timesheet automático e do custo do projeto. Você pode corrigir depois, na lista de tarefas.</p>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" onClick={() => encerrar(null)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
           <button type="button" onClick={confirmar} className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark">Concluir tarefa</button>

@@ -32,8 +32,10 @@ export type TarefaTS = {
   atualizadaEm: Iso;
   actualStartedAt: Iso | null;
   actualEndedAt: Iso | null;
-  /** horas declaradas pela pessoa para a tarefa inteira (null = nao declarou) */
+  /** horas que ESTA pessoa declarou para a tarefa (null = nao declarou). Com troca de responsavel, cada dono tem as suas (ver `horasDoDono`) */
   horasDedicadas: number | null;
+  /** ultimo dia em que a pessoa informou as horas: numa tarefa ainda em andamento, as horas valem ate esse dia (os dias seguintes sao estimados) */
+  horasDedicadasEm: Iso | null;
   isEntrega: boolean;
   /** a pessoa tem subtarefa desta tarefa: entao so' as subtarefas contam */
   temSubtarefaDaPessoa: boolean;
@@ -86,7 +88,7 @@ export type LinhaCentro = {
   identificado: boolean;
   projetos: LinhaProjeto[];
 };
-export type Aviso = { tipo: "SEM_CENTRO" | "SEM_HORAS" | "EXCESSO" | "PARADA" | "ESTIMADO"; tarefaId: string | null; projetoId: string | null; texto: string };
+export type Aviso = { tipo: "SEM_CENTRO" | "SEM_HORAS" | "EXCESSO" | "PARADA" | "ESTIMADO" | "NAO_CONTADA"; tarefaId: string | null; projetoId: string | null; texto: string };
 export type Agora = { dia: Iso; tarefas: { id: string; titulo: string; codccu: string | null; chave: string; fracao: number }[]; centros: { chave: string; codccu: string | null; fracao: number }[] };
 
 export type Relatorio = {
@@ -185,7 +187,18 @@ function unir(js: Janela[]): Janela[] {
   return saida;
 }
 
-export type EventoResponsavel = { em: Iso; de: string | null; para: string | null };
+export type EventoResponsavel = { em: Iso; de: string | null; para: string | null; horasDoAnterior?: number | null };
+
+/**
+ * Horas dedicadas que pertencem a ESTA pessoa numa tarefa. As horas sao de quem as informou: o responsavel de hoje usa o campo da tarefa (e, se ainda nao
+ * informou, as que ele mesmo tinha informado antes de passar a tarefa adiante); quem ja passou a tarefa usa as que informou na hora de passar.
+ */
+export function horasDoDono(userId: string, responsavelAtual: string | null, horasAtuais: number | null, eventos: ReadonlyArray<EventoResponsavel>): number | null {
+  const ev = [...eventos].sort((a, b) => (a.em < b.em ? -1 : a.em > b.em ? 1 : 0));
+  const dele = [...ev].reverse().find((e) => e.de === userId && e.horasDoAnterior != null);
+  if (responsavelAtual === userId) return horasAtuais ?? dele?.horasDoAnterior ?? null;
+  return dele?.horasDoAnterior ?? null;
+}
 
 /**
  * Periodos (dias, inclusivos) em que a tarefa foi desta pessoa, a partir do historico de trocas de responsavel. O dia da troca e' de quem RECEBEU a tarefa.
@@ -238,6 +251,12 @@ export function janelasDaTarefa(t: TarefaTS, hoje: Iso): { janelas: Janela[]; po
     });
     js = unir(js);
     if (t.status === "FEITO" && t.actualEndedAt) js = js.map((j) => ({ de: j.de, ate: menor(j.ate, t.actualEndedAt!) })).filter((j) => j.de <= j.ate);
+    if (js.length === 0 && t.status === "FEITO") {
+      // concluida direto de "A fazer" para "Feito", sem nunca passar por "Fazendo": conta se ha prova do trabalho (periodo real registrado ou horas informadas)
+      const fimDia = t.actualEndedAt ?? t.atualizadaEm;
+      if (t.actualStartedAt && t.actualStartedAt < fimDia) js = [{ de: t.actualStartedAt, ate: fimDia }];
+      else if (t.horasDedicadas !== null) js = [{ de: fimDia, ate: fimDia }];
+    }
   } else if (t.actualStartedAt) {
     let fim: Iso;
     if (t.actualEndedAt) fim = t.actualEndedAt;
@@ -378,12 +397,29 @@ export function calcular(e: EntradaCalculo): Relatorio {
   const capacidade = dias.map(() => e.horasPorDia);
 
   // dias ativos de cada tarefa (so' dias trabalhados) e distribuicao
-  const ts = base.map((x) => {
-    const idx: number[] = [];
-    for (const j of x.janelas) for (let d = j.de; d <= j.ate; d = somaDias(d, 1)) { const k = idxDia.get(d); if (k !== undefined) idx.push(k); }
-    return { ...x, idx: Array.from(new Set(idx)).sort((a, b) => a - b) };
-  }).filter((x) => x.idx.length > 0);
-  const dist = distribuirEsforco({ capacidade, tarefas: ts.map((x) => ({ dias: x.idx, declarado: x.t.horasDedicadas })) });
+  type Parte = { t: TarefaTS; porHistorico: boolean; idx: number[]; declarado: number | null };
+  const semDiaTrabalhado: { t: TarefaTS; janelas: Janela[] }[] = [];
+  const ts: Parte[] = [];
+  for (const x of base) {
+    const idxSet: number[] = [];
+    for (const j of x.janelas) for (let d = j.de; d <= j.ate; d = somaDias(d, 1)) { const k = idxDia.get(d); if (k !== undefined) idxSet.push(k); }
+    const idx = Array.from(new Set(idxSet)).sort((a, b) => a - b);
+    if (idx.length === 0) { semDiaTrabalhado.push({ t: x.t, janelas: x.janelas }); continue; }
+    const declarado = x.t.horasDedicadas;
+    // tarefa AINDA em andamento: as horas informadas valem ate o dia em que foram informadas (sao "ate agora"); os dias depois disso sao estimados.
+    // Sem essa divisao, as mesmas horas seriam espalhadas por mais dias a cada dia que passa e o passado "escorregaria".
+    if (declarado !== null && x.t.status !== "FEITO" && x.t.horasDedicadasEm) {
+      const antes = idx.filter((k) => dias[k] <= x.t.horasDedicadasEm!);
+      const depois = idx.filter((k) => dias[k] > x.t.horasDedicadasEm!);
+      if (antes.length > 0 && depois.length > 0) {
+        ts.push({ t: x.t, porHistorico: x.porHistorico, idx: antes, declarado });
+        ts.push({ t: x.t, porHistorico: x.porHistorico, idx: depois, declarado: null });
+        continue;
+      }
+    }
+    ts.push({ t: x.t, porHistorico: x.porHistorico, idx, declarado });
+  }
+  const dist = distribuirEsforco({ capacidade, tarefas: ts.map((x) => ({ dias: x.idx, declarado: x.declarado })) });
 
   // celulas do periodo (ao vivo) e congeladas (meses fechados)
   const diasPeriodo = dias.filter((d) => d >= inicioConta && d <= fim);
@@ -419,7 +455,8 @@ export function calcular(e: EntradaCalculo): Relatorio {
     diasComHoras.add(c.d);
   }
   const porId = new Map(elegiveis.map((t) => [t.id, t]));
-  const idxLive = new Map(ts.map((x, i) => [x.t.id, i]));
+  const idxLive = new Map<string, number>();
+  ts.forEach((x, i) => { if (!idxLive.has(x.t.id)) idxLive.set(x.t.id, i); }); // a parte "informada" vem primeiro
 
   const alocadoBruto = [...horasTarefa.values()].reduce((s, h) => s + h, 0);
   const alocado = r2(alocadoBruto);
@@ -491,9 +528,23 @@ export function calcular(e: EntradaCalculo): Relatorio {
     if (l.chave === SEM_CENTRO) for (const p of l.projetos) avisos.push({ tipo: "SEM_CENTRO", tarefaId: null, projetoId: p.projetoId, texto: `O projeto “${p.nome}” não tem centro de custo: as ${r2(p.horas)} h dele não entram em nenhum contrato.` });
     for (const p of l.projetos) for (const t of p.tarefas) {
       const real = porId.get(t.id);
-      if (t.excesso > 0.01) avisos.push({ tipo: "EXCESSO", tarefaId: t.id, projetoId: p.projetoId, texto: `“${t.titulo}” declara ${r2(t.declarado ?? 0)} h, mas só cabem ${r2((t.declarado ?? 0) - t.excesso)} h na jornada dos dias em que esteve em andamento. Confira as horas ou as datas.` });
+      if (t.excesso > 0.01) avisos.push({ tipo: "EXCESSO", tarefaId: t.id, projetoId: p.projetoId, texto: `“${t.titulo}” declara ${r2(t.declarado ?? 0)} h, mas só cabem ${r2((t.declarado ?? 0) - t.excesso)} h na jornada dos dias em que esteve em andamento. Confira as horas e as datas; se você faz horas extras, aumente as horas por dia em Configuração.` });
       if (real && real.status === "FEITO" && real.horasDedicadas === null) avisos.push({ tipo: "SEM_HORAS", tarefaId: t.id, projetoId: p.projetoId, texto: `“${t.titulo}” foi concluída sem horas dedicadas: as horas dela são uma estimativa.` });
       if (real && real.status === "FAZENDO" && real.atualizadaEm < somaDias(e.hoje, -DIAS_PARADA)) avisos.push({ tipo: "PARADA", tarefaId: t.id, projetoId: p.projetoId, texto: `“${t.titulo}” está em “Fazendo” há mais de ${DIAS_PARADA} dias sem movimentação e divide o seu dia com as outras. Se não está trabalhando nela, pause.` });
+    }
+  }
+
+  // o que NAO entra na conta e a pessoa precisa saber (senao o trabalho some em silencio)
+  const noPer = (d: Iso) => d >= inicioConta && d <= fim;
+  for (const t of elegiveis) {
+    const { janelas } = janelasDaTarefa(t, e.hoje);
+    if (janelas.length === 0 && t.status === "FEITO" && t.horasDedicadas === null && t.eventos.length > 0 && noPer(t.actualEndedAt ?? t.atualizadaEm)) {
+      avisos.push({ tipo: "NAO_CONTADA", tarefaId: t.id, projetoId: t.projetoId, texto: `“${t.titulo}” foi concluída sem nunca ter ficado em “Fazendo” e sem horas dedicadas: não entra na conta. Informe as horas dedicadas para ela contar.` });
+    }
+  }
+  for (const x of semDiaTrabalhado) {
+    if (x.janelas.some((j) => noPer(j.de) || noPer(j.ate))) {
+      avisos.push({ tipo: "NAO_CONTADA", tarefaId: x.t.id, projetoId: x.t.projetoId, texto: `“${x.t.titulo}” só teve atividade em dias sem expediente (fim de semana, feriado ou ausência): essas horas não entram na conta.` });
     }
   }
 
@@ -534,7 +585,9 @@ export function calcular(e: EntradaCalculo): Relatorio {
     percentualIdentificado: r2(percentualIdentificado),
     avisos,
     agora,
-    matriz: celulas.map((c) => ({ d: c.d, t: c.t, h: r2(c.h) })),
+    // precisao total de proposito: o mes fechado guarda estas celulas e, ao reler, as somas tem de dar exatamente o que foi visto ao fechar (arredondar aqui
+    // faria os totais do mes fechado divergirem em centavos); quem exibe formata
+    matriz: celulas.map((c) => ({ d: c.d, t: c.t, h: c.h })),
     metas,
     convergiu: dist.convergiu,
   };

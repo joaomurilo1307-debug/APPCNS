@@ -54,7 +54,7 @@ export async function GET(req: Request) {
       for (const c of rel.resultado.matriz) {
         const m = rel.resultado.metas[c.t];
         const cc = !m?.projetoId ? "Sem projeto" : m.codccu ?? "Sem centro de custo";
-        linhas.push([rotuloPeriodo, p.name, p.cargo ?? "", c.d, cc, m?.projetoNome ?? "", m?.titulo ?? c.t, c.h]);
+        linhas.push([rotuloPeriodo, p.name, p.cargo ?? "", c.d, cc, m?.projetoNome ?? "", m?.titulo ?? c.t, Math.round(c.h * 100) / 100]);
       }
     }
   } else {
