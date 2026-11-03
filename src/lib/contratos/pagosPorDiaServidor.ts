@@ -1,17 +1,14 @@
 // Leitura do banco para o "Pagos / semana" (ver pagosPorDia.ts). SOMENTE LEITURA. Junta o que o sistema ja sincroniza do Senior:
 //   1) as BAIXAS (CustoFinanceiroDetalhe: baixa 90550 + 90558 por centro de custo, a mesma base e regra do Custo por Contrato, ja conferida com o Rel114) =
 //      o que o Senior confirma como PAGO;
-//   2) as remessas GERADAS e os retornos do Itau (RemessaItemPagamento) cruzados com os titulos que continuam em aberto no Senior: retorno PAGO = pago pelo banco
-//      (falta a baixa no Senior); remessa sem retorno = enviado ao banco, sem confirmacao;
-//   3) os titulos em aberto que so' estavam programados para o dia (sem remessa): tambem sem confirmacao;
-//   4) a OC de cada titulo e as aprovacoes dela (mesmo vinculo titulo-OC do "Ao vivo" e da Programacao de Pagamento).
-// Remessa rejeitada ou cancelada nao e' pagamento: o titulo nao aparece.
+//   2) os retornos do Itau (RemessaItemPagamento com status PAGO) cruzados com os titulos que continuam em aberto no Senior: pago pelo banco, falta a baixa;
+//   3) a OC de cada titulo e as aprovacoes dela (mesmo vinculo titulo-OC do "Ao vivo" e da Programacao de Pagamento).
+// SO' APARECE O QUE FOI PAGO (decisao do Joao, 03/11/2026): titulo programado, enviado ao banco sem retorno, agendado, rejeitado ou cancelado NAO entra na tabela.
 
 import type { prisma as prismaReal } from "@/lib/prisma";
 import { nomeConta } from "@/lib/custos/planoContas";
 import { lancamentosDeTitulos } from "./titulosPrevistos";
 import { ehContaForaDoCusto } from "./previsao";
-import { vencimentoSentinelaPuro } from "./aoVivo";
 import { situacaoLabel } from "@/lib/vinculoOcTitulo";
 import { aprovacoesDoHistorico, arred, type EvidenciaBanco, type OcDoPagamento, type Pagamento, type ParteDoPagamento, type SituacaoPago } from "./pagosPorDia";
 
@@ -58,16 +55,14 @@ export async function carregarPagos(db: typeof prismaReal, mes: string, hoje: st
   const de = new Date(`${mes}-01T00:00:00.000Z`);
   const ate = new Date(`${mesSeguinte(mes)}T00:00:00.000Z`);
 
-  const [baixas, { itens }, adiados, cartoes, itensRemessa, ultimoCusto, ultimoTitulo] = await Promise.all([
+  const [baixas, { itens }, itensRemessa, ultimoCusto, ultimoTitulo] = await Promise.all([
     db.custoFinanceiroDetalhe.findMany({
       where: { dataPagamento: { gte: de, lt: ate } },
       select: { codccu: true, contaFinanceira: true, numTit: true, codFor: true, codTpt: true, fornecedorNome: true, dataPagamento: true, dataVencimento: true, valorRateado: true, baixa: true },
     }),
     lancamentosDeTitulos(db, { somenteAbertos: false }),
-    db.tituloAdiamento.findMany({ where: { resolvidoEm: null, tituloId: { not: null } }, select: { tituloId: true } }),
-    db.tituloContasAPagar.findMany({ where: { codFpg: "20", pago: false }, select: { id: true } }), // cartao de credito: nao passa por remessa, fica fora (como no relatorio da Grazi)
     db.remessaItemPagamento.findMany({
-      where: { tituloId: { not: null }, remessa: { status: { in: ["GERADO", "RETORNO_PROCESSADO"] } } },
+      where: { tituloId: { not: null }, status: "PAGO", remessa: { status: { in: ["GERADO", "RETORNO_PROCESSADO"] } } }, // so' o que o retorno do banco confirmou como pago
       orderBy: { criadoEm: "desc" },
       select: { tituloId: true, status: true, dataPagamento: true, dataEfetivacao: true, valorEfetivado: true, baixaSeniorStatus: true, baixaSeniorMsg: true, criadoEm: true, remessa: { select: { criadoEm: true } } },
     }),
@@ -107,13 +102,12 @@ export async function carregarPagos(db: typeof prismaReal, mes: string, hoje: st
     pagamentos.push(g.pagamento);
   }
 
-  // ---- 2) e 3) titulos em aberto no Senior: o que o banco diz (remessa/retorno) ou, sem remessa, so' a data programada. Menos adiados, previsoes (PRV) e o que ainda nao chegou.
-  const emAdiamento = new Set([...adiados.map((a) => a.tituloId as string), ...cartoes.map((c) => c.id)]);
+  // ---- 2) titulo ainda em aberto no Senior que o retorno do Itau confirmou como PAGO (falta a baixa): so' esse, na data efetiva do pagamento
   const remessaPorTitulo = new Map<string, ItemRemessa[]>();
   for (const r of itensRemessa) if (r.tituloId) (remessaPorTitulo.get(r.tituloId) ?? remessaPorTitulo.set(r.tituloId, []).get(r.tituloId))!.push(r);
   const abertos = new Map<string, { base: (typeof itens)[number]; partes: ParteDoPagamento[] }>();
   for (const i of itens) {
-    if (i.pago || i.tipo === "PRV" || !i.ccu || ehContaForaDoCusto(i.ctaFin) || i.valorAberto <= 0 || emAdiamento.has(i.id)) continue;
+    if (i.pago || i.tipo === "PRV" || !i.ccu || ehContaForaDoCusto(i.ctaFin) || i.valorAberto <= 0 || !remessaPorTitulo.has(i.id)) continue;
     let a = abertos.get(i.id);
     if (!a) {
       a = { base: i, partes: [] };
@@ -122,28 +116,18 @@ export async function carregarPagos(db: typeof prismaReal, mes: string, hoje: st
     a.partes.push({ ccu: i.ccu, conta: i.ctaFin ? nomeConta(i.ctaFin) ?? `Conta ${i.ctaFin}` : "Sem linha de custo", valor: i.valorAberto });
   }
   for (const [id, a] of abertos) {
-    const t = a.base;
     const pelaRemessa = situacaoPelaRemessa(remessaPorTitulo.get(id) ?? []);
-    if (pelaRemessa?.situacao === "descartado") continue; // rejeitado/cancelado: nao foi pago
-    let situacao: SituacaoPago;
-    let data: string | null;
-    let remessa: EvidenciaBanco | null = null;
-    if (pelaRemessa) {
-      situacao = pelaRemessa.situacao;
-      remessa = pelaRemessa.evidencia;
-      data = remessa.data;
-    } else {
-      situacao = "programado";
-      data = t.vencimento && !vencimentoSentinelaPuro(t.vencimento) ? t.vencimento : null;
-    }
+    if (pelaRemessa?.situacao !== "pago_banco") continue;
+    const t = a.base;
+    const data = pelaRemessa.evidencia.data;
     if (!data || data.slice(0, 7) !== mes || data > hoje) continue;
     pagamentos.push({
-      chave: `${chaveTitulo(t.numTit, t.codFor, t.tipo)}|${data}|${situacao}`, situacao, forma: null, data, numTit: t.numTit, tipo: t.tipo, codFor: t.codFor,
-      fornecedor: t.fornecedorNome ?? `código ${t.codFor}`, vencimento: t.vencimento, partes: a.partes.map((x) => ({ ...x, valor: arred(x.valor) })), numOcp: t.numOcpVinculada ?? t.numOcp ?? null, remessa,
+      chave: `${chaveTitulo(t.numTit, t.codFor, t.tipo)}|${data}|pago_banco`, situacao: "pago_banco", forma: null, data, numTit: t.numTit, tipo: t.tipo, codFor: t.codFor,
+      fornecedor: t.fornecedorNome ?? `código ${t.codFor}`, vencimento: t.vencimento, partes: a.partes.map((x) => ({ ...x, valor: arred(x.valor) })), numOcp: t.numOcpVinculada ?? t.numOcp ?? null, remessa: pelaRemessa.evidencia,
     });
   }
 
-  // ---- 4) OCs ligadas: situacao + aprovacoes (nome do aprovador: conta do sistema quando ha, senao o nome do Senior)
+  // ---- 3) OCs ligadas: situacao + aprovacoes (nome do aprovador: conta do sistema quando ha, senao o nome do Senior)
   const numerosOc = Array.from(new Set(pagamentos.map((p) => p.numOcp).filter((n): n is string => !!n)));
   const [aprovacoes, usuarios] = numerosOc.length
     ? await Promise.all([
