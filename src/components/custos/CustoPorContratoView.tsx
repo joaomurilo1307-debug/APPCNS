@@ -12,6 +12,7 @@ import AtualizarCusto, { type EstadoAtualizacaoUI } from "./AtualizarCusto";
 import DetalheConta, { type AlvoDetalhe } from "./DetalheConta";
 import AoVivo from "./AoVivo";
 import PagosPorDia from "./PagosPorDia";
+import ReembolsaveisPlanilha from "./ReembolsaveisPlanilha";
 import FiltrosCusto from "./FiltrosCusto";
 import SeloSenior from "./SeloSenior";
 import VisaoContrato from "./VisaoContrato";
@@ -206,6 +207,7 @@ export default function CustoPorContratoView({ ccuFixo }: { ccuFixo?: string }) 
               <VisaoContrato contrato={contratoAberto} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onVoltar={unico || ccuFixo ? undefined : voltar} embutido={!!ccuFixo} onAbrirDetalhe={setDetalhe} />
               <AoVivo key={contratoAberto.codccu} codccu={contratoAberto.codccu} />
               <PagosPorDia key={`pagos-${contratoAberto.codccu}`} codccu={contratoAberto.codccu} />
+              <ReembolsaveisPlanilha key={`reemb-${contratoAberto.codccu}`} codccu={contratoAberto.codccu} />
             </>
           ) : (
             <>
@@ -213,6 +215,7 @@ export default function CustoPorContratoView({ ccuFixo }: { ccuFixo?: string }) 
               <VisaoGeral contratos={contratosBase} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onAbrirContrato={abrirContrato} />
               <AoVivo />
               <PagosPorDia />
+              <ReembolsaveisPlanilha />
             </>
           )}
 

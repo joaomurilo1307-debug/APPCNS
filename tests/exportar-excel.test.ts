@@ -34,7 +34,7 @@ test("workbook: abas, cabecalho, numeros e datas de verdade, formato e filtro", 
   assert.equal(ws["B4"].t, "n");
   assert.equal(ws["B4"].v, 1234.56, "texto em pt-BR vira numero");
   assert.equal(ws["B4"].z, "#,##0.00");
-  assert.equal(ws["C4"].t, "d");
+  assert.equal(ws["C4"].t, "n", "data vai como numero de serie do Excel (nao como Date: o fuso local mudava o dia)");
   assert.equal(ws["C4"].z, "dd/mm/yyyy");
   assert.equal(ws["D4"].z, "0.0%");
   assert.equal(ws["B5"].v, 99.9);
@@ -66,7 +66,9 @@ test("abaDeLinhas deduz o tipo: numero, inteiro, data; codigo e texto continuam 
   const wb = montarWorkbook([aba]);
   assert.equal(wb.Sheets["Custo"]["B2"].v, "00280", "zero a esquerda preservado");
   assert.equal(wb.Sheets["Custo"]["C2"].t, "n");
-  assert.equal(wb.Sheets["Custo"]["E2"].t, "d");
+  assert.equal(wb.Sheets["Custo"]["E2"].t, "n");
+  assert.equal(wb.Sheets["Custo"]["E2"].z, "dd/mm/yyyy");
+  assert.equal(wb.Sheets["Custo"]["E2"].v, 46310, "15/10/2026");
 });
 
 test("abaDeLinhas com coluna vazia ou sem linhas nao quebra", () => {
@@ -93,4 +95,12 @@ test("coluna com % no titulo e fracoes de 0 a 1 vira percentual; sem % continua 
   const aba = abaDeLinhas("P", [["Conta", "% do centro de custo", "Fator"], ["A", 0.25, 0.5], ["B", 0.75, 1.5]]);
   assert.deepEqual(aba.colunas.map((c) => c.tipo), ["texto", "percentual", "numero"]);
   assert.equal(montarWorkbook([aba]).Sheets["P"]["B2"].z, "0.0%");
+});
+
+test("data sem hora cai no dia certo da celula do Excel em qualquer fuso (46285 = 20/09/2026)", () => {
+  const wb = montarWorkbook([{ nome: "T", colunas: [{ titulo: "Data", tipo: "data" }], linhas: [["2026-09-20"], ["20/09/2026"]] }]);
+  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellDates: true });
+  const lido = XLSX.read(buf, { type: "buffer" }); // sem cellDates: o numero bruto que o Excel mostra
+  assert.equal(lido.Sheets["T"]["A2"].v, 46285);
+  assert.equal(lido.Sheets["T"]["A3"].v, 46285);
 });
