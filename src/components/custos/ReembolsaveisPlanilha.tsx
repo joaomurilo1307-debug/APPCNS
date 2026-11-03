@@ -1,9 +1,9 @@
 "use client";
 
 // "Despesas reembolsaveis" abaixo do "Pagos / semana" (pedido do Joao, 03/11/2026): a planilha que a Cristina preenche (RELATORIO DE DESPESAS REEMBOLSAVEIS: DOC.,
-// prestador, CPF/CNPJ, data de realizacao, TIPO DE SERVICO, valor, descricao) montada com o que o Senior ja pagou em contas reembolsaveis no mes, com o resumo por tipo
-// de servico e Excel no layout dela. Aba recolhida: so' carrega quando abre; depois acompanha o Senior sozinha. Somente leitura. O tipo de servico das contas antigas
-// e' SUGERIDO pelo texto (marcado); BDI e tributos nao sao calculados aqui.
+// prestador, CPF/CNPJ, data de realizacao, TIPO DE SERVICO, valor, descricao) montada com as notas do Senior em contas reembolsaveis que VENCEM no mes (pagas ou em aberto,
+// a mesma regra da planilha dela), com o resumo por tipo de servico e Excel no layout dela. Aba recolhida: so' carrega quando abre; depois acompanha o Senior sozinha.
+// Somente leitura. O tipo de servico das contas antigas e' SUGERIDO pelo texto (marcado); BDI e tributos nao sao calculados aqui.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BotaoExcel from "@/components/BotaoExcel";
@@ -11,9 +11,9 @@ import CabecalhoAba from "./CabecalhoAba";
 import { useSeguirSenior } from "./useSeguirSenior";
 import type { AbaExcel } from "@/lib/exportarExcel";
 import { mesLongo, moeda } from "@/lib/custos/formato";
-import { NAO_CLASSIFICADO, TIPOS_DE_SERVICO, type LinhaReembolso, type ResumoReembolso } from "@/lib/contratos/reembolsaveis";
+import { DIAS_PARCELA_ANTIGA, NAO_CLASSIFICADO, TIPOS_DE_SERVICO, type LinhaReembolso, type ResumoReembolso } from "@/lib/contratos/reembolsaveis";
 
-type Resposta = { textosPendentes?: number; mes: string; linhas: LinhaReembolso[]; resumo: ResumoReembolso; centros: { codccu: string; nome: string; n: number }[]; atualizadoEm: { custo: string | null; titulos: string | null } };
+type Resposta = { textosPendentes?: number; mes: string; linhas: LinhaReembolso[]; antigas?: LinhaReembolso[]; emitidas?: LinhaReembolso[]; resumo: ResumoReembolso; centros: { codccu: string; nome: string; n: number }[]; atualizadoEm: { custo: string | null; titulos: string | null } };
 
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
 const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "—");
@@ -84,6 +84,12 @@ export default function ReembolsaveisPlanilha({ codccu }: { codccu?: string }) {
   const resumo = dados?.resumo;
   const naoClass = resumo?.porTipo.find((p) => p.tipo === NAO_CLASSIFICADO);
   const sugeridas = linhas.filter((l) => l.origemTipo === "sugerido").length;
+  const emitidas = dados?.emitidas ?? [];
+  const antigas = dados?.antigas ?? [];
+  const pagas = linhas.filter((l) => l.pago);
+  const emAberto = linhas.filter((l) => !l.pago);
+  const soma = (ls: LinhaReembolso[]) => Math.round(ls.reduce((t, l) => t + l.valor, 0) * 100) / 100;
+  const situacao = (l: LinhaReembolso) => (l.pago ? `Pago em ${dataBr(l.dataPagamento)}` : "Em aberto");
 
   function abasExcel(): AbaExcel[] {
     if (!dados) return [];
@@ -94,14 +100,14 @@ export default function ReembolsaveisPlanilha({ codccu }: { codccu?: string }) {
     return [
       {
         nome: "Despesas Reembolsáveis",
-        observacao: `RELATÓRIO DE DESPESAS REEMBOLSÁVEIS · Contrato: ${contrato} · Período: ${periodo} · Pagos no mês (baixa no Senior), em contas reembolsáveis. Tipo de serviço "sugerido" deve ser conferido. BDI e tributos não calculados.`,
+        observacao: `RELATÓRIO DE DESPESAS REEMBOLSÁVEIS · Contrato: ${contrato} · Período: ${periodo} · Notas do Senior em contas reembolsáveis com VENCIMENTO no mês (pagas ou em aberto), valor = rateio da nota neste centro de custo. Tipo de serviço "sugerido" deve ser conferido. BDI e tributos não calculados.`,
         colunas: [
           { titulo: "DOC.", tipo: "inteiro", largura: 7 }, { titulo: "NOME BENEFICIÁRIO", largura: 20 }, { titulo: "CPF/CNPJ PRESTADOR", largura: 22 }, { titulo: "DATA REALIZAÇÃO", tipo: "data", largura: 16 },
           { titulo: "TIPO DE SERVIÇO", largura: 48 }, { titulo: "VALOR", tipo: "moeda", largura: 16 }, { titulo: "DESCRIÇÃO", largura: 60 },
-          { titulo: "Prestador", largura: 36 }, { titulo: "Título", largura: 14 }, { titulo: "Pago em", tipo: "data", largura: 12 }, { titulo: "Centro de custo", largura: 28 }, { titulo: "Como foi classificado", largura: 26 },
+          { titulo: "Prestador", largura: 36 }, { titulo: "Título", largura: 14 }, { titulo: "Vencimento", tipo: "data", largura: 12 }, { titulo: "Situação", largura: 18 }, { titulo: "Centro de custo", largura: 28 }, { titulo: "Como foi classificado", largura: 26 },
         ],
-        linhas: dados.linhas.map((l) => [l.doc, "Grupo Consominas", l.cnpj ?? "", l.dataRealizacao, l.tipo, l.valor, l.descricao, l.fornecedor, l.numTit, l.dataPagamento, `${l.ccu} - ${l.ccuNome}`, origem(l)]),
-        rodape: ["", "", "", "", "TOTAL", dados.resumo.total, "", "", "", "", "", ""],
+        linhas: dados.linhas.map((l) => [l.doc, "Grupo Consominas", l.cnpj ?? "", l.dataRealizacao, l.tipo, l.valor, l.descricao, l.fornecedor, l.numTit, l.vencimento, situacao(l), `${l.ccu} - ${l.ccuNome}`, origem(l)]),
+        rodape: ["", "", "", "", "TOTAL", dados.resumo.total, "", "", "", "", "", "", ""],
       },
       {
         nome: "Resumo",
@@ -110,6 +116,21 @@ export default function ReembolsaveisPlanilha({ codccu }: { codccu?: string }) {
         linhas: dados.resumo.porTipo.map((p) => [p.tipo, p.linhas, p.valor]),
         rodape: ["Total", dados.resumo.linhas, dados.resumo.total],
       },
+      ...[
+        { nome: "Parcelas de compras antigas", ls: antigas, observacao: `NOTAS QUE VENCEM EM ${mes.slice(5)}/${mes.slice(0, 4)} MAS FORAM EMITIDAS HÁ MAIS DE ${DIAS_PARCELA_ANTIGA} DIAS · ${contrato} · fora do total da planilha` },
+        { nome: "Emitidas no mês, vencem no seguinte", ls: emitidas, observacao: `NOTAS EMITIDAS EM ${mes.slice(5)}/${mes.slice(0, 4)} QUE VENCEM NO MÊS SEGUINTE · ${contrato} · fora do total da planilha` },
+      ]
+        .filter((g) => g.ls.length > 0)
+        .map((g) => ({
+          nome: g.nome,
+          observacao: g.observacao,
+          colunas: [
+            { titulo: "NOME BENEFICIÁRIO", largura: 36 }, { titulo: "CPF/CNPJ PRESTADOR", largura: 22 }, { titulo: "DATA REALIZAÇÃO", tipo: "data" as const, largura: 16 }, { titulo: "TIPO DE SERVIÇO", largura: 48 },
+            { titulo: "VALOR", tipo: "moeda" as const, largura: 16 }, { titulo: "DESCRIÇÃO", largura: 60 }, { titulo: "Título", largura: 14 }, { titulo: "Vencimento", tipo: "data" as const, largura: 12 }, { titulo: "Situação", largura: 18 }, { titulo: "Centro de custo", largura: 28 },
+          ],
+          linhas: g.ls.map((l) => [l.fornecedor, l.cnpj ?? "", l.dataRealizacao, l.tipo, l.valor, l.descricao, l.numTit, l.vencimento, situacao(l), `${l.ccu} - ${l.ccuNome}`]),
+          rodape: ["", "", "", "TOTAL", soma(g.ls), "", "", "", "", ""],
+        })),
     ];
   }
 
@@ -117,7 +138,7 @@ export default function ReembolsaveisPlanilha({ codccu }: { codccu?: string }) {
     <section className="mt-8 rounded-2xl border border-gray-100 bg-white p-5 shadow-soft" aria-label="Despesas reembolsáveis">
       <CabecalhoAba
         titulo="Despesas reembolsáveis"
-        descricao={`A planilha de reembolsáveis ${codccu ? "deste centro de custo" : "dos centros de custo que você acompanha"}, montada com o que o Senior já pagou em contas reembolsáveis no mês: prestador, CPF/CNPJ, data, tipo de serviço, valor e descrição, com o resumo por tipo e o Excel no formato da planilha.`}
+        descricao={`A planilha de reembolsáveis ${codccu ? "deste centro de custo" : "dos centros de custo que você acompanha"}, montada com as notas do Senior em contas reembolsáveis que vencem no mês, pagas ou em aberto (a regra da planilha da Cristina): prestador, CPF/CNPJ, data, tipo de serviço, valor e descrição, com o resumo por tipo e o Excel no formato dela.`}
         aberta={abaAberta} aoAlternar={() => setAbaAberta((v) => !v)}
         direita={dados ? <p className="text-xs text-gray-400">Senior sincronizado — títulos {hora(dados.atualizadoEm.titulos)} · baixas {hora(dados.atualizadoEm.custo)} · acompanha o Senior sozinho{atualizando ? " · lendo as baixas novas agora…" : ""}</p> : undefined}
       />
@@ -154,9 +175,9 @@ export default function ReembolsaveisPlanilha({ codccu }: { codccu?: string }) {
             <>
               <div className="mb-3 flex flex-wrap gap-2">
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-2">
-                  <span className="block text-xs text-emerald-800">Total reembolsável pago em {mesLongo(mes)}</span>
+                  <span className="block text-xs text-emerald-800">Reembolsável com vencimento em {mesLongo(mes)}</span>
                   <span className="block text-lg font-semibold tabular-nums text-gray-900">{moeda(resumo.total)}</span>
-                  <span className="block text-xs text-gray-500">{resumo.linhas} linha{resumo.linhas === 1 ? "" : "s"}</span>
+                  <span className="block text-xs text-gray-500">{resumo.linhas} linha{resumo.linhas === 1 ? "" : "s"} · {pagas.length} paga{pagas.length === 1 ? "" : "s"} ({moeda(soma(pagas))}) · {emAberto.length} em aberto ({moeda(soma(emAberto))})</span>
                 </div>
                 {pendentes > 0 && <div className="rounded-xl border border-sky-200 bg-sky-50/60 px-4 py-2"><span className="block text-xs text-sky-900">Lendo a descrição no Senior</span><span className="block text-[15px] font-medium text-gray-800">{pendentes} título{pendentes === 1 ? "" : "s"} · a tela se atualiza sozinha</span></div>}
                 {sugeridas > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-2"><span className="block text-xs text-amber-900">Tipo de serviço sugerido pelo texto</span><span className="block text-[15px] font-medium text-gray-800">{sugeridas} linha{sugeridas === 1 ? "" : "s"} para conferir</span></div>}
@@ -166,7 +187,7 @@ export default function ReembolsaveisPlanilha({ codccu }: { codccu?: string }) {
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full min-w-[1000px] text-[13px]">
                   <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                    <tr><th className="px-3 py-2">Doc.</th><th className="px-3 py-2">Prestador</th><th className="px-3 py-2">Data realização</th><th className="px-3 py-2">Tipo de serviço</th><th className="px-3 py-2 text-right">Valor</th><th className="px-3 py-2">Descrição</th><th className="px-3 py-2">Título · pago em</th></tr>
+                    <tr><th className="px-3 py-2">Doc.</th><th className="px-3 py-2">Prestador</th><th className="px-3 py-2">Data realização</th><th className="px-3 py-2">Tipo de serviço</th><th className="px-3 py-2 text-right">Valor</th><th className="px-3 py-2">Descrição</th><th className="px-3 py-2">Título · situação</th></tr>
                   </thead>
                   <tbody>
                     {linhas.map((l) => (
@@ -180,10 +201,10 @@ export default function ReembolsaveisPlanilha({ codccu }: { codccu?: string }) {
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-gray-900">{moeda(l.valor)}</td>
                         <td className="px-3 py-2 text-gray-600">{l.descricao}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-gray-600">{l.numTit}{l.tipoTitulo ? <span className="ml-1 text-xs text-gray-400">{l.tipoTitulo}</span> : null}<div className="text-xs text-gray-400">pago em {dataBr(l.dataPagamento)}{!codccu ? ` · ${l.ccuNome}` : ""}</div></td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600">{l.numTit}{l.tipoTitulo ? <span className="ml-1 text-xs text-gray-400">{l.tipoTitulo}</span> : null}<div className={`text-xs ${l.pago ? "text-emerald-700" : "text-amber-700"}`}>{situacao(l)} · vence {dataBr(l.vencimento)}{!codccu ? ` · ${l.ccuNome}` : ""}</div></td>
                       </tr>
                     ))}
-                    {linhas.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">Nenhuma despesa reembolsável paga neste mês com esses filtros.</td></tr>}
+                    {linhas.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">Nenhuma nota reembolsável vence neste mês com esses filtros.</td></tr>}
                   </tbody>
                   {linhas.length > 0 && <tfoot><tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold text-gray-900"><td className="px-3 py-2" colSpan={4}>Total</td><td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{moeda(resumo.total)}</td><td colSpan={2} /></tr></tfoot>}
                 </table>
@@ -204,7 +225,31 @@ export default function ReembolsaveisPlanilha({ codccu }: { codccu?: string }) {
                   </tbody>
                 </table>
               </div>
-              <p className="mt-3 text-[13px] text-gray-500">Entra o que foi pago no mês (baixa no Senior) em contas reembolsáveis. Recibos itemizados da prestação de contas e notas ainda não pagas não vêm do Senior: continuam sendo lançados na planilha. BDI e tributos não são calculados aqui.</p>
+              {[
+                { chave: "antigas", titulo: `Vencem em ${mesLongo(mes)}, mas foram emitidas há mais de ${DIAS_PARCELA_ANTIGA} dias`, ajuda: "parcelas de compras feitas meses antes", ls: antigas },
+                { chave: "emitidas", titulo: `Emitidas em ${mesLongo(mes)} e que vencem no mês seguinte`, ajuda: "a Cristina às vezes já lança no mês da emissão", ls: emitidas },
+              ].filter((g) => g.ls.length > 0).map((g) => (
+                <details key={g.chave} className="mt-4 rounded-xl border border-gray-100 p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-gray-700">{g.titulo} · {g.ls.length} linha{g.ls.length === 1 ? "" : "s"} · {moeda(soma(g.ls))} <span className="text-xs font-normal text-gray-400">(fora do total acima — {g.ajuda})</span></summary>
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full min-w-[800px] text-[13px]">
+                      <tbody>
+                        {g.ls.map((l) => (
+                          <tr key={l.chave} className="border-t border-gray-100 align-top">
+                            <td className="px-3 py-1.5"><div className="font-medium text-gray-800">{l.fornecedor}</div><div className="text-xs text-gray-400">{l.cnpj ?? "sem CPF/CNPJ no título"}</div></td>
+                            <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-gray-700">{dataBr(l.dataRealizacao) || "—"}</td>
+                            <td className="px-3 py-1.5 text-gray-700">{l.tipo}</td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-right font-semibold tabular-nums text-gray-900">{moeda(l.valor)}</td>
+                            <td className="px-3 py-1.5 text-gray-600">{l.descricao}</td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">{l.numTit}<div className={`text-xs ${l.pago ? "text-emerald-700" : "text-amber-700"}`}>{situacao(l)} · vence {dataBr(l.vencimento)}</div></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              ))}
+              <p className="mt-3 text-[13px] text-gray-500">Mesma regra da planilha da Cristina: entram as notas em contas reembolsáveis que vencem no mês (pagas ou ainda em aberto), pelo valor do rateio da nota neste centro de custo. Recibos, notas ainda não lançadas no Senior e a divisão da nota em itens continuam sendo feitos na planilha. As notas emitidas há mais de 90 dias e as que só vencem no mês seguinte aparecem à parte, sem entrar no total. BDI e tributos não são calculados aqui: só se aplicam à parte do Meio Físico, que a Cristina marca.</p>
             </>
           )}
         </>
