@@ -102,6 +102,7 @@ por conta passam a comparar aquele mês com o anterior (o balão de cada barra j
 
 Tabela abaixo do "Ao vivo" (tela do centro de custo e visao geral): o que foi **pago** nos dias escolhidos do mes, titulo a titulo e centro de custo a centro de custo. Substitui o relatorio semanal (Rel114 do Senior) que a Grazi/Cris recebiam.
 
+- **Aba recolhida:** a tabela abre FECHADA e so' busca dados quando a pessoa clica no titulo (padrao das abas de custo; `CabecalhoAba.tsx`).
 - **Dias:** escolhe-se o mes e, no filtro "Dias", uma lista com caixinhas dos dias que tiveram pagamento (com a quantidade de pagamentos de cada um): marcar um ou varios filtra a tabela; sem dia marcado = mes todo. Sem calendario.
 - **Pago =** baixa lancada no Senior (`CustoFinanceiroDetalhe`, a mesma base e regra v2 do custo: 90550 + 90558, data = data do pagamento) **ou** pagamento confirmado pelo retorno do Itau (item de remessa `PAGO`, titulo ainda em aberto no Senior: selo "Pago pelo banco · falta a baixa no Senior").
 - **So' aparece o que foi pago (decisao do Joao, 03/11/2026):** titulo programado, enviado ao banco sem retorno, agendado, rejeitado ou cancelado NAO entra na tabela. Na tela de um centro de custo so' aparecem as linhas daquele centro (o calculo abre o rateio completo do titulo).
