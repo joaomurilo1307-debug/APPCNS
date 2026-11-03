@@ -3,7 +3,7 @@
 // "Pagos / semana" abaixo do "Ao vivo" no Custo por Centro de Custo (pedido do Joao, 03/11/2026): o que foi PAGO nos dias escolhidos do mes (um ou varios),
 // titulo a titulo e centro de custo a centro de custo, no lugar do relatorio semanal que a Cris recebia. O valor de cada linha e' so' o do centro de custo
 // olhado; o rateio completo e o calculo abrem na propria linha. Pago = baixa lancada no Senior ou pagamento confirmado pelo retorno do banco; titulo so'
-// programado ou enviado ao banco sem retorno fica num bloco a parte e nunca soma. Somente leitura. Acompanha o Senior: relê o que o sistema ja tem a cada 3 minutos
+// programado, enviado ao banco sem retorno, rejeitado ou cancelado NAO aparece (so' o que foi pago). Somente leitura. Acompanha o Senior: relê o que o sistema ja tem a cada 3 minutos
 // e, quando as baixas lidas do Senior passam de 20 minutos, pede a leitura ao servidor (a mesma do botao Atualizar do alto da tela, uma por vez).
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -204,7 +204,6 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
         linhas: dados.linhas.flatMap((l) => l.rateios.map((r) => [l.data, l.numTit, l.fornecedor, `${r.ccu} - ${r.ccuNome}`, r.conta, r.valor, r.percentual, r.desta ? "sim" : ""])),
       },
     ];
-    if (dados.semConfirmacao.length) abas.push({ nome: "Sem confirmação", colunas, linhas: corpo(dados.semConfirmacao), observacao: "Títulos programados ou enviados ao banco que continuam em aberto no Senior: NÃO contam como pagos." });
     return abas;
   }
 
@@ -249,16 +248,15 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
             const futuro = `${mes}-${String(d).padStart(2, "0")}` > hojeBR();
             return (
               <button key={d} type="button" onClick={(e) => clicarDia(d, e.shiftKey)} aria-pressed={marcado}
-                title={r ? `${d}/${String(mesNum).padStart(2, "0")}: ${r.pagamentos} pagamento${r.pagamentos === 1 ? "" : "s"} · ${moeda(r.valor)}${r.semBaixa ? ` · ${r.semBaixa} sem confirmação` : ""}` : undefined}
+                title={r ? `${d}/${String(mesNum).padStart(2, "0")}: ${r.pagamentos} pagamento${r.pagamentos === 1 ? "" : "s"} · ${moeda(r.valor)}` : undefined}
                 className={`relative rounded-lg border px-1 py-1.5 text-center text-sm tabular-nums transition ${marcado ? "border-brand bg-brand/10 font-semibold text-gray-900" : tem ? "border-gray-200 bg-white text-gray-800 hover:border-gray-300" : "border-transparent text-gray-300 hover:border-gray-200"} ${futuro ? "opacity-60" : ""}`}>
                 {d}
                 {tem && <span className="block text-[10px] leading-none text-emerald-700">{r.pagamentos}</span>}
-                {!!r?.semBaixa && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />}
               </button>
             );
           })}
         </div>
-        <p className="mt-1.5 text-[11px] text-gray-400">Clique em um dia para marcar ou desmarcar; com Shift, marca do último clicado até este. O número em verde é a quantidade de pagamentos; o ponto laranja indica título do dia sem confirmação de pagamento.</p>
+        <p className="mt-1.5 text-[11px] text-gray-400">Clique em um dia para marcar ou desmarcar; com Shift, marca do último clicado até este. O número em verde é a quantidade de pagamentos do dia.</p>
       </div>
 
       {/* ---------------- filtros */}
@@ -369,7 +367,7 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
           </div>
 
           <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[13px] text-gray-500">
-            <span>Pessoal e impostos (salários, férias, rescisão, encargos) não entram, como no custo. Título de cartão de crédito em aberto também não aparece como programado.</span>
+            <span>Pessoal e impostos (salários, férias, rescisão, encargos) não entram, como no custo. Só aparece o que foi pago.</span>
             {paginas > 1 && (
               <span className="flex items-center gap-3">
                 <button type="button" disabled={pagina <= 1} onClick={() => setPagina(pagina - 1)} className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:opacity-40">Anterior</button>
@@ -379,36 +377,6 @@ export default function PagosPorDia({ codccu }: { codccu?: string }) {
             )}
           </footer>
 
-          {/* ---------------- sem confirmacao: nunca soma no total pago */}
-          {dados.semConfirmacao.length > 0 && (
-            <details className="mt-4 rounded-xl border border-amber-200 bg-amber-50/40 p-3">
-              <summary className="cursor-pointer text-sm font-medium text-amber-900">
-                Programados sem baixa no Senior — {resumo.semConfirmacao.pagamentos} título{resumo.semConfirmacao.pagamentos === 1 ? "" : "s"}, {moeda(resumo.semConfirmacao.valor)} (não contam como pago)
-              </summary>
-              <p className="mt-2 text-[13px] text-gray-600">Estes títulos estavam programados para os dias escolhidos e continuam em aberto no Senior, sem retorno do banco que confirme o pagamento. Podem ter sido pagos por fora; enquanto o Senior (ou o banco) não confirmar, ficam aqui e não entram em nenhum total.</p>
-              <div className="mt-2 overflow-x-auto rounded-lg border border-amber-100 bg-white">
-                <table className="w-full min-w-[900px] text-[13px]">
-                  <thead className="bg-amber-50/60 text-left text-xs uppercase tracking-wide text-gray-500">
-                    <tr><th className="px-3 py-2">Data</th><th className="px-3 py-2">Situação</th><th className="px-3 py-2">Título</th><th className="px-3 py-2">Fornecedor</th><th className="px-3 py-2">Conta</th><th className="px-3 py-2">Conta alocada</th><th className="px-3 py-2 text-right">Valor</th><th className="px-3 py-2">OC</th></tr>
-                  </thead>
-                  <tbody>
-                    {dados.semConfirmacao.slice(0, 300).map((l) => (
-                      <tr key={l.chave} className="border-t border-gray-100 align-top">
-                        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gray-700">{dataBr(l.data)}</td>
-                        <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${SITUACAO[l.situacao].cor}`}>{SITUACAO[l.situacao].rotulo}</span>{l.remessa?.remessaEm && <div className="mt-0.5 text-[11px] text-gray-400">remessa de {dataBr(l.remessa.remessaEm)}</div>}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-gray-700">{l.numTit}{l.tipo ? <span className="ml-1 text-xs text-gray-400">{l.tipo}</span> : null}</td>
-                        <td className="px-3 py-2 font-medium text-gray-800">{l.fornecedor}</td>
-                        <td className="px-3 py-2 text-gray-600">{l.conta}</td>
-                        <td className="px-3 py-2 text-gray-600"><span className="text-gray-400">{l.ccu}</span> {l.ccuNome}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-gray-800">{moeda(l.valor)}</td>
-                        <td className="px-3 py-2">{l.numOcp ? <button type="button" onClick={() => abrirOC(l.numOcp as string)} className="rounded-md border border-brand/40 px-1.5 py-0.5 text-xs font-medium text-brand hover:bg-brand/10">OC {l.numOcp}</button> : <span className="text-xs text-gray-400">Sem OC</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          )}
         </>
       )}
       {janelaOC}
