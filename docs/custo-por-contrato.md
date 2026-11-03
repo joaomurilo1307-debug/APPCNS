@@ -113,3 +113,17 @@ Tabela abaixo do "Ao vivo" (tela do centro de custo e visao geral): o que foi **
 - **Excel:** baixa o que o filtro mostra (abas Pagos e Rateios completos).
 - **API:** `GET /api/custos-conta/pagos?mes=aaaa-mm&dias=1,5,9-12&ccu=&situacao=todos|pago|pago_banco&q=`. Codigo: `src/lib/contratos/pagosPorDia.ts` (puro), `pagosPorDiaServidor.ts` (banco), `src/components/custos/PagosPorDia.tsx`; testes `tests/pagos-por-dia.test.ts`.
 - **Validacao (25/09 a 07/10, 5 centros MRN):** a planilha da Grazi (58 linhas distintas, R$ 270.494,05) = baixado no Senior R$ 155.731,06 (30 linhas) + aberto no Senior R$ 114.679,29 (27 linhas, NAO aparecem: nao foram baixadas) + duplicidade 62666$01 R$ 83,70; a tabela traz ainda 4 baixas que a planilha nao tinha (R$ 4.080,88), lancadas no Senior depois do relatorio.
+
+## Despesas reembolsaveis (03/11/2026)
+
+Aba abaixo do "Pagos / semana" (fechada por padrao; so' carrega quando abre): a planilha de reembolsaveis que a Cristina preenche (RELATORIO DE DESPESAS REEMBOLSAVEIS), montada com o que o Senior ja pagou em contas reembolsaveis no mes.
+
+- **O que entra:** baixas do mes (`CustoFinanceiroDetalhe`, mesma regra v2 do custo) em contas reembolsaveis: a antiga "Despesas Reembolsaveis" (67/179) e as "R - ..." do plano novo (`eReembolsavel`). Valor so' do centro de custo da linha. Pessoal/impostos nunca entram.
+- **Colunas (as da planilha):** DOC. (numerado), beneficiario "Grupo Consominas", CPF/CNPJ do prestador (`documentoFavorecido` do titulo), DATA REALIZACAO (emissao do titulo), TIPO DE SERVICO (uma das 11 opcoes da planilha), VALOR, DESCRICAO (texto do titulo sem o "VALOR BRUTO ... PAGAMENTO REFERENTE A" e sem o rabo "EM ATENDIMENTO / C/C").
+- **Tipo de servico:** nas contas "R - ..." vem da conta; na conta antiga (67), que e' uma so' para tudo, e' SUGERIDO pelo texto e aparece marcado "sugerido"; sem pista = "Nao classificado" (nunca se inventa sem marcar). Regras em `src/lib/contratos/reembolsaveis.ts` (testado contra as 62 linhas de set/2026 da MRN 3687LT: 62/62, mas as regras foram escritas olhando essas mesmas linhas, entao em outros contratos/meses vai errar mais: por isso o "sugerido").
+- **Texto do titulo:** a sincronizacao de titulos so' traz a descricao de ~10% dos titulos; o texto (E501TCP.OBSTCP) dos que a planilha precisa e' lido do Senior em segundo plano, uma vez, e guardado em `TituloTexto` (`src/lib/senior/textoDosTitulos.ts`, somente leitura, uma leitura por vez). Enquanto le, a aba mostra "Lendo a descricao no Senior" e se atualiza sozinha.
+- **Resumo** por tipo de servico (os 11 tipos, mesmo zerados) e total; **Excel** no formato da planilha (aba "Despesas Reembolsaveis" + aba "Resumo").
+- **Nao calcula BDI nem tributos** (so' a Cristina sabe quais itens sao do Meio Fisico). Recibos itemizados da prestacao de contas e notas ainda nao pagas nao vem do Senior: continuam sendo lancados na planilha. Quadro Geral de diretrizes por contrato: ainda nao usado.
+- **Atualizacao:** igual ao Pagos / semana (3 min + leitura do Senior quando as baixas passam de 20 min; `useSeguirSenior.ts`).
+- **API:** `GET /api/custos-conta/reembolsaveis?mes=aaaa-mm&ccu=&tipo=&q=`. Testes: `tests/reembolsaveis.test.ts`, `tests/texto-dos-titulos.test.ts`.
+- **Correcao no Excel de todo o sistema:** datas sem hora iam para a planilha como Date e a biblioteca as convertia pelo relogio local: no Brasil a celula saia com 1 dia a menos. Agora vao como numero de serie do Excel (UTC); `tests/exportar-excel.test.ts` cobre.

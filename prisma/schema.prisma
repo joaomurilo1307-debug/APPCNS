@@ -2125,3 +2125,18 @@ model CustoPessoalFechamento {
   impressao  String
   observacao String?
 }
+
+// Texto digitado em cada titulo do Senior (E501TCP.OBSTCP: "VALOR BRUTO ... PAGAMENTO REFERENTE A ..."), lido SOB DEMANDA para a planilha de despesas
+// reembolsaveis. A sincronizacao de titulos so' traz a descricao de ~10% dos titulos; aqui fica o texto dos que a planilha precisou, lido uma vez.
+// texto vazio = o Senior nao tem texto nesse titulo (nao volta a consultar). Somente leitura do Senior; nada e' gravado la.
+model TituloTexto {
+  id     String   @id @default(cuid())
+  numTit String
+  codFor String
+  tipo   String // CODTPT
+  texto  String   @db.Text
+  lidoEm DateTime @default(now())
+
+  @@unique([numTit, codFor, tipo])
+  @@index([numTit, codFor])
+}
