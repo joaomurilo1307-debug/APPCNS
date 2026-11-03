@@ -8,8 +8,9 @@ import { nomesDosCentros } from "@/lib/contratos/aoVivoServidor";
 import { montarReembolsaveis, TIPOS_DE_SERVICO, NAO_CLASSIFICADO } from "@/lib/contratos/reembolsaveis";
 import { carregarReembolsaveis } from "@/lib/contratos/reembolsaveisServidor";
 
-// Planilha de despesas reembolsaveis (SOMENTE LEITURA): o que foi PAGO no mes em contas reembolsaveis, no layout da planilha que a Cristina preenche
-// (DOC., prestador, CPF/CNPJ, data de realizacao, tipo de servico, valor, descricao) + resumo por tipo de servico. Mesmo acesso do "Ao vivo" e do "Pagos / semana":
+// Planilha de despesas reembolsaveis (SOMENTE LEITURA): as notas em contas reembolsaveis que VENCEM no mes (pagas ou em aberto), no layout da planilha que a Cristina
+// preenche (DOC., prestador, CPF/CNPJ, data de realizacao, tipo de servico, valor, descricao) + resumo por tipo de servico, +, a parte e fora do total, as parcelas de compras antigas (vencem no mes, emitidas ha mais de 90 dias) e as emitidas no mes que vencem no mes seguinte.
+// Mesmo acesso do "Ao vivo" e do "Pagos / semana":
 // so' os centros de custo que a pessoa ve. Parametros: mes (aaaa-mm, padrao o mes atual), ccu, tipo (um tipo de servico), q.
 
 export async function GET(req: Request) {
@@ -33,10 +34,10 @@ export async function GET(req: Request) {
   const nomeDoCentro = (c: string) => nomes.get(c) ?? `CC ${c}`;
   const r = montarReembolsaveis(dados.entradas, { mes, ccu, tipo, q: sp.get("q"), pode: (c) => podeVerCcu(visao, c), nomeDoCentro });
 
-  // centros que a pessoa pode escolher: os que tiveram reembolsavel pago no mes
+  // centros que a pessoa pode escolher: os que tem nota reembolsavel vencendo no mes
   const contagem = new Map<string, number>();
-  for (const x of dados.entradas) if (x.dataPagamento.slice(0, 7) === mes && podeVerCcu(visao, x.ccu)) contagem.set(x.ccu, (contagem.get(x.ccu) ?? 0) + 1);
+  for (const x of dados.entradas) if (x.vencimento.slice(0, 7) === mes && podeVerCcu(visao, x.ccu)) contagem.set(x.ccu, (contagem.get(x.ccu) ?? 0) + 1);
   const centros = Array.from(contagem.entries()).map(([codccu, n]) => ({ codccu, nome: nomeDoCentro(codccu), n })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
-  return NextResponse.json({ mes, hoje: hojeBR(), linhas: r.linhas, resumo: r.resumo, centros, textosPendentes: dados.textosPendentes, atualizadoEm: dados.atualizadoEm });
+  return NextResponse.json({ mes, hoje: hojeBR(), linhas: r.linhas, antigas: r.antigas, emitidas: r.emitidas, resumo: r.resumo, centros, textosPendentes: dados.textosPendentes, atualizadoEm: dados.atualizadoEm });
 }

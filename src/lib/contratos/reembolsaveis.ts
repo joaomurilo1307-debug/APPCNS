@@ -3,8 +3,12 @@
 // do que o Senior ja tem. Esta parte e' PURA (sem banco): recebe as linhas pagas das contas reembolsaveis e devolve a planilha e o resumo.
 //
 // Regras:
-//   - Entra o que foi PAGO no mes (mesma base e mesma regra do Custo por Contrato e do "Pagos / semana": baixa no Senior), so' em contas reembolsaveis
-//     (a antiga "Despesas Reembolsaveis" 67/179 e as contas "R - ..." do plano novo).
+//   - REGRA DO MES (descoberta conferindo a planilha de set/2026 da MRN 3687 LT nota a nota: 14 notas fecham ao centavo): entram as notas das contas reembolsaveis
+//     (a antiga "Despesas Reembolsaveis" 67/179 e as "R - ...") cujo VENCIMENTO cai no mes, pagas ou ainda em aberto. A "data de realizacao" e' a emissao da nota. As notas
+//     EMITIDAS no mes que so' vencem no mes seguinte ficam num grupo a parte (ex.: uma nota de 22/09 com vencimento 07/10 entrou na planilha de setembro).
+//   - PARCELAS ANTIGAS: nota que vence no mes mas foi emitida ha mais de 90 dias (parcelas 07, 08, 11 de compras feitas meses antes) NAO esta na planilha da Cristina: das 7 notas assim
+//     de set/2026 nenhuma entrou, e todas as notas do Senior que ela lancou foram emitidas ate 44 dias antes do vencimento. Ficam num grupo a parte, fora do total, e continuam visiveis.
+//   - O valor de cada nota e' o rateio dela no centro de custo (o que a planilha usa); a Cristina divide a nota em itens e a soma dos itens fecha com ele.
 //   - TIPO DE SERVICO e' uma das 11 opcoes da planilha. Nas contas "R - ..." vem da propria conta; na conta antiga (67), que e' uma so' para tudo, e' SUGERIDO pelo texto
 //     da descricao e aparece marcado como sugerido; sem pista fica "Nao classificado". Nunca se inventa classificacao sem marcar.
 //   - Nao calcula BDI nem tributos (so' a Cristina sabe quais itens sao do Meio Fisico); isso fica para ela, na planilha.
@@ -102,7 +106,9 @@ export type EntradaReembolso = {
   fornecedor: string;
   documento: string | null; // CPF/CNPJ do prestador (so' digitos), quando o titulo traz
   valor: number; // so' a parte DESTE centro de custo
-  dataPagamento: string; // aaaa-mm-dd
+  dataPagamento: string | null; // aaaa-mm-dd; null = ainda em aberto
+  vencimento: string; // aaaa-mm-dd: o que decide o mes da planilha
+  pago: boolean;
   dataRealizacao: string | null; // aaaa-mm-dd: emissao do titulo/nota (a "DATA REALIZACAO" da planilha)
   descricao: string | null; // texto do titulo (OBSTCP)
 };
@@ -117,7 +123,9 @@ export type LinhaReembolso = {
   fornecedor: string;
   cnpj: string | null;
   dataRealizacao: string | null;
-  dataPagamento: string;
+  dataPagamento: string | null;
+  vencimento: string;
+  pago: boolean;
   tipo: TipoOuNao;
   origemTipo: OrigemDoTipo;
   conta: string;
@@ -132,7 +140,7 @@ export type ResumoReembolso = {
 };
 
 export type EntradaMontagemReembolso = {
-  mes: string; // aaaa-mm (mes do PAGAMENTO)
+  mes: string; // aaaa-mm (mes do VENCIMENTO da nota)
   ccu?: string | null;
   tipo?: string | null; // um tipo de servico so'
   q?: string | null;
@@ -140,25 +148,46 @@ export type EntradaMontagemReembolso = {
   nomeDoCentro: (ccu: string) => string;
 };
 
-/** Monta a planilha (linhas numeradas em DOC.) e o resumo por tipo de servico, so' com os centros que a pessoa ve. */
-export function montarReembolsaveis(entradas: EntradaReembolso[], e: EntradaMontagemReembolso): { linhas: LinhaReembolso[]; resumo: ResumoReembolso } {
+/** Acima disto, entre a emissao e o vencimento, a nota e' parcela de uma compra antiga (inferido da planilha de set/2026: ver o cabecalho). */
+export const DIAS_PARCELA_ANTIGA = 90;
+const diasEntre = (de: string, ate: string) => Math.round((Date.parse(ate) - Date.parse(de)) / 86_400_000);
+
+/** aaaa-mm do mes seguinte. */
+export const proximoMes = (mes: string) => { const [a, m] = mes.split("-").map(Number); const d = new Date(Date.UTC(a, m, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`; };
+
+/**
+ * Monta a planilha (linhas numeradas em DOC.) e o resumo por tipo de servico, so' com os centros que a pessoa ve. `linhas` = notas com vencimento no mes;
+ * `antigas` = vencem no mes mas foram emitidas ha mais de 90 dias e `emitidas` = notas emitidas no mes que vencem no mes seguinte (os dois grupos ficam fora do total).
+ */
+export function montarReembolsaveis(entradas: EntradaReembolso[], e: EntradaMontagemReembolso): { linhas: LinhaReembolso[]; antigas: LinhaReembolso[]; emitidas: LinhaReembolso[]; resumo: ResumoReembolso } {
   const q = e.q ? semAcento(e.q) : "";
-  const linhas: Omit<LinhaReembolso, "doc">[] = [];
+  const seguinte = proximoMes(e.mes);
+  const principais: Omit<LinhaReembolso, "doc">[] = [];
+  const depois: Omit<LinhaReembolso, "doc">[] = [];
+  const antigas: Omit<LinhaReembolso, "doc">[] = [];
   for (const x of entradas) {
-    if (x.dataPagamento.slice(0, 7) !== e.mes || !e.pode(x.ccu) || (e.ccu && x.ccu !== e.ccu)) continue;
+    if (!e.pode(x.ccu) || (e.ccu && x.ccu !== e.ccu)) continue;
+    const noMes = x.vencimento.slice(0, 7) === e.mes;
+    const emitidaNoMes = !noMes && x.dataRealizacao?.slice(0, 7) === e.mes && x.vencimento.slice(0, 7) === seguinte;
+    if (!noMes && !emitidaNoMes) continue;
     const { tipo, origem } = classificar(x.codConta, `${limparDescricao(x.descricao)} ${x.descricao ?? ""}`);
     if (e.tipo && tipo !== e.tipo) continue;
     const descricao = limparDescricao(x.descricao) || x.conta;
     const l = {
-      chave: `${x.numTit}|${x.codFor}|${x.tipoTitulo ?? ""}|${x.dataPagamento}|${x.ccu}|${x.conta}`, ccu: x.ccu, ccuNome: e.nomeDoCentro(x.ccu), numTit: x.numTit, tipoTitulo: x.tipoTitulo, fornecedor: x.fornecedor,
-      cnpj: formatarDocumento(x.documento), dataRealizacao: x.dataRealizacao, dataPagamento: x.dataPagamento, tipo, origemTipo: origem, conta: x.conta, valor: arred(x.valor), descricao,
+      chave: `${x.numTit}|${x.codFor}|${x.tipoTitulo ?? ""}|${x.vencimento}|${x.ccu}|${x.conta}`, ccu: x.ccu, ccuNome: e.nomeDoCentro(x.ccu), numTit: x.numTit, tipoTitulo: x.tipoTitulo, fornecedor: x.fornecedor,
+      cnpj: formatarDocumento(x.documento), dataRealizacao: x.dataRealizacao, dataPagamento: x.dataPagamento, vencimento: x.vencimento, pago: x.pago, tipo, origemTipo: origem, conta: x.conta, valor: arred(x.valor), descricao,
     };
     if (q && !semAcento([l.fornecedor, l.numTit, l.descricao, l.tipo, l.conta, l.ccuNome, l.ccu, l.cnpj ?? ""].join(" ")).includes(q)) continue;
-    linhas.push(l);
+    const antiga = noMes && !!x.dataRealizacao && diasEntre(x.dataRealizacao, x.vencimento) > DIAS_PARCELA_ANTIGA;
+    (antiga ? antigas : noMes ? principais : depois).push(l);
   }
-  linhas.sort((a, b) => (a.dataRealizacao ?? a.dataPagamento).localeCompare(b.dataRealizacao ?? b.dataPagamento) || a.fornecedor.localeCompare(b.fornecedor, "pt-BR") || a.numTit.localeCompare(b.numTit) || a.ccu.localeCompare(b.ccu) || a.valor - b.valor);
-  const numeradas = linhas.map((l, i) => ({ ...l, doc: i + 1 }));
-  return { linhas: numeradas, resumo: resumirReembolsos(numeradas) };
+  const ordem = (a: Omit<LinhaReembolso, "doc">, b: Omit<LinhaReembolso, "doc">) => (a.dataRealizacao ?? a.vencimento).localeCompare(b.dataRealizacao ?? b.vencimento) || a.fornecedor.localeCompare(b.fornecedor, "pt-BR") || a.numTit.localeCompare(b.numTit) || a.ccu.localeCompare(b.ccu) || a.valor - b.valor;
+  principais.sort(ordem);
+  antigas.sort(ordem);
+  depois.sort(ordem);
+  const linhas = principais.map((l, i) => ({ ...l, doc: i + 1 }));
+  const numerar = (ls: Omit<LinhaReembolso, "doc">[]) => ls.map((l, i) => ({ ...l, doc: i + 1 }));
+  return { linhas, antigas: numerar(antigas), emitidas: numerar(depois), resumo: resumirReembolsos(linhas) };
 }
 
 export function resumirReembolsos(linhas: LinhaReembolso[]): ResumoReembolso {
