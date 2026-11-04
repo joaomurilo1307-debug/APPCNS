@@ -19,8 +19,7 @@ const ATTENDEE_SELECT = {
 } as const;
 
 async function visibilityFilterFor(userId: string, role: string) {
-  if (role === "ADMIN") return {};
-
+  // Administrador tambem so' ve os proprios eventos e os dos projetos da sua equipe (02/11/2026).
   if (role === "CLIENTE") {
     return {
       OR: [

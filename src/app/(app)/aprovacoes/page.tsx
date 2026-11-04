@@ -15,7 +15,8 @@ type Project = {
   description: string | null;
   approvalStatus: string;
   team: { name: string };
-  owner: { name: string };
+  owner: { id: string; name: string };
+  approver: { id: string; name: string } | null;
 };
 
 type ApprovalRequest = {
@@ -206,8 +207,10 @@ export default function AprovacoesPage() {
     setInvites((prev) => prev.map((i) => (i.id === id ? { ...i, status: decision } : i)));
   }
 
-  const pendentes = projects.filter((p) => p.approvalStatus === "PENDENTE");
-  const decididos = projects.filter((p) => p.approvalStatus === "APROVADO" || p.approvalStatus === "REJEITADO");
+  // Aprovacoes de projeto: so' as que tem relacao com a pessoa (ela e' a aprovadora designada), mesmo sendo administradora (02/11/2026)
+  const meusProjetosParaAprovar = projects.filter((p) => p.approver?.id === myId);
+  const pendentes = meusProjetosParaAprovar.filter((p) => p.approvalStatus === "PENDENTE");
+  const decididos = meusProjetosParaAprovar.filter((p) => p.approvalStatus === "APROVADO" || p.approvalStatus === "REJEITADO");
 
   const invitesPendentes = invites.filter((i) => i.status === "PENDENTE");
   const invitesDecididos = invites.filter((i) => i.status !== "PENDENTE");

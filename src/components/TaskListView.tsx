@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import Avatar from "@/components/Avatar";
+import { patchTarefa } from "@/lib/tarefaClient";
 
 type Member = { id: string; name: string };
 
@@ -38,6 +39,7 @@ type ListTask = {
   priority: string;
   startDate: string | null;
   dueDate: string | null;
+  horasDedicadas: number | null;
   assigneeId: string | null;
   assignee: { id: string; name: string } | null;
   customFieldValues: CustomFieldValue[];
@@ -198,16 +200,38 @@ export default function TaskListView({
   }, []);
 
   async function patchTask(taskId: string, data: any) {
+    const titulo = tasks.find((t) => t.id === taskId)?.title;
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...data } : t)));
-    const res = await fetch(`/api/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      setSaveError("Não foi possível salvar a alteração. A tela foi atualizada com os dados reais.");
+    // concluir (Feito) pede as horas dedicadas quando a pessoa usa o Timesheet automatico
+    const r = await patchTarefa(taskId, data, titulo);
+    if (r.cancelado) {
       loadAll();
+      return;
     }
+    if (!r.ok) {
+      setSaveError(r.erro ?? "Não foi possível salvar a alteração. A tela foi atualizada com os dados reais.");
+      loadAll();
+      return;
+    }
+    if (r.dados && r.dados.horasDedicadas !== undefined) {
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, horasDedicadas: r.dados.horasDedicadas } : t)));
+    }
+  }
+
+  // "Horas dedicadas": numero > 0 grava; vazio apaga; qualquer outra coisa volta ao valor salvo
+  function salvarHoras(t: ListTask, texto: string) {
+    const limpo = texto.trim().replace(",", ".");
+    if (limpo === "") {
+      if (t.horasDedicadas !== null) patchTask(t.id, { horasDedicadas: null });
+      return;
+    }
+    const n = Number(limpo);
+    if (!Number.isFinite(n) || n <= 0 || n > 5000) {
+      setSaveError("Horas dedicadas: informe um número maior que zero (ex.: 6 ou 4,5).");
+      loadAll();
+      return;
+    }
+    if (n !== t.horasDedicadas) patchTask(t.id, { horasDedicadas: Math.round(n * 100) / 100 });
   }
 
   async function patchCustomField(taskId: string, fieldId: string, value: string) {
@@ -722,6 +746,7 @@ export default function TaskListView({
               <th className="min-w-[180px] px-3 py-2.5">Responsável</th>
               <th className="min-w-[130px] px-3 py-2.5">Início</th>
               <th className="min-w-[130px] px-3 py-2.5">Prazo</th>
+              <th className="min-w-[110px] px-3 py-2.5" title="Horas que você dedicou à tarefa inteira. Preencha antes de concluir: é a base do Timesheet automático e do custo do projeto.">Horas dedicadas</th>
               <th className="min-w-[160px] px-3 py-2.5">Tarefa-mãe</th>
               {fields.map((f) => (
                 <th key={f.id} className="min-w-[140px] px-3 py-2.5">
@@ -839,6 +864,20 @@ export default function TaskListView({
                   {isOverdue && <span className="ml-1 text-[10px] font-semibold text-rose-500">atrasada</span>}
                 </td>
                 <td className={rowCell}>
+                  <input
+                    key={`h-${t.id}-${t.horasDedicadas ?? "v"}`}
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    inputMode="decimal"
+                    aria-label={`Horas dedicadas: ${t.title}`}
+                    placeholder="—"
+                    defaultValue={t.horasDedicadas ?? ""}
+                    onBlur={(e) => salvarHoras(t, e.target.value)}
+                    className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 tabular-nums hover:border-gray-200 hover:bg-white"
+                  />
+                </td>
+                <td className={rowCell}>
                   <select
                     value={t.parentTaskId ?? ""}
                     onChange={(e) => patchTask(t.id, { parentTaskId: e.target.value || null })}
@@ -944,7 +983,7 @@ export default function TaskListView({
               );
             })}
             <tr>
-              <td className="px-3 py-2" colSpan={7 + fields.length}>
+              <td className="px-3 py-2" colSpan={8 + fields.length}>
                 <input
                   placeholder="+ Adicionar tarefa"
                   value={newTaskTitle}
