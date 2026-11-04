@@ -163,7 +163,7 @@ function ConteudoProjetosPage() {
       const r = await fetch(modoPlano ? `/api/contract-goals/${encodeURIComponent(planoPedido)}/plan` : "/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(modoPlano ? { mode: "create", name, peopleIds: pessoas, dueDate: prazoPlano ? `${prazoPlano}T12:00:00.000Z` : null } : teamId ? { name, teamId, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds } : { name, pessoas, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds }),
+        body: JSON.stringify(modoPlano ? { mode: "create", name, peopleIds: pessoas, dueDate: prazoPlano ? `${prazoPlano}T12:00:00.000Z` : null, ...(planoMeta?.contrato ? {} : { codccu: codccu || null }) } : teamId ? { name, teamId, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds } : { name, pessoas, codccu: codccu || null, nucleoId: nucleoId || null, contractGoalIds }),
       });
       const criado = await r.json().catch(() => ({}));
       if (!r.ok) return setErro(typeof criado.error === "string" ? criado.error : "Não foi possível criar. Confira o nome (mínimo 2 letras).");
@@ -238,11 +238,11 @@ function ConteudoProjetosPage() {
           </div>
           <div>
             <label htmlFor="novo-projeto-contrato" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Centro de custo (contrato, administrativo ou proposta)</label>
-            {modoPlano ? <input id="novo-projeto-contrato" readOnly value={planoMeta?.contrato ? `${planoMeta.contrato.codccu} · ${planoMeta.contrato.nome || "Contrato"}` : "Sem contrato (projeto interno)"} className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm" /> : <select id="novo-projeto-contrato" required value={codccu} onChange={(e) => setCodccu(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+            {modoPlano && planoMeta?.contrato ? <input id="novo-projeto-contrato" readOnly value={`${planoMeta.contrato.codccu} · ${planoMeta.contrato.nome || "Contrato"}`} className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm" /> : <select id="novo-projeto-contrato" required value={codccu} onChange={(e) => setCodccu(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
               <option value="">Selecione o centro de custo…</option>
               {contratos.map((c) => <option key={c.codccu} value={c.codccu}>{c.codccu} · {c.nome}</option>)}
             </select>}
-            {!modoPlano && <p className="mt-1 text-[12px] text-gray-500">Obrigatório: é nele que caem as horas do Timesheet automático das tarefas do projeto e o resultado do contrato.</p>}
+            {(!modoPlano || !planoMeta?.contrato) && <p className="mt-1 text-[12px] text-gray-500">{modoPlano ? "Esta meta não tem contrato: escolha o centro de custo do projeto. " : ""}Obrigatório: é nele que caem as horas do Timesheet automático das tarefas do projeto e o resultado do contrato.</p>}
           </div>
           {modoPlano && <div><label htmlFor="novo-projeto-prazo" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Prazo do projeto (opcional)</label><input id="novo-projeto-prazo" type="date" value={prazoPlano} onChange={(e) => setPrazoPlano(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" /></div>}
           {!modoPlano && nucleos.length > 0 && (
