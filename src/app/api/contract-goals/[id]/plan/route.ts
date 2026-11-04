@@ -15,6 +15,7 @@ const bodySchema = z.object({
   description: z.string().max(4000).nullable().optional(),
   projectId: z.string().min(1).optional(), peopleIds: z.array(z.string()).max(60).default([]),
   dueDate: z.string().datetime().nullable().optional(),
+  codccu: z.string().regex(/^\d+$/).nullable().optional(), // so' para meta SEM contrato: o centro de custo escolhido para o projeto novo
 });
 
 async function acesso(id: string) {
@@ -33,7 +34,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const { usuario, meta } = ctx;
   if (!(await podeEditarModulo(usuario, "projetos"))) return NextResponse.json({ projects: [], actionPlanId: null, canConvert: false });
   const projects = await prisma.project.findMany({
-    where: { AND: [await visibleProjectWhere(usuario.id, usuario.role), { actionPlanGoalId: null }, ...(meta.contrato ? [{ OR: [{ codccu: null }, { codccu: meta.contrato.codccu }] }] : [])] },
+    where: { AND: [await visibleProjectWhere(usuario.id, usuario.role), { actionPlanGoalId: null }, ...(meta.contrato ? [{ OR: [{ codccu: null }, { codccu: meta.contrato.codccu }] }] : [{ codccu: { not: null } }])] },
     select: { id: true, name: true, teamId: true }, orderBy: { name: "asc" },
   });
   const gerenciaveis = [];
@@ -72,11 +73,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (body.mode === "link" && !body.projectId) return NextResponse.json({ error: "Escolha o projeto que executará o plano." }, { status: 422 });
   const people = [...new Set(body.peopleIds)];
   if ((await pessoasValidas(people)).length !== people.length) return NextResponse.json({ error: "Escolha somente pessoas ativas válidas." }, { status: 422 });
+  // Centro de custo obrigatorio em todo projeto (Joao, 04/11/2026): o do contrato da meta; meta sem contrato (interna/setorial) exige escolher um.
+  let codccuDoProjeto: string | null = meta.contrato?.codccu ?? null;
+  if (body.mode === "create" && !codccuDoProjeto && !meta.actionPlan) { // meta que já virou projeto devolve o existente (repetir não pede de novo)
+    if (!body.codccu) return NextResponse.json({ error: "Escolha o centro de custo do projeto (contrato, administrativo ou proposta).", code: "CENTRO_DE_CUSTO_OBRIGATORIO" }, { status: 422 });
+    const escolhido = await prisma.contrato.findUnique({ where: { codccu: body.codccu }, select: { codccu: true, acompanharResultados: true } });
+    if (!escolhido) return NextResponse.json({ error: "Contrato não encontrado" }, { status: 404 });
+    if (!escolhido.acompanharResultados) return NextResponse.json({ error: "Este contrato está fora do acompanhamento para novas iniciativas." }, { status: 422 });
+    codccuDoProjeto = escolhido.codccu;
+  }
   let existente = body.mode === "link" ? await prisma.project.findUnique({ where: { id: body.projectId }, include: { team: { select: { members: { select: { userId: true } } } } } }) : null;
   if (body.mode === "link") {
     if (!existente || !(await canViewProject(usuario.id, usuario.role, existente.id)) || !(await canManageTeam(usuario.id, usuario.role, existente.teamId))) return NextResponse.json({ error: "Você não pode gerenciar o projeto escolhido." }, { status: 403 });
     if (existente.actionPlanGoalId && existente.actionPlanGoalId !== meta.id) return NextResponse.json({ error: "Este projeto já é plano principal de outra meta. Use o vínculo adicional de metas." }, { status: 409 });
     if (meta.contrato && existente.codccu && existente.codccu !== meta.contrato.codccu) return NextResponse.json({ error: "O projeto pertence a outro contexto de contrato." }, { status: 422 });
+    if (!meta.contrato && !existente.codccu) return NextResponse.json({ error: "Este projeto ainda não tem centro de custo. Defina o centro de custo do projeto antes de associar o plano.", code: "CENTRO_DE_CUSTO_OBRIGATORIO" }, { status: 422 });
     for (const action of meta.actions.filter((a) => a.status !== "CANCELADA" && a.ownerId && !a.task && !a.migratedAt)) {
       if (!(await canViewProject(action.ownerId!, "COLABORADOR", existente.id))) return NextResponse.json({ error: "Inclua os responsáveis das ações na equipe do projeto antes de associar o plano. O vínculo não concede acesso automaticamente." }, { status: 422 });
     }
@@ -97,7 +108,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "project-plan:" + existente.id);
         const livre = await tx.project.findUniqueOrThrow({ where: { id: existente.id } });
         if (livre.actionPlanGoalId && livre.actionPlanGoalId !== meta.id) throw new Error("O projeto já é o plano principal de outra meta.");
-        project = await tx.project.update({ where: { id: livre.id }, data: { actionPlanGoalId: meta.id } });
+        project = await tx.project.update({ where: { id: livre.id }, data: { actionPlanGoalId: meta.id, ...(!livre.codccu && meta.contrato ? { codccu: meta.contrato.codccu } : {}) } });
       } else {
         const name = body.name ?? atual.planTitle ?? atual.title.slice(0, 150);
         const ativos = await tx.user.findMany({ where: { id: { in: [...new Set([...people, ...atual.actions.flatMap((a) => a.ownerId && a.status !== "CANCELADA" ? [a.ownerId] : [])])] }, active: true, anonymizedAt: null, role: { not: "CLIENTE" } }, select: { id: true } });
@@ -106,7 +117,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           description: "Equipe do plano de ação associado à meta",
           members: { create: [{ userId: usuario.id, role: "GESTOR" }, ...ativos.filter((p) => p.id !== usuario.id).map((p) => ({ userId: p.id, role: "MEMBRO" as const }))] },
         } });
-        project = await tx.project.create({ data: { name, description: atual.planDescription ?? atual.description, teamId: team.id, ownerId: usuario.id, codccu: meta.contrato?.codccu ?? null, actionPlanGoalId: meta.id, endDate: body.dueDate ? new Date(body.dueDate) : atual.dueDate } });
+        project = await tx.project.create({ data: { name, description: atual.planDescription ?? atual.description, teamId: team.id, ownerId: usuario.id, codccu: codccuDoProjeto, actionPlanGoalId: meta.id, endDate: body.dueDate ? new Date(body.dueDate) : atual.dueDate } });
       }
       if (!atual.planCreatedAt) await tx.contractGoal.update({ where: { id: atual.id }, data: { planTitle: atual.planTitle ?? body.name ?? atual.title.slice(0, 150), planDescription: atual.planDescription ?? atual.description, planCreatedAt: new Date() } });
       await vincularMetasProjeto(tx, project, [meta.id]);

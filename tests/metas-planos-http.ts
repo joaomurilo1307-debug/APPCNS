@@ -15,6 +15,7 @@ const stamp = Date.now().toString(), prefix = `METAS-TESTE-${stamp}`;
 const metaIds: string[] = [], projectIds: string[] = [], teamIds: string[] = [], userIds: string[] = [];
 const ccu = "96" + stamp.slice(-8);
 const deniedCcu = "95" + stamp.slice(-8);
+const projCcu = "97" + stamp.slice(-8), projCcuFora = "98" + stamp.slice(-8); // centros de custo dos projetos (obrigatorio em todo projeto)
 let syncId: string | null = null, scenarios = 0;
 type Response = { status: number; data: any };
 type Client = { request(path: string, body?: unknown, method?: string): Promise<Response> };
@@ -44,7 +45,7 @@ const pass = (name: string) => { scenarios++; console.log("PASS METAS: "+name); 
 const ok = (response: Response, expected=200) => { assert.equal(response.status,expected,JSON.stringify(response.data)); return response.data; };
 const manual = { title: prefix+" Reduzir retrabalho", category:"GERAL", kind:"INDICADOR", source:"MANUAL", metricName:"Horas de retrabalho", unit:"horas", baselineValue:100, targetValue:90, direction:"REDUZIR", targetMode:"PERCENTUAL", targetChange:10, evaluationMode:"PERIODICO", frequency:"MENSAL", periodStart:"2026-08",periodEnd:"2026-12" };
 async function createMeta(c:Client, body:any) { const data=ok(await c.request("/api/contract-goals",body),201); metaIds.push(data.id); return data.id as string; }
-async function createProject(c:Client,name:string,people:string[]=[]) { const data=ok(await c.request("/api/projects",{name,pessoas:people}),201); projectIds.push(data.id); teamIds.push(data.teamId); return data; }
+async function createProject(c:Client,name:string,people:string[]=[]) { const data=ok(await c.request("/api/projects",{name,pessoas:people,codccu:projCcu}),201); projectIds.push(data.id); teamIds.push(data.teamId); return data; }
 
 async function main() {
   const anonymous=client();
@@ -70,6 +71,7 @@ async function main() {
     const collaborator=await login(member.email,password), outside=await login(outsider.email,password), consulta=await login(reader.email,password);
     const consultaFonte=await login(sourceReader.email,password), semCcu=await login(moduleOnly.email,password);
     const planner=await login(planOnly.email,password), designated=await login(approver.email,password);
+    await db.contrato.createMany({data:[{codccu:projCcu,nome:prefix+" contrato dos projetos",status:"ATIVO"},{codccu:projCcuFora,nome:prefix+" contrato fora do acompanhamento",status:"ATIVO",acompanharResultados:false}]});
     const goal=await createMeta(admin,manual);
     const initial=ok(await admin.request("/api/contract-goals/"+goal));
     assert.equal(initial.contrato,null);assert.equal(initial.creatorId,adminId);assert.equal(initial.ownerId,adminId);assert.equal(initial.canAddAction,false);
@@ -98,9 +100,15 @@ async function main() {
     assert.equal((await planner.request(`/api/contract-goals/${planOnlyGoal}/plan`,{mode:"create"})).status,403);assert.equal(await db.project.count(),beforePrepare);
     pass("editar Metas permite planejar sem acesso a Projetos; conversão exige permissão própria");
 
-    const plans=await Promise.all(Array.from({length:3},()=>admin.request(`/api/contract-goals/${goal}/plan`,{mode:"create",name:prefix+" Plano",peopleIds:[member.id,reader.id]})));
+    const semCc=await createMeta(admin,{...manual,title:prefix+" Meta que exige centro de custo"});const projetosAntes=await db.project.count();
+    const semCentro=await admin.request(`/api/contract-goals/${semCc}/plan`,{mode:"create",name:prefix+" Sem centro de custo"});assert.equal(semCentro.status,422);assert.equal(semCentro.data.code,"CENTRO_DE_CUSTO_OBRIGATORIO");
+    assert.equal((await admin.request(`/api/contract-goals/${semCc}/plan`,{mode:"create",name:prefix+" Centro inexistente",codccu:"99999999999"})).status,404);
+    assert.equal((await admin.request(`/api/contract-goals/${semCc}/plan`,{mode:"create",name:prefix+" Contrato fora do acompanhamento",codccu:projCcuFora})).status,422);
+    assert.equal(await db.project.count(),projetosAntes);
+    pass("projeto nascido de plano de ação exige centro de custo: sem ele, inexistente ou fora do acompanhamento nada é criado");
+    const plans=await Promise.all(Array.from({length:3},()=>admin.request(`/api/contract-goals/${goal}/plan`,{mode:"create",name:prefix+" Plano",peopleIds:[member.id,reader.id],codccu:projCcu})));
     plans.forEach(p=>ok(p));const plan=plans[0].data.id;assert.ok(plans.every(p=>p.data.id===plan));
-    const planDb=await db.project.findUniqueOrThrow({where:{id:plan}});projectIds.push(plan);teamIds.push(planDb.teamId);
+    const planDb=await db.project.findUniqueOrThrow({where:{id:plan}});projectIds.push(plan);teamIds.push(planDb.teamId);assert.equal(planDb.codccu,projCcu,"O projeto do plano grava o centro de custo escolhido.");
     assert.equal(await db.project.count({where:{actionPlanGoalId:goal}}),1);assert.equal(await db.goal.count({where:{projectId:plan,contractGoalId:goal}}),1);
     assert.deepEqual((await db.task.findMany({where:{projectId:plan},select:{sourceGoalActionId:true}})).map(t=>t.sourceGoalActionId).sort(),standaloneIds);
     const primaryGoal=await db.goal.findUniqueOrThrow({where:{projectId_contractGoalId:{projectId:plan,contractGoalId:goal}}});
@@ -169,7 +177,7 @@ async function main() {
     syncId=(await db.atualizacaoCusto.create({data:{status:"OK",finalizadoEm:new Date(),disparadoPor:prefix}})).id;
     const financialBody={...manual,title:prefix+" Custo PJ",source:"CUSTO",sourceCcu:ccu,sourceAccount:"PJ",category:"CUSTO",unit:"R$",baselineValue:1000,targetValue:900};
     const financialGoal=await createMeta(admin,financialBody);
-    const fplan=ok(await admin.request(`/api/contract-goals/${financialGoal}/plan`,{mode:"create",name:prefix+" Plano financeiro",peopleIds:[member.id]}));projectIds.push(fplan.id);teamIds.push((await db.project.findUniqueOrThrow({where:{id:fplan.id}})).teamId);
+    const fplan=ok(await admin.request(`/api/contract-goals/${financialGoal}/plan`,{mode:"create",name:prefix+" Plano financeiro",peopleIds:[member.id],codccu:projCcu}));projectIds.push(fplan.id);teamIds.push((await db.project.findUniqueOrThrow({where:{id:fplan.id}})).teamId);
     const permitted=ok(await admin.request("/api/contract-goals/"+financialGoal));assert.equal(permitted.evaluation.periods[0].value,1000);assert.equal(permitted.evaluation.periods[1].value,800);
     const denied=ok(await collaborator.request("/api/contract-goals/"+financialGoal));
     assert.equal(denied.baselineValue,null);assert.equal(denied.targetValue,null);assert.equal(denied.targetChange,null);assert.equal(denied.tolerance,null);assert.equal(denied.currentValue,null);assert.equal(denied.fraction,null);assert.deepEqual(denied.measurements,[]);assert.ok(denied.evaluation.periods.every((p:any)=>p.value===null&&p.target===null&&p.progress===null));
@@ -195,7 +203,7 @@ async function main() {
     pass("opções e prévia respeitam módulo e CCU; consulta retorna a conta exata sem persistir registros; MANUAL é rejeitado");
 
     const legacy=await db.contractGoal.create({data:{title:prefix+" Legado",kind:"PLANO",category:"GERAL",ownerId:adminId,creatorId:adminId,actions:{create:[{title:prefix+" Ação antiga",ownerId:adminId}]}}});metaIds.push(legacy.id);
-    const converted=ok(await admin.request(`/api/contract-goals/${legacy.id}/plan`,{mode:"create",name:prefix+" Conversão"}));projectIds.push(converted.id);teamIds.push((await db.project.findUniqueOrThrow({where:{id:converted.id}})).teamId);
+    const converted=ok(await admin.request(`/api/contract-goals/${legacy.id}/plan`,{mode:"create",name:prefix+" Conversão",codccu:projCcu}));projectIds.push(converted.id);teamIds.push((await db.project.findUniqueOrThrow({where:{id:converted.id}})).teamId);
     const migrated=ok(await admin.request("/api/contract-goals/"+legacy.id));assert.equal(migrated.actions.length,1);const migratedTask=migrated.actions[0].id;assert.ok(migrated.actions[0].taskId);
     await db.task.delete({where:{id:migratedTask}});
     assert.equal(ok(await admin.request("/api/contract-goals/"+legacy.id)).actions.length,0);
@@ -219,7 +227,7 @@ async function main() {
     ok(await admin.request(`/api/contract-goals/${approvalGoal}/plan/approval`,{operation:"submit",approverId:approver.id}));
     ok(await designated.request(`/api/contract-goals/${approvalGoal}/plan/approval`,{operation:"reject",note:"Precisa de nova evidência."}));
     assert.equal(ok(await admin.request(`/api/contract-goals/${approvalGoal}`)).effectivePlanApprovalStatus,"REJEITADO");
-    const convertedApproval=ok(await admin.request(`/api/contract-goals/${approvalGoal}/plan`,{mode:"create"}));projectIds.push(convertedApproval.id);teamIds.push((await db.project.findUniqueOrThrow({where:{id:convertedApproval.id}})).teamId);
+    const convertedApproval=ok(await admin.request(`/api/contract-goals/${approvalGoal}/plan`,{mode:"create",codccu:projCcu}));projectIds.push(convertedApproval.id);teamIds.push((await db.project.findUniqueOrThrow({where:{id:convertedApproval.id}})).teamId);
     ok(await admin.request(`/api/contract-goals/${approvalGoal}/plan/approval`,{operation:"submit",approverId:approver.id}));
     ok(await designated.request(`/api/contract-goals/${approvalGoal}/plan/approval`,{operation:"approve"}));
     const actualTask=await db.task.findFirstOrThrow({where:{projectId:convertedApproval.id}});
@@ -239,7 +247,7 @@ async function main() {
     ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:modelAction,status:"CONCLUIDA",planDetails:{...planDetails,actualCompletion:"2026-08-25"}},"PATCH"));
     ok(await admin.request(`/api/contract-goals/${modelGoal}`,{operation:"updateAction",actionId:modelAction,status:"EM_ANDAMENTO"},"PATCH"));
     structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));assert.deepEqual(structured.actions[0].planDetails,planDetails,"Reabrir limpa o realizado anterior e preserva os demais campos");
-    const modelProject=ok(await admin.request(`/api/contract-goals/${modelGoal}/plan`,{mode:"create",name:prefix+" Projeto do modelo",peopleIds:[member.id]}));projectIds.push(modelProject.id);teamIds.push((await db.project.findUniqueOrThrow({where:{id:modelProject.id}})).teamId);
+    const modelProject=ok(await admin.request(`/api/contract-goals/${modelGoal}/plan`,{mode:"create",name:prefix+" Projeto do modelo",peopleIds:[member.id],codccu:projCcu}));projectIds.push(modelProject.id);teamIds.push((await db.project.findUniqueOrThrow({where:{id:modelProject.id}})).teamId);
     structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));const modelTask=structured.actions[0].id;assert.ok(structured.actions[0].taskId);assert.deepEqual(structured.actions[0].planDetails,planDetails);assert.equal(structured.actions[0].startDate,"2026-08-01T12:00:00.000Z");assert.equal(await db.task.count({where:{projectId:modelProject.id}}),1);
     ok(await admin.request(`/api/tasks/${modelTask}`,{dueDate:"2026-08-28T12:00:00.000Z",status:"FEITO"},"PATCH"));
     structured=ok(await admin.request(`/api/contract-goals/${modelGoal}`));assert.equal(structured.actions[0].dueDate,"2026-08-28T12:00:00.000Z");assert.equal(structured.actions[0].planDetails.originalDueDate,"2026-08-20");assert.ok(structured.actions[0].actualEndedAt);
@@ -291,6 +299,7 @@ async function main() {
     await db.contractGoal.deleteMany({where:{id:{in:metaIds}}});
     await db.team.deleteMany({where:{id:{in:teamIds}}});
     await db.custoContaFinanceira.deleteMany({where:{codccu:{in:[ccu,deniedCcu]}}});
+    await db.contrato.deleteMany({where:{codccu:{in:[projCcu,projCcuFora]}}});
     if(syncId)await db.atualizacaoCusto.delete({where:{id:syncId}});
     await db.auditLog.deleteMany({where:{OR:[{entityId:{in:metaIds}},{userId:{in:userIds}}]}});
     await db.user.deleteMany({where:{id:{in:userIds}}});
