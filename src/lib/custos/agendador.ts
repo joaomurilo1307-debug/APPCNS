@@ -5,6 +5,8 @@
 
 import { dispararAtualizacao, encerrarExecucoesOrfas, estadoAtualizacao } from "./atualizacaoCusto";
 import { dispararMedicao, estadoMedicao } from "@/lib/medicao/sincronizar";
+import { prisma } from "@/lib/prisma";
+import { verificarCargas } from "@/lib/vigia/sincronizacao";
 
 export const INTERVALO_VERIFICACAO_MS = 10 * 60_000;
 export const IDADE_MAXIMA_PARA_REPETIR_MS = 28 * 60_000;
@@ -28,7 +30,19 @@ export function devoAtualizarAgora(agora: Date, ultimaOkEm: Date | null): boolea
   return agora.getTime() - ultimaOkEm.getTime() > IDADE_MAXIMA_PARA_REPETIR_MS;
 }
 
+/** Vigia das cargas de titulos e OCs (ver src/lib/vigia/sincronizacao.ts): avisa os administradores no sino quando o Senior deixa de chegar. */
+async function vigiarCargas() {
+  try {
+    const agora = new Date();
+    const { diaSemana, hora } = relogioSaoPaulo(agora);
+    await verificarCargas(prisma, agora, diaSemana !== 0 && hora >= HORA_INICIAL && hora <= HORA_FINAL);
+  } catch {
+    /* nunca derruba o servidor por causa do vigia */
+  }
+}
+
 async function verificar() {
+  await vigiarCargas();
   try {
     const estado = await estadoAtualizacao();
     if (estado.emCurso) return;

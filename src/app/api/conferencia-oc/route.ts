@@ -5,6 +5,7 @@ import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { listarOcsPorVencimento, titulosQueExistem } from "@/lib/senior/ocsConferencia";
 import { decidirReserva } from "@/lib/senior/reservaTitulo";
+import { tituloDigitadoExiste } from "@/lib/conferenciaOc/tituloDigitado";
 
 // Conferencia de OC: TODAS as OCs com vencimento no periodo, direto da Senior
 // (GetDBInfo), com a situacao de aprovacao, se ja tem titulo e se tem dossie.
@@ -64,10 +65,27 @@ export async function GET(req: Request) {
   }
   const geradoPorOc = new Map(validos.map((g) => [`${g.numOcp}|${g.codFil}`, g]));
 
+  // "Ja tem titulo" so' vale quando o numero digitado pelo comprador na OC (USU_NUMTIT) existe de verdade entre os titulos do fornecedor
+  // (base espelhada do Senior). 29/10/2026: a OC 16239 digitou 43=1, que nao existia, e sumiu da tela. Sem conseguir conferir: mantem o comportamento antigo.
+  const digitados = ocs.filter((o) => o.numTitSenior);
+  let titulosPorFornecedor: Map<string, string[]> | null = new Map();
+  if (digitados.length) {
+    try {
+      const linhas = await prisma.tituloContasAPagar.findMany({
+        where: { codFor: { in: [...new Set(digitados.map((o) => o.codFor))] } },
+        select: { codFor: true, numTit: true },
+      });
+      for (const l of linhas) titulosPorFornecedor.set(l.codFor, [...(titulosPorFornecedor.get(l.codFor) ?? []), l.numTit]);
+    } catch {
+      titulosPorFornecedor = null;
+    }
+  }
+
   return NextResponse.json({
     ocs: ocs.map((o) => {
       const g = geradoPorOc.get(`${o.numOcp}|${o.codFil}`);
-      return { ...o, numTit: g?.numTit ?? o.numTitSenior, tituloGeradoAqui: !!g, dossieId: dossiePorOc.get(o.numOcp) ?? null, dossieStatus: ultimoPorOc.get(o.numOcp)?.status ?? null, dossieMotivo: ultimoPorOc.get(o.numOcp)?.motivo ?? null, nfs: nfsPorOc.get(`${o.numOcp}|${o.codFil}`) ?? [] };
+      const digitadoExiste = !!o.numTitSenior && (titulosPorFornecedor === null || tituloDigitadoExiste(o.numTitSenior, titulosPorFornecedor.get(o.codFor) ?? []));
+      return { ...o, numTit: g?.numTit ?? o.numTitSenior, tituloGeradoAqui: !!g, temTitulo: !!g || digitadoExiste, dossieId: dossiePorOc.get(o.numOcp) ?? null, dossieStatus: ultimoPorOc.get(o.numOcp)?.status ?? null, dossieMotivo: ultimoPorOc.get(o.numOcp)?.motivo ?? null, nfs: nfsPorOc.get(`${o.numOcp}|${o.codFil}`) ?? [] };
     }),
   });
 }

@@ -23,13 +23,18 @@ export async function GET(req: Request) {
 
   const visibility = await filtroDeTarefasVisiveis(userId, role);
 
-  const tasks = await prisma.task.findMany({
+  // Regra do Joao (02/11/2026): fora de um projeto (Tarefas, Sprint, Calendario) a pessoa ve so' as tarefas ATRIBUIDAS A ELA, de todos os projetos; as de todos
+  // aparecem so' ao abrir o projeto (consulta com projectId, que continua limitada aos projetos que ela enxerga). Vale para qualquer tipo, inclusive Administrador.
+  const filtroDeAtribuicao = projectId ? (assigneeId ? { assigneeId } : {}) : { assigneeId: userId };
+
+  const encontradas = await prisma.task.findMany({
     where: {
       AND: [
         visibility,
         projectId ? { projectId } : {},
-        assigneeId ? { assigneeId } : {},
-        onlyTopLevel ? { parentTaskId: null } : {},
+        filtroDeAtribuicao,
+        // com projeto, o quadro traz so' as tarefas-mae; sem projeto, a lista pessoal traz tambem a subtarefa minha cuja tarefa-mae e' de outra pessoa (filtrado abaixo)
+        onlyTopLevel && projectId ? { parentTaskId: null } : {},
       ],
     },
     include: {
@@ -46,6 +51,10 @@ export async function GET(req: Request) {
     },
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
   });
+
+  // lista pessoal em "so' as de cima": fica a tarefa sem mae e a subtarefa minha cuja mae nao e' minha (a mae aparece com as filhas dentro)
+  const meusIds = new Set(encontradas.map((t) => t.id));
+  const tasks = onlyTopLevel && !projectId ? encontradas.filter((t) => !t.parentTaskId || !meusIds.has(t.parentTaskId)) : encontradas;
 
   return NextResponse.json(tasks);
 }

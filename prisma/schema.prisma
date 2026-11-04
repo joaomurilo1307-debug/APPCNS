@@ -183,6 +183,10 @@ model User {
   nucleosCoordenados Nucleo[] @relation("NucleoCoordenador")
   // centros de custo que esta pessoa acompanha em Custo por Centro de Custo (alem dos das equipes dela)
   acessosCentroCusto AcessoCentroCusto[]
+  // timesheet automatico (opcional, a pessoa ativa na aba Timesheet)
+  timesheetAuto TimesheetAuto?
+  timesheetAusencias TimesheetAutoAusencia[]
+  timesheetFechamentos TimesheetAutoFechamento[]
   avatarColor  String    @default("#0f766e")
   avatarUrl    String?   @db.Text
   lastSeenAt   DateTime?
@@ -1217,6 +1221,10 @@ model Task {
   outlookEventId    String?           @unique
   actualStartedAt   DateTime?
   actualEndedAt     DateTime?
+  // horas que a pessoa dedicou a tarefa inteira (declaradas antes de concluir): ancoram o Timesheet automatico e o custo do projeto
+  horasDedicadas    Float?
+  // quando as horas dedicadas foram informadas pela ultima vez: ate esse dia elas valem; os dias seguintes de uma tarefa ainda em andamento sao estimados
+  horasDedicadasEm  DateTime?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -1230,6 +1238,8 @@ model Task {
   customFieldValues TaskCustomFieldValue[]
   predecessorLinks TaskDependency[] @relation("DependencySuccessor")
   successorLinks   TaskDependency[] @relation("DependencyPredecessor")
+  statusEventos    TarefaStatusEvento[]
+  responsavelEventos TarefaResponsavelEvento[]
 
   @@index([projectId])
   @@index([assigneeId])
@@ -2124,4 +2134,92 @@ model CustoPessoalFechamento {
   total      Float // regra do Rito (sem pro-labore)
   impressao  String
   observacao String?
+}
+
+// Texto digitado em cada titulo do Senior (E501TCP.OBSTCP: "VALOR BRUTO ... PAGAMENTO REFERENTE A ..."), lido SOB DEMANDA para a planilha de despesas
+// reembolsaveis. A sincronizacao de titulos so' traz a descricao de ~10% dos titulos; aqui fica o texto dos que a planilha precisou, lido uma vez.
+// texto vazio = o Senior nao tem texto nesse titulo (nao volta a consultar). Somente leitura do Senior; nada e' gravado la.
+model TituloTexto {
+  id     String   @id @default(cuid())
+  numTit String
+  codFor String
+  tipo   String // CODTPT
+  texto  String   @db.Text
+  lidoEm DateTime @default(now())
+
+  @@unique([numTit, codFor, tipo])
+  @@index([numTit, codFor])
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+// Timesheet AUTOMATICO (02/11/2026, pedido do Joao): o setor tecnico preenche timesheet por contrato; aqui o sistema deduz as horas e o percentual de dedicacao
+// por centro de custo a partir das tarefas da pessoa (cada projeto pertence a um centro de custo/contrato). Opcional: so' conta quem ativa a aba.
+// A logica de calculo esta em src/lib/timesheetAuto/calculo.ts (pura e testada); estas tabelas guardam so' a ativacao, as ausencias, o fechamento do mes e
+// o historico de mudancas de status das tarefas (para saber em que dias uma tarefa esteve de fato "Fazendo").
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+model TimesheetAuto {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  ativo        Boolean   @default(true)
+  // primeiro dia contado (dia, 00:00 UTC): "a partir da ativacao"
+  desde        DateTime
+  horasPorDia  Float     @default(8)
+  ativadoEm    DateTime  @default(now())
+  desativadoEm DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Dias sem expediente da pessoa (ferias, atestado, folga): nao entram na divisao das horas.
+model TimesheetAutoAusencia {
+  id       String   @id @default(cuid())
+  userId   String
+  de       DateTime
+  ate      DateTime
+  motivo   String?
+  criadoEm DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, de])
+}
+
+// Fotografia do mes fechado: depois de fechado, mexer nas tarefas nao muda mais o relatorio (a distribuicao de salario nao pode "andar").
+model TimesheetAutoFechamento {
+  id           String   @id @default(cuid())
+  userId       String
+  competencia  String // YYYY-MM
+  resultado    Json
+  fechadoEm    DateTime @default(now())
+  fechadoPorId String?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, competencia])
+}
+
+// Cada mudanca de status de uma tarefa (quem mexeu, de qual para qual, quando). Alimenta o timesheet automatico: so' conta o dia em que a tarefa esteve "Fazendo".
+model TarefaStatusEvento {
+  id     String      @id @default(cuid())
+  taskId String
+  userId String?
+  de     TaskStatus?
+  para   TaskStatus
+  em     DateTime    @default(now())
+  task   Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, em])
+  @@index([em])
+}
+
+// Cada troca de responsavel de uma tarefa: o esforco de um periodo e' de quem era o responsavel NAQUELE periodo (nao de quem e' hoje).
+model TarefaResponsavelEvento {
+  id        String   @id @default(cuid())
+  taskId    String
+  deUserId  String?
+  paraUserId String?
+  porUserId String?
+  // horas dedicadas que quem PASSOU a tarefa tinha informado (as horas pertencem a quem as informou; quem recebe comeca do zero)
+  horasDoAnterior Float?
+  em        DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, em])
 }

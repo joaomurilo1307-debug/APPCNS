@@ -13,6 +13,7 @@ import {
 } from "@dnd-kit/core";
 import TaskDetailModal from "@/components/TaskDetailModal";
 import GanttChart from "@/components/GanttChart";
+import { patchTarefa } from "@/lib/tarefaClient";
 import Avatar from "@/components/Avatar";
 
 type Task = {
@@ -86,7 +87,8 @@ export default function SprintPage() {
 
   async function load() {
     if (!userId) return;
-    const url = isManager ? "/api/tasks" : `/api/tasks?assigneeId=${userId}`;
+    // o Sprint e' pessoal: so' as tarefas atribuidas a mim, em todos os projetos (inclusive para gestor e administrador)
+    const url = `/api/tasks?assigneeId=${userId}`;
     const res = await fetch(url);
     setTasks(await res.json());
   }
@@ -127,11 +129,12 @@ export default function SprintPage() {
     if (!task || task.status === newStatus || !canModify(task)) return;
 
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t)));
-    await fetch(`/api/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
+    // concluir pede as horas dedicadas (Timesheet automatico); se a pessoa desistir ou o servidor recusar, o cartao volta para a coluna real
+    const r = await patchTarefa(task.id, { status: newStatus }, task.title);
+    if (!r.ok) {
+      if (!r.cancelado && r.erro) window.alert(r.erro);
+      load();
+    }
   }
 
   return (

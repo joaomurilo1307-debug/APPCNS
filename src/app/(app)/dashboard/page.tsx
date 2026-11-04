@@ -28,7 +28,6 @@ function greeting() {
 }
 
 async function eventVisibility(userId: string, role: string, teamIds: string[]) {
-  if (role === "ADMIN") return {};
   if (role === "CLIENTE") {
     return { OR: [{ project: { clients: { some: { userId } } } }, { attendees: { some: { userId } } }] };
   }

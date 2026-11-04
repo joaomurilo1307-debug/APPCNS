@@ -3,22 +3,19 @@
 import { visibleProjectWhere } from "@/lib/permissions";
 
 export async function filtroDeTarefasVisiveis(userId: string, role: string) {
-  if (role === "ADMIN") return {};
-
+  // Administrador nao ve tarefa de projeto alheio (02/11/2026): segue a mesma regra de todos.
   if (role === "CLIENTE") {
     return { OR: [{ project: { clients: { some: { userId } } } }, { assigneeId: userId }] };
   }
 
   if (role === "APROVADOR") {
     const base = await visibleProjectWhere(userId, role);
-    if (Object.keys(base).length === 0) return {};
     return {
       OR: [...(base.OR ?? [base]).map((clause: any) => ({ project: clause })), { project: { approverId: userId } }, { assigneeId: userId }],
     };
   }
 
   const base = await visibleProjectWhere(userId, role);
-  if (Object.keys(base).length === 0) return {};
   return {
     OR: [...(base.OR ?? [base]).map((clause: any) => ({ project: clause })), { assigneeId: userId }],
   };
