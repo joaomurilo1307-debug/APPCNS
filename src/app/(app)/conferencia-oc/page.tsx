@@ -8,7 +8,7 @@ import BotaoExcel from "@/components/BotaoExcel";
 import type { AbaExcel } from "@/lib/exportarExcel";
 
 // Conferência de OC: todas as OCs da Senior com vencimento no período (com ou sem
-// título). O financeiro confere, gera o título a partir da OC e baixa os dossiês.
+// título). O financeiro confere e baixa os dossiês.
 
 type Oc = {
   numOcp: string;
@@ -61,7 +61,6 @@ export default function ConferenciaOcPage() {
   const [busca, setBusca] = useState("");
   const [sitSel, setSitSel] = useState<string[]>([]); // vazio = todas
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
-  const [gerando, setGerando] = useState<string | null>(null);
   const [baixando, setBaixando] = useState(false);
   const [gerandoDossie, setGerandoDossie] = useState(false);
   const [detalhe, setDetalhe] = useState<any | null>(null);
@@ -154,28 +153,6 @@ export default function ConferenciaOcPage() {
       })
       .catch((e) => setAviso(`OC ${oc.numOcp}: ${e.message}`))
       .finally(() => setCarregandoDetalhe(null));
-  }
-
-  async function gerarTitulo(oc: Oc) {
-    const numTit = window.prompt(`Número do título para a OC ${oc.numOcp} (${oc.fornecedorNome ?? oc.codFor}, ${moeda(oc.valor)}, venc. ${dataBr(oc.vencimento)}):`)?.trim();
-    if (!numTit) return;
-    if (!window.confirm(`Gerar na Senior o título OUT ${numTit} de ${moeda(oc.valor)} para a OC ${oc.numOcp}?`)) return;
-    setGerando(oc.numOcp);
-    setAviso(null);
-    try {
-      const r = await fetch("/api/conferencia-oc/gerar-titulo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numOcp: oc.numOcp, codFil: oc.codFil, numTit }),
-      }).then(json);
-      setOcs((l) => l.map((o) => (o.numOcp === oc.numOcp && o.codFil === oc.codFil ? { ...o, numTit: r.numTit, tituloGeradoAqui: true, temTitulo: true } : o)));
-      setAviso([`Título ${r.codTpt} ${r.numTit} gerado na Senior.`, ...(r.avisos ?? [])].join(" "));
-      setDetalhe(null);
-    } catch (e) {
-      setAviso(`OC ${oc.numOcp}: ${(e as Error).message}`);
-    } finally {
-      setGerando(null);
-    }
   }
 
   async function gerarDossies(lista: Oc[]) {
@@ -272,8 +249,7 @@ export default function ConferenciaOcPage() {
       <div className="mb-5">
         <h1 className="text-xl font-semibold">Conferência de OC</h1>
         <p className="mt-0.5 text-sm text-gray-500">
-          Todas as ordens de compra da Senior com vencimento no período que ainda não têm título. Confira a OC e a aprovação; estando
-          aprovada, gere o título a partir dela.
+          Todas as ordens de compra da Senior com vencimento no período que ainda não têm título. Confira a OC e a aprovação.
         </p>
       </div>
 
@@ -407,7 +383,7 @@ export default function ConferenciaOcPage() {
                       disabled={carregandoDetalhe === o.numOcp}
                       className="rounded-lg border border-brand px-2.5 py-1 text-[11px] font-medium text-brand disabled:opacity-50"
                     >
-                      {carregandoDetalhe === o.numOcp ? "Consultando…" : "Conferir / gerar título"}
+                      {carregandoDetalhe === o.numOcp ? "Consultando…" : "Conferir"}
                     </button>
                   )}
                 </td>
@@ -539,7 +515,7 @@ export default function ConferenciaOcPage() {
                     </div>
                   )}
                   <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">Sugestões do eDocs (você escolhe)</p>
-                  {notas.sugestoes.length === 0 && <p className="text-gray-500">Nenhuma nota recebida bate com o fornecedor desta OC. Sem NF ainda (compra pela internet ou fatura internacional), gere o título e associe depois.</p>}
+                  {notas.sugestoes.length === 0 && <p className="text-gray-500">Nenhuma nota recebida bate com o fornecedor desta OC. Sem NF ainda (compra pela internet ou fatura internacional), associe depois.</p>}
                   {notas.sugestoes.map((s: any) => (
                     <div key={s.nota.chave} className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 py-1.5">
                       <span>
@@ -584,27 +560,14 @@ export default function ConferenciaOcPage() {
               if (comTitulo)
                 return <p className="mb-2 rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">A NF {comTitulo.numeroNf} já gerou o título {comTitulo.naSenior.tituloDaNf} na Senior — siga na Programação de Pagamento.</p>;
               if (naoLancada.length)
-                return <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">NF {naoLancada.map((a) => a.numeroNf).join(", ")} ainda não lançada na Senior. Lance a NF na Senior (o título nasce da entrada) antes de gerar título por aqui.</p>;
+                return <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">NF {naoLancada.map((a) => a.numeroNf).join(", ")} ainda não lançada na Senior. Lance a NF na Senior (o título nasce da entrada).</p>;
               return null;
             })()}
             <div className="flex items-center justify-end gap-2">
-              {detalhe.numTit && detalheOc && !detalheOc.temTitulo ? (
-                <span className="text-sm text-amber-800">
-                  Título <strong>{detalhe.numTit}</strong> digitado na OC, mas <strong>ainda não existe no Senior</strong>. Lance a NF/título no Senior.
-                </span>
-              ) : detalhe.numTit ? (
+              {detalhe.numTit && (
                 <span className="text-sm text-gray-600">
                   Título já existente: <strong>{detalhe.numTit}</strong>
                 </span>
-              ) : (
-                <button
-                  onClick={() => gerarTitulo(detalheOc)}
-                  disabled={!detalhe.podeGerar || gerando === detalheOc.numOcp || !!notas?.associadas?.some((a: any) => a.naSenior?.tituloDaNf)}
-                  title={detalhe.podeGerar ? "" : "Só gera com aprovação completa e valor na OC"}
-                  className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-                >
-                  {gerando === detalheOc.numOcp ? "Gerando…" : "Gerar título"}
-                </button>
               )}
             </div>
           </div>
