@@ -49,6 +49,7 @@ const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: 
   { href: "/aprovacoes", module: "gestao", label: "Aprovações", icon: IconCheckCircle, modulos: ["aprovacoes_projetos"] },
   { href: "/aprovacoes/senior", module: "financeiro", label: "Aprovações (OC Senior)", icon: IconCheckCircle, modulos: ["aprovacoes_oc", "aprovacoes_oc_todas"] },
   { href: "/programacao-pagamento", module: "financeiro", label: "Programação de Pagamento", icon: IconCheckCircle, modulos: ["programacao_pagamento"] },
+  { href: "/pagamentos-realizados", module: "financeiro", label: "Pagamentos realizados", icon: IconCheckCircle, modulos: ["programacao_pagamento"] },
   { href: "/pagamentos-itau", module: "financeiro", label: "Pagamentos Itaú (SISPAG)", icon: IconBarChart, modulos: ["pagamentos_itau"] },
   { href: "/conferencia-oc", module: "financeiro", label: "Conferência de OC", icon: IconCheckCircle, modulos: ["conferencia_oc"] },
   { href: "/despesas-recorrentes", module: "financeiro", label: "Despesas recorrentes", icon: IconBarChart, modulos: ["despesas_recorrentes"] },
