@@ -19,25 +19,31 @@ export async function GET(req: Request) {
   const user = session.user as any;
 
   const { searchParams } = new URL(req.url);
-  const codccu = searchParams.get("codccu");
+  const codccuParam = searchParams.get("codccu");
   const contaFinanceira = searchParams.get("contaFinanceira");
   const competencia = searchParams.get("competencia");
   // base do mes: "pagamento" (padrao: mes em que a parcela foi paga) ou "competencia" (mes da nota: a compra inteira)
   const porCompetencia = COMPETENCIA_FISCAL_ATIVA && searchParams.get("base") === "competencia";
-  if (!codccu || !contaFinanceira || !competencia) {
+  if (!codccuParam || !contaFinanceira || !competencia) {
     return NextResponse.json({ error: "codccu, contaFinanceira e competencia são obrigatórios" }, { status: 422 });
+  }
+  // `codccu` pode ser 1 centro de custo ou uma lista separada por virgula (celula somada de varios contratos
+  // filtrados juntos -- mesmo formato aceito em /api/custos-conta/lancamentos).
+  const lista = codccuParam.split(",").map((c) => c.trim()).filter(Boolean);
+  if (lista.length === 0 || lista.length > 300 || lista.some((c) => !/^\d+$/.test(c))) {
+    return NextResponse.json({ error: "Lista de centros de custo inválida" }, { status: 422 });
   }
 
   // mesma regra de visibilidade da tela principal (/api/custos-conta) --
   // sem isso, dava pra ler o detalhe de qualquer CCU so' sabendo o codigo.
   const escopo = await escopoDeCustos(prisma, user);
-  if (!podeVerCcu(escopo, codccu)) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
+  if (!lista.every((c) => podeVerCcu(escopo, c))) return NextResponse.json({ error: "Sem permissão para algum destes centros de custo" }, { status: 403 });
 
   const [linhas, ocs, usuariosSenior] = await Promise.all([
     prisma.custoFinanceiroDetalhe.findMany({
       where: porCompetencia
-        ? { codccu, contaFinanceira, OR: [{ competenciaNota: new Date(competencia) }, { competenciaNota: null, competencia: new Date(competencia) }] }
-        : { codccu, contaFinanceira, competencia: new Date(competencia) },
+        ? { codccu: { in: lista }, contaFinanceira, OR: [{ competenciaNota: new Date(competencia) }, { competenciaNota: null, competencia: new Date(competencia) }] }
+        : { codccu: { in: lista }, contaFinanceira, competencia: new Date(competencia) },
       orderBy: { valorRateado: "desc" },
     }),
     prisma.aprovacaoSenior.findMany({
