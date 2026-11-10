@@ -15,7 +15,7 @@ import PagosPorDia from "./PagosPorDia";
 import FiltrosCusto from "./FiltrosCusto";
 import SeloSenior from "./SeloSenior";
 import VisaoContrato from "./VisaoContrato";
-import VisaoGeral from "./VisaoGeral";
+// VisaoGeral (comparacao contrato-a-contrato) nao e' mais usada aqui -- arquivo intacto, pronta pra virar aba propria (pedido do Joao, 10/11/2026).
 import AvisoCentroDeCusto from "@/components/contratos/AvisoCentroDeCusto";
 import { chaveMes, contratosNaBase, coresDosGrupos, type BaseMes, type ContratoCusto, type Filtros, type TipoCusto } from "@/lib/custos/agregacao";
 import { mesLongo } from "@/lib/custos/formato";
@@ -200,19 +200,26 @@ export default function CustoPorContratoView({ ccuFixo }: { ccuFixo?: string }) 
                 ← Voltar para todos os centros de custo
               </button>
             </div>
-          ) : contratoAberto ? (
-            <>
-              {!ccuFixo && <AvisoCentroDeCusto codccus={[contratoAberto.codccu]} />}
-              <VisaoContrato contrato={contratoAberto} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onVoltar={unico || ccuFixo ? undefined : voltar} embutido={!!ccuFixo} onAbrirDetalhe={setDetalhe} />
-              <AoVivo key={contratoAberto.codccu} codccu={contratoAberto.codccu} />
-              <PagosPorDia key={`pagos-${contratoAberto.codccu}`} codccu={contratoAberto.codccu} />
-            </>
           ) : (
+            // Mesma visao (KPIs, graficos, plano de contas x mes, fornecedores) com 1 contrato aberto OU com varios
+            // (filtro de grupo/area/selecao livre, ex. "todos ADM"): soma entre os contratos do filtro atual.
+            // A antiga comparacao contrato-a-contrato (VisaoGeral) saiu daqui -- codigo intacto, pronta pra virar aba propria.
             <>
-              {!ccuFixo && <AvisoCentroDeCusto resumo codccus={contratosBase.map((c) => c.codccu)} />}
-              <VisaoGeral contratos={contratosBase} filtros={filtros} base={base} mesesAsc={mesesAsc} mesCorrente={mesCorrente} busca={busca} cores={cores} onAbrirContrato={abrirContrato} />
-              <AoVivo />
-              <PagosPorDia />
+              {!ccuFixo && <AvisoCentroDeCusto resumo={!contratoAberto} codccus={contratoAberto ? [contratoAberto.codccu] : contratosBase.map((c) => c.codccu)} />}
+              <VisaoContrato
+                contratos={contratoAberto ? [contratoAberto] : contratosBase}
+                filtros={filtros}
+                base={base}
+                mesesAsc={mesesAsc}
+                mesCorrente={mesCorrente}
+                busca={busca}
+                cores={cores}
+                onVoltar={contratoAberto && !unico && !ccuFixo ? voltar : undefined}
+                embutido={!!ccuFixo}
+                onAbrirDetalhe={setDetalhe}
+              />
+              <AoVivo key={contratoAberto?.codccu ?? "todos"} codccu={contratoAberto?.codccu} />
+              <PagosPorDia key={`pagos-${contratoAberto?.codccu ?? "todos"}`} codccu={contratoAberto?.codccu} />
             </>
           )}
 

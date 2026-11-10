@@ -19,12 +19,14 @@ export type LancCusto = {
 };
 export type DadosLancamentos = LancCusto[] | "carregando" | "erro";
 
-export function useLancamentos(codccu: string, filtros: Filtros, base: BaseMes): DadosLancamentos {
+/** `codccu` aceita 1 centro de custo ou uma lista (soma varios contratos filtrados juntos) -- a rota ja aceita lista separada por virgula. */
+export function useLancamentos(codccu: string | ReadonlyArray<string>, filtros: Filtros, base: BaseMes): DadosLancamentos {
   const [dados, setDados] = useState<DadosLancamentos>("carregando");
+  const codccuChave = Array.isArray(codccu) ? codccu.join(",") : (codccu as string);
   useEffect(() => {
     let cancelado = false;
     setDados("carregando");
-    const qs = new URLSearchParams({ codccu, de: filtros.de, ate: filtros.ate, base });
+    const qs = new URLSearchParams({ codccu: codccuChave, de: filtros.de, ate: filtros.ate, base });
     fetch(`/api/custos-conta/lancamentos?${qs.toString()}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d) => !cancelado && setDados(d.linhas as LancCusto[]))
@@ -32,6 +34,6 @@ export function useLancamentos(codccu: string, filtros: Filtros, base: BaseMes):
     return () => {
       cancelado = true;
     };
-  }, [codccu, filtros.de, filtros.ate, base]);
+  }, [codccuChave, filtros.de, filtros.ate, base]);
   return dados;
 }

@@ -11,6 +11,11 @@ export type EstadoP0 = { estado: "carregando" } | { estado: "erro"; mensagem: st
 export function useP0Custos(codccu: string, tipo: "contrato" | "pessoal" = "contrato"): EstadoP0 {
   const [e, setE] = useState<EstadoP0>({ estado: "carregando" });
   useEffect(() => {
+    // codccu vazio = nao se aplica (ex.: visao com varios contratos filtrados juntos, onde P0 nao existe) -- nao busca.
+    if (!codccu) {
+      setE({ estado: "sem" });
+      return;
+    }
     const controller = new AbortController();
     setE({ estado: "carregando" });
     fetch(`/api/p0/custos?ccu=${encodeURIComponent(codccu)}${tipo === "pessoal" ? "&tipo=pessoal" : ""}`, { cache: "no-store", signal: controller.signal })
