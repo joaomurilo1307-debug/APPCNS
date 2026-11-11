@@ -1392,9 +1392,30 @@ model DossieOC {
   geradoEm       DateTime  @default(now())
   atualizadoEm   DateTime  @updatedAt
 
+  anexos         DossieAnexo[]
+
   @@index([numOcp])
   @@index([status])
   @@index([codFor])
+}
+
+// Documentos anexados ao dossie pelo botao "Editar dossie" (Conferencia de OC / Programacao de Pagamento). Ficam fora do
+// PDF gerado: quem le o dossie (lib/dossie/anexos.ts, lerPdfDoDossie) junta o PDF gerado + estas paginas no fim. Assim a
+// geracao automatica pode refazer o PDF a qualquer momento sem perder o que foi anexado.
+model DossieAnexo {
+  id            String    @id @default(cuid())
+  dossieId      String
+  dossie        DossieOC  @relation(fields: [dossieId], references: [id], onDelete: Cascade)
+  nome          String    // nome original do arquivo
+  tipo          String    // application/pdf | image/jpeg | image/png (conferido pelo conteudo, nao pela extensao)
+  caminho       String    // relativo a UPLOAD_DIR
+  bytes         Int
+  paginas       Int       // quantas paginas o anexo ocupa no PDF final
+  criadoPorId   String?
+  criadoPorNome String?
+  criadoEm      DateTime  @default(now())
+
+  @@index([dossieId])
 }
 
 // ============================================================================

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { pendenciasOc } from "@/lib/senior/pendenciasOc";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 import DossiesAutomaticos from "@/components/DossiesAutomaticos";
+import EditarDossie from "@/components/EditarDossie";
 import BotaoExcel from "@/components/BotaoExcel";
 import type { AbaExcel } from "@/lib/exportarExcel";
 
@@ -393,9 +394,12 @@ export default function ConferenciaOcPage() {
                   ) : (
                     <div className="flex flex-col items-start gap-0.5">
                       {o.dossieId ? (
-                        <a href={`/api/dossies/${o.dossieId}/arquivo`} target="_blank" rel="noreferrer" className="text-brand underline decoration-dotted underline-offset-2">
-                          abrir PDF
-                        </a>
+                        <>
+                          <a href={`/api/dossies/${o.dossieId}/arquivo`} target="_blank" rel="noreferrer" className="text-brand underline decoration-dotted underline-offset-2">
+                            abrir PDF
+                          </a>
+                          <EditarDossie dossieId={o.dossieId} rotulo={`OC ${o.numOcp}${o.fornecedorNome ? ` — ${o.fornecedorNome}` : ""}`} />
+                        </>
                       ) : (
                         <span className={o.dossieStatus === "ERRO" ? "text-red-700" : "text-gray-400"} title={o.dossieMotivo ?? undefined}>
                           {o.dossieStatus === "ERRO" ? "falhou" : "sem dossiê"}

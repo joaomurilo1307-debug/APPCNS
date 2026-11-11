@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { readFile } from "fs/promises";
-import path from "path";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
-import { UPLOAD_DIR } from "@/lib/uploadValidation";
+import { lerPdfDoDossie } from "@/lib/dossie/anexos";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
@@ -123,7 +121,7 @@ export async function POST(req: Request) {
       continue;
     }
     try {
-      const bytes = await readFile(path.join(UPLOAD_DIR, dossie.arquivoPath));
+      const bytes = await lerPdfDoDossie(dossie); // com os anexos do "Editar dossiê"
       const nomeSeguro = t.numTit.replace(/[\\/:*?"<>|]/g, "_");
       zip.file(`dossies/${nomeSeguro}.pdf`, bytes);
     } catch {

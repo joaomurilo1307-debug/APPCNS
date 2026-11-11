@@ -7,6 +7,7 @@ import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaO
 import { lerSelecaoSalva, salvarSelecao } from "@/lib/selecaoProgramacao";
 import { selecaoDoCookie, filtrarTitulosPorSelecao } from "@/lib/areas";
 import FiltroContratos from "@/components/FiltroContratos";
+import EditarDossie from "@/components/EditarDossie";
 
 const REVISAO_LABEL: Record<string, string> = {
   APROVADO: "Aprovado",
@@ -1424,9 +1425,16 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
                     ) : (
                       <>
                         {t.dossie?.temArquivo && (
-                          <a href={`/api/dossies/${t.dossie.id}/arquivo`} target="_blank" rel="noreferrer" className="font-medium text-brand underline decoration-dotted underline-offset-2">
-                            abrir dossiê
-                          </a>
+                          <>
+                            <a href={`/api/dossies/${t.dossie.id}/arquivo`} target="_blank" rel="noreferrer" className="font-medium text-brand underline decoration-dotted underline-offset-2">
+                              abrir dossiê
+                            </a>
+                            <EditarDossie
+                              dossieId={t.dossie.id}
+                              rotulo={`${t.dossie.numOcp ? `OC ${t.dossie.numOcp} · ` : ""}título ${t.numTit}${t.fornecedorNome ? ` — ${t.fornecedorNome}` : ""}`}
+                              className="text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-700"
+                            />
+                          </>
                         )}
                         {t.ocRelacionada && t.ocCodFil && (
                           <button onClick={() => gerarDossieDoTitulo(t)} disabled={ocBusy === t.id} title={`Gera o dossiê da OC ${t.ocRelacionada.numOcp} (leva cerca de 20 s)`} className="text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-700 disabled:opacity-50">

@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { readFile } from "fs/promises";
-import path from "path";
 import JSZip from "jszip";
 import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
-import { UPLOAD_DIR } from "@/lib/uploadValidation";
+import { lerPdfDoDossie } from "@/lib/dossie/anexos";
 
 // ZIP com o PDF do dossiê de cada OC selecionada. OC sem dossiê vira linha no
 // aviso.txt -- nunca some em silêncio.
@@ -31,7 +29,7 @@ export async function POST(req: Request) {
   for (const d of dossies) {
     if (!d.numOcp || incluidas.has(d.numOcp)) continue; // o mais recente de cada OC
     try {
-      zip.file(`OC-${d.numOcp}.pdf`, await readFile(path.join(UPLOAD_DIR, d.arquivoPath!)));
+      zip.file(`OC-${d.numOcp}.pdf`, await lerPdfDoDossie(d)); // com os anexos do "Editar dossiê"
       incluidas.add(d.numOcp);
     } catch {
       /* arquivo sumiu do disco: cai no aviso */

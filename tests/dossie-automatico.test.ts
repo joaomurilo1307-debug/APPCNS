@@ -21,6 +21,7 @@ import {
   type RegistroDossie,
   type TituloAbertoSenior,
 } from "../src/lib/dossie/automatico";
+import { VERSAO_DOSSIE, assinaturaManual, versaoDaAssinatura } from "../src/lib/dossie/versao";
 import { dentroDaJanela } from "../src/lib/dossie/agendador";
 import { RESPOSTA_SEM_LINHAS, parametroDeChaveVazio, renderizar } from "../src/lib/dossie/motor";
 import fluxo from "../src/lib/dossie/fluxo.json";
@@ -97,7 +98,10 @@ test("Assinatura: muda com titulo aberto/pago, NF, valor, aprovacao e situacao; 
   assert.notEqual(a, assinaturaDaOc({ ...base, numNfc: "78" }, ["A1"]));
   assert.notEqual(a, assinaturaDaOc({ ...base, valor: 10.51 }, ["A1"]));
   assert.notEqual(a, assinaturaDaOc({ ...base, sitOcp: "4" }, ["A1"]));
-  assert.match(a, /^[0-9a-f]{16}$/);
+  assert.match(a, /^\d{4}-\d{2}-\d{2}:[0-9a-f]{16}$/);
+  assert.equal(versaoDaAssinatura(a), VERSAO_DOSSIE); // a versao do conteudo vai na frente
+  assert.equal(versaoDaAssinatura("0123456789abcdef"), null); // assinatura de antes da versao
+  assert.equal(versaoDaAssinatura(null), null);
 });
 
 test("Janela de vencimento e elegibilidade", () => {
@@ -128,13 +132,26 @@ test("Decisao: sem dossie, em dia, desatualizado, adotado, sem PDF, em geracao e
   assert.deepEqual([d(null).acao, d(null).situacao, d(null).prioridade], ["GERAR", "SEM_DOSSIE", 1]);
   assert.equal(d(reg("1", { assinatura: "AAA" })).acao, "OK");
   assert.deepEqual([d(reg("1", { assinatura: "BBB" })).acao, d(reg("1", { assinatura: "BBB" })).situacao], ["GERAR", "DESATUALIZADO"]);
-  // PDF do n8n/botao, sem assinatura: adota, a menos que nao cite um titulo da OC
-  assert.equal(d(reg("1", { titulos: ["77"] }), { numTit: "77" }).acao, "ADOTAR");
-  assert.equal(d(reg("1", { titulos: [] }), { numTit: null }).acao, "ADOTAR");
-  const naoCita = d(reg("1", { titulos: ["10"] }), { numTit: "77" });
+  // Mesma versao do conteudo, estado da OC diferente: a OC mudou
+  const atual = (h: string) => `${VERSAO_DOSSIE}:${h}`;
+  const mudou = d(reg("1", { assinatura: atual("bbbb") }), { assinatura: atual("aaaa") });
+  assert.deepEqual([mudou.acao, mudou.situacao, mudou.prioridade], ["GERAR", "DESATUALIZADO", 2]);
+  assert.match(mudou.motivo, /a OC mudou/);
+  // Conteudo de versao anterior (11/11/2026: historico, rateio, Reembolsavel, locacao) ou PDF do n8n sem assinatura: refaz, depois do resto
+  const versaoVelha = d(reg("1", { assinatura: "2026-10-01:aaaa" }), { assinatura: atual("aaaa") });
+  assert.deepEqual([versaoVelha.acao, versaoVelha.situacao, versaoVelha.prioridade], ["GERAR", "DESATUALIZADO", 3]);
+  assert.match(versaoVelha.motivo, /conteúdo do dossiê atualizado/);
+  const doN8n = d(reg("1", { titulos: ["77"] }), { numTit: "77" });
+  assert.deepEqual([doN8n.acao, doN8n.prioridade], ["GERAR", 3]);
+  assert.match(doN8n.motivo, /n8n ou por uma versão anterior/);
+  // PDF do botao na versao atual: adota, a menos que nao cite um titulo da OC
+  const manual = (titulos: string[]) => reg("1", { titulos, assinatura: assinaturaManual() });
+  assert.equal(d(manual(["77"]), { numTit: "77" }).acao, "ADOTAR");
+  assert.equal(d(manual([]), { numTit: null }).acao, "ADOTAR");
+  const naoCita = d(manual(["10"]), { numTit: "77" });
   assert.deepEqual([naoCita.acao, naoCita.situacao], ["GERAR", "DESATUALIZADO"]);
   assert.match(naoCita.motivo, /não cita o título 77/);
-  assert.equal(d(reg("1", { titulos: ["2072$01"] }), { numTit: "2072$" }).acao, "ADOTAR"); // parcela pela metade na OC
+  assert.equal(d(manual(["2072$01"]), { numTit: "2072$" }).acao, "ADOTAR"); // parcela pela metade na OC
   // PDF sumiu do servidor ou registro sem arquivo
   assert.deepEqual([d(reg("1", { assinatura: "AAA" }), { pdf: false }).acao, d(reg("1", { assinatura: "AAA" }), { pdf: false }).prioridade], ["GERAR", 1]);
   assert.match(d(reg("1", { assinatura: "AAA" }), { pdf: false }).motivo, /não está mais no servidor/);
@@ -251,7 +268,7 @@ test("Ciclo: gera quem falta (OC aprovada no periodo OU com titulo aberto) e ign
   });
   const r = await executarCiclo(deps, opcoes);
   assert.deepEqual(geradas.map((g) => g.numOcp).sort(), [1, 3, 8]);
-  assert.ok(geradas.every((g) => g.origem === "APPCNS_AUTO" && /^[0-9a-f]{16}$/.test(g.assinatura)));
+  assert.ok(geradas.every((g) => g.origem === "APPCNS_AUTO" && g.assinatura.startsWith(`${VERSAO_DOSSIE}:`)));
   assert.deepEqual(marcadas.sort(), ["1", "3", "8"]);
   assert.equal(r.elegiveis, 3);
   assert.equal(r.geradosAgora, 3);
@@ -259,28 +276,29 @@ test("Ciclo: gera quem falta (OC aprovada no periodo OU com titulo aberto) e ign
   assert.equal(r.atuais, 3);
 });
 
-test("Ciclo: o que ja esta em dia nao e refeito; sem assinatura adota; assinatura diferente refaz; PDF sumido refaz", async () => {
+test("Ciclo: o que ja esta em dia nao e refeito; botao na versao atual adota; versao anterior, n8n e PDF sumido refazem", async () => {
   const o1 = oc("1", { numTit: "T1" });
-  const ab: TituloAbertoSenior[] = ["T1", "T3", "T4", "T5"].map((numTit) => ({ codFil: "1", numTit, codTpt: "DUP", codFor: "100" }));
+  const ab: TituloAbertoSenior[] = ["T1", "T3", "T4", "T5", "T6"].map((numTit) => ({ codFil: "1", numTit, codTpt: "DUP", codFor: "100" }));
   const assinatura1 = assinaturaDaOc(o1, ["T1"]);
   const { deps, geradas, adotadas } = montar({
-    ocs: [o1, oc("2", { numTit: null }), oc("3"), oc("4"), oc("5")], // 2 entra por ja' estar paga (nao cita titulo)
+    ocs: [o1, oc("2", { numTit: null }), oc("3"), oc("4"), oc("5"), oc("6")], // 2 entra por ja' estar paga (nao cita titulo)
     abertos: ab,
     pagas: ["2"],
     registros: [
       reg("1", { assinatura: assinatura1 }), // em dia
-      reg("2", { titulos: [] }), // n8n/botao sem assinatura, sem titulo na OC -> adota
-      reg("3", { assinatura: "antiga" }), // OC mudou -> refaz
+      reg("2", { titulos: [], assinatura: assinaturaManual() }), // botao, versao atual, sem titulo na OC -> adota
+      reg("3", { assinatura: "antiga" }), // assinatura de antes da versao -> refaz
       reg("4", { assinatura: "x" }), // PDF sumiu -> refaz
+      reg("6", { titulos: ["T6"] }), // PDF do n8n, sem assinatura -> refaz no layout novo
     ],
     pdfAusente: ["dossies/4.pdf"],
   });
   const r = await executarCiclo(deps, opcoes);
-  assert.deepEqual(geradas.map((g) => g.numOcp).sort(), [3, 4, 5]);
+  assert.deepEqual(geradas.map((g) => g.numOcp).sort(), [3, 4, 5, 6]);
   assert.deepEqual(adotadas.map((a) => a.chave), [chaveDaOc(1, "2")]);
-  assert.equal(adotadas[0].assinatura.length, 16);
+  assert.match(adotadas[0].assinatura, /^\d{4}-\d{2}-\d{2}:[0-9a-f]{16}$/);
   assert.equal(r.adotados, 1);
-  assert.equal(r.atuais, 5); // 1 em dia + 1 adotado + 3 gerados agora
+  assert.equal(r.atuais, 6); // 1 em dia + 1 adotado + 4 gerados agora
 });
 
 test("Ciclo: falha espera o intervalo; passado o intervalo tenta de novo; OC em geracao e' deixada em paz", async () => {
@@ -416,7 +434,7 @@ test("Banco: salvar guarda assinatura e zera falhas; falha conta e mantem o PDF;
   assert.equal(f2.assinatura, "abc123"); // a falha nao apaga o que ja' existia
   assert.equal(f2.arquivoPath, a.arquivoPath); // nem o PDF anterior
 
-  const depois = await salvarDossie({ ...base, assinatura: null }, pdf); // botao manual: sem assinatura
+  const depois = await salvarDossie({ ...base, assinatura: null }, pdf); // sem assinatura (ex.: PDF do n8n)
   arquivos.push(depois.arquivoPath!);
   assert.equal(depois.status, "PUBLICADO");
   assert.equal(depois.tentativas, 0);
