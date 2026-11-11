@@ -50,7 +50,11 @@ export function montarFaturaLocacao(d: DadosFatura): string {
   const numeros = d.titulos.map((t) => (t.numero ?? "").trim()).filter(Boolean);
   const emissao = d.titulos.map((t) => t.datas?.emissao).find(Boolean) ?? null;
   const valorFatura = d.titulos.reduce((s, t) => s + (Number(t.valores?.original) || 0), 0);
-  const totalItens = d.itens.reduce((s, i) => s + i.total, 0);
+  // OC que mistura locacao com outras compras (ex.: OC 16200, aluguel + materiais no mesmo titulo): so' a locacao entra
+  // como "bens locados"; o resto aparece a parte, porque o titulo paga tudo.
+  const locados = d.itens.filter(itemDeLocacao);
+  const outros = d.itens.filter((i) => !itemDeLocacao(i));
+  const soma = (l: ItemOc[]) => l.reduce((s, i) => s + i.total, 0);
   const situacao = (t: TituloDoFluxo) => (typeof t.situacao === "string" ? t.situacao : t.situacao?.descricao ?? t.situacao?.codigo ?? "-");
 
   const linhasTitulos = d.titulos.length
@@ -61,14 +65,22 @@ export function montarFaturaLocacao(d: DadosFatura): string {
         )
         .join("")
     : `<tr><td colspan="7" class="vazio">Nenhum título encontrado no contas a pagar.</td></tr>`;
-  const linhasItens = d.itens.length
-    ? d.itens
-        .map(
-          (i) =>
-            `<tr><td>${esc(i.codigo)}</td><td>${esc(i.descricao)}</td><td>${esc(i.unidade)}</td><td class="num">${esc(quantidade(i.quantidade))}</td><td class="num">${esc(moeda(i.unitario))}</td><td class="num">${esc(moeda(i.total))}</td></tr>`
-        )
-        .join("")
-    : `<tr><td colspan="6" class="vazio">A OC não tem itens.</td></tr>`;
+  const linhas = (itens: ItemOc[]) =>
+    itens.length
+      ? itens
+          .map(
+            (i) =>
+              `<tr><td>${esc(i.codigo)}</td><td>${esc(i.descricao)}</td><td>${esc(i.unidade)}</td><td class="num">${esc(quantidade(i.quantidade))}</td><td class="num">${esc(moeda(i.unitario))}</td><td class="num">${esc(moeda(i.total))}</td></tr>`
+          )
+          .join("")
+      : `<tr><td colspan="6" class="vazio">Nenhum item.</td></tr>`;
+  const cabecalhoItens = `<thead><tr><th>Código</th><th>Descrição</th><th>Un.</th><th>Qtde</th><th>Vl. unit.</th><th>Vl. total</th></tr></thead>`;
+  const tabelaOutros = outros.length
+    ? `
+<div class="faixa">Outros itens da mesma OC (pagos no mesmo título, não são locação)</div>
+<table class="itens">${cabecalhoItens}<tbody>${linhas(outros)}</tbody></table>`
+    : "";
+  const totalOutros = outros.length ? campo("Outros itens da OC", esc(moeda(soma(outros)))) : "";
 
   return `
 <div class="danfe">
@@ -90,10 +102,11 @@ export function montarFaturaLocacao(d: DadosFatura): string {
 <table class="itens"><thead><tr><th>Título</th><th>Tipo</th><th>Emissão</th><th>Vencimento</th><th>Valor</th><th>Saldo</th><th>Situação</th></tr></thead><tbody>${linhasTitulos}</tbody></table>
 
 <div class="faixa">Bens / serviços locados (itens da OC)</div>
-<table class="itens"><thead><tr><th>Código</th><th>Descrição</th><th>Un.</th><th>Qtde</th><th>Vl. unit.</th><th>Vl. total</th></tr></thead><tbody>${linhasItens}</tbody></table>
+<table class="itens">${cabecalhoItens}<tbody>${linhas(locados)}</tbody></table>
+${tabelaOutros}
 
 <div class="faixa">Totais</div>
-<table><tr>${campo("Total dos itens da OC", esc(moeda(totalItens)))}<th>Valor da fatura (títulos)</th><td class="total">${esc(moeda(valorFatura))}</td></tr></table>
+<table><tr>${campo("Total da locação", esc(moeda(soma(locados))))}${totalOutros}<th>Valor da fatura (títulos)</th><td class="total">${esc(moeda(valorFatura))}</td></tr></table>
 
 <div class="faixa">Observações da OC</div>
 <table><tr><td class="obs">${esc(d.observacao && d.observacao.trim() ? d.observacao : "Sem observações.")}</td></tr></table>

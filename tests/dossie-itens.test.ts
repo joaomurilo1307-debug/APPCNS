@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { distribuirRateios, itemReembolsavel, lerRateios, resumoReembolso, type ItemOc, type LinhaRateio } from "../src/lib/dossie/itens";
 import { dataSenior, indicadoresDoHistorico, sqlHistorico, ultimosPagamentos } from "../src/lib/dossie/historico";
-import { itemDeLocacao, precisaFaturaLocacao } from "../src/lib/dossie/locacao";
+import { itemDeLocacao, montarFaturaLocacao, precisaFaturaLocacao } from "../src/lib/dossie/locacao";
 
 const item = (sequencia: number, total: number, tipo: ItemOc["tipo"] = "PRODUTO"): ItemOc => ({ tipo, sequencia, codigo: `P${sequencia}`, descricao: `Item ${sequencia}`, unidade: "UN", quantidade: 1, unitario: total, total });
 const rat = (seqIpo: number, campos: Partial<Record<"CODCCU" | "CTAFIN" | "PERCTA" | "PERRAT" | "VLRCTA" | "VLRRAT" | "SEQISO", string>>) => ({ SEQRAT: "1", SEQIPO: String(seqIpo), SEQISO: "0", CODCCU: "190", CTAFIN: "68", PERCTA: "", PERRAT: "", VLRCTA: "", VLRRAT: "", ...campos });
@@ -111,4 +111,25 @@ test("Locacao: pela descricao do item (com ou sem acento); 'alocacao'/'colocacao
   assert.equal(precisaFaturaLocacao([{ descricao: "LOCAÇÃO DE VEÍCULO" }], 0), true);
   assert.equal(precisaFaturaLocacao([{ descricao: "LOCAÇÃO DE VEÍCULO" }], 1), false);
   assert.equal(precisaFaturaLocacao([{ descricao: "PERNEIRA" }], 0), false);
+});
+
+test("Fatura de locacao: OC que mistura aluguel e materiais (OC 16200) separa os bens locados do resto que o titulo paga", () => {
+  const itens = [{ ...item(1, 3000, "SERVICO"), descricao: "LOCACAO DE BENS MOVEIS" }, { ...item(2, 56), descricao: "CHAVE COMBINADA" }, { ...item(3, 35.9), descricao: "LUVA PARA PROCEDIMENTO" }];
+  const h = montarFaturaLocacao({
+    numOcp: 16200,
+    locador: { NOMFOR: "DANIEL PEREIRA LIRA", CGCCPF: "2555771255" },
+    locatario: { NOMFIL: "CONSOMINAS ENGENHARIA LTDA" },
+    titulos: [{ numero: "008093", tipo: "OUT", datas: { emissao: "2026-10-29", vencimentoAtual: "2026-10-30" }, valores: { original: 3091.9, aberto: 0 }, situacao: "LQ" }],
+    itens,
+    observacao: null,
+  });
+  const locados = h.slice(h.indexOf("Bens / serviços locados"), h.indexOf("Outros itens da mesma OC"));
+  assert.match(locados, /LOCACAO DE BENS MOVEIS/);
+  assert.doesNotMatch(locados, /CHAVE COMBINADA|LUVA/);
+  assert.match(h.slice(h.indexOf("Outros itens da mesma OC")), /CHAVE COMBINADA[\s\S]*LUVA PARA PROCEDIMENTO/);
+  assert.match(h, /Total da locação<\/th><td>R\$\s3\.000,00/);
+  assert.match(h, /Outros itens da OC<\/th><td>R\$\s91,90/);
+  assert.match(h, /Nº 008093/);
+  // So' locacao: sem a tabela de outros itens
+  assert.doesNotMatch(montarFaturaLocacao({ numOcp: 1, locador: {}, locatario: null, titulos: [], itens: [itens[0]], observacao: null }), /Outros itens/);
 });
