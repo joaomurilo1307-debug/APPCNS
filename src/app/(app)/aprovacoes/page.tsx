@@ -8,6 +8,7 @@ import { eventTypeLabel } from "@/lib/calendarColors";
 import BotaoExcel from "@/components/BotaoExcel";
 import { dentroDoPeriodo, ROTULO_PERIODO, type PeriodoOc } from "@/lib/filtroOc";
 import { useAtualizarAoVoltar } from "@/lib/atualizarAoVoltar";
+import { sincronizarEAcompanhar } from "@/lib/senior/sincronizacao/cliente";
 
 type Project = {
   id: string;
@@ -109,16 +110,15 @@ export default function AprovacoesPage() {
   // quem aprova no Senior volta para esta aba e a lista ja acompanha
   useAtualizarAoVoltar(loadOcsSenior);
 
-  // mesmo "Atualizar agora" da tela Aprovacoes (OC Senior): antecipa a proxima sincronizacao (que roda sozinha de 10 em 10 minutos)
+  // mesmo "Atualizar agora" da tela Aprovacoes (OC Senior): busca as OCs na Senior agora (o sistema tambem busca sozinho de 10 em
+  // 10 minutos) e acompanha ate terminar, mostrando o resultado real (12/11/2026).
   function sincronizarOcAgora() {
     setOcSincronizando(true);
     setOcMsgSinc(null);
-    fetch("/api/senior/aprovacoes/sincronizar-agora", { method: "POST" })
-      .then(async (res) => {
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(d.error || "Erro ao disparar a sincronização");
-        setOcMsgSinc("Sincronização disparada, atualizando em instantes…");
-        setTimeout(() => loadOcsSenior().then(() => setOcMsgSinc("Lista atualizada com o retrato mais recente do Senior.")), 15000);
+    sincronizarEAcompanhar(["ocs"], setOcMsgSinc)
+      .then(async (r) => {
+        if (r.ok) await loadOcsSenior().catch(() => {});
+        setOcMsgSinc(r.texto);
       })
       .catch((e) => setOcMsgSinc(e.message))
       .finally(() => setOcSincronizando(false));
@@ -267,7 +267,7 @@ export default function AprovacoesPage() {
             <span>Só visualização: aprove no Senior. Esta lista acompanha sozinha, a partir da sincronização com o Senior.</span>
             {ocSincEm && <span title="Atualiza sozinho a cada 10 minutos">Sincronizado em {new Date(ocSincEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}.</span>}
             <button type="button" onClick={sincronizarOcAgora} disabled={ocSincronizando} className="rounded-md border border-gray-200 px-2 py-0.5 font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-              {ocSincronizando ? "Sincronizando…" : "↻ Atualizar agora"}
+              {ocSincronizando ? "Buscando na Senior…" : "↻ Atualizar agora"}
             </button>
             {ocMsgSinc && <span className="text-gray-500">{ocMsgSinc}</span>}
           </div>

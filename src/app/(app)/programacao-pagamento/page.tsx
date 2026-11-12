@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
@@ -8,6 +8,7 @@ import { lerSelecaoSalva, salvarSelecao } from "@/lib/selecaoProgramacao";
 import { selecaoDoCookie, filtrarTitulosPorSelecao } from "@/lib/areas";
 import FiltroContratos from "@/components/FiltroContratos";
 import EditarDossie from "@/components/EditarDossie";
+import { sincronizarEAcompanhar } from "@/lib/senior/sincronizacao/cliente";
 
 const REVISAO_LABEL: Record<string, string> = {
   APROVADO: "Aprovado",
@@ -383,6 +384,9 @@ export default function ProgramacaoPagamentoPage() {
   const [totalPago, setTotalPago] = useState(0);
   const [sincronizando, setSincronizando] = useState(false);
   const [msgSincronizacao, setMsgSincronizacao] = useState<string | null>(null);
+  const [syncFalhou, setSyncFalhou] = useState(false);
+  const syncAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => syncAbort.current?.abort(), []);
 
   // Associação manual Título <-> OC (tabela TituloOcVinculo) e dossiê da OC do título.
   const [ocBusy, setOcBusy] = useState<string | null>(null);
@@ -517,10 +521,6 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
     return () => clearInterval(id);
   }, []);
 
-  // Botão "Atualizar agora" -- dispara o webhook do n8n (mesma ação do cron
-  // de 10 em 10 minutos) e reconsulta a lista depois de um tempo, já que a
-  // sincronização roda em segundo plano no VPS (~2 mil títulos, leva alguns
-  // minutos).
   const [salvandoRevisao, setSalvandoRevisao] = useState<string | null>(null);
   // Input de "qual OC" aberto ao escolher CORRIGIDO -- guarda o numero
   // digitado por titulo antes de confirmar, pra nao precisar de outro
@@ -753,41 +753,30 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
     router.push("/pagamentos-itau");
   }
 
-  // ACHADO 30/09/2026: este botao so' disparava a sincronizacao de TITULOS
-  // -- o vinculo com OC vem de uma sincronizacao SEPARADA (AprovacaoSenior,
-  // rodando sozinha a cada 10min via n8n), que esse botao nunca tocava.
-  // Por isso alguem podia clicar "Atualizar agora" varias vezes e a OC
-  // continuar desatualizada (so' o titulo atualizava). Agora dispara as
-  // DUAS, em paralelo -- clique unico, atualizacao completa de verdade.
+  // Botão "Atualizar agora": busca títulos E OCs na Senior (30/09/2026: o vínculo com OC vem da busca de OCs, então as duas
+  // juntas). Desde 12/11/2026 o próprio sistema faz a busca e o botão acompanha até terminar, mostrando quantos títulos/OCs
+  // chegaram ou o motivo da falha -- antes disparava o n8n e anunciava "lista atualizada" depois de 90 s, chegasse algo ou não.
   function sincronizarAgora() {
+    syncAbort.current?.abort();
+    const controle = new AbortController();
+    syncAbort.current = controle;
     setSincronizando(true);
+    setSyncFalhou(false);
     setMsgSincronizacao(null);
-    Promise.allSettled([
-      fetch("/api/senior/titulos-pagar/sincronizar-agora", { method: "POST" }).then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "títulos: erro ao disparar");
-      }),
-      fetch("/api/senior/aprovacoes/sincronizar-agora", { method: "POST" }).then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "OCs: erro ao disparar");
-      }),
-    ])
-      .then((resultados) => {
-        const falhas = resultados.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
-        if (falhas.length === resultados.length) {
-          throw new Error(falhas.map((f) => f.reason?.message).join(" / "));
-        }
-        setMsgSincronizacao(
-          falhas.length > 0
-            ? `Disparado parcialmente (falhou: ${falhas.map((f) => f.reason?.message).join(", ")}) — atualizando em alguns minutos...`
-            : "Sincronização de títulos e OCs disparada — atualizando em alguns minutos..."
-        );
-        setTimeout(() => {
-          carregar().then(() => setMsgSincronizacao("Lista atualizada com o retrato mais recente do Senior."));
-        }, 90000);
+    sincronizarEAcompanhar(["titulos", "ocs"], setMsgSincronizacao, { sinal: controle.signal })
+      .then(async (r) => {
+        if (r.ok || r.parcial) await carregar().catch(() => {});
+        setSyncFalhou(!r.ok);
+        setMsgSincronizacao(r.texto);
       })
-      .catch((e) => setMsgSincronizacao(e.message))
-      .finally(() => setSincronizando(false));
+      .catch((e) => {
+        if (e?.name === "AbortError") return;
+        setSyncFalhou(true);
+        setMsgSincronizacao(e.message);
+      })
+      .finally(() => {
+        if (!controle.signal.aborted) setSincronizando(false);
+      });
   }
 
   const { inicio: inicioSemana, fim: fimSemana } = useMemo(() => semanaAtual(), []);
@@ -931,9 +920,9 @@ Precisa ser do mesmo fornecedor.`, t.ocRelacionada?.numOcp ?? "");
               disabled={sincronizando}
               className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
             >
-              {sincronizando ? "Sincronizando..." : "↻ Atualizar agora"}
+              {sincronizando ? "Buscando na Senior..." : "↻ Atualizar agora"}
             </button>
-            {msgSincronizacao && <span className="text-[11px] text-gray-500">{msgSincronizacao}</span>}
+            {msgSincronizacao && <span className={`text-[11px] ${syncFalhou ? "font-medium text-amber-700" : "text-gray-500"}`}>{msgSincronizacao}</span>}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">

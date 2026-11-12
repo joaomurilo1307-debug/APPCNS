@@ -631,6 +631,34 @@ model VinculoOcSenior {
   @@index([origem, codFor, chave])
 }
 
+// Busca de dados na Senior feita pelo proprio sistema (12/11/2026, src/lib/senior/sincronizacao/execucao.ts): uma linha por
+// fonte ("titulos", "ocs") com o inicio, o fim e o resultado da ultima busca. E' o que a tela mostra no "Atualizar agora" e no
+// "Sincronizado em" -- antes o botao so' avisava o n8n e esperava um tempo fixo, sem saber se algo tinha chegado.
+model SincronizacaoSenior {
+  fonte         String    @id // titulos | ocs | titulos-completa (fim da ultima busca completa do historico de titulos)
+  iniciadaEm    DateTime?
+  origem        String? // AGENDADOR | BOTAO | EXTERNO (envio do script do VPS)
+  pedidaPorNome String?
+  modo          String? // titulos: rapida | completa (da busca iniciada por ultimo)
+  modoConcluido String? // titulos: modo da ultima busca concluida
+  sucessoEm     DateTime? // fim da ultima busca concluida
+  quantidade    Int? // itens gravados na ultima busca concluida
+  removidos     Int?
+  aviso         String?
+  duracaoMs     Int?
+  falhaEm       DateTime?
+  falha         String? // mensagem da ultima falha (vale enquanto falhaEm > sucessoEm)
+  atualizadoEm  DateTime  @updatedAt
+}
+
+// Ultima lista de quem tem folha ativa (R034FUN.SITAFA=1, HCM), normalizada. A busca de OCs usa para nao pedir aprovacao a
+// quem ja foi desligado; guardada para quando a leitura da folha falhar (src/lib/senior/sincronizacao/pessoasAtivas.ts).
+model RosterAtivoSenior {
+  id          String   @id @default("atual")
+  nomes       String // JSON: string[]
+  capturadoEm DateTime
+}
+
 // Associacao manual Titulo <-> OC feita na Programacao de Pagamento. Chave natural
 // (sem FK) de proposito: o sincronismo apaga e recria TituloContasAPagar, e o vinculo
 // nao pode se perder junto. Tem prioridade sobre o motor automatico e sobre

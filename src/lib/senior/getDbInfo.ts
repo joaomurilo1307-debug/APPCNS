@@ -25,9 +25,12 @@ function desescaparXml(texto: string): string {
     .replace(/&amp;/g, "&");
 }
 
-function montarEnvelope(sql: string, params: string): string {
-  const usuario = process.env.SENIOR_WS_SAPIENS_USER;
-  const senha = process.env.SENIOR_WS_SAPIENS_PASSWORD;
+/** Outra porta GetDBInfo da Senior (ex.: a da folha, HCM/Rubi), com credencial propria. Sem isto, usa a do ERP. */
+export type DestinoSenior = { url: string; usuario: string; senha: string };
+
+function montarEnvelope(sql: string, params: string, destino?: DestinoSenior): string {
+  const usuario = destino?.usuario ?? process.env.SENIOR_WS_SAPIENS_USER;
+  const senha = destino?.senha ?? process.env.SENIOR_WS_SAPIENS_PASSWORD;
   if (!usuario || !senha) {
     throw new Error("Defina SENIOR_WS_SAPIENS_USER e SENIOR_WS_SAPIENS_PASSWORD no .env (nao versionado).");
   }
@@ -63,12 +66,23 @@ function lerLinhas(xml: string): LinhaSenior[] {
 // <params/> escapado -- tenta as duas formas antes de desistir.
 const FORMAS_DE_PARAMS = ["&lt;params&gt;&lt;/params&gt;", ""];
 
-let filaLeituras: Promise<void> = Promise.resolve();
+// Em globalThis: os agendadores internos (instrumentation) e as rotas podem carregar copias diferentes deste modulo, e a fila
+// precisa ser uma so' no processo.
+const fila = ((globalThis as { __filaSenior?: { ultima: Promise<void> } }).__filaSenior ??= { ultima: Promise.resolve() });
 
 // Todas as telas compartilham uma fila por processo; duas requisicoes HTTP
 // simultaneas nao disparam consultas concorrentes no GetDBInfo.
-export function consultarSenior(sql: string, opcoes?: { timeoutMs?: number }): Promise<LinhaSenior[]> {
-  return emFilaSenior(() => executarConsultaSenior(sql, opcoes?.timeoutMs));
+export function consultarSenior(sql: string, opcoes?: { timeoutMs?: number; destino?: DestinoSenior }): Promise<LinhaSenior[]> {
+  return emFilaSenior(() => executarConsultaSenior(sql, opcoes?.timeoutMs, opcoes?.destino));
+}
+
+/**
+ * Sem passar pela fila: so' para a busca de titulos e OCs em segundo plano (src/lib/senior/sincronizacao/), que ja faz uma
+ * consulta por vez e tem consultas de varios minutos (historico de pagos: ~9 min so' o tipo NFS, 12/11/2026) que nao podem
+ * segurar as telas. No maximo duas chamadas ao mesmo tempo (a da busca e a da fila), como quando a busca rodava no VPS.
+ */
+export function consultarSeniorForaDaFila(sql: string, opcoes?: { timeoutMs?: number; destino?: DestinoSenior }): Promise<LinhaSenior[]> {
+  return executarConsultaSenior(sql, opcoes?.timeoutMs, opcoes?.destino);
 }
 
 /**
@@ -77,20 +91,20 @@ export function consultarSenior(sql: string, opcoes?: { timeoutMs?: number }): P
  * A falha de uma tarefa nao trava a fila.
  */
 export function emFilaSenior<T>(tarefa: () => Promise<T>): Promise<T> {
-  const execucao = filaLeituras.then(tarefa);
-  filaLeituras = execucao.then(() => undefined, () => undefined);
+  const execucao = fila.ultima.then(tarefa);
+  fila.ultima = execucao.then(() => undefined, () => undefined);
   return execucao;
 }
 
-async function executarConsultaSenior(sql: string, timeoutMs = 60_000): Promise<LinhaSenior[]> {
-  const url = process.env.SENIOR_WS_SAPIENS_URL?.trim() || URL_PADRAO;
+async function executarConsultaSenior(sql: string, timeoutMs = 60_000, destino?: DestinoSenior): Promise<LinhaSenior[]> {
+  const url = destino?.url ?? (process.env.SENIOR_WS_SAPIENS_URL?.trim() || URL_PADRAO);
   let ultimoErro = "erro desconhecido";
 
   for (const params of FORMAS_DE_PARAMS) {
     const resposta = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "text/xml; charset=UTF-8", SOAPAction: '""' },
-      body: montarEnvelope(sql, params),
+      body: montarEnvelope(sql, params, destino),
       signal: AbortSignal.timeout(timeoutMs),
     });
     const texto = await resposta.text();
