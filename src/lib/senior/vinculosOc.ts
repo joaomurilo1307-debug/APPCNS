@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { consultarSenior } from "./getDbInfo";
 
 const INTERVALO_MS = 15 * 60 * 1000;
+const NOVA_TENTATIVA_MS = 2 * 60 * 1000; // Senior fora do ar: tenta de novo em 2 min, sem martelar a cada acesso
 let emAndamento: Promise<void> | null = null;
 let ultimaExecucao = 0;
 
@@ -43,13 +44,17 @@ export function garantirVinculosOcAtualizados(): Promise<void> | null {
   emAndamento = atualizarVinculosOc()
     .then(() => undefined)
     .catch((e) => {
-      ultimaExecucao = 0; // tenta de novo no proximo acesso
+      ultimaExecucao = Date.now() - INTERVALO_MS + NOVA_TENTATIVA_MS;
       console.error("[vinculosOc]", String(e?.message ?? e).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 200));
     })
     .finally(() => { emAndamento = null; });
   return emAndamento;
 }
 
+// Quem le a tabela tambem garante que ela se atualiza (12/11/2026): de 30/10 ate aqui nada chamava garantirVinculosOcAtualizados,
+// entao a tabela nunca era refeita pelo sistema e os titulos ficavam "Sem OC" (so' o vinculo manual funcionava). Dispara em segundo
+// plano e devolve o que ja esta gravado; a versao do motor de OCs (cache/ocsMotor.ts) muda quando a tabela e' refeita.
 export function carregarVinculosOc(db: typeof prisma) {
+  garantirVinculosOcAtualizados();
   return db.vinculoOcSenior.findMany({ select: { origem: true, codFil: true, codFor: true, chave: true, numOcp: true } });
 }
