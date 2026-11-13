@@ -79,7 +79,10 @@ const valorDaOc = (cab: LinhaSenior) => numeroSenior(cab.VLRORI) || numeroSenior
 // condicao de pagamento ja avisa que vai parcelar, e e' a unica fonte disso nesse ponto. So' calcula quando
 // o proprio texto da condicao confirma 2+ parcelas (nunca inventa uma parcela que a condicao nao diz).
 export function parcelamento(condicaoPagamento: string | null, valorOc: number): string | null {
-  const m = /^0*(\d+)\s*X\b/i.exec((condicaoPagamento || "").trim());
+  // Sem ^ no comeco: a OC 16678 mostrou que o DESCPG as vezes ja vem com o codigo junto ("010 - 2X VAREJO" inteiro,
+  // nao so' "2X VAREJO") -- a versao ancorada no inicio nunca batia nesse caso. \b antes do digito evita casar o "10"
+  // de "010" sozinho (so' bate dígito-X como token, ex.: nao confunde "015 - A VISTA" com parcela nenhuma).
+  const m = /\b0*(\d{1,2})\s*X\b/i.exec((condicaoPagamento || "").trim());
   if (!m) return null;
   const n = Number(m[1]);
   if (!Number.isFinite(n) || n < 2) return null;
