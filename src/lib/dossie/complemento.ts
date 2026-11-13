@@ -1,4 +1,4 @@
-// Complemento do dossie: o que o fluxo herdado do n8n nao trazia (ou trazia errado).
+﻿// Complemento do dossie: o que o fluxo herdado do n8n nao trazia (ou trazia errado).
 //   - dados completos da OC (fornecedor + endereco, condicao/forma de pagamento, observacao da OC, despesa reembolsavel);
 //   - produtos, servicos e rateios com a coluna "Reembolsavel" e o valor do rateio como fatia do item (ver itens.ts);
 //   - aviso de OC REEMBOLSAVEL (conta financeira >= 180 em algum rateio, ou USU_REEMB = 'S'), com os itens reembolsaveis;
@@ -73,6 +73,19 @@ const enderecoDe = (f: LinhaSenior) =>
 
 const valorDaOc = (cab: LinhaSenior) => numeroSenior(cab.VLRORI) || numeroSenior(cab.VLRLIQ);
 
+// "2X VAREJO" -> 2 parcelas. O dossie so' mostrava o valor total da OC, sem avisar que ele vem dividido --
+// achado 13/11/2026 (OC 16678, 010 - 2X VAREJO): confere pra 26 das OCs com dossie publicado (2+ titulos
+// vinculados), mas o pior caso e' a OC ainda EM ANALISE, sem nenhum titulo gerado na Senior ainda -- so' a
+// condicao de pagamento ja avisa que vai parcelar, e e' a unica fonte disso nesse ponto. So' calcula quando
+// o proprio texto da condicao confirma 2+ parcelas (nunca inventa uma parcela que a condicao nao diz).
+export function parcelamento(condicaoPagamento: string | null, valorOc: number): string | null {
+  const m = /^0*(\d+)\s*X\b/i.exec((condicaoPagamento || "").trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n < 2) return null;
+  return `Parcelado em ${n}x de ${moeda(valorOc / n)}`;
+}
+
 // ---------------------------------------------------------------- HTML
 
 const CSS_COMPLEMENTO = `
@@ -81,6 +94,7 @@ const CSS_COMPLEMENTO = `
 .aviso-leve { border: 1px solid #888; padding: 8px; margin: 12px 0; font-size: 10px; line-height: 1.4; break-inside: avoid; }
 .dados-oc th { width: 17%; }
 .obs-oc { white-space: pre-wrap; }
+.parcelamento { display: block; margin-top: 2px; font-weight: bold; }
 `;
 
 function textoReembolso(r: ReturnType<typeof resumoReembolso>): string {
@@ -92,6 +106,7 @@ function textoReembolso(r: ReturnType<typeof resumoReembolso>): string {
 function blocoDadosOc(d: DadosComplemento, reembolso: ReturnType<typeof resumoReembolso>): string {
   const { cab, fornecedor: f } = d;
   const cpg = [cab.CODCPG, d.condicaoPagamento].filter((x) => x && x.trim()).join(" - ");
+  const parc = parcelamento(d.condicaoPagamento, valorDaOc(cab));
   const linha = (rotulo: string, valor: string | null | undefined) => `<tr><th>${esc(rotulo)}</th><td colspan="3">${esc(valor && valor.trim() ? valor : "-")}</td></tr>`;
   return `
 <h2>Dados da Ordem de Compra</h2>
@@ -99,7 +114,7 @@ function blocoDadosOc(d: DadosComplemento, reembolso: ReturnType<typeof resumoRe
 <tr><th>Fornecedor</th><td>${esc([f.CODFOR, f.NOMFOR].filter(Boolean).join(" - "))}</td><th>CNPJ/CPF</th><td>${esc(cnpjCpf(f.CGCCPF))}</td></tr>
 ${linha("Endereço do fornecedor", enderecoDe(f))}
 <tr><th>Inscrição estadual</th><td>${esc(f.INSEST || "-")}</td><th>Telefone</th><td>${esc(f.FONFOR || "-")}</td></tr>
-<tr><th>Condição de pagamento</th><td>${esc(cpg || "-")}</td><th>Forma de pagamento</th><td>${esc(cab.CODFPG ? `código ${cab.CODFPG}` : "-")}</td></tr>
+<tr><th>Condição de pagamento</th><td>${esc(cpg || "-")}${parc ? `<span class="parcelamento">${esc(parc)}</span>` : ""}</td><th>Forma de pagamento</th><td>${esc(cab.CODFPG ? `código ${cab.CODFPG}` : "-")}</td></tr>
 <tr><th>Valor da OC</th><td>${esc(moeda(valorDaOc(cab)))}</td><th>Saldo em aberto</th><td>${esc(moeda(numeroSenior(cab.VLRLIQ)))}</td></tr>
 ${linha("Despesa reembolsável", textoReembolso(reembolso))}
 <tr><th>Observações da OC</th><td colspan="3" class="obs-oc">${esc(cab.OBSOCP && cab.OBSOCP.trim() ? cab.OBSOCP : "Sem observações.")}</td></tr>
@@ -285,3 +300,4 @@ export async function coletarComplemento(
     historicoDeVariosFornecedores: new Set(historico.map((p) => Number(p.codFor))).size > 1,
   };
 }
+
