@@ -1,4 +1,4 @@
-// Complemento do dossie (dados da OC, itens/rateio com Reembolsavel, historico de pagamentos, reembolso, sem nota, DANFE,
+﻿// Complemento do dossie (dados da OC, itens/rateio com Reembolsavel, historico de pagamentos, reembolso, sem nota, DANFE,
 // fatura de locacao). Sem banco nem Senior: a consulta e' simulada.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -13,8 +13,9 @@ import {
   coletarComplemento,
   motivoReembolso,
   montarHtmlComplemento,
+  parcelamento,
 } from "../src/lib/dossie/complemento";
-import { cnpjCpf } from "../src/lib/dossie/formatar";
+import { cnpjCpf, moeda } from "../src/lib/dossie/formatar";
 
 const CHAVE = "15260902464837000117550010000630861345857990";
 type Cenario = { contas?: string[]; semNf?: boolean; semOc?: boolean; usuReemb?: string; historico?: Record<string, string>[]; consultas?: string[] };
@@ -193,3 +194,17 @@ test("Titulo da OC e' buscado por numero E fornecedor (OC 16113: o titulo 39A1 e
   const corpo = (fluxo as any).nos["Coletar Títulos Financeiros"].body as string;
   assert.match(corpo, /NUMTIT=:NumTit AND CODFOR IN \(\{\{\$json\.codForGrupo\}\}\)/);
 });
+
+test("Parcelamento: le '2X' da condicao de pagamento e divide o valor da OC (achado OC 16678, 010 - 2X VAREJO)", () => {
+  assert.equal(parcelamento("2X VAREJO", 15000), `Parcelado em 2x de ${moeda(7500)}`);
+  assert.equal(parcelamento("02X", 300), `Parcelado em 2x de ${moeda(150)}`);
+});
+
+test("Parcelamento: nao mostra nada pra condicao a vista, sem 'X', ou 1 parcela so' -- nunca inventa parcela que o texto nao diz", () => {
+  assert.equal(parcelamento("A VISTA", 15000), null);
+  assert.equal(parcelamento("30/60/90", 15000), null);
+  assert.equal(parcelamento("1X VAREJO", 15000), null);
+  assert.equal(parcelamento(null, 15000), null);
+  assert.equal(parcelamento("", 15000), null);
+});
+
