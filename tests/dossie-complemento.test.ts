@@ -200,6 +200,12 @@ test("Parcelamento: le '2X' da condicao de pagamento e divide o valor da OC (ach
   assert.equal(parcelamento("02X", 300), `Parcelado em 2x de ${moeda(150)}`);
 });
 
+test("Parcelamento: funciona mesmo quando o DESCPG ja vem com o codigo embutido no texto (OC 16678 real: DESCPG = '010 - 2X VAREJO' inteiro, nao so' '2X VAREJO')", () => {
+  assert.equal(parcelamento("010 - 2X VAREJO", 15000), `Parcelado em 2x de ${moeda(7500)}`);
+  // Nao pode confundir o "015" do codigo com parcela nenhuma quando a condicao de verdade e' a vista.
+  assert.equal(parcelamento("015 - A VISTA", 15000), null);
+});
+
 test("Parcelamento: nao mostra nada pra condicao a vista, sem 'X', ou 1 parcela so' -- nunca inventa parcela que o texto nao diz", () => {
   assert.equal(parcelamento("A VISTA", 15000), null);
   assert.equal(parcelamento("30/60/90", 15000), null);
