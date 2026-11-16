@@ -7,9 +7,10 @@ import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { carregarVinculosOc, carregarGruposFornecedores } from "@/lib/senior/vinculosOc";
-import { lerPdfDoDossie } from "@/lib/dossie/anexos";
+import { UPLOAD_DIR } from "@/lib/uploadValidation";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
+import { lerPdfDoDossie } from "@/lib/dossie/anexos";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
 import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
 
@@ -144,3 +145,4 @@ export async function POST(req: Request) {
     },
   });
 }
+
