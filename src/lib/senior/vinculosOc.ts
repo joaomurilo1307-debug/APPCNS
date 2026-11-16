@@ -58,3 +58,24 @@ export function carregarVinculosOc(db: typeof prisma) {
   garantirVinculosOcAtualizados();
   return db.vinculoOcSenior.findMany({ select: { origem: true, codFil: true, codFor: true, chave: true, numOcp: true } });
 }
+
+// Grupo de empresas (E095FOR.CODGRE): fornecedores distintos que a Senior
+// cadastra sob o mesmo grupo (ex.: marketplace, um cadastro por vendedor)
+// contam como o mesmo fornecedor pro vinculo OC-titulo -- consumido por
+// criarMotorVinculo/grupoDoFornecedor em vinculoOcTitulo.ts (mesma tabela e
+// mesma regra "CODGRE > 0" que src/lib/dossie/complemento.ts ja' usa pra
+// achar o grupo de uma OC especifica). So' entra no mapa quem realmente tem
+// grupo: sem grupo, cada fornecedor so' bate com ele mesmo (chavesFornecedor
+// por codigo ja' cobre isso).
+export async function carregarGruposFornecedores(): Promise<Map<string, string>> {
+  const linhas = await consultarSenior("SELECT CODFOR, CODGRE FROM E095FOR WHERE CODGRE > 0");
+  const grupos = new Map<string, string>();
+  for (const l of linhas) {
+    if (!positivo(l.CODFOR) || !positivo(l.CODGRE)) continue;
+    const codFor = String(l.CODFOR).trim().replace(/^0+(?=\d)/, "");
+    const codGre = String(l.CODGRE).trim().replace(/^0+(?=\d)/, "");
+    grupos.set(codFor, codGre);
+  }
+  return grupos;
+}
+
