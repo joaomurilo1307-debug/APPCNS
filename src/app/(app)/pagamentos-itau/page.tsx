@@ -9,6 +9,7 @@ import { formaDaArrecadacao } from "@/lib/cnab240/itau/constantes";
 import { montarBlocoSenior, podeAtualizarPagamento } from "@/lib/pagamentos/preenchimentoRemessa";
 import BotaoExcel from "@/components/BotaoExcel";
 import type { AbaExcel } from "@/lib/exportarExcel";
+import { sincronizarEAcompanhar } from "@/lib/senior/sincronizacao/cliente";
 
 type Titulo = {
   id: string;
@@ -1209,23 +1210,21 @@ export default function PagamentosItauPage() {
     setCarrinho((c) => (c.some((i) => i.chave === item.chave) ? c : [...c, item]));
   }
 
-  // Fire-and-forget (30/09/2026): a rota so' dispara o webhook e volta na
-  // hora -- a sincronizacao de verdade roda no VPS (SSH, sem proxy no meio,
-  // ver nota na rota). Por isso aqui so' avisa que foi disparado e recarrega
-  // a lista sozinho depois de alguns minutos, igual a Programacao de Pagamento.
+  // 12/11/2026: o proprio sistema busca os titulos na Senior em segundo plano (antes: webhook do n8n + script no VPS, e a tela
+  // anunciava "lista atualizada" depois de 150 s, chegasse algo ou nao). Acompanha ate terminar e mostra o resultado real.
   async function sincronizarComSenior() {
     setSincronizando(true);
     setErro(null);
     setMensagemSync(null);
     try {
-      const res = await fetch("/api/pagamentos-itau/sincronizar-titulos", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao disparar a sincronização");
-      setMensagemSync(data.mensagem || "Sincronização disparada.");
-      setTimeout(() => {
-        carregarTudo();
-        setMensagemSync("Lista atualizada com o retrato mais recente do Senior.");
-      }, 150000);
+      const r = await sincronizarEAcompanhar(["titulos"], setMensagemSync, { rotas: { titulos: "/api/pagamentos-itau/sincronizar-titulos" } });
+      if (r.ok) {
+        await carregarTudo();
+        setMensagemSync(r.texto);
+      } else {
+        setMensagemSync(null);
+        setErro(r.texto);
+      }
     } catch (e: any) {
       setErro(e.message);
     } finally {

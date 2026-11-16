@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { patchTarefa } from "@/lib/tarefaClient";
 
 type Comment = { id: string; body: string; createdAt: string; author: { id: string; name: string } };
 type Attachment = { id: string; fileName: string; filePath: string; uploadedAt: string };
@@ -26,6 +27,7 @@ type TaskDetail = {
   comments: Comment[];
   actualStartedAt: string | null;
   actualEndedAt: string | null;
+  horasDedicadas: number | null;
 };
 
 function elapsedLabel(task: Pick<TaskDetail, "actualStartedAt" | "actualEndedAt">) {
@@ -116,13 +118,26 @@ export default function TaskDetailModal({
   const canLock = role === "ADMIN" || role === "GESTOR_PROJETO";
 
   async function patch(data: any) {
-    await fetch(`/api/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
+    // concluir pede as horas dedicadas quando a pessoa usa o Timesheet automatico
+    const r = await patchTarefa(taskId, data, task?.title);
+    if (!r.ok && !r.cancelado && r.erro) window.alert(r.erro);
     load();
     onChanged();
+  }
+
+  function salvarHoras(texto: string) {
+    const limpo = texto.trim().replace(",", ".");
+    if (limpo === "") {
+      if (task?.horasDedicadas != null) patch({ horasDedicadas: null });
+      return;
+    }
+    const n = Number(limpo);
+    if (!Number.isFinite(n) || n <= 0 || n > 5000) {
+      window.alert("Horas dedicadas: informe um número maior que zero (ex.: 6 ou 4,5).");
+      load();
+      return;
+    }
+    if (n !== task?.horasDedicadas) patch({ horasDedicadas: Math.round(n * 100) / 100 });
   }
 
   async function handleAddComment(e: React.FormEvent) {
@@ -272,6 +287,22 @@ export default function TaskDetailModal({
                 defaultValue={task.dueDate?.slice(0, 10) ?? ""}
                 onBlur={(e) => patch({ dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
                 className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-50"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500" htmlFor="horas-dedicadas">Horas dedicadas</label>
+              <input
+                id="horas-dedicadas"
+                key={`h-${task.horasDedicadas ?? "v"}`}
+                type="number"
+                min="0"
+                step="0.25"
+                inputMode="decimal"
+                placeholder="Preencha antes de concluir"
+                disabled={!canModify}
+                defaultValue={task.horasDedicadas ?? ""}
+                onBlur={(e) => salvarHoras(e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm tabular-nums disabled:bg-gray-50"
               />
             </div>
             <label className="col-span-2 flex items-center gap-2 text-sm text-gray-600">

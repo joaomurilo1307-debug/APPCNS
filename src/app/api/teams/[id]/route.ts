@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { visibleProjectWhere, visibleTeamWhere } from "@/lib/permissions";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const team = await prisma.team.findUnique({
-    where: { id: params.id },
+  const userId = (session.user as any).id;
+  const role = (session.user as any).role;
+  // Equipe so' para quem faz parte dela ou ve algum projeto dela; e dentro dela, so' os projetos que a pessoa ve (decisao do Joao, 04/11/2026)
+  const team = await prisma.team.findFirst({
+    where: { AND: [{ id: params.id }, await visibleTeamWhere(userId, role)] },
     include: {
       members: {
         include: {
@@ -16,6 +20,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         },
       },
       projects: {
+        where: await visibleProjectWhere(userId, role),
         select: {
           id: true,
           name: true,

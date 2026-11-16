@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { sincronizarEAcompanhar } from "@/lib/senior/sincronizacao/cliente";
 import MapaOC, {
   type TituloVinculado,
   type Aprovacao,
@@ -126,6 +127,9 @@ export default function AprovacoesSeniorPage() {
   const [sincronizadoEm, setSincronizadoEm] = useState<string | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
   const [msgSincronizacao, setMsgSincronizacao] = useState<string | null>(null);
+  const [syncFalhou, setSyncFalhou] = useState(false);
+  const syncAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => syncAbort.current?.abort(), []);
   // filtros novos (pedido do Joao, 25/10/2026: a tela mostrava todas as OCs de tudo)
   const [visao, setVisao] = useState<"todas" | "minhas">("todas");
   const [podeVerTodas, setPodeVerTodas] = useState(false);
@@ -205,24 +209,29 @@ export default function AprovacoesSeniorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visao]);
 
-  // Botão "Atualizar agora" -- dispara o webhook do n8n (mesma ação do
-  // cron de 10 em 10 minutos) e reconsulta a lista depois de um tempo,
-  // já que a sincronização roda em segundo plano no VPS (pedido do João
-  // 15/09/2026, junto com o aumento da frequência automática).
+  // Botão "Atualizar agora" (pedido do João 15/09/2026). Desde 12/11/2026 o próprio sistema busca as OCs na Senior e o botão
+  // acompanha até terminar, mostrando quantas OCs chegaram ou o motivo da falha (antes: disparava o n8n e esperava 15 s).
   function sincronizarAgora() {
+    syncAbort.current?.abort();
+    const controle = new AbortController();
+    syncAbort.current = controle;
     setSincronizando(true);
+    setSyncFalhou(false);
     setMsgSincronizacao(null);
-    fetch("/api/senior/aprovacoes/sincronizar-agora", { method: "POST" })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "Erro ao disparar sincronização");
-        setMsgSincronizacao("Sincronização disparada — atualizando em instantes...");
-        setTimeout(() => {
-          carregar().then(() => setMsgSincronizacao("Lista atualizada com o retrato mais recente do Senior."));
-        }, 15000);
+    sincronizarEAcompanhar(["ocs"], setMsgSincronizacao, { sinal: controle.signal })
+      .then(async (r) => {
+        if (r.ok) await carregar().catch(() => {});
+        setSyncFalhou(!r.ok);
+        setMsgSincronizacao(r.texto);
       })
-      .catch((e) => setMsgSincronizacao(e.message))
-      .finally(() => setSincronizando(false));
+      .catch((e) => {
+        if (e?.name === "AbortError") return;
+        setSyncFalhou(true);
+        setMsgSincronizacao(e.message);
+      })
+      .finally(() => {
+        if (!controle.signal.aborted) setSincronizando(false);
+      });
   }
 
   function toggleSituacao(s: string) {
@@ -361,9 +370,9 @@ export default function AprovacoesSeniorPage() {
               disabled={sincronizando}
               className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
             >
-              {sincronizando ? "Sincronizando..." : "↻ Atualizar agora"}
+              {sincronizando ? "Buscando na Senior..." : "↻ Atualizar agora"}
             </button>
-            {msgSincronizacao && <span className="text-[11px] text-gray-500">{msgSincronizacao}</span>}
+            {msgSincronizacao && <span className={`text-[11px] ${syncFalhou ? "font-medium text-amber-700" : "text-gray-500"}`}>{msgSincronizacao}</span>}
           </div>
         </div>
         <button

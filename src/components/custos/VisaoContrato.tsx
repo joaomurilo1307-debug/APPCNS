@@ -9,6 +9,7 @@ import {
   PALETA_GRUPOS,
   agruparPorGrupo,
   linhasDoContrato,
+  linhasDoPortfolioPorConta,
   maioresMovimentos,
   mediaDoPeriodo,
   passosDaPonte,
@@ -39,7 +40,7 @@ import { desviosContraP0, previstoPorMes } from "@/lib/p0/comparar";
 const COR_P0 = "#2a78d6";
 
 export default function VisaoContrato({
-  contrato,
+  contratos,
   filtros,
   base = "pagamento",
   mesesAsc,
@@ -50,7 +51,8 @@ export default function VisaoContrato({
   embutido = false,
   onAbrirDetalhe,
 }: {
-  contrato: ContratoCusto;
+  /** 1 contrato (CCU unico, aberto ou acesso de 1 so') ou varios (filtro de grupo/area/selecao livre): soma tudo. */
+  contratos: ContratoCusto[];
   filtros: Filtros;
   base?: BaseMes;
   mesesAsc: string[];
@@ -72,31 +74,39 @@ export default function VisaoContrato({
   const [baixando, setBaixando] = useState(false);
   // mes em analise no painel "O que mudou": clicar numa barra de variacao muda o mes (padrao: o ultimo mes fechado do periodo)
   const [mesAnalise, setMesAnalise] = useState<string | null>(null);
-  const lancamentos = useLancamentos(contrato.codccu, filtros, base);
-  // P0 do contrato (linha de base de custos): quando existe, entra como linha no grafico, desvio por mes e comparativo conta a conta
-  const p0estado = useP0Custos(contrato.codccu);
-  const p0 = p0estado.estado === "ok" ? p0estado.p0 : null;
+  // unico = exatamente 1 contrato no filtro: habilita o que so' faz sentido por contrato (meta, P0, titulo com CCU/nome)
+  const unico = contratos.length === 1 ? contratos[0] : null;
+  const codccus = useMemo(() => contratos.map((c) => c.codccu), [contratos]);
+  const lancamentos = useLancamentos(codccus, filtros, base);
+  // P0 (linha de base de custos) existe por CONTRATO, nunca para um grupo/filtro de varios: so' entra com 1 unico contrato.
+  const p0estado = useP0Custos(unico?.codccu ?? "");
+  const p0 = unico && p0estado.estado === "ok" ? p0estado.p0 : null;
   const [mostrarP0, setMostrarP0] = useState(true);
   const [mesP0, setMesP0] = useState<string | null>(null);
 
-  // meta mensal do coordenador: fica guardada neste navegador, por centro de custo
+  // meta mensal do coordenador: fica guardada neste navegador, por centro de custo -- so' faz sentido com 1 contrato aberto
   useEffect(() => {
+    if (!unico) {
+      setMetaTexto("");
+      return;
+    }
     try {
-      setMetaTexto(localStorage.getItem(`custo_meta_${contrato.codccu}`) ?? "");
+      setMetaTexto(localStorage.getItem(`custo_meta_${unico.codccu}`) ?? "");
     } catch {
       setMetaTexto("");
     }
-  }, [contrato.codccu]);
+  }, [unico]);
   const meta = (() => {
     const n = Number(metaTexto.replace(/\./g, "").replace(",", "."));
     return Number.isFinite(n) && n > 0 ? n : null;
   })();
   function mudarMeta(v: string) {
+    if (!unico) return;
     const limpo = v.replace(/[^\d.,]/g, "");
     setMetaTexto(limpo);
     try {
-      if (limpo) localStorage.setItem(`custo_meta_${contrato.codccu}`, limpo);
-      else localStorage.removeItem(`custo_meta_${contrato.codccu}`);
+      if (limpo) localStorage.setItem(`custo_meta_${unico.codccu}`, limpo);
+      else localStorage.removeItem(`custo_meta_${unico.codccu}`);
     } catch {
       /* sem armazenamento: a meta vale so' nesta sessao */
     }
@@ -107,7 +117,10 @@ export default function VisaoContrato({
   const mesesP = mesesAsc.slice(idxDe, idxAte + 1);
   const refParcial = filtros.ate === mesCorrente;
 
-  const todas = useMemo(() => linhasDoContrato(contrato, filtros, mesesAsc, busca), [contrato, filtros, mesesAsc, busca]);
+  const todas = useMemo(
+    () => (unico ? linhasDoContrato(unico, filtros, mesesAsc, busca) : linhasDoPortfolioPorConta(contratos, filtros, mesesAsc, busca)),
+    [unico, contratos, filtros, mesesAsc, busca]
+  );
   const linhas = useMemo(
     () =>
       todas
@@ -220,13 +233,16 @@ export default function VisaoContrato({
     return [cab, ...corpo];
   }
 
+  const nomeArquivoBase = unico ? `${unico.codccu}_${unico.nome.replace(/[^\w]+/g, "_").slice(0, 40)}` : `consolidado_${contratos.length}_centros_de_custo`;
+  const tituloPeriodo = unico ? `${unico.nome} · CCU ${unico.codccu}` : `${contratos.length} centros de custo selecionados`;
+
   function exportar() {
-    baixarCsv(`custo_${contrato.codccu}_${contrato.nome.replace(/[^\w]+/g, "_").slice(0, 40)}_${filtros.de}_a_${filtros.ate}.csv`, linhasQuadro());
+    baixarCsv(`custo_${nomeArquivoBase}_${filtros.de}_a_${filtros.ate}.csv`, linhasQuadro());
   }
 
   // linhas do Rel114 (cabecalho + lancamentos + TOTAL): alimentam o CSV e o Excel
   async function buscarLancamentos(): Promise<(string | number)[][]> {
-    const qs = new URLSearchParams({ codccu: contrato.codccu, de: filtros.de, ate: filtros.ate, base });
+    const qs = new URLSearchParams({ codccu: codccus.join(","), de: filtros.de, ate: filtros.ate, base });
     const res = await fetch(`/api/custos-conta/lancamentos?${qs.toString()}`);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao buscar os lançamentos");
     const d = await res.json();
@@ -240,7 +256,7 @@ export default function VisaoContrato({
   async function exportarLancamentos() {
     setBaixando(true);
     try {
-      baixarCsv(`lancamentos_${contrato.codccu}_${base === "competencia" ? "competencia_" : ""}${filtros.de}_a_${filtros.ate}.csv`, await buscarLancamentos());
+      baixarCsv(`lancamentos_${nomeArquivoBase}_${base === "competencia" ? "competencia_" : ""}${filtros.de}_a_${filtros.ate}.csv`, await buscarLancamentos());
     } catch (e: any) {
       alert(e?.message || "Não foi possível exportar os lançamentos.");
     } finally {
@@ -249,7 +265,8 @@ export default function VisaoContrato({
   }
 
   function abrir(conta: string, mesIdx: number, valor: number, reembolsavel: boolean) {
-    onAbrirDetalhe({ codccu: contrato.codccu, contrato: contrato.nome, conta, competencia: `${mesesP[mesIdx]}-01T00:00:00.000Z`, valor, reembolsavel, base });
+    const nomeContrato = unico ? unico.nome : `${contratos.length} centros de custo`;
+    onAbrirDetalhe({ codccu: unico ? unico.codccu : codccus, contrato: nomeContrato, conta, competencia: `${mesesP[mesIdx]}-01T00:00:00.000Z`, valor, reembolsavel, base });
   }
 
   const alternarGrupo = (g: string) =>
@@ -285,14 +302,23 @@ export default function VisaoContrato({
               ← Todos os centros de custo
             </button>
           )}
-          <h2 className="truncate text-3xl font-semibold tracking-tight text-gray-900">
-            <span className="mr-3 inline-block rounded-lg bg-teal-50 px-2.5 py-0.5 align-middle text-2xl font-semibold tabular-nums text-teal-800">CCU {contrato.codccu}</span>
-            {contrato.nome}
-          </h2>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
-            {contrato.teamName ? <span>Equipe {contrato.teamName}</span> : <span className="text-amber-700">sem equipe vinculada</span>}
-            {contrato.projectName && <span className="text-gray-400">· {contrato.projectName}</span>}
-          </p>
+          {unico ? (
+            <>
+              <h2 className="truncate text-3xl font-semibold tracking-tight text-gray-900">
+                <span className="mr-3 inline-block rounded-lg bg-teal-50 px-2.5 py-0.5 align-middle text-2xl font-semibold tabular-nums text-teal-800">CCU {unico.codccu}</span>
+                {unico.nome}
+              </h2>
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
+                {unico.teamName ? <span>Equipe {unico.teamName}</span> : <span className="text-amber-700">sem equipe vinculada</span>}
+                {unico.projectName && <span className="text-gray-400">· {unico.projectName}</span>}
+              </p>
+            </>
+          ) : (
+            <h2 className="truncate text-3xl font-semibold tracking-tight text-gray-900">
+              <span className="mr-3 inline-block rounded-lg bg-teal-50 px-2.5 py-0.5 align-middle text-2xl font-semibold tabular-nums text-teal-800">{contratos.length}</span>
+              centros de custo selecionados
+            </h2>
+          )}
         </div>
       </div>
       )}
@@ -478,7 +504,7 @@ export default function VisaoContrato({
           )}
 
           {p0 && mesDoComparativo && (
-            <ComparativoP0 p0={p0} realizado={contrato.contas} mes={mesDoComparativo} mesesEscolha={mesesComP0} onMes={setMesP0} filtros={filtros} busca={busca} mesCorrente={mesCorrente} baseRotulo={base === "competencia" ? "competência da nota" : "data de pagamento"} nomeArquivo={contrato.codccu} />
+            <ComparativoP0 p0={p0} realizado={unico!.contas} mes={mesDoComparativo} mesesEscolha={mesesComP0} onMes={setMesP0} filtros={filtros} busca={busca} mesCorrente={mesCorrente} baseRotulo={base === "competencia" ? "competência da nota" : "data de pagamento"} nomeArquivo={unico!.codccu} />
           )}
           {p0 && !mesDoComparativo && (
             <Cartao titulo="Comparativo com o P0" subtitulo="O realizado do Senior contra o previsto no P0, conta a conta">
@@ -507,12 +533,12 @@ export default function VisaoContrato({
                   Exportar quadro (CSV)
                 </button>
                 <BotaoExcel
-                  arquivo={`custo_${contrato.codccu}_${contrato.nome.replace(/[^\w]+/g, "_").slice(0, 40)}`}
+                  arquivo={`custo_${nomeArquivoBase}`}
                   rotulo="Exportar Excel"
                   className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[13px] font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
                   gerar={async () => [
-                    abaDeLinhas("Plano de contas x mes", linhasQuadro(), `${contrato.nome} · CCU ${contrato.codccu} · período ${filtros.de} a ${filtros.ate}`, true),
-                    abaDeLinhas("Lançamentos (Rel114)", await buscarLancamentos(), `${contrato.nome} · CCU ${contrato.codccu} · período ${filtros.de} a ${filtros.ate}`, true),
+                    abaDeLinhas("Plano de contas x mes", linhasQuadro(), `${tituloPeriodo} · período ${filtros.de} a ${filtros.ate}`, true),
+                    abaDeLinhas("Lançamentos (Rel114)", await buscarLancamentos(), `${tituloPeriodo} · período ${filtros.de} a ${filtros.ate}`, true),
                   ]}
                 />
                 <button

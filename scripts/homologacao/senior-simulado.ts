@@ -10,12 +10,18 @@ export function criarSeniorSimulado(porta = 3099) {
   const conferenciaIndisponivel = new Set<string>();
   // Situacao trocada pela porta PostDBInfoFinan (AB/PE); ausente = AB.
   const situacoes = new Map<string, string>();
+  // OC informada no titulo (E501TCP.USU_NUMOCP), lida pela atualizacao de vinculos OC x titulo (src/lib/senior/vinculosOc.ts).
+  const ocDoTitulo: Record<string, string>[] = [];
   const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const server = createServer(async (req, res) => {
     let corpo = "";
     for await (const p of req) corpo += p;
     if (req.url === "/_controle") {
-      if (req.method === "POST") modo = JSON.parse(corpo).modo;
+      if (req.method === "POST") {
+        const pedido = JSON.parse(corpo);
+        if (pedido.ocDoTitulo) ocDoTitulo.push(pedido.ocDoTitulo);
+        else modo = pedido.modo;
+      }
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ modo, envios, pagos: [...pagos.keys()], consultas, situacoes: Object.fromEntries(situacoes) })); return;
     }
@@ -52,6 +58,7 @@ export function criarSeniorSimulado(porta = 3099) {
         if (modo === "CONFERENCIA_AMBIGUA" && linhas.length) linhas.push({...linhas[0],CCBFOR:"11111-1"});
         if (modo === "CONFERENCIA_BANCO_PARCIAL") linhas=linhas.map(t=>({...t,CODBAN:"237",CODAGE:"1234",CCBFOR:"12345678"}));
         if (modo === "CONFERENCIA_BOLETO") linhas=linhas.map(t=>({...t,CODFPG:"18",CODBAR:boletoTeste()}));
+        if (/USU_NUMOCP\s*>\s*0/i.test(sql)) linhas = ocDoTitulo.map((v) => ({ ...v }));
       }
       if (/E095FOR/i.test(sql)) linhas = [{CODFOR:"999999", NOMFOR:"FORNECEDOR FICTICIO", CGCCPF:"52998224725", TIPFOR:"F"}];
       if (/E095HFO/i.test(sql)) linhas = [{CODFOR:"999999", CODEMP:"1", CODFIL:"1", CODBAN:"341", CODAGE:"9999", CCBFOR:"99999-1", TIPTCC:"1", DOCIDEFAV:"52998224725"}];

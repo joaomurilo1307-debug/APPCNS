@@ -4,12 +4,13 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam, canViewProject } from "@/lib/permissions";
 import { z } from "zod";
+import { esforcoPorPessoa } from "@/lib/timesheetAuto/servidor";
 
-function hoursSpent(actualStartedAt: Date | null, actualEndedAt: Date | null): number {
-  if (!actualStartedAt) return 0;
-  const end = actualEndedAt ?? new Date();
-  return Math.max(0, (end.getTime() - actualStartedAt.getTime()) / 3_600_000);
-}
+// Horas gastas = ESFORCO real, pelo mesmo modelo do Timesheet automatico (src/lib/timesheetAuto/calculo.ts): so' conta tarefa iniciada, so' nos dias
+// trabalhados (sem fim de semana, feriado nem ausencia) e enquanto a tarefa esteve em "Fazendo"; quando a pessoa tem varias tarefas ao mesmo tempo o dia
+// e' DIVIDIDO entre elas (nao dobra); e se ela informou as "horas dedicadas", valem as horas informadas. Antes era o tempo corrido entre o inicio e a
+// conclusao (24 h por dia, fins de semana, e cada tarefa simultanea contava o tempo todo).
+const arredondar = (n: number) => Math.round(n * 100) / 100;
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -28,8 +29,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
           status: true,
           assigneeId: true,
           assignee: { select: { id: true, name: true, avatarColor: true, avatarUrl: true } },
-          actualStartedAt: true,
-          actualEndedAt: true,
+          horasDedicadas: true,
+          responsavelEventos: { select: { deUserId: true, paraUserId: true } },
         },
       },
     },
@@ -38,23 +39,42 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const rateByUser = new Map(project.resourceRates.map((r) => [r.userId, r.hourlyRate]));
 
-  const activities = project.tasks
-    .filter((t) => t.assigneeId)
-    .map((t) => {
-      const h = hoursSpent(t.actualStartedAt, t.actualEndedAt);
-      const rate = rateByUser.get(t.assigneeId!) ?? 0;
-      return {
+  // quem trabalhou nas tarefas do projeto: o responsavel de hoje e quem foi responsavel antes
+  const trabalhadores = new Set<string>();
+  for (const t of project.tasks) {
+    if (t.assigneeId) trabalhadores.add(t.assigneeId);
+    for (const e of t.responsavelEventos) {
+      if (e.deUserId) trabalhadores.add(e.deUserId);
+      if (e.paraUserId) trabalhadores.add(e.paraUserId);
+    }
+  }
+  const esforco = await esforcoPorPessoa([...trabalhadores]);
+  const nomes = new Map((await prisma.user.findMany({ where: { id: { in: [...trabalhadores] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+
+  const activities: { taskId: string; title: string; status: string; assigneeId: string | null; assigneeName: string; hoursSpent: number; daysWorked: number; declared: boolean; hourlyRate: number; cost: number }[] = [];
+  for (const t of project.tasks) {
+    // uma linha por pessoa que trabalhou na tarefa; a tarefa com responsavel sempre aparece, mesmo sem horas
+    const donos = new Set<string>();
+    for (const uid of trabalhadores) if ((esforco.get(uid)?.horasPorTarefa.get(t.id) ?? 0) > 0) donos.add(uid);
+    if (t.assigneeId) donos.add(t.assigneeId);
+    for (const uid of donos) {
+      const h = arredondar(esforco.get(uid)?.horasPorTarefa.get(t.id) ?? 0);
+      const rate = rateByUser.get(uid) ?? 0;
+      activities.push({
         taskId: t.id,
         title: t.title,
         status: t.status,
-        assigneeId: t.assigneeId,
-        assigneeName: t.assignee?.name ?? "",
+        assigneeId: uid,
+        assigneeName: uid === t.assigneeId ? t.assignee?.name ?? "" : nomes.get(uid) ?? "",
         hoursSpent: h,
+        daysWorked: esforco.get(uid)?.diasPorTarefa.get(t.id) ?? 0,
+        declared: esforco.get(uid)?.informadas.has(t.id) ?? false,
         hourlyRate: rate,
-        cost: h * rate,
-      };
-    })
-    .sort((a, b) => b.hoursSpent - a.hoursSpent);
+        cost: arredondar(h * rate),
+      });
+    }
+  }
+  activities.sort((a, b) => b.hoursSpent - a.hoursSpent);
 
   const peopleById = new Map(
     project.team.members.map((m) => [
@@ -73,10 +93,17 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     }
   }
 
+  for (const uid of trabalhadores) {
+    if (!peopleById.has(uid) && activities.some((a) => a.assigneeId === uid)) {
+      const p = await prisma.user.findUnique({ where: { id: uid }, select: { id: true, name: true, avatarColor: true, avatarUrl: true } });
+      if (p) peopleById.set(uid, { id: p.id, name: `${p.name} (outro núcleo)`, avatarColor: p.avatarColor, avatarUrl: p.avatarUrl });
+    }
+  }
+
   const resources = Array.from(peopleById.values()).map((u) => {
     const rate = rateByUser.get(u.id) ?? 0;
     const mine = activities.filter((a) => a.assigneeId === u.id);
-    const totalHours = mine.reduce((s, a) => s + a.hoursSpent, 0);
+    const totalHours = arredondar(mine.reduce((s, a) => s + a.hoursSpent, 0));
     return {
       userId: u.id,
       name: u.name,
@@ -84,7 +111,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       avatarUrl: u.avatarUrl,
       hourlyRate: rate,
       hoursSpent: totalHours,
-      cost: totalHours * rate,
+      cost: arredondar(totalHours * rate),
     };
   });
 

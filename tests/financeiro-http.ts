@@ -6,6 +6,8 @@ import { criarSeniorSimulado } from "../scripts/homologacao/senior-simulado";
 import { contaTeste, itemTeste, mudarCampo, dataTeste, boletoTeste } from "../scripts/homologacao/fixtures";
 import { montarRetornoSimulado } from "../src/lib/pagamentos/casarRetorno";
 import { identificacaoBeneficiarioBoleto } from "../src/lib/pagamentos/beneficiarioBoleto";
+import { atualizarVinculosOc } from "../src/lib/senior/vinculosOc";
+import { prisma as prismaDoApp } from "../src/lib/prisma";
 
 const dbUrl = new URL(process.env.DATABASE_URL ?? "");
 assert.ok(["localhost", "127.0.0.1"].includes(dbUrl.hostname) && dbUrl.pathname === "/consominas_gestao_itau_homologacao");
@@ -89,7 +91,12 @@ async function main() {
     const tituloConferencia = await criarItem();
     const oc = await db.aprovacaoSenior.create({data:{numOcp,codFil:"1",fornecedorCodigo:"999999",fornecedorNome:"TESTE DE CONFERENCIA",dataEmissao:dataTeste,valor:100,numApr:"0",situacaoAtual:"APR"}});
     ocIds.push(oc.id);
-    await db.tituloContasAPagar.update({where:{id:tituloConferencia.tituloId},data:{numOcp,filOcp:"1",codFpg:"18"}});
+    const {numTit:numTitConferencia} = await db.tituloContasAPagar.update({where:{id:tituloConferencia.tituloId},data:{numOcp,filOcp:"1",codFpg:"18"}});
+    // Vinculo OC x titulo (regra de 30/10/2026): so' o que a Senior registra (USU_NUMOCP do titulo ou NF da OC), copiado para
+    // VinculoOcSenior pela atualizacao em segundo plano. A Senior simulada passa a informar a OC no titulo e a mesma atualizacao
+    // roda aqui, sem esperar os 15 min; se o servidor refizer a tabela no meio, le a mesma resposta.
+    await fetch("http://127.0.0.1:3099/_controle",{method:"POST",body:JSON.stringify({ocDoTitulo:{CODFIL:"1",CODFOR:"999999",NUMTIT:numTitConferencia,USU_NUMOCP:numOcp}})});
+    assert.ok(await atualizarVinculosOc() >= 1, "A atualizacao nao trouxe o vinculo informado pela Senior simulada.");
     const mapa = await http(`/api/senior/aprovacoes/${numOcp}`);
     assert.equal(mapa.status,200); assert.equal(mapa.data.titulosVinculados[0].id,tituloConferencia.tituloId);
     passou("Modal recebe identificacao exata do titulo vinculado para consulta ao vivo");
@@ -99,7 +106,8 @@ async function main() {
     assert.equal(dadosConsulta.data.dados[0].conta.fonte,"cadastro");
     assert.equal(dadosConsulta.data.dados[0].conta.conta,"99999");
     const consultasConferencia = await (await fetch("http://127.0.0.1:3099/_controle")).json();
-    assert.ok(consultasConferencia.consultas.filter((s:string)=>s.includes("E501TCP")).every((s:string)=>s.includes("NUMTIT IN")),"Conferencia nao deve buscar todos os titulos de fornecedores.");
+    // A atualizacao de vinculos (USU_NUMOCP > 0) le de proposito todos os titulos com OC; a regra abaixo vale para a conferencia.
+    assert.ok(consultasConferencia.consultas.filter((s:string)=>s.includes("E501TCP") && !/USU_NUMOCP\s*>\s*0/i.test(s)).every((s:string)=>s.includes("NUMTIT IN")),"Conferencia nao deve buscar todos os titulos de fornecedores.");
     passou("Conferencia usa titulo atual e cadastro corretos com consulta restrita aos titulos pedidos");
     await modo("CONFERENCIA_SEM_FORMA");
     const semFormaTitulo = await http("/api/pagamentos-itau/dados-senior",{tituloIds:[tituloConferencia.tituloId],conferencia:true});
@@ -353,7 +361,8 @@ async function main() {
     await db.remessaPagamento.deleteMany({ where: { id: { in: remessaIds } } });
     await db.tituloContasAPagar.deleteMany({ where: { id: { in: tituloIds } } });
     await db.aprovacaoSenior.deleteMany({where:{id:{in:ocIds}}});
-    await db.$disconnect(); await senior.fechar();
+    await db.vinculoOcSenior.deleteMany({where:{chave:{startsWith:`H${stamp}`}}});
+    await db.$disconnect(); await prismaDoApp.$disconnect(); await senior.fechar();
   }
 }
 main().catch(e => { console.error(e.message); process.exitCode = 1; });

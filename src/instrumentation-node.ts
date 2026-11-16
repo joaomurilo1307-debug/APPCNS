@@ -4,10 +4,15 @@
 //
 // Liga os agendadores -- so' em producao, e nunca em homologacao/desenvolvimento:
 //   - Custo por Contrato e Medicao (CUSTOS_AUTO=0 desliga);
-//   - dossies de OC (DOSSIE_AUTO=0 desliga).
+//   - dossies de OC (DOSSIE_AUTO=0 desliga);
+//   - busca de titulos e OCs na Senior, no lugar do n8n + VPS (SENIOR_SYNC_AUTO=0 desliga).
 export async function iniciarAgendadores() {
   if (process.env.NODE_ENV !== "production") return;
   if (process.env.APP_ENV === "homologacao") return;
+  if (process.env.SENIOR_SYNC_AUTO !== "0") {
+    const { iniciarAgendadorSincronizacao } = await import("./lib/senior/sincronizacao/agendador");
+    iniciarAgendadorSincronizacao();
+  }
   if (process.env.CUSTOS_AUTO !== "0") {
     const { iniciarAgendadorCustos } = await import("./lib/custos/agendador");
     iniciarAgendadorCustos();

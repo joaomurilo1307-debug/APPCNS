@@ -11,11 +11,9 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  // metas: cada pessoa ve as que sao dela (atribuidas a ela ou a uma equipe dela) e as dos projetos que ela enxerga; so' o administrador ve todas
+  // metas: cada pessoa ve as que sao dela (atribuidas a ela ou a uma equipe dela) e as dos projetos que ela enxerga (inclusive o administrador, 02/11/2026)
   const u = session.user as any;
-  const visiveis = u.role === "ADMIN"
-    ? {}
-    : { OR: [{ assignedUsers: { some: { id: u.id } } }, { assignedTeam: { members: { some: { userId: u.id } } } }, { project: await visibleProjectWhere(u.id, u.role) }] };
+  const visiveis = { OR: [{ assignedUsers: { some: { id: u.id } } }, { assignedTeam: { members: { some: { userId: u.id } } } }, { project: await visibleProjectWhere(u.id, u.role) }] };
   const goals = await prisma.goal.findMany({
     where: { parentGoalId: null, contractGoalId: null, ...visiveis },
     include: {

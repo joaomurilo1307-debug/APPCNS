@@ -116,6 +116,38 @@ export function linhasDoPortfolio(contratos: ReadonlyArray<ContratoCusto>, f: Fi
     .sort((a, b) => b.total - a.total);
 }
 
+/**
+ * Mesma saida de `linhasDoContrato` (uma linha por conta financeira, com serie mensal), mas somando as contas de
+ * VARIOS contratos -- usada quando o filtro tem mais de 1 centro de custo (ex.: "todos ADM", um grupo de area, ou
+ * qualquer selecao arbitraria). Com 1 unico contrato o resultado e' identico ao de `linhasDoContrato`.
+ * Chave de uniao entre contratos: `codigo` (o codigo da conta no plano financeiro) quando existe; some para o nome
+ * (`contaFinanceira`) so' nos poucos casos sem codigo. `reembolsavel`/`grupoCodigo`/`grupoNome`/`inativa` da conta
+ * resultante vem do primeiro contrato em que ela aparece (sao atributos do plano de contas, nao do contrato: na
+ * pratica nao divergem entre contratos para a mesma conta).
+ */
+export function linhasDoPortfolioPorConta(contratos: ReadonlyArray<ContratoCusto>, f: Filtros, meses: ReadonlyArray<string>, busca = ""): LinhaConta[] {
+  const termo = busca.trim().toLowerCase();
+  const porConta = new Map<string, { conta: ContaDoContrato; serie: number[] }>();
+  for (const contrato of contratos) {
+    for (const c of contrato.contas) {
+      if (!contaPassa(c, f)) continue;
+      if (termo && !c.contaFinanceira.toLowerCase().includes(termo)) continue;
+      const chave = c.codigo != null ? `cod:${c.codigo}` : `nome:${c.contaFinanceira}`;
+      let e = porConta.get(chave);
+      if (!e) {
+        e = { conta: c, serie: meses.map(() => 0) };
+        porConta.set(chave, e);
+      }
+      const s = serieDaConta(c, meses);
+      s.forEach((v, i) => (e!.serie[i] += v));
+    }
+  }
+  return Array.from(porConta.values())
+    .map(({ conta, serie }) => ({ conta, serie, total: soma(serie) }))
+    .filter((l) => l.serie.some((v) => v !== 0))
+    .sort((a, b) => b.total - a.total);
+}
+
 /** Variacao percentual entre dois valores; null quando nao ha base de comparacao. */
 export function variacao(atual: number, anterior: number): number | null {
   if (!anterior) return null;

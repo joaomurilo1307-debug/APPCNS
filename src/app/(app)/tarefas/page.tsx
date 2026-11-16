@@ -29,10 +29,11 @@ export default function TarefasPage() {
     fetch("/api/projects")
       .then((r) => r.json())
       .then(setProjects);
-    fetch("/api/tasks?topLevel=true")
+    // tarefa-mae: as minhas; com um projeto escolhido, as tarefas-mae daquele projeto (para criar a subtarefa dentro dele)
+    fetch(`/api/tasks?topLevel=true${projectId ? `&projectId=${encodeURIComponent(projectId)}` : ""}`)
       .then((r) => r.json())
-      .then((data) => setTopLevelTasks(data.map((t: any) => ({ id: t.id, title: t.title }))));
-  }, [refreshKey]);
+      .then((data) => setTopLevelTasks(Array.isArray(data) ? data.map((t: any) => ({ id: t.id, title: t.title })) : []));
+  }, [refreshKey, projectId]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();

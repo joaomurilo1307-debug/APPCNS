@@ -8,7 +8,8 @@ import { useEffect, useMemo, useState } from "react";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 import { formatData, mesLongo, moeda } from "@/lib/custos/formato";
 
-export type AlvoDetalhe = { codccu: string; contrato: string; conta: string; competencia: string; valor: number; reembolsavel?: boolean; base?: "pagamento" | "competencia" };
+// `codccu` aceita 1 centro de custo ou uma lista (celula somada de varios contratos filtrados juntos).
+export type AlvoDetalhe = { codccu: string | string[]; contrato: string; conta: string; competencia: string; valor: number; reembolsavel?: boolean; base?: "pagamento" | "competencia" };
 
 type OcRelacionada = { numOcp: string; situacao: string; situacaoLabel: string; parcela: boolean; motivo: string };
 type LinhaDetalhe = {
@@ -69,12 +70,15 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
   const [ocAberta, setOcAberta] = useState<{ aprovacao: Aprovacao; codToNome: Record<string, string>; titulosVinculados?: TituloVinculado[]; semDadosDePagamento?: boolean } | "carregando" | null>(null);
   const [tituloAberto, setTituloAberto] = useState<DetalheTitulo | "carregando" | "erro" | null>(null);
 
+  const codccuChave = alvo ? (Array.isArray(alvo.codccu) ? alvo.codccu.join(",") : alvo.codccu) : "";
+  const codccuOrigem = alvo ? (Array.isArray(alvo.codccu) ? alvo.codccu[0] : alvo.codccu) : "";
+
   useEffect(() => {
     if (!alvo) return;
     setDados("carregando");
     setBusca("");
     let cancelado = false;
-    const params = new URLSearchParams({ codccu: alvo.codccu, contaFinanceira: alvo.conta, competencia: alvo.competencia, base: alvo.base ?? "pagamento" });
+    const params = new URLSearchParams({ codccu: codccuChave, contaFinanceira: alvo.conta, competencia: alvo.competencia, base: alvo.base ?? "pagamento" });
     fetch(`/api/custos-conta/detalhe?${params.toString()}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d) => !cancelado && setDados(d))
@@ -121,7 +125,7 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
     if (!alvo) return;
     setTituloAberto("carregando");
     try {
-      const params = new URLSearchParams({ numTit, codFor, codccuOrigem: alvo.codccu });
+      const params = new URLSearchParams({ numTit, codFor, codccuOrigem });
       const res = await fetch(`/api/custos-conta/detalhe/titulo?${params.toString()}`);
       if (!res.ok) throw new Error();
       setTituloAberto(await res.json());
@@ -148,7 +152,8 @@ export default function DetalheConta({ alvo, onFechar }: { alvo: AlvoDetalhe | n
                 {alvo.reembolsavel && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">Reembolsável</span>}
               </h2>
               <p className="truncate text-sm text-gray-500">
-                {alvo.contrato} <span className="text-gray-400">· CCU {alvo.codccu}</span>
+                {alvo.contrato}{" "}
+                <span className="text-gray-400">· {Array.isArray(alvo.codccu) ? `${alvo.codccu.length} centros de custo` : `CCU ${alvo.codccu}`}</span>
               </p>
             </div>
             <button onClick={onFechar} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Fechar">

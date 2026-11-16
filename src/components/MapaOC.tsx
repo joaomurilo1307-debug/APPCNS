@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { montarConferenciaPagamento } from "@/lib/pagamentos/conferenciaPagamento";
 import type { DadosSeniorDoTitulo } from "@/lib/senior/dadosPagamentoTitulos";
 import { codigoPeloNome, nomeConta } from "@/lib/custos/planoContas";
+import { sincronizarEAcompanhar } from "@/lib/senior/sincronizacao/cliente";
 
 // Modal com o descritivo completo de uma Ordem de Compra do Senior
 // (fornecedor, valor, rateio por centro de custo, alçada/níveis de
@@ -332,18 +333,14 @@ export default function MapaOC({
     return { ...t, codFpg: atual ? atual.codFpg : t.codFpg, formaPagamento: atual ? atual.formaPagamento : t.formaPagamento, formaConferida: !!atual };
   });
 
+  // 12/11/2026: busca as OCs na Senior agora e acompanha ate terminar (antes: disparava o n8n e esperava 15 s).
   function sincronizarAgora() {
     setSincronizando(true);
     setMsgSincronizacao(null);
-    fetch("/api/senior/aprovacoes/sincronizar-agora", { method: "POST" })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "Erro ao disparar sincronização");
-        setMsgSincronizacao("Disparado — atualizando em instantes...");
-        setTimeout(() => {
-          onAtualizado?.();
-          setMsgSincronizacao("Atualizado com o retrato mais recente do Senior.");
-        }, 15000);
+    sincronizarEAcompanhar(["ocs"], setMsgSincronizacao)
+      .then((r) => {
+        if (r.ok) onAtualizado?.();
+        setMsgSincronizacao(r.texto);
       })
       .catch((e) => setMsgSincronizacao(e.message))
       .finally(() => setSincronizando(false));
@@ -400,7 +397,7 @@ export default function MapaOC({
                 disabled={sincronizando}
                 className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
               >
-                {sincronizando ? "Sincronizando..." : "↻ Atualizar agora"}
+                {sincronizando ? "Buscando na Senior..." : "↻ Atualizar agora"}
               </button>
               {msgSincronizacao && <span className="text-[11px] text-gray-500">{msgSincronizacao}</span>}
             </div>

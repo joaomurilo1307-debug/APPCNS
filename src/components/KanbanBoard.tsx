@@ -13,6 +13,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import TaskDetailModal from "./TaskDetailModal";
 import Avatar from "./Avatar";
 import BotaoExcel from "./BotaoExcel";
+import { patchTarefa } from "@/lib/tarefaClient";
 import { useAtualizarAoVoltar } from "@/lib/atualizarAoVoltar";
 import type { AbaExcel } from "@/lib/exportarExcel";
 
@@ -157,11 +158,12 @@ export default function KanbanBoard({ projectId, canManage: canManageEquipeProp 
     if (!canModify(role, task, userId, souGestorDaEquipeDe(task))) return;
 
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t)));
-    await fetch(`/api/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
+    // concluir pede as horas dedicadas (Timesheet automatico); se a pessoa desistir ou o servidor recusar, o cartao volta para a coluna real
+    const r = await patchTarefa(task.id, { status: newStatus }, task.title);
+    if (!r.ok) {
+      if (!r.cancelado && r.erro) window.alert(r.erro);
+      load();
+    }
   }
 
   async function handleQuickDelete(taskId: string) {

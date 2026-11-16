@@ -2,6 +2,9 @@
 // No Code do workflow n8n "Gerar HTML do Dossiê" (Dossie OC SeniorX v6.4). ALTERADO em 29/10/2026: sai a secao "Validacoes"; o espelho fiscal simples e o aviso de
 // "sem espelho" sairam; no lugar ficam os marcadores COMPLEMENTO_OC e COMPLEMENTO_DANFE, trocados em gerar.ts por
 // complemento.ts (dados completos da OC, reembolso, sem nota, DANFE). Nao regenerar a partir do n8n sem refazer isso.
+// ALTERADO em 11/11/2026: Produtos, Servicos e Rateios (coluna Reembolsavel; rateio como fatia do item) viram o marcador
+// COMPLEMENTO_ITENS (itens.ts) e o Historico do Fornecedor (3 ultimos pagamentos no contas a pagar) vira COMPLEMENTO_HISTORICO
+// (historico.ts); o alerta "sem historico" do fluxo antigo sai, porque o historico agora vem de outra fonte.
 // Globais do n8n: $input, $ (como $('Outro no')), $json e items (= $input.all()).
 export default async function ($input, $, $json) {
 // ============================================================
@@ -379,7 +382,6 @@ selosSituacao.push(
 
 const produtos = arr(dados.produtos);
 const servicos = arr(dados.servicos);
-const rateios = arr(dados.rateios);
 
 const totalProdutos = produtos.reduce(
   (t, p) => t + num(positivo(p.valores?.liquido, p.valores?.original, p.valores?.bruto, p.valorTotal)),
@@ -414,103 +416,6 @@ const valorOC = num(
     totalProdutos + totalServicos,
   ),
 );
-
-// ============================================================
-// PRODUTOS
-// ============================================================
-
-const linhasProdutos = produtos.length
-  ? produtos
-      .map((item) => {
-        const p = obj(item.produto);
-        const q = obj(item.quantidades);
-        const v = obj(item.valores);
-        return [
-          '<tr>',
-          `<td>${esc(coalesce(item.sequencia, '-'))}</td>`,
-          `<td>${esc(coalesce(p.codigo, item.codigo))}</td>`,
-          `<td>${esc(coalesce(p.descricao, item.descricao))}</td>`,
-          `<td>${esc(coalesce(item.unidade, p.unidade))}</td>`,
-          `<td class="num">${esc(
-            quantidade(coalesce(q.pedida, q.original, q.aberta, item.quantidade)),
-          )}</td>`,
-          `<td class="num">${esc(moeda(coalesce(v.unitario, item.valorUnitario)))}</td>`,
-          `<td class="num">${esc(
-            moeda(positivo(v.liquido, v.original, v.bruto, item.valorTotal)),
-          )}</td>`,
-          '</tr>',
-        ].join('');
-      })
-      .join('')
-  : linhaVazia(7, 'Nenhum produto encontrado.');
-
-// ============================================================
-// SERVIÇOS
-// ============================================================
-
-const linhasServicos = servicos.length
-  ? servicos
-      .map((item) => {
-        const s = obj(item.servico);
-        const q = obj(item.quantidades);
-        const v = obj(item.valores);
-        return [
-          '<tr>',
-          `<td>${esc(coalesce(item.sequencia, '-'))}</td>`,
-          `<td>${esc(coalesce(s.codigo, item.codigo))}</td>`,
-          `<td>${esc(coalesce(s.descricao, item.descricao))}</td>`,
-          `<td>${esc(coalesce(item.unidade, s.unidade))}</td>`,
-          `<td class="num">${esc(
-            quantidade(coalesce(q.pedida, q.original, q.aberta, item.quantidade)),
-          )}</td>`,
-          `<td class="num">${esc(moeda(coalesce(v.unitario, item.valorUnitario)))}</td>`,
-          `<td class="num">${esc(
-            moeda(positivo(v.liquidoServico, v.liquido, v.original, v.bruto, item.valorTotal)),
-          )}</td>`,
-          '</tr>',
-        ].join('');
-      })
-      .join('')
-  : linhaVazia(7, 'Nenhum serviço encontrado.');
-
-// ============================================================
-// RATEIOS
-// ============================================================
-
-const linhasRateios = rateios.length
-  ? rateios
-      .map((item) => {
-        const v = obj(item.valores);
-        const projeto = obj(item.projeto);
-        const temProjeto = num(projeto.numero) > 0;
-        return [
-          '<tr>',
-          `<td>${esc(coalesce(item.sequencia, '-'))}</td>`,
-          `<td>${esc(porExtenso(item.centroCusto))}</td>`,
-          `<td>${esc(porExtenso(item.contaFinanceira))}</td>`,
-          `<td>${
-            temProjeto
-              ? esc(`${projeto.numero} / ${coalesce(projeto.fase, 0)}`)
-              : '-'
-          }</td>`,
-          `<td class="num">${esc(
-            percentual(coalesce(v.percentualRateio, v.percentualConta, item.percentual)),
-          )}</td>`,
-          `<td class="num">${esc(
-            moeda(
-              positivo(
-                v.valorRateado,
-                v.valorConta,
-                item.valor,
-                (num(coalesce(v.percentualRateio, v.percentualConta, item.percentual)) / 100) * valorOC,
-              ),
-            ),
-          )}</td>`,
-          '</tr>',
-        ].join('');
-      })
-      .join('')
-  : linhaVazia(6, 'Nenhum rateio encontrado.');
 
 // ============================================================
 // APROVAÇÕES
@@ -559,78 +464,6 @@ const linhasAprovacoes = niveisAprovacao.length
       })
       .join('')
   : linhaVazia(6, 'Nenhuma aprovação encontrada.');
-
-// ============================================================
-// HISTÓRICO DO FORNECEDOR
-// ============================================================
-
-const historicoFornecedor = obj(dados.historicoFornecedor);
-const comprasHistorico = arr(
-  coalesce(
-    historicoFornecedor.compras,
-    historicoFornecedor.historicoPagamentoFornecedor,
-  ) || [],
-);
-const indicadores = obj(historicoFornecedor.indicadoresFornecedor);
-
-const historicoQuantidade = coalesce(
-  indicadores.quantidadeComprasAnalisadas,
-  indicadores.quantidadePagamentosAnalisados,
-  historicoFornecedor.resumo?.quantidadeTitulos,
-  comprasHistorico.length,
-);
-
-const historicoPrazoMedio = coalesce(
-  indicadores.prazoMedioPagamentoDias,
-  indicadores.prazoMedioDias,
-  indicadores.prazoMedio,
-);
-
-const historicoLiquidacao = coalesce(
-  indicadores.percentualLiquidacao,
-  indicadores.liquidacao,
-);
-
-const historicoClassificacao = coalesce(
-  indicadores.classificacao,
-  indicadores.status,
-);
-
-const linhasHistorico = comprasHistorico.length
-  ? comprasHistorico
-      .map((compra) => {
-        const nf = obj(compra.notaFiscal);
-        const titulo = obj(compra.titulo);
-        const pagamento = obj(compra.pagamento);
-        const prazo = coalesce(
-          compra.prazoPagamentoDias,
-          compra.prazoDias,
-          pagamento.prazoDias,
-        );
-        return [
-          '<tr>',
-          `<td>${esc(coalesce(compra.ordemCompra, compra.numeroOC, compra.oc))}</td>`,
-          `<td>${esc(dataBR(coalesce(compra.emissao, compra.data)))}</td>`,
-          `<td>${esc(coalesce(nf.numero, compra.numeroNota, titulo.numero))}</td>`,
-          `<td>${esc(coalesce(nf.serie, compra.serie, titulo.tipo))}</td>`,
-          `<td class="num">${esc(moeda(coalesce(compra.valor, compra.valorTotal)))}</td>`,
-          `<td>${esc(
-            dataBR(
-              coalesce(
-                compra.dataPagamento,
-                pagamento.data,
-                compra.ultimoPagamento,
-              ),
-            ),
-          )}</td>`,
-          `<td class="num">${
-            prazo === null ? '-' : esc(`${num(prazo)} dias`)
-          }</td>`,
-          '</tr>',
-        ].join('');
-      })
-      .join('')
-  : linhaVazia(7, 'Nenhuma compra anterior encontrada.');
 
 // ============================================================
 // DOCUMENTOS FISCAIS
@@ -755,7 +588,9 @@ const linhasMovimentacoes = movimentacoes.length
 // ALERTAS (a secao de validacoes foi retirada do dossie em 29/10/2026)
 // ============================================================
 
-const alertas = arr(dados.alertas);
+// O historico do fornecedor saiu do fluxo (complemento: historico.ts); o alerta "sem historico" que o fluxo calcula com
+// a regra antiga contradiria a tabela nova.
+const alertas = arr(dados.alertas).filter((a) => String(coalesce(a?.codigo, a?.tipo) || '') !== 'SEM_HISTORICO_PAGAMENTO_FORNECEDOR');
 
 const linhasAlertas = alertas.length
   ? alertas
@@ -892,23 +727,7 @@ const html = `<!DOCTYPE html>
 
 <!--COMPLEMENTO_OC-->
 
-<h2>Produtos</h2>
-<table>
-<thead><tr><th>Seq.</th><th>Código</th><th>Descrição</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th></tr></thead>
-<tbody>${linhasProdutos}</tbody>
-</table>
-
-<h2>Serviços</h2>
-<table>
-<thead><tr><th>Seq.</th><th>Código</th><th>Descrição</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th></tr></thead>
-<tbody>${linhasServicos}</tbody>
-</table>
-
-<h2>Rateios</h2>
-<table>
-<thead><tr><th>Seq.</th><th>Centro de Custo</th><th>Conta Financeira</th><th>Projeto</th><th>Percentual</th><th>Valor</th></tr></thead>
-<tbody>${linhasRateios}</tbody>
-</table>
+<!--COMPLEMENTO_ITENS-->
 
 <h2>Aprovações</h2>
 <table>
@@ -916,25 +735,7 @@ const html = `<!DOCTYPE html>
 <tbody>${linhasAprovacoes}</tbody>
 </table>
 
-<h2>Histórico do Fornecedor</h2>
-<div class="historico-resumo">
-<div class="historico-card"><div class="rotulo">Compras analisadas</div><div class="valor">${esc(
-  historicoQuantidade === null ? '0' : historicoQuantidade,
-)}</div></div>
-<div class="historico-card"><div class="rotulo">Prazo médio</div><div class="valor">${
-  historicoPrazoMedio === null ? '&mdash;' : esc(`${num(historicoPrazoMedio)} dias`)
-}</div></div>
-<div class="historico-card"><div class="rotulo">Liquidação</div><div class="valor">${
-  historicoLiquidacao === null ? '&mdash;' : esc(percentual(historicoLiquidacao))
-}</div></div>
-<div class="historico-card"><div class="rotulo">Classificação</div><div class="valor">${
-  historicoClassificacao === null ? '&mdash;' : esc(historicoClassificacao)
-}</div></div>
-</div>
-<table>
-<thead><tr><th>OC</th><th>Data</th><th>NF</th><th>Série</th><th>Valor</th><th>Pagamento</th><th>Prazo</th></tr></thead>
-<tbody>${linhasHistorico}</tbody>
-</table>
+<!--COMPLEMENTO_HISTORICO-->
 
 <h2>Documentos Fiscais</h2>
 <table>
@@ -968,7 +769,7 @@ ${
 }
 <!--COMPLEMENTO_DANFE-->
 
-<div class="rodape">Documento gerado automaticamente pelo GERAR_HTML_DOSSIE v6.3.</div>
+<div class="rodape">Documento gerado automaticamente pelo GERAR_HTML_DOSSIE v6.4.</div>
 
 </body>
 </html>`;
@@ -1002,7 +803,7 @@ return [
       },
       meta: {
         etapa: 'GERAR_HTML_DOSSIE',
-        versao: '6.3',
+        versao: '6.4',
         alertasOmitidos: ocQuitada,
       },
     },

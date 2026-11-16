@@ -19,7 +19,6 @@ const ATTENDEE_SELECT = {
 } as const;
 
 async function canEditEvent(userId: string, role: string, event: { creatorId: string; projectId: string | null }) {
-  if (role === "ADMIN") return true;
   if (event.creatorId === userId) return true;
   if (!event.projectId) return false;
   const project = await prisma.project.findUnique({ where: { id: event.projectId }, select: { teamId: true } });

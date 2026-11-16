@@ -45,7 +45,8 @@ async function main() {
       await db.custoContaFinanceira.create({ data: { codccu, contrato: contrato.nome, contaFinanceira: "Combustível", competencia: new Date("2026-08-01T00:00:00Z"), valor: i ? 200 : 1000 } });
     }
     syncId = (await db.atualizacaoCusto.create({ data: { status: "OK", finalizadoEm: new Date(), disparadoPor: "HOMOLOGACAO-CONTRATOS-" + stamp } })).id;
-    teamId = (await db.team.create({ data: { name: "EQUIPE FICTICIA " + stamp, codccu: ccus[0] } })).id;
+    // Desde 02/11/2026 nem o Administrador gere equipe alheia: a equipe fictícia nasce com ele como gestor.
+    teamId = (await db.team.create({ data: { name: "EQUIPE FICTICIA " + stamp, codccu: ccus[0], members: { create: [{ userId: adminId, role: "GESTOR" }] } } })).id;
     const password = process.env.HOMOLOGACAO_PASSWORD!;
     const reader = await db.user.create({ data: { email: `consulta-${stamp}@example.invalid`, name: "CONSULTA FICTICIA", role: "VISUALIZADOR", passwordHash: await bcrypt.hash(password, 10), acessosCentroCusto: { create: { codccu: ccus[0], area: "AMBOS" } } } });
     userIds.push(reader.id);

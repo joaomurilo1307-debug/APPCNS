@@ -77,6 +77,9 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   // no backend (canModifyTaskScoped) mas nao aqui no front.
   const souGestorDaEquipe = !!project?.team.members.some((m) => m.user.id === myUserId && m.role === "GESTOR");
   const canManage = role === "ADMIN" || role === "GESTOR_PROJETO" || souGestorDaEquipe;
+  const [editandoCc, setEditandoCc] = useState(false);
+  const [ccOpcoes, setCcOpcoes] = useState<{ codccu: string; nome: string }[]>([]);
+  const [ccEscolhido, setCcEscolhido] = useState("");
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [nucleosList, setNucleosList] = useState<{ id: string; name: string }[]>([]);
   const [peopleList, setPeopleList] = useState<PessoaOpcao[]>([]);
@@ -111,6 +114,22 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       predecessorLinks: { id: string; predecessorId: string; type: "FS" | "SS" | "FF" | "SF"; lagDays: number; predecessor: { id: string; title: string } }[];
     }[]
   >([]);
+
+  async function abrirEdicaoCc() {
+    setEditandoCc(true);
+    setCcEscolhido(project?.contrato?.codccu ?? "");
+    if (ccOpcoes.length === 0) {
+      const r = await fetch("/api/demandas/opcoes");
+      if (r.ok) setCcOpcoes((await r.json()).centrosParaProjeto ?? []);
+    }
+  }
+  async function salvarCc() {
+    if (!project) return;
+    const r = await fetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ codccu: ccEscolhido || null }) });
+    if (!r.ok) { window.alert((await r.json().catch(() => ({}))).error ?? "Não foi possível salvar o centro de custo."); return; }
+    setEditandoCc(false);
+    await load();
+  }
 
   async function load() {
     const res = await fetch(`/api/projects/${params.id}`);
@@ -228,8 +247,24 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           <p className="text-sm text-gray-500">
             {project.team.name} · Responsável: {project.owner.name}
             {project.approver && ` · Aprovador: ${project.approver.name} (${project.approvalStatus})`}
-            {project.contrato && ` · Contrato: CCU ${project.contrato.codccu} · ${project.contrato.nome}`}
+            {project.contrato && ` · Centro de custo: ${project.contrato.codccu} · ${project.contrato.nome}`}
           </p>
+          {canManage && (
+            <div className="mt-1 text-[13px]">
+              {!editandoCc ? (
+                <button type="button" onClick={abrirEdicaoCc} className="text-brand hover:underline">{project.contrato ? "Alterar centro de custo" : "Definir centro de custo (as horas do Timesheet precisam dele)"}</button>
+              ) : (
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  <select value={ccEscolhido} onChange={(e) => setCcEscolhido(e.target.value)} aria-label="Centro de custo do projeto" className="rounded-md border border-gray-300 px-2 py-1 text-sm">
+                    <option value="">Sem centro de custo</option>
+                    {ccOpcoes.map((c) => <option key={c.codccu} value={c.codccu}>{c.codccu} · {c.nome}</option>)}
+                  </select>
+                  <button type="button" onClick={salvarCc} className="rounded-md bg-brand px-3 py-1 text-sm font-medium text-white hover:bg-brand-dark">Salvar</button>
+                  <button type="button" onClick={() => setEditandoCc(false)} className="text-sm text-gray-500 hover:underline">Cancelar</button>
+                </span>
+              )}
+            </div>
+          )}
           <div className="mt-2 flex items-center gap-3">
             <SeloSaude saude={project.saude} />
             <div className="w-40">

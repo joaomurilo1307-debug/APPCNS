@@ -7,7 +7,6 @@ import { rescheduleAndPersist } from "@/lib/reschedule";
 import { z } from "zod";
 
 async function canManageSchedule(userId: string, role: string, task: { projectId: string | null }) {
-  if (role === "ADMIN") return true;
   if (!task.projectId) return role === "GESTOR_PROJETO";
   const project = await prisma.project.findUnique({ where: { id: task.projectId }, select: { teamId: true } });
   if (!project) return false;

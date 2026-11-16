@@ -4,7 +4,6 @@ import { authOptions } from "@/lib/auth";
 import { negarSeSoConsulta } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { canManageTeam, nucleoIdsQueGere, visibleProjectWhere } from "@/lib/permissions";
-import { contratosDoUsuario } from "@/lib/demandas";
 import { nomeLivreDeEquipe, pessoasValidas } from "@/lib/pessoas";
 import { computePercentComplete } from "@/lib/progress";
 import { saudeDoProjeto } from "@/lib/projetos/saude";
@@ -25,8 +24,9 @@ export async function GET() {
     where = { clients: { some: { userId } } };
   } else if (role === "APROVADOR") {
     const base = await visibleProjectWhere(userId, role);
-    where = Object.keys(base).length === 0 ? {} : { OR: [...(base.OR ?? [base]), { approverId: userId }] };
-  } else if (role !== "ADMIN") {
+    where = { OR: [...(base.OR ?? [base]), { approverId: userId }] };
+  } else {
+    // todos os papeis, inclusive ADMIN: so' os projetos da propria pessoa e da equipe dela (02/11/2026)
     where = await visibleProjectWhere(userId, role);
   }
 
@@ -93,6 +93,9 @@ export async function POST(req: Request) {
   const parsed = createProjectSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
   const { pessoas, codccu, nucleoId, contractGoalIds = [], teamId: teamIdPedido, ...resto } = parsed.data;
+  // Centro de custo obrigatorio (02/11/2026): e' nele que caem as horas do Timesheet automatico e o resultado do contrato. Projeto de plano de acao
+  // (rota /api/contract-goals/[id]/plan) e o projeto de teste do sistema nao passam por aqui.
+  if (!codccu) return NextResponse.json({ error: "Escolha o centro de custo do projeto (contrato, administrativo ou proposta).", code: "CENTRO_DE_CUSTO_OBRIGATORIO" }, { status: 422 });
 
   if (teamIdPedido && !(await canManageTeam(userId, role, teamIdPedido))) {
     return NextResponse.json({ error: "Só o gestor da equipe ou um admin pode criar projetos nela" }, { status: 403 });
@@ -101,8 +104,7 @@ export async function POST(req: Request) {
     const contrato = await prisma.contrato.findUnique({ where: { codccu }, select: { codccu: true, acompanharResultados: true } });
     if (!contrato) return NextResponse.json({ error: "Contrato não encontrado" }, { status: 404 });
     if (!contrato.acompanharResultados) return NextResponse.json({ error: "Este contrato está fora do acompanhamento para novas iniciativas." }, { status: 422 });
-    const alvo = await contratosDoUsuario({ id: userId, role });
-    if (!alvo.todos && !alvo.ccus.has(codccu)) return NextResponse.json({ error: "Você não tem acesso a este contrato" }, { status: 403 });
+    // Ligar o projeto a um centro de custo nao exige acesso aos dados dele (02/11/2026): e' o que leva as horas do Timesheet automatico para o centro certo.
   }
   if (nucleoId && role !== "ADMIN" && !(await nucleoIdsQueGere(userId)).includes(nucleoId)) {
     return NextResponse.json({ error: "Só quem gere o núcleo associa projetos a ele" }, { status: 403 });

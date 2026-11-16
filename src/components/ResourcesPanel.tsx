@@ -20,6 +20,8 @@ type Activity = {
   assigneeId: string | null;
   assigneeName: string;
   hoursSpent: number;
+  daysWorked?: number;
+  declared?: boolean;
   hourlyRate: number;
   cost: number;
 };
@@ -83,8 +85,9 @@ export default function ResourcesPanel({ projectId, canManage }: { projectId: st
         <div className="border-b border-gray-100 p-4">
           <h3 className="text-sm font-semibold">Recursos (pessoas)</h3>
           <p className="text-xs text-gray-400">
-            Horas gastas vêm do tempo real entre início e conclusão de cada tarefa. Defina o valor/hora de cada
-            pessoa para calcular o custo.
+            Horas gastas = esforço real da pessoa nas tarefas em andamento: só dias úteis (sem ausências e feriados) e, quando ela
+            tem várias tarefas ao mesmo tempo, o dia é dividido entre elas (nunca conta em dobro). Se a pessoa informou as horas
+            dedicadas, valem as informadas. Defina o valor/hora de cada pessoa para calcular o custo.
           </p>
         </div>
         <table className="w-full text-left text-sm">
@@ -140,7 +143,7 @@ export default function ResourcesPanel({ projectId, canManage }: { projectId: st
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="border-b border-gray-100 p-4">
           <h3 className="text-sm font-semibold">Custo por atividade</h3>
-          <p className="text-xs text-gray-400">Horas gastas × valor/hora do responsável, por tarefa.</p>
+          <p className="text-xs text-gray-400">Horas gastas × valor/hora de quem trabalhou, por tarefa. “estimado” = a pessoa ainda não informou as horas dedicadas.</p>
         </div>
         <table className="w-full text-left text-sm">
           <thead>
@@ -153,10 +156,13 @@ export default function ResourcesPanel({ projectId, canManage }: { projectId: st
           </thead>
           <tbody>
             {activities.map((a) => (
-              <tr key={a.taskId} className="border-b border-gray-50">
+              <tr key={`${a.taskId}-${a.assigneeId}`} className="border-b border-gray-50">
                 <td className="px-4 py-2">{a.title}</td>
                 <td className="px-4 py-2 text-gray-500">{a.assigneeName}</td>
-                <td className="px-4 py-2">{fmtHours(a.hoursSpent)}</td>
+                <td className="px-4 py-2">
+                  {fmtHours(a.hoursSpent)}
+                  {a.hoursSpent > 0 && a.declared === false && <span className="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">estimado</span>}
+                </td>
                 <td className="px-4 py-2 font-medium">{fmtMoney(a.cost)}</td>
               </tr>
             ))}

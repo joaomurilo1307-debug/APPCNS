@@ -36,6 +36,7 @@ async function main() {
   const admin = client();
   assert.deepEqual((await admin.request("/api/homologacao/ambiente")).data, { ambiente: "homologacao", senior: "SIMULADA", baseTeste: true });
   await admin.login(process.env.HOMOLOGACAO_LOGIN!, process.env.HOMOLOGACAO_PASSWORD!);
+  await db.contrato.create({ data: { codccu: costCcu, nome: prefix + " contrato do plano", status: "ATIVO" } });
   const reader = await db.user.create({ data: { name: prefix + " leitor", email: prefix.toLowerCase() + "@example.invalid", role: "COLABORADOR", passwordHash: await bcrypt.hash(process.env.HOMOLOGACAO_PASSWORD!, 10) } }); users.push(reader.id);
   const outside = client(); await outside.login(reader.email, process.env.HOMOLOGACAO_PASSWORD!);
   const global = async (name: string, assigned = false) => {
@@ -61,7 +62,9 @@ async function main() {
   assert.ok(Math.abs((await admin.request("/api/goals/" + parent)).data.computedCurrentValue - 60) < 1e-7);
   success("indicadores diferentes compõem60% da meta global com os pesos corretos");
   assert.equal((await admin.request(`/api/contract-goals/${a.data.id}/plan`, { mode: "prepare", name: prefix + " plano" })).status, 200);
-  const project = await admin.request(`/api/contract-goals/${a.data.id}/plan`, { mode: "create", name: prefix + " projeto" }); assert.equal(project.status, 200, JSON.stringify(project.data)); projectIds.push(project.data.projectId);
+  let project = await admin.request(`/api/contract-goals/${a.data.id}/plan`, { mode: "create", name: prefix + " projeto" }); assert.equal(project.status, 422, "Meta de setor sem contrato exige o centro de custo do projeto."); assert.equal(project.data.code, "CENTRO_DE_CUSTO_OBRIGATORIO");
+  assert.equal((await admin.request(`/api/contract-goals/${a.data.id}/plan`, { mode: "create", name: prefix + " projeto", codccu: "99999999999" })).status, 404);
+  project = await admin.request(`/api/contract-goals/${a.data.id}/plan`, { mode: "create", name: prefix + " projeto", codccu: costCcu }); assert.equal(project.status, 200, JSON.stringify(project.data)); projectIds.push(project.data.projectId);
   assert.equal((await admin.request(`/api/contract-goals/${a.data.id}`, { operation: "action", title: prefix + " executar melhoria" }, "PATCH")).status, 200);
   const activity = (await admin.request(`/api/contract-goals/${a.data.id}`)).data.actions[0];
   assert.equal((await admin.request(`/api/contract-goals/${a.data.id}`, { operation: "updateAction", actionId: activity.id, status: "CONCLUIDA" }, "PATCH")).status, 200);
@@ -70,7 +73,7 @@ async function main() {
   await db.contractGoal.update({ where: { id: a.data.id }, data: { planApprovalStatus: "APROVADO", planApprovedAt: new Date() } });
   const completedPlan = (await admin.request(`/api/contract-goals/${a.data.id}`)).data;
   assert.equal(completedPlan.executionFraction, 1); assert.equal(completedPlan.fraction, 0.5);
-  const extraProject = await admin.request("/api/projects", { name: prefix + " contribuição adicional", contractGoalIds: [a.data.id] }); assert.equal(extraProject.status, 201, JSON.stringify(extraProject.data)); projectIds.push(extraProject.data.id);
+  const extraProject = await admin.request("/api/projects", { name: prefix + " contribuição adicional", codccu: costCcu, contractGoalIds: [a.data.id] }); assert.equal(extraProject.status, 201, JSON.stringify(extraProject.data)); projectIds.push(extraProject.data.id);
   summary = (await admin.request("/api/sector-goals")).data.goals.find((goal: any) => goal.id === parent);
   assert.equal(summary.contributionCount, 2); assert.ok(Math.abs(summary.weightedFraction - 0.6) < 1e-7);
   success("referenciar a mesma meta em vários projetos não duplica sua contribuição");
@@ -90,7 +93,7 @@ async function main() {
   await db.custoContaFinanceira.create({ data: { codccu: costCcu, contrato: prefix, contaFinanceira: "EPI E EPC", competencia: new Date("2026-09-01T00:00:00Z"), valor: 900 } });
   syncId = (await db.atualizacaoCusto.create({ data: { status: "OK", finalizadoEm: new Date(), disparadoPor: prefix } })).id;
   const financial = await child(protectedParent, 100, "financeira", { source: "CUSTO", sourceCcu: costCcu, sourceAccount: "EPI E EPC", unit: "R$", baselineValue: 1000, targetValue: 800, periodStart: "2026-09", periodEnd: "2026-09" }); assert.equal(financial.status, 201, JSON.stringify(financial.data));
-  const financialProject = await admin.request(`/api/contract-goals/${financial.data.id}/plan`, { mode: "create", name: prefix + " financeiro", peopleIds: [reader.id] }); assert.equal(financialProject.status, 200, JSON.stringify(financialProject.data)); projectIds.push(financialProject.data.projectId);
+  const financialProject = await admin.request(`/api/contract-goals/${financial.data.id}/plan`, { mode: "create", name: prefix + " financeiro", peopleIds: [reader.id], codccu: costCcu }); assert.equal(financialProject.status, 200, JSON.stringify(financialProject.data)); projectIds.push(financialProject.data.projectId);
   const protectedSummary = (await outside.request("/api/sector-goals")).data.goals.find((goal: any) => goal.id === protectedParent);
   assert.equal(protectedSummary.weightedFraction, null); assert.equal(protectedSummary.unevaluatedWeight, 100);
   assert.equal(protectedSummary.contributions[0].fraction, null); assert.equal(protectedSummary.contributions[0].weightedFraction, null);
@@ -108,6 +111,7 @@ main().catch((error) => { console.error(error.message); process.exitCode = 1; })
   await db.team.deleteMany({ where: { id: { in: teams.map((team) => team.teamId) } } });
   await db.user.deleteMany({ where: { id: { in: users } } });
   await db.custoContaFinanceira.deleteMany({ where: { codccu: costCcu } });
+  await db.contrato.deleteMany({ where: { codccu: costCcu } });
   if (syncId) await db.atualizacaoCusto.delete({ where: { id: syncId } });
   await db.auditLog.deleteMany({ where: { entityType: "ContractGoal", entityId: { in: childIds } } });
   await db.$disconnect();

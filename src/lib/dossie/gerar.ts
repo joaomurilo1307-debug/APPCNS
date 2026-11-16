@@ -10,6 +10,7 @@ import { NOS } from "./nos/index.js";
 import { emFilaSenior } from "@/lib/senior/getDbInfo";
 import { chaveDaOc, registrarFalha, salvarDossie } from "./salvar";
 import { aplicarComplemento, codigosDoGrupoDoFornecedor, coletarComplemento, montarHtmlComplemento } from "./complemento";
+import { assinaturaManual } from "./versao";
 
 const URL_SENIOR = "https://web01s1p.seniorcloud.com.br:30901/g5-senior-services/sapiens_Synccom_senior_g5_co_ger_db";
 
@@ -71,12 +72,19 @@ export async function montarDossie(oc: { codEmp?: number; codFil: number; numOcp
   if (typeof gerador.html !== "string" || gerador.html.length < 200 || gerador.error) {
     throw new Error(`Nao foi possivel montar o dossie${gerador.error ? `: ${gerador.error}` : " (HTML vazio)"}.`);
   }
-  // Complemento: dados completos da OC, aviso de reembolso/sem NF e DANFE (ver complemento.ts). Parte do dossie, nao opcional.
+  // Complemento: dados completos da OC, itens/rateio com "Reembolsavel", historico de pagamentos, aviso de reembolso/sem NF
+  // e DANFE ou fatura de locacao (ver complemento.ts). Parte do dossie, nao opcional.
   const final: any = estado.get("Consolidar Dossiê Final")?.[0]?.[0]?.json ?? {};
   const complemento = await coletarComplemento(
     { codEmp: oc.codEmp ?? 1, codFil: oc.codFil, numOcp: oc.numOcp },
-    { produtos: final.produtos ?? [], servicos: final.servicos ?? [], documentosFiscais: final.documentosFiscais ?? [] },
-    deps.consultar
+    {
+      produtos: final.produtos ?? [],
+      servicos: final.servicos ?? [],
+      documentosFiscais: final.documentosFiscais ?? [],
+      titulos: final.financeiro?.titulos ?? [],
+    },
+    deps.consultar,
+    { fornecedoresDoGrupo: grupo }
   );
   const html = aplicarComplemento(gerador.html, montarHtmlComplemento(complemento));
   const nomeArquivo: string =
@@ -102,7 +110,7 @@ let fila: Promise<unknown> = Promise.resolve();
 /**
  * Gera e grava. Nunca lanca: falha vira status ERRO com o motivo (e o PDF anterior, se houver, e' mantido).
  * `extras.assinatura`/`extras.origem`: usados pela geracao automatica (lib/dossie/automatico.ts) para lembrar em que
- * estado da OC o PDF foi feito; o botao manual nao informa (a assinatura fica vazia).
+ * estado da OC o PDF foi feito; o botao manual nao informa (grava so' a versao do conteudo, ver versao.ts).
  */
 export function gerarEGravar(
   oc: { codEmp?: number; codFil: number; numOcp: number },
@@ -121,7 +129,8 @@ export function gerarEGravar(
           status: "PUBLICADO",
           motivo: null,
           origem: extras.origem ?? "APPCNS",
-          assinatura: extras.assinatura ?? null,
+          // Botao manual: sem o estado da OC, grava so' a versao do conteudo -- a geracao automatica adota em vez de refazer.
+          assinatura: extras.assinatura ?? assinaturaManual(),
         },
         { bytes: pdf, nome: nomeArquivo }
       );

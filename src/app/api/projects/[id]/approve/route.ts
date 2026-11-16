@@ -19,9 +19,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const project = await prisma.project.findUnique({ where: { id: params.id } });
   if (!project) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
-  const canApprove = role === "ADMIN" || (role === "APROVADOR" && project.approverId === userId);
+  // Aprovacao e' relacionada a pessoa: so' decide quem foi designado aprovador do projeto, inclusive administrador (02/11/2026)
+  const canApprove = (role === "ADMIN" || role === "APROVADOR") && project.approverId === userId;
   if (!canApprove) {
-    return NextResponse.json({ error: "Só o aprovador designado (ou Admin) pode decidir" }, { status: 403 });
+    return NextResponse.json({ error: "Só o aprovador designado do projeto pode decidir" }, { status: 403 });
   }
 
   const body = await req.json();

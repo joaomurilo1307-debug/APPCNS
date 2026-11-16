@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { pendenciasOc } from "@/lib/senior/pendenciasOc";
 import MapaOC, { type Aprovacao, type TituloVinculado } from "@/components/MapaOC";
 import DossiesAutomaticos from "@/components/DossiesAutomaticos";
+import EditarDossie from "@/components/EditarDossie";
 import BotaoExcel from "@/components/BotaoExcel";
 import type { AbaExcel } from "@/lib/exportarExcel";
 
@@ -21,6 +22,7 @@ type Oc = {
   sitApr: string;
   numTit: string | null;
   tituloGeradoAqui: boolean;
+  temTitulo: boolean; // false = o numero digitado na OC (USU_NUMTIT) nao existe de verdade no Senior
   numNfc: string | null;
   descricao: string | null;
   dossieId: string | null;
@@ -212,7 +214,7 @@ export default function ConferenciaOcPage() {
     const t = busca.trim().toLowerCase();
     return ocs
       .filter((o) => !sitSel.length || sitSel.includes(o.sitApr))
-      .filter((o) => !o.numTit) // so' OCs sem titulo
+      .filter((o) => !o.temTitulo) // so' OCs sem titulo (filtro da Renata, 20/10); numero digitado na OC que nao existe no Senior conta como sem titulo
       .filter((o) => !t || o.numOcp.includes(t) || (o.fornecedorNome ?? "").toLowerCase().includes(t) || (o.numTit ?? "").toLowerCase().includes(t));
   }, [ocs, busca, sitSel]);
 
@@ -363,7 +365,16 @@ export default function ConferenciaOcPage() {
                 </td>
                 <td className="px-3 py-1.5 text-gray-600">{o.nfs.length ? o.nfs.join(", ") : <span className="text-gray-300">—</span>}</td>
                 <td className="px-3 py-1.5">
-                  {o.numTit ? (
+                  {o.numTit && !o.temTitulo ? (
+                    <button
+                      onClick={() => conferir(o)}
+                      disabled={carregandoDetalhe === o.numOcp}
+                      title={`O título ${o.numTit} foi digitado na OC (USU_NUMTIT), mas ainda não existe no Senior. Clique para conferir a OC.`}
+                      className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900 disabled:opacity-50"
+                    >
+                      {carregandoDetalhe === o.numOcp ? "Consultando…" : `${o.numTit} · não existe no Senior`}
+                    </button>
+                  ) : o.numTit ? (
                     <span className="font-medium text-gray-800" title={o.tituloGeradoAqui ? "Gerado por esta tela" : "Informado na OC (USU_NUMTIT)"}>
                       {o.numTit}
                     </span>
@@ -383,9 +394,12 @@ export default function ConferenciaOcPage() {
                   ) : (
                     <div className="flex flex-col items-start gap-0.5">
                       {o.dossieId ? (
-                        <a href={`/api/dossies/${o.dossieId}/arquivo`} target="_blank" rel="noreferrer" className="text-brand underline decoration-dotted underline-offset-2">
-                          abrir PDF
-                        </a>
+                        <>
+                          <a href={`/api/dossies/${o.dossieId}/arquivo`} target="_blank" rel="noreferrer" className="text-brand underline decoration-dotted underline-offset-2">
+                            abrir PDF
+                          </a>
+                          <EditarDossie dossieId={o.dossieId} rotulo={`OC ${o.numOcp}${o.fornecedorNome ? ` — ${o.fornecedorNome}` : ""}`} />
+                        </>
                       ) : (
                         <span className={o.dossieStatus === "ERRO" ? "text-red-700" : "text-gray-400"} title={o.dossieMotivo ?? undefined}>
                           {o.dossieStatus === "ERRO" ? "falhou" : "sem dossiê"}

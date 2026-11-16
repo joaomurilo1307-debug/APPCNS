@@ -44,7 +44,12 @@ export function montarWorkbook(abas: AbaExcel[]): XLSX.WorkBook {
     const converter = (l: CelulaExcel[]) => l.map((c, i) => {
       const tipo = aba.colunas[i]?.tipo ?? "texto";
       if (c === null || c === undefined || c === "") return null;
-      if (tipo === "data") return lerData(c) ?? c;
+      // data SEM hora (texto dd/mm/aaaa ou aaaa-mm-dd): vai como o NUMERO de serie do Excel (dias desde 30/12/1899), calculado em UTC. Nao pode ir como Date: a biblioteca
+      // converte Date para esse numero pelo relogio LOCAL, e no Brasil a celula saia com 1 dia a menos (ou 28 s antes da meia-noite, que o Excel mostra como o dia anterior)
+      if (tipo === "data") {
+        const d = lerData(c);
+        return d && typeof c === "string" ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000 + 25569 : d ?? c;
+      }
       if ((tipo === "numero" || tipo === "moeda" || tipo === "inteiro" || tipo === "percentual") && typeof c === "string") {
         const n = Number(c.replace(/\./g, "").replace(",", "."));
         return Number.isFinite(n) ? n : c;

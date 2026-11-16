@@ -28,6 +28,7 @@ import { COD_EMP, dataIso, numeroSenior } from "@/lib/senior/ocsConferencia";
 import { chavesFornecedor, normalizarReferencia, prefixoParcela, referenciaPreenchida } from "@/lib/vinculoOcTitulo";
 import { gerarEGravar } from "./gerar";
 import { chaveDaOc, marcarGerando } from "./salvar";
+import { VERSAO_DOSSIE, assinaturaManual, versaoDaAssinatura } from "./versao";
 
 // ---------------------------------------------------------------- tipos
 
@@ -155,7 +156,10 @@ export function titulosAbertosDaOc(oc: Pick<OcAlvo, "numTit" | "codFor" | "codFi
   return [...new Set(achados)].sort();
 }
 
-/** Estado da OC que, se mudar, pede um dossie novo. Curto e estavel (nao muda por reordenar texto ou espaco). */
+/**
+ * Estado da OC que, se mudar, pede um dossie novo. Curto e estavel (nao muda por reordenar texto ou espaco). Leva na frente a
+ * versao do conteudo do dossie (versao.ts): mudou a versao, todo dossie da janela fica desatualizado.
+ */
 export function assinaturaDaOc(oc: OcAlvo, titulosAbertos: string[]): string {
   const base = JSON.stringify([
     oc.sitApr,
@@ -165,7 +169,7 @@ export function assinaturaDaOc(oc: OcAlvo, titulosAbertos: string[]): string {
     normalizarReferencia(oc.numNfc),
     [...titulosAbertos].map((t) => normalizarReferencia(t)).sort(),
   ]);
-  return createHash("sha1").update(base).digest("hex").slice(0, 16);
+  return `${VERSAO_DOSSIE}:${createHash("sha1").update(base).digest("hex").slice(0, 16)}`;
 }
 
 export function janelaDeVencimento(hoje: string, diasAtras: number, diasFrente: number) {
@@ -223,9 +227,21 @@ export function decidir(
 
   // PUBLICADO com PDF
   if (registro.assinatura === assinatura) return { acao: "OK", situacao: "ATUAL", prioridade: 9, motivo: "dossiê em dia" };
-  if (registro.assinatura) return { acao: "GERAR", situacao: "DESATUALIZADO", prioridade: 2, motivo: "a OC mudou desde a geração do PDF (título, nota, valor ou situação)" };
 
-  // PDF sem assinatura (feito pelo n8n ou pelo botao): adota o que existe, a menos que ele nem cite um titulo da OC.
+  // Conteudo de uma versao anterior (ou feito pelo n8n, sem assinatura): refaz, depois do que falta e do que mudou.
+  if (versaoDaAssinatura(registro.assinatura) !== VERSAO_DOSSIE) {
+    return {
+      acao: "GERAR",
+      situacao: "DESATUALIZADO",
+      prioridade: 3,
+      motivo: registro.assinatura ? `conteúdo do dossiê atualizado (versão ${VERSAO_DOSSIE})` : "feito pelo n8n ou por uma versão anterior do sistema",
+    };
+  }
+  if (registro.assinatura !== assinaturaManual()) {
+    return { acao: "GERAR", situacao: "DESATUALIZADO", prioridade: 2, motivo: "a OC mudou desde a geração do PDF (título, nota, valor ou situação)" };
+  }
+
+  // Feito pelo botao, na versao atual: adota o que existe, a menos que ele nem cite um titulo da OC.
   const faltando = referenciasDaOc(oc.numTit).filter((r) => !registro.titulos.some((t) => tituloCitadoNaOc([r], t)));
   if (faltando.length) return { acao: "GERAR", situacao: "DESATUALIZADO", prioridade: 2, motivo: `o dossiê não cita o título ${faltando.join(", ")} da OC` };
   return { acao: "ADOTAR", situacao: "ATUAL", prioridade: 9, motivo: "dossiê existente adotado" };

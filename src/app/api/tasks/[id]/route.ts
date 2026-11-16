@@ -7,6 +7,9 @@ import { canModifyTaskScoped, canDeleteTask, canViewProject } from "@/lib/permis
 import { reconcileTaskOutlook, removeTaskFromOutlook } from "@/lib/taskOutlookSync";
 import { rescheduleAndPersist } from "@/lib/reschedule";
 import { z } from "zod";
+import { HORAS_OBRIGATORIAS, registrarMudancas, timesheetAtivo } from "@/lib/timesheetAuto/historico";
+import { diaSP } from "@/lib/timesheetAuto/calculo";
+import { hojeSP } from "@/lib/timesheetAuto/servidor";
 
 const updateTaskSchema = z.object({
   title: z.string().min(2).max(200).optional(),
@@ -20,6 +23,8 @@ const updateTaskSchema = z.object({
   actualStartedAt: z.string().datetime().nullable().optional(),
   actualEndedAt: z.string().datetime().nullable().optional(),
   durationDays: z.number().int().min(0).max(3650).nullable().optional(),
+  // horas que a pessoa dedicou a tarefa inteira: ancoram o Timesheet automatico e o custo do projeto (null = apaga)
+  horasDedicadas: z.number().positive().max(5000).nullable().optional(),
   isEntrega: z.boolean().optional(),
   locked: z.boolean().optional(),
   customFieldValues: z.record(z.string().nullable()).optional(),
@@ -91,8 +96,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
   }
 
+  // Concluir (100%) exige as horas dedicadas quando o responsavel usa o Timesheet automatico: e' a base do calculo de horas por centro de custo.
+  if (parsed.data.status === "FEITO" && task.status !== "FEITO") {
+    const responsavel = parsed.data.assigneeId !== undefined ? parsed.data.assigneeId : task.assigneeId;
+    const marco = parsed.data.isEntrega !== undefined ? parsed.data.isEntrega : task.isEntrega;
+    // faltam as horas quando nao ha nenhuma; e, se foram informadas antes (em andamento), a pessoa confirma o TOTAL na conclusao (podem ter mudado desde entao)
+    const desatualizadas = !!task.horasDedicadasEm && diaSP(task.horasDedicadasEm) < hojeSP();
+    const faltam = parsed.data.horasDedicadas !== undefined ? parsed.data.horasDedicadas == null : task.horasDedicadas == null || desatualizadas;
+    if (responsavel && !marco && faltam && (await timesheetAtivo(responsavel))) {
+      // tarefa-mae cujas subtarefas sao da mesma pessoa: so' as subtarefas contam horas
+      const temSubtarefaDela = (await prisma.task.count({ where: { parentTaskId: task.id, assigneeId: responsavel } })) > 0;
+      if (!temSubtarefaDela) {
+        const confirmar = task.horasDedicadas != null;
+        return NextResponse.json({ error: confirmar ? "Confirme o total de horas dedicadas a esta tarefa antes de concluí-la." : "Informe as horas dedicadas a esta tarefa antes de concluí-la.", code: HORAS_OBRIGATORIAS, horasAtuais: task.horasDedicadas }, { status: 422 });
+      }
+    }
+  }
+
   const { customFieldValues, ...rest } = parsed.data;
   const data: any = { ...rest };
+  // o dia em que as horas foram informadas (ate ele valem; numa tarefa em andamento os dias seguintes sao estimados)
+  if (parsed.data.horasDedicadas !== undefined) data.horasDedicadasEm = parsed.data.horasDedicadas === null ? null : new Date();
   if (parsed.data.dueDate !== undefined) {
     data.dueDate = parsed.data.dueDate ? new Date(parsed.data.dueDate) : null;
   }
@@ -125,6 +149,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const updated = await prisma.$transaction(async (tx) => {
     let result = await tx.task.update({ where: { id: params.id }, data });
+    // historico de status e de responsavel: o timesheet automatico so' conta os dias em que a tarefa esteve "Fazendo" e na mao de quem era o responsavel
+    await registrarMudancas(tx, { taskId: params.id, porUserId: userId, antes: { status: task.status, assigneeId: task.assigneeId, horasDedicadas: task.horasDedicadas }, depois: { status: result.status, assigneeId: result.assigneeId, horasDedicadas: result.horasDedicadas } });
+    if (task.assigneeId !== result.assigneeId) result = await tx.task.findUniqueOrThrow({ where: { id: params.id } });
     if (customFieldValues) {
       for (const [customFieldId, value] of Object.entries(customFieldValues)) {
         await tx.taskCustomFieldValue.upsert({

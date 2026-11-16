@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { consultarSenior } from "./getDbInfo";
 
 const INTERVALO_MS = 15 * 60 * 1000;
+const NOVA_TENTATIVA_MS = 2 * 60 * 1000; // Senior fora do ar: tenta de novo em 2 min, sem martelar a cada acesso
 let emAndamento: Promise<void> | null = null;
 let ultimaExecucao = 0;
 
@@ -43,30 +44,17 @@ export function garantirVinculosOcAtualizados(): Promise<void> | null {
   emAndamento = atualizarVinculosOc()
     .then(() => undefined)
     .catch((e) => {
-      ultimaExecucao = 0; // tenta de novo no proximo acesso
+      ultimaExecucao = Date.now() - INTERVALO_MS + NOVA_TENTATIVA_MS;
       console.error("[vinculosOc]", String(e?.message ?? e).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 200));
     })
     .finally(() => { emAndamento = null; });
   return emAndamento;
 }
 
-// Grupo de empresas de cada fornecedor (E095FOR.CODGRE > 0): codigo sem zeros -> codigo do grupo. Cache de 1h; falha da Senior
-// devolve o ultimo mapa (ou vazio) -- sem grupos o motor so' perde a tolerancia, nunca vincula errado.
-let grupos: Map<string, string> = new Map();
-let gruposEm = 0;
-export async function carregarGruposFornecedores(): Promise<Map<string, string>> {
-  if (Date.now() - gruposEm < 60 * 60 * 1000) return grupos;
-  try {
-    const linhas = await consultarSenior("SELECT CODFOR, CODGRE FROM E095FOR WHERE CODGRE > 0");
-    grupos = new Map(linhas.map((l) => [String(Number(l.CODFOR)), String(Number(l.CODGRE))]));
-    gruposEm = Date.now();
-  } catch (e) {
-    console.error("[gruposFornecedores]", String((e as Error)?.message ?? e).slice(0, 200));
-    gruposEm = Date.now() - 50 * 60 * 1000; // tenta de novo em 10 min
-  }
-  return grupos;
-}
-
+// Quem le a tabela tambem garante que ela se atualiza (12/11/2026): de 30/10 ate aqui nada chamava garantirVinculosOcAtualizados,
+// entao a tabela nunca era refeita pelo sistema e os titulos ficavam "Sem OC" (so' o vinculo manual funcionava). Dispara em segundo
+// plano e devolve o que ja esta gravado; a versao do motor de OCs (cache/ocsMotor.ts) muda quando a tabela e' refeita.
 export function carregarVinculosOc(db: typeof prisma) {
+  garantirVinculosOcAtualizados();
   return db.vinculoOcSenior.findMany({ select: { origem: true, codFil: true, codFor: true, chave: true, numOcp: true } });
 }
