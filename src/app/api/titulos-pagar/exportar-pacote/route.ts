@@ -7,7 +7,7 @@ import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
 import { carregarVinculosOc, carregarGruposFornecedores } from "@/lib/senior/vinculosOc";
-import { UPLOAD_DIR } from "@/lib/uploadValidation";
+import { lerPdfDoDossie } from "@/lib/dossie/anexos";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
