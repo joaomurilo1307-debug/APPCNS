@@ -8,6 +8,7 @@ import {
   criarMotorVinculo,
   aplicarCorrecaoManual,
   chavesFornecedor,
+  grupoDoFornecedor,
   normalizarReferencia,
   mesmoValor,
   dataCompativel,
@@ -67,7 +68,8 @@ export async function GET(req: Request) {
     (oc) => oc.previsaoPagamento && oc.previsaoPagamento >= inicio && oc.previsaoPagamento <= fim
   );
 
-  const motor = criarMotorVinculo(todasOcs, await carregarVinculosOc(prisma), await carregarGruposFornecedores());
+  const grupos = await carregarGruposFornecedores();
+  const motor = criarMotorVinculo(todasOcs, await carregarVinculosOc(prisma), grupos);
   const ocPorNumero = new Map(todasOcs.map((o) => [o.numOcp, o]));
 
   // Índice fornecedor -> títulos, só pra esta rota (não mexe no motor
@@ -80,6 +82,9 @@ export async function GET(req: Request) {
       lista.push(t);
       titulosPorFornecedor.set(chave, lista);
     }
+    // mesmo grupo de empresas (E095FOR.CODGRE): fornecedores distintos contam como um so'
+    const g = grupoDoFornecedor(grupos, t.codFor);
+    if (g) titulosPorFornecedor.set(`G:${g}`, [...(titulosPorFornecedor.get(`G:${g}`) ?? []), t]);
   }
 
   function filialCompativelOc(titulo: { filOcp: string | null }, oc: OcParaVinculo) {
@@ -105,7 +110,8 @@ export async function GET(req: Request) {
     }
 
     const chaves = chavesFornecedor(oc.fornecedorCodigo, oc.fornecedorNome);
-    const candidatosBrutos = chaves.flatMap((c) => titulosPorFornecedor.get(c) ?? []);
+    const grupoOc = grupoDoFornecedor(grupos, oc.fornecedorCodigo);
+    const candidatosBrutos = [...chaves, ...(grupoOc ? [`G:${grupoOc}`] : [])].flatMap((c) => titulosPorFornecedor.get(c) ?? []);
     const dedup = new Map<string, (typeof titulos)[number]>();
     for (const t of candidatosBrutos) dedup.set(t.numTit + t.codFor, t);
     const titulosDoFornecedor = [...dedup.values()].filter((t) => filialCompativelOc(t, oc));

@@ -214,11 +214,12 @@ export type VinculoSenior = { origem: string; codFil: string; codFor: string; ch
 // Nada de referencia digitada na OC, parcela, nem fornecedor+valor+data.
 // grupos: codigo do fornecedor (sem zeros) -> E095FOR.CODGRE (ver carregarGruposFornecedores). Fornecedores
 // distintos do MESMO grupo de empresas (ex.: marketplace, um cadastro por vendedor) contam como o mesmo fornecedor.
+export function grupoDoFornecedor(grupos: Map<string, string> | undefined, cod: string | null | undefined) {
+  return grupos?.get(normalizarReferencia(cod).replace(/^0+(?=\d)/, ""));
+}
 export function mesmoGrupoFornecedor(grupos: Map<string, string> | undefined, a: string | null | undefined, b: string | null | undefined) {
-  if (!grupos) return false;
-  const g = (c: string | null | undefined) => grupos.get(normalizarReferencia(c).replace(/^0+(?=\d)/, ""));
-  const ga = g(a);
-  return !!ga && ga === g(b);
+  const ga = grupoDoFornecedor(grupos, a);
+  return !!ga && ga === grupoDoFornecedor(grupos, b);
 }
 
 export function criarMotorVinculo(ocs: OcParaVinculo[], vinculos: VinculoSenior[], grupos?: Map<string, string>) {
