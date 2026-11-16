@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
+import { carregarVinculosOc, carregarGruposFornecedores } from "@/lib/senior/vinculosOc";
 import { escopoAprovacoesOC, podeAbrirOC } from "@/lib/acesso/aprovacoesOc";
-import { criarMotorVinculo, aplicarCorrecaoManual, chavesFornecedor, dataCompativel, mesmoValor } from "@/lib/vinculoOcTitulo";
+import { criarMotorVinculo, aplicarCorrecaoManual, chavesFornecedor, dataCompativel, mesmoGrupoFornecedor, mesmoValor } from "@/lib/vinculoOcTitulo";
 import { carregarCatalogoFormasPagamento, garantirFormasPagamentoAtualizadas } from "@/lib/senior/formasPagamento";
 
 // Busca UMA OC por numOcp, com o mapa completo (rateio, níveis, eventos) +
@@ -75,7 +75,8 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
       },
     }),
   ]);
-  const motor = criarMotorVinculo(todasOcs, await carregarVinculosOc(prisma));
+  const grupos = await carregarGruposFornecedores();
+  const motor = criarMotorVinculo(todasOcs, await carregarVinculosOc(prisma), grupos);
   const ocPorNumero = new Map(todasOcs.map((o) => [o.numOcp, o]));
   const titulosVinculados = titulos
     .filter((t) => aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada?.numOcp === params.numOcp)
@@ -118,7 +119,7 @@ export async function GET(req: Request, { params }: { params: { numOcp: string }
       (t) =>
         !t.pago &&
         t.tipo !== "PRV" &&
-        chavesFornecedor(t.codFor).some((k) => chavesDaOc.includes(k)) &&
+        (chavesFornecedor(t.codFor).some((k) => chavesDaOc.includes(k)) || mesmoGrupoFornecedor(grupos, t.codFor, aprovacao.fornecedorCodigo)) &&
         mesmoValor(ocDoMotor.valor, t.valorOriginal) &&
         dataCompativel(ocDoMotor, t) &&
         !aplicarCorrecaoManual(t, (n) => ocPorNumero.get(n), motor.ocRelacionadaDe(t)).ocRelacionada // ja ligado a outra OC: nao e' candidato

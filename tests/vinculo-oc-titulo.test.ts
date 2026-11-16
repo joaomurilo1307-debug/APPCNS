@@ -54,3 +54,12 @@ test("PRV nunca ganha OC", () => {
   assert.equal(r.ocRelacionada, null);
   assert.equal(r.ocEsperada, false);
 });
+
+test("fornecedores distintos do mesmo grupo: USU_NUMOCP vincula; grupos diferentes ou sem mapa continuam em conflito", () => {
+  const vs = [v("TITULO", "T1", "500")];
+  const ok = criarMotorVinculo([oc("500", "77")], vs, new Map([["10", "9"], ["77", "9"]])).ocRelacionadaDe(titulo());
+  assert.equal(ok.ocRelacionada?.numOcp, "500");
+  const outroGrupo = criarMotorVinculo([oc("500", "77")], vs, new Map([["10", "9"], ["77", "8"]])).ocRelacionadaDe(titulo());
+  assert.equal(outroGrupo.ocRelacionada, null);
+  assert.equal(criarMotorVinculo([oc("500", "77")], vs).ocRelacionadaDe(titulo()).ocRelacionada, null);
+});

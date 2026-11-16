@@ -4,7 +4,8 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
-import { chavesFornecedor, normalizarReferencia } from "@/lib/vinculoOcTitulo";
+import { chavesFornecedor, mesmoGrupoFornecedor, normalizarReferencia } from "@/lib/vinculoOcTitulo";
+import { carregarGruposFornecedores } from "@/lib/senior/vinculosOc";
 import { avisarCriadorOc, type ResultadoAviso } from "@/lib/avisoPagamentoAprovado";
 
 // Marcacao manual de conferencia (30/09/2026): quando o vinculo com OC nao
@@ -57,7 +58,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     const fornecedorBate = chavesFornecedor(oc.fornecedorCodigo, oc.fornecedorNome).some((chave) =>
       chavesFornecedor(existente.codFor, existente.fornecedorNome).includes(chave)
-    );
+    ) || mesmoGrupoFornecedor(await carregarGruposFornecedores(), existente.codFor, oc.fornecedorCodigo);
     if (!fornecedorBate) {
       return NextResponse.json(
         { error: `OC ${numOcpDigitado} é do fornecedor ${oc.fornecedorNome || oc.fornecedorCodigo}, diferente do fornecedor do título (${existente.fornecedorNome || existente.codFor}) -- confira o número` },

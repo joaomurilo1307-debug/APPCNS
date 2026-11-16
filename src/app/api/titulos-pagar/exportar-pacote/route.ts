@@ -6,8 +6,8 @@ import JSZip from "jszip";
 import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
-import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
-import { lerPdfDoDossie } from "@/lib/dossie/anexos";
+import { carregarVinculosOc, carregarGruposFornecedores } from "@/lib/senior/vinculosOc";
+import { UPLOAD_DIR } from "@/lib/uploadValidation";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
   ]);
   const vinculosManuais = await prisma.tituloOcVinculo.findMany();
   const vinculoManualDe = new Map(vinculosManuais.map((v) => [`${v.numTit}|${v.codFil}|${v.codFor}`, v.numOcp]));
-  const motor = criarMotorVinculo(ocs, await carregarVinculosOc(prisma));
+  const motor = criarMotorVinculo(ocs, await carregarVinculosOc(prisma), await carregarGruposFornecedores());
   const ocPorNumero = new Map(ocs.map((o) => [o.numOcp, o]));
   const indiceDossies = criarIndiceDossies(dossies);
   function dossieDe(t: (typeof titulos)[number]) {

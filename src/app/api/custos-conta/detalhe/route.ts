@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
+import { carregarVinculosOc, carregarGruposFornecedores } from "@/lib/senior/vinculosOc";
 import { COMPETENCIA_FISCAL_ATIVA } from "@/lib/custos/competenciaDaPlanilha";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 import { criarMotorVinculo } from "@/lib/vinculoOcTitulo";
@@ -69,7 +69,7 @@ export async function GET(req: Request) {
   const codToNome: Record<string, string> = {};
   for (const u of usuariosSenior) codToNome[u.codigo] = u.user?.name || u.nome;
 
-  const motor = criarMotorVinculo(ocs, await carregarVinculosOc(prisma));
+  const motor = criarMotorVinculo(ocs, await carregarVinculosOc(prisma), await carregarGruposFornecedores());
 
   // detalhe (composicao_custo_financeiro) não carrega tipo/NF/valor real
   // do título -- só o valor RATEADO pra este CCU. Bug real encontrado pelo

@@ -212,7 +212,17 @@ export type VinculoSenior = { origem: string; codFil: string; codFor: string; ch
 //  1) E501TCP.USU_NUMOCP do titulo, ou
 //  2) OC gravada na NF de compra do titulo (E440IPC/E440ISC.NUMOCP via NUMNFC).
 // Nada de referencia digitada na OC, parcela, nem fornecedor+valor+data.
-export function criarMotorVinculo(ocs: OcParaVinculo[], vinculos: VinculoSenior[]) {
+// grupos: codigo do fornecedor (sem zeros) -> E095FOR.CODGRE (ver carregarGruposFornecedores). Fornecedores
+// distintos do MESMO grupo de empresas (ex.: marketplace, um cadastro por vendedor) contam como o mesmo fornecedor.
+export function grupoDoFornecedor(grupos: Map<string, string> | undefined, cod: string | null | undefined) {
+  return grupos?.get(normalizarReferencia(cod).replace(/^0+(?=\d)/, ""));
+}
+export function mesmoGrupoFornecedor(grupos: Map<string, string> | undefined, a: string | null | undefined, b: string | null | undefined) {
+  const ga = grupoDoFornecedor(grupos, a);
+  return !!ga && ga === grupoDoFornecedor(grupos, b);
+}
+
+export function criarMotorVinculo(ocs: OcParaVinculo[], vinculos: VinculoSenior[], grupos?: Map<string, string>) {
   const ocPorNumero = new Map<string, OcParaVinculo>();
   for (const oc of ocs) ocPorNumero.set(normalizarReferencia(oc.numOcp), oc);
 
@@ -229,7 +239,7 @@ export function criarMotorVinculo(ocs: OcParaVinculo[], vinculos: VinculoSenior[
   function fornecedorCompativel(titulo: TituloParaVinculo, oc: OcParaVinculo) {
     const doTitulo = chavesFornecedor(titulo.codFor, titulo.fornecedorNome);
     const daOC = chavesFornecedor(oc.fornecedorCodigo, oc.fornecedorNome);
-    return doTitulo.some((chave) => daOC.includes(chave));
+    return doTitulo.some((chave) => daOC.includes(chave)) || mesmoGrupoFornecedor(grupos, titulo.codFor, oc.fornecedorCodigo);
   }
 
   function centroCustoDaOC(oc: OcParaVinculo) {
