@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { negarSemModulo } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
-import { carregarVinculosOc } from "@/lib/senior/vinculosOc";
+import { carregarVinculosOc, carregarGruposFornecedores } from "@/lib/senior/vinculosOc";
 import {
   criarMotorVinculo,
   aplicarCorrecaoManual,
@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     (oc) => oc.previsaoPagamento && oc.previsaoPagamento >= inicio && oc.previsaoPagamento <= fim
   );
 
-  const motor = criarMotorVinculo(todasOcs, await carregarVinculosOc(prisma));
+  const motor = criarMotorVinculo(todasOcs, await carregarVinculosOc(prisma), await carregarGruposFornecedores());
   const ocPorNumero = new Map(todasOcs.map((o) => [o.numOcp, o]));
 
   // Índice fornecedor -> títulos, só pra esta rota (não mexe no motor

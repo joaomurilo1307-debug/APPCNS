@@ -4,7 +4,8 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
-import { chavesFornecedor, normalizarReferencia } from "@/lib/vinculoOcTitulo";
+import { chavesFornecedor, mesmoGrupoFornecedor, normalizarReferencia } from "@/lib/vinculoOcTitulo";
+import { carregarGruposFornecedores } from "@/lib/senior/vinculosOc";
 
 // Associa (PUT) ou desfaz (DELETE) a OC de um titulo na Programacao de Pagamento.
 // Grava em TituloOcVinculo, que tem prioridade sobre o motor automatico.
@@ -34,7 +35,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   if (!oc) return NextResponse.json({ error: `OC ${numOcp} não encontrada na base sincronizada` }, { status: 422 });
   const fornecedorBate = chavesFornecedor(oc.fornecedorCodigo, oc.fornecedorNome).some((c) =>
     chavesFornecedor(titulo.codFor, titulo.fornecedorNome).includes(c)
-  );
+  ) || mesmoGrupoFornecedor(await carregarGruposFornecedores(), titulo.codFor, oc.fornecedorCodigo);
   if (!fornecedorBate) {
     return NextResponse.json(
       { error: `OC ${numOcp} é do fornecedor ${oc.fornecedorNome || oc.fornecedorCodigo}, diferente do título (${titulo.fornecedorNome || titulo.codFor}) -- confira o número` },

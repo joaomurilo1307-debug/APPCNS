@@ -50,6 +50,23 @@ export function garantirVinculosOcAtualizados(): Promise<void> | null {
   return emAndamento;
 }
 
+// Grupo de empresas de cada fornecedor (E095FOR.CODGRE > 0): codigo sem zeros -> codigo do grupo. Cache de 1h; falha da Senior
+// devolve o ultimo mapa (ou vazio) -- sem grupos o motor so' perde a tolerancia, nunca vincula errado.
+let grupos: Map<string, string> = new Map();
+let gruposEm = 0;
+export async function carregarGruposFornecedores(): Promise<Map<string, string>> {
+  if (Date.now() - gruposEm < 60 * 60 * 1000) return grupos;
+  try {
+    const linhas = await consultarSenior("SELECT CODFOR, CODGRE FROM E095FOR WHERE CODGRE > 0");
+    grupos = new Map(linhas.map((l) => [String(Number(l.CODFOR)), String(Number(l.CODGRE))]));
+    gruposEm = Date.now();
+  } catch (e) {
+    console.error("[gruposFornecedores]", String((e as Error)?.message ?? e).slice(0, 200));
+    gruposEm = Date.now() - 50 * 60 * 1000; // tenta de novo em 10 min
+  }
+  return grupos;
+}
+
 export function carregarVinculosOc(db: typeof prisma) {
   return db.vinculoOcSenior.findMany({ select: { origem: true, codFil: true, codFor: true, chave: true, numOcp: true } });
 }
