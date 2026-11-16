@@ -10,6 +10,7 @@ import { carregarVinculosOc, carregarGruposFornecedores } from "@/lib/senior/vin
 import { UPLOAD_DIR } from "@/lib/uploadValidation";
 import { criarMotorVinculo, aplicarCorrecaoManual } from "@/lib/vinculoOcTitulo";
 import { criarIndiceDossies } from "@/lib/dossieTitulo";
+import { lerPdfDoDossie } from "@/lib/dossie/anexos";
 import { carregarCatalogoFormasPagamento } from "@/lib/senior/formasPagamento";
 import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
 
@@ -144,3 +145,4 @@ export async function POST(req: Request) {
     },
   });
 }
+
