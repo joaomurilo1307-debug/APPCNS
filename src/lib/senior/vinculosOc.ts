@@ -67,15 +67,27 @@ export function carregarVinculosOc(db: typeof prisma) {
 // achar o grupo de uma OC especifica). So' entra no mapa quem realmente tem
 // grupo: sem grupo, cada fornecedor so' bate com ele mesmo (chavesFornecedor
 // por codigo ja' cobre isso).
+// Cache de 1h (chamada em varias rotas). Falha da Senior devolve o ultimo mapa (ou vazio) e tenta de novo em 10 min:
+// sem grupos o motor so' perde a tolerancia, nunca vincula errado nem derruba a tela.
+let gruposCache = new Map<string, string>();
+let gruposEm = 0;
 export async function carregarGruposFornecedores(): Promise<Map<string, string>> {
-  const linhas = await consultarSenior("SELECT CODFOR, CODGRE FROM E095FOR WHERE CODGRE > 0");
-  const grupos = new Map<string, string>();
-  for (const l of linhas) {
-    if (!positivo(l.CODFOR) || !positivo(l.CODGRE)) continue;
-    const codFor = String(l.CODFOR).trim().replace(/^0+(?=\d)/, "");
-    const codGre = String(l.CODGRE).trim().replace(/^0+(?=\d)/, "");
-    grupos.set(codFor, codGre);
+  if (Date.now() - gruposEm < 60 * 60 * 1000) return gruposCache;
+  try {
+    const linhas = await consultarSenior("SELECT CODFOR, CODGRE FROM E095FOR WHERE CODGRE > 0");
+    const grupos = new Map<string, string>();
+    for (const l of linhas) {
+      if (!positivo(l.CODFOR) || !positivo(l.CODGRE)) continue;
+      const codFor = String(l.CODFOR).trim().replace(/^0+(?=\d)/, "");
+      const codGre = String(l.CODGRE).trim().replace(/^0+(?=\d)/, "");
+      grupos.set(codFor, codGre);
+    }
+    gruposCache = grupos;
+    gruposEm = Date.now();
+  } catch (e) {
+    console.error("[gruposFornecedores]", String((e as Error)?.message ?? e).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 200));
+    gruposEm = Date.now() - 50 * 60 * 1000; // tenta de novo em 10 min
   }
-  return grupos;
+  return gruposCache;
 }
 
