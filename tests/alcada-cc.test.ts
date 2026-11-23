@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { LinhaSenior } from "../src/lib/senior/getDbInfo";
 import { dataHoraSenior, lerDadosAlcada, montarAlcada, type DadosAlcada } from "../src/lib/senior/alcadaCc";
+import { EMPRESA_OC, lerOcsDaSenior, montarItensOc, usuariosDoE099 } from "../src/lib/senior/sincronizacao/aprovacoes";
 
 const vinculo = (p: Partial<LinhaSenior>): LinhaSenior => ({
   CODEMP: "1", CODCCU: "18", CODNAP: "1", CODUSU: "26", SITCNA: "A", USUGER: "30", DATGER: "02/02/2026", HORGER: "688", USUATU: "0", DATATU: "31/12/1900", HORATU: "0", ...p,
@@ -142,4 +143,90 @@ test("leitura: so' SELECT, empresas da alcada no filtro dos cadastros", async ()
   assert.ok(sqls.some((s) => s.includes("FROM E044CCU WHERE CODEMP IN (1,4)")));
   assert.ok(sqls.some((s) => s.includes("FROM E099USU WHERE CODEMP IN (1,4)")));
   assert.ok(sqls.every((s) => !/ROWNUM|DUAL|COUNT\(DISTINCT/i.test(s)));
+});
+
+// 23/11/2026: as duas telas (Aprovadores por CC e Aprovacoes OC Senior) mostram o mesmo login, o de ACESSO (R910ENT). O E099USU
+// tinha o login antigo de 24 contas, as vezes de outra pessoa; a alcada marca a diferenca como ponto de atencao.
+test("login de acesso (R910ENT) nas duas telas; login antigo do E099USU fica marcado", () => {
+  const usuariosEmpresa = [
+    { CODEMP: "1", CODUSU: "27", NOMUSU: "Julimar Fernando", INTNET: "financeiro@exemplo.com", SITUSU: "A" },
+    { CODEMP: "9", CODUSU: "27", NOMUSU: "julimar.fernando", INTNET: "financeiro@exemplo.com", SITUSU: "A" },
+    { CODEMP: "1", CODUSU: "26", NOMUSU: "geizi", INTNET: "geizi@exemplo.com", SITUSU: "A" },
+    { CODEMP: "1", CODUSU: "107", NOMUSU: "reinaldo.almeida", INTNET: "", SITUSU: "A" },
+  ];
+  const entidadesSgu = [{ CODENT: "27", NOMENT: "MONICA.OLIVEIRA" }, { CODENT: "26", NOMENT: "GEIZI" }, { CODENT: "107", NOMENT: "RICARDO.ALMEIDA" }];
+  // tela de OC: o mesmo de-para, com e sem entidades
+  const oc = usuariosDoE099(usuariosEmpresa, entidadesSgu);
+  assert.equal(oc.get("27")?.login, "monica.oliveira");
+  assert.equal(oc.get("27")?.email, "financeiro@exemplo.com");
+  assert.equal(oc.get("107")?.login, "ricardo.almeida");
+  assert.equal(usuariosDoE099(usuariosEmpresa).get("107")?.login, "ricardo.almeida");
+  assert.equal(usuariosDoE099([{ CODUSU: "5", NOMUSU: "ana.souza", INTNET: "" }], [{ CODENT: "6", NOMENT: "OUTRA" }]).get("5")?.login, "ana.souza");
+
+  const linhas = montarAlcada(
+    dados({
+      vinculos: [vinculo({ CODUSU: "27" }), vinculo({ CODNAP: "2", CODUSU: "26" }), vinculo({ CODNAP: "3", CODUSU: "107" })],
+      usuariosEmpresa,
+      entidadesSgu,
+      niveisUsuario: ["1", "2", "3"].map((n) => ({ CODEMP: "1", CODNAP: n, CODUSU: { 1: "27", 2: "26", 3: "107" }[n]!, SITUNA: "A" })),
+    })
+  );
+  const porCod = new Map(linhas.filter((l) => l.codUsu).map((l) => [l.codUsu!, l]));
+  assert.equal(porCod.get("27")!.login, "monica.oliveira");
+  assert.equal(porCod.get("27")!.loginNoCadastro, "Julimar Fernando");
+  assert.equal(porCod.get("107")!.login, "ricardo.almeida");
+  assert.equal(porCod.get("107")!.loginNoCadastro, "reinaldo.almeida");
+  assert.equal(porCod.get("26")!.login, "geizi");
+  assert.equal(porCod.get("26")!.loginNoCadastro, null);
+  // o login da tela de alcada e' o mesmo que a tela de OC usa
+  for (const l of porCod.values()) assert.equal(l.login, oc.get(l.codUsu!)?.login);
+});
+
+test("busca de OCs: alcada so' da empresa das OCs (E068CNA com CODEMP) e login de acesso lido do R910ENT", async () => {
+  const sqls: string[] = [];
+  const consultar = async (sql: string) => {
+    sqls.push(sql);
+    if (sql.includes("MAX(NUMOCP)")) return [{ MX: "100" }];
+    if (sql.includes("FROM E420OCP WHERE (SITAPR")) return [{ NUMOCP: "100", DATEMI: new Date().toLocaleDateString("pt-BR"), CODFOR: "1", SITAPR: "ANA", NUMAPR: "7", ROTNAP: "12" }];
+    if (sql.includes("FROM E420RAT")) return [{ NUMOCP: "100", SEQRAT: "1", CTAFIN: "1", CODCCU: "260", PERRAT: "100", VLRRAT: "10" }];
+    if (sql.includes("FROM E068CNA")) return [{ CODCCU: "260", CODNAP: "1", CODUSU: "13", SITCNA: "A" }];
+    return [];
+  };
+  const { dados } = await lerOcsDaSenior(consultar, []);
+  const alcada = sqls.filter((s) => s.includes("FROM E068CNA"));
+  assert.equal(alcada.length, 1);
+  assert.ok(alcada[0].includes(`WHERE CODEMP=${EMPRESA_OC} AND CODCCU IN ('260') AND ROTNAP=12`), alcada[0]);
+  assert.ok(sqls.some((s) => s.includes("FROM R910ENT")));
+  assert.ok(sqls.every((s) => /^SELECT /.test(s)));
+  assert.deepEqual(dados.alcada.get("260")?.get(1), ["13"]);
+});
+
+test("folha: vale o login de acesso ou o do cadastro (a troca de login nao marca ninguem como desligado)", () => {
+  const naFolha = (login: string) => login === "renan.cesar"; // a folha conhece a pessoa pelo login antigo
+  const usuariosEmpresa = [{ CODEMP: "1", CODUSU: "87", NOMUSU: "renan.cesar", INTNET: "renan.cesar@exemplo.com", SITUSU: "A" }];
+  const entidadesSgu = [{ CODENT: "87", NOMENT: "RENAN.BATISTA" }];
+  const [l] = montarAlcada(
+    dados({ vinculos: [vinculo({ CODUSU: "87" })], usuariosEmpresa, entidadesSgu, niveisUsuario: [{ CODEMP: "1", CODNAP: "1", CODUSU: "87", SITUNA: "A" }] }),
+    { ativoNaFolha: naFolha }
+  );
+  assert.equal(l.login, "renan.batista");
+  assert.equal(l.folha, "ATIVO");
+
+  const usu = usuariosDoE099(usuariosEmpresa, entidadesSgu);
+  const [oc] = montarItensOc(
+    {
+      ocs: [{ NUMOCP: "1", DATEMI: "10/11/2026", CODFOR: "1", VLRLIQ: "10", SITAPR: "ANA", NUMAPR: "9", ROTNAP: "12", USUGER: "87", OBSOCP: "" }],
+      loginDe: new Map([["87", usu.get("87")!.login], ["5", "outra.pessoa"]]),
+      loginCadastroDe: new Map([["87", usu.get("87")!.loginCadastro]]),
+      nomesCcu: new Map(),
+      nomesConta: new Map(),
+      rateios: new Map([["1", [{ seq: 1, codccu: "400", ctafin: "", perc: 100, valor: 10 }]]]),
+      exigidos: new Map([["9", { slots: new Map([[1, 1]]), sitaprRota: "" }]]),
+      aprovacoes: new Map(),
+      alcada: new Map([["400", new Map([[1, ["87", "5"]]])]]),
+      fornecedores: new Map(),
+    },
+    (login) => naFolha(login) || login === "outra.pessoa"
+  );
+  assert.equal(oc.aprovadoresPendentes, "renan.batista, outra.pessoa"); // nao some nem vira "(desligado)"
 });

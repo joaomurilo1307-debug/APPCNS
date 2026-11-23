@@ -226,6 +226,8 @@ export async function ocsAcompanhadas(): Promise<string[]> {
 
 export const JANELA_DIAS = 42;
 const ROTA_OC = "12"; // ROTNAP da rota de aprovacao de Ordem de Compra
+// Empresa de todas as OCs (E420OCP) e aprovacoes (E614APR/E614USU) da Senior; conferido em 23/11/2026.
+export const EMPRESA_OC = 1;
 const GRUPO_NIVEL: Record<number, string> = { 1: "Coordenação", 2: "Gerência", 3: "Diretoria" };
 // Login errado no proprio Senior para este CODUSU (11/09/2026: e' RICARDO LUIS DE ALMEIDA, nao reinaldo.almeida).
 const NOME_CORRIGIDO: Record<string, string> = { "107": "ricardo.almeida" };
@@ -277,18 +279,29 @@ async function emLotesIn(consultar: Consultar, valores: string[], sql: (lista: s
   return linhas;
 }
 
-/** CODUSU -> {login, email} do E099USU, com a correcao de cadastro conhecida. */
-export function usuariosDoE099(linhas: LinhaSenior[]): Map<string, { login: string; email: string }> {
-  const m = new Map<string, { login: string; email: string }>();
+/**
+ * CODUSU -> {login, email} do E099USU. O login e' o de ACESSO a Senior (R910ENT.NOMENT, de quem de fato entra e assina a
+ * aprovacao) quando `entidades` vem; o NOMUSU do E099USU fica so' para quem nao tem entidade. 23/11/2026: 24 codigos tinham no
+ * E099USU o login antigo da conta, as vezes de outra pessoa (27 "Julimar Fernando" = monica.oliveira, 41 daniel.lopes =
+ * josiane.inacio, 87 renan.cesar = renan.batista; o 107 ja era corrigido a mao). O e-mail continua o do E099USU, e `loginCadastro`
+ * guarda o login dele (ja com a correcao a mao) para a conferencia de folha aceitar qualquer um dos dois.
+ */
+export function usuariosDoE099(linhas: LinhaSenior[], entidades: LinhaSenior[] = []): Map<string, { login: string; email: string; loginCadastro: string }> {
+  const m = new Map<string, { login: string; email: string; loginCadastro: string }>();
   for (const r of linhas) {
     const cod = (r.CODUSU ?? "").trim();
     if (!cod || cod === "0") continue;
     const login = (r.NOMUSU ?? "").trim();
     const email = (r.INTNET ?? "").trim();
     const atual = m.get(cod);
-    if (!atual || (!atual.email && email)) m.set(cod, { login, email });
+    if (!atual || (!atual.email && email)) m.set(cod, { login, email, loginCadastro: login });
   }
-  for (const [cod, login] of Object.entries(NOME_CORRIGIDO)) if (m.has(cod)) m.get(cod)!.login = login;
+  for (const [cod, login] of Object.entries(NOME_CORRIGIDO)) if (m.has(cod)) Object.assign(m.get(cod)!, { login, loginCadastro: login });
+  for (const e of entidades) {
+    const login = (e.NOMENT ?? "").trim().toLowerCase();
+    const u = m.get((e.CODENT ?? "").trim());
+    if (u && login) u.login = login;
+  }
   return m;
 }
 
@@ -298,6 +311,8 @@ type Aprovacoes = { porCcNiv: Map<string, Assinatura>; globalNiv: Map<number, As
 export type DadosOcs = {
   ocs: LinhaSenior[]; // E420OCP ja filtradas (janela + acompanhadas + pendentes)
   loginDe: Map<string, string>;
+  /** login do E099USU quando difere do de acesso (loginDe): a conferencia de folha aceita qualquer um dos dois */
+  loginCadastroDe?: Map<string, string>;
   nomesCcu: Map<string, string>;
   nomesConta: Map<string, string>;
   rateios: Map<string, { seq: number; codccu: string; ctafin: string; perc: number; valor: number }[]>;
@@ -316,7 +331,9 @@ export type DadosOcs = {
 export function montarItensOc(d: DadosOcs, ativo: (login: string) => boolean): ItemOc[] {
   const ativoCod = (cod: string) => {
     const login = d.loginDe.get(cod);
-    return login ? ativo(login) : true;
+    if (!login) return true;
+    const antigo = d.loginCadastroDe?.get(cod);
+    return ativo(login) || (!!antigo && ativo(antigo));
   };
   const soAtivos = (cods: string[]) => {
     const a = cods.filter(ativoCod);
@@ -448,9 +465,13 @@ export async function lerOcsDaSenior(
   agora = new Date()
 ): Promise<{ dados: DadosOcs; usuarios: UsuarioSync[] }> {
   aoProgredir("lendo usuários da Senior");
-  const usu = usuariosDoE099(await consultar("SELECT DISTINCT CODUSU, NOMUSU, INTNET FROM E099USU", { timeoutMs: 120_000 }));
+  const usu = usuariosDoE099(
+    await consultar("SELECT DISTINCT CODUSU, NOMUSU, INTNET FROM E099USU", { timeoutMs: 120_000 }),
+    await consultar("SELECT CODENT, NOMENT FROM R910ENT WHERE TIPENT='U'", { timeoutMs: 120_000 })
+  );
   const usuarios: UsuarioSync[] = [...usu.entries()].map(([codigo, v]) => ({ codigo, nome: v.login || `codigo ${codigo}`, login: v.login || null, email: v.email || null }));
   const loginDe = new Map([...usu.entries()].map(([c, v]) => [c, v.login] as const));
+  const loginCadastroDe = new Map([...usu.entries()].filter(([, v]) => v.loginCadastro && v.loginCadastro !== v.login).map(([c, v]) => [c, v.loginCadastro] as const));
 
   aoProgredir("lendo centros de custo e contas");
   const nomesCcu = new Map((await consultar("SELECT CODCCU, DESCCU FROM E044CCU WHERE CODEMP=1", { timeoutMs: 120_000 })).map((r) => [(r.CODCCU ?? "").trim(), (r.DESCCU ?? "").trim()] as const));
@@ -517,12 +538,15 @@ export async function lerOcsDaSenior(
     else a.globalNiv.set(Number(n), info);
   }
 
+  // 23/11/2026: so' a alcada da EMPRESA DAS OCs. Os mesmos CCs existem nas empresas 2 a 8 com copias antigas da alcada; sem o
+  // filtro, a tela mostrava (e notificava, e dava acesso a) quem ja tinha sido retirado na empresa 1 -- 79 CC x nivel, 148 das
+  // 206 OCs pendentes. As 2.267 assinaturas recentes (E614USU) batem todas com a alcada da empresa 1.
   const ccsRateio = [...new Set([...rateios.values()].flat().map((l) => l.codccu).filter(Boolean))].sort();
   const alcada = new Map<string, Map<number, string[]>>();
   for (const r of await emLotesIn(
     consultar,
     ccsRateio.map((c) => `'${c.replace(/'/g, "")}'`),
-    (l) => `SELECT CODCCU, CODNAP, CODUSU, SITCNA FROM E068CNA WHERE CODCCU IN (${l}) AND ROTNAP=${ROTA_OC}`,
+    (l) => `SELECT CODCCU, CODNAP, CODUSU, SITCNA FROM E068CNA WHERE CODEMP=${EMPRESA_OC} AND CODCCU IN (${l}) AND ROTNAP=${ROTA_OC}`,
     180_000
   )) {
     if ((r.SITCNA ?? "").trim().toUpperCase() !== "A") continue;
@@ -544,5 +568,5 @@ export async function lerOcsDaSenior(
     fornecedores.set(String(r.CODFOR ?? "").trim(), (r.NOMFOR ?? "").trim() || (r.APEFOR ?? "").trim());
   }
 
-  return { dados: { ocs, loginDe, nomesCcu, nomesConta, rateios, exigidos, aprovacoes, alcada, fornecedores }, usuarios };
+  return { dados: { ocs, loginDe, loginCadastroDe, nomesCcu, nomesConta, rateios, exigidos, aprovacoes, alcada, fornecedores }, usuarios };
 }

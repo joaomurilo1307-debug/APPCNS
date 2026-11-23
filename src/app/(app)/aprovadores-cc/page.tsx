@@ -80,7 +80,7 @@ function formatLeitura(iso: string | null) {
 function pontoDeAtencao(l: LinhaAlcada) {
   if (l.situacao === "VAZIO") return true;
   if (l.situacao !== "ATIVO") return false;
-  return l.nivelDoUsuario !== "ATIVO" || l.usuarioSenior !== "ATIVO" || l.folha === "NAO_ENCONTRADO" || l.tipoCcu === "SINTETICO";
+  return l.nivelDoUsuario !== "ATIVO" || l.usuarioSenior !== "ATIVO" || l.folha === "NAO_ENCONTRADO" || l.tipoCcu === "SINTETICO" || !!l.loginNoCadastro;
 }
 
 const textoNoSistema = (l: LinhaAlcada) => (l.codUsu ? l.pessoaNoSistema ?? "sem vínculo" : "");
@@ -200,7 +200,7 @@ export default function AprovadoresPorCcPage() {
     const f = filtros;
     return linhas.filter((l) => {
       if (termo) {
-        const alvo = `${l.empresa} ${l.codCcu} ${l.nomeCcu ?? ""} ${l.nomeNivel} ${l.codUsu ?? ""} ${l.nome ?? ""} ${l.login ?? ""} ${l.email ?? ""} ${l.setor ?? ""} ${l.pessoaNoSistema ?? ""}`;
+        const alvo = `${l.empresa} ${l.codCcu} ${l.nomeCcu ?? ""} ${l.nomeNivel} ${l.codUsu ?? ""} ${l.nome ?? ""} ${l.login ?? ""} ${l.loginNoCadastro ?? ""} ${l.email ?? ""} ${l.setor ?? ""} ${l.pessoaNoSistema ?? ""}`;
         if (!textoContem(alvo, termo)) return false;
       }
       if (soAtencao && !pontoDeAtencao(l)) return false;
@@ -211,7 +211,7 @@ export default function AprovadoresPorCcPage() {
       if (f.nivel && String(l.nivel) !== f.nivel) return false;
       if (!textoContem(l.codUsu, f.codUsu)) return false;
       if (!textoContem(l.nome, f.nome)) return false;
-      if (!textoContem(l.login, f.login)) return false;
+      if (!textoContem(`${l.login ?? ""} ${l.loginNoCadastro ?? ""}`, f.login)) return false;
       if (!textoContem(l.email, f.email)) return false;
       if (!textoContem(l.setor, f.setor)) return false;
       if (f.situacao === "VIGENTE" ? l.situacao === "INATIVO" : f.situacao && l.situacao !== f.situacao) return false;
@@ -257,12 +257,12 @@ export default function AprovadoresPorCcPage() {
         colunas: [
           { titulo: "Empresa", largura: 16 }, { titulo: "CC", largura: 10 }, { titulo: "Centro de custo", largura: 40 }, { titulo: "Tipo do CC", largura: 12 },
           { titulo: "Nível", tipo: "inteiro" }, { titulo: "Nome do nível", largura: 14 }, { titulo: "Cód. aprovador", largura: 12 }, { titulo: "Aprovador", largura: 32 },
-          { titulo: "Login", largura: 20 }, { titulo: "E-mail", largura: 32 }, { titulo: "Descrição no Senior", largura: 28 }, { titulo: "Vínculo", largura: 20 },
+          { titulo: "Login", largura: 20 }, { titulo: "Login no E099USU (se diferente)", largura: 20 }, { titulo: "E-mail", largura: 32 }, { titulo: "Descrição no Senior", largura: 28 }, { titulo: "Vínculo", largura: 20 },
           { titulo: "Nível do usuário", largura: 16 }, { titulo: "Usuário Senior", largura: 20 }, { titulo: "Folha", largura: 16 }, { titulo: "No sistema Gestão", largura: 28 },
           { titulo: "Incluído em", largura: 18 }, { titulo: "Incluído por", largura: 18 }, { titulo: "Alterado em", largura: 18 }, { titulo: "Alterado por", largura: 18 },
         ],
         linhas: filtradas.map((l) => [
-          l.empresa, l.codCcu, l.nomeCcu ?? "", l.tipoCcu ? ROTULO_TIPO[l.tipoCcu] : "", l.nivel, l.nomeNivel, l.codUsu ?? "", l.nome ?? "", l.login ?? "", l.email ?? "",
+          l.empresa, l.codCcu, l.nomeCcu ?? "", l.tipoCcu ? ROTULO_TIPO[l.tipoCcu] : "", l.nivel, l.nomeNivel, l.codUsu ?? "", l.nome ?? "", l.login ?? "", l.loginNoCadastro ?? "", l.email ?? "",
           l.setor ?? "", ROTULO_SITUACAO[l.situacao], l.nivelDoUsuario ? ROTULO_NIVEL_USUARIO[l.nivelDoUsuario] : "", l.usuarioSenior ? ROTULO_USUARIO_SENIOR[l.usuarioSenior] : "",
           l.folha ? ROTULO_FOLHA[l.folha] : "", textoNoSistema(l), l.incluidoEm ? formatDataHora(l.incluidoEm) : "", l.incluidoPor ?? "",
           l.alteradoEm ? formatDataHora(l.alteradoEm) : "", l.alteradoPor ?? "",
@@ -323,12 +323,14 @@ export default function AprovadoresPorCcPage() {
           <ul className="space-y-1.5 text-gray-600">
             <li><span className="font-medium text-gray-700">Vínculo:</span> <b>Ativo</b> = a pessoa está na alçada daquele CC e nível. <b>Inativo</b> = já esteve e foi retirada (fica como histórico na Senior). <b>Sem aprovador ativo</b> = o CC tem alçada, mas aquele nível não tem ninguém ativo; a Senior pula o nível e a OC passa sem essa aprovação. <b>Vigente</b> (padrão do filtro) = ativos e níveis sem aprovador.</li>
             <li><span className="font-medium text-gray-700">Nível do usuário:</span> se o nível está ativo para aquela pessoa no cadastro de níveis por usuário da Senior (E068UNA). Vínculo ativo com o nível do usuário inativo merece conferência.</li>
+            <li><span className="font-medium text-gray-700">Login:</span> o de acesso à Senior (R910ENT), o mesmo da tela Aprovações (OC Senior). Quando o cadastro de usuários por empresa (E099USU) traz outro login, ele aparece embaixo, em laranja: a conta foi renomeada ou passada para outra pessoa e o cadastro ficou para trás.</li>
+            <li><span className="font-medium text-gray-700">Empresa:</span> todas as OCs da Senior são da empresa 1 (CONSOMINAS), e é a alçada dela que vale na aprovação. As demais empresas têm cópias da alçada que não são usadas pelas OCs.</li>
             <li><span className="font-medium text-gray-700">Usuário Senior:</span> situação do login na empresa (E099USU) e bloqueio no cadastro de usuários (R910USU).</li>
             <li><span className="font-medium text-gray-700">Folha:</span> se o login bate com alguém ativo na folha {folhaEm ? `(folha guardada em ${formatLeitura(folhaEm)} pela busca de OCs)` : "(sem folha guardada neste servidor: coluna vazia)"}. A alçada e o login continuam ativos na Senior depois do desligamento.</li>
             <li><span className="font-medium text-gray-700">No sistema Gestão:</span> quem, no sistema, está ligado a esse usuário da Senior e por isso vê as OCs dele em Aprovações (OC Senior): o vínculo manual da tela Usuários &gt; Acesso ou, sem ele, o automático pelo e-mail.</li>
             <li><span className="font-medium text-gray-700">Tipo do CC:</span> analítico recebe lançamento; sintético é agrupador.</li>
             <li><span className="font-medium text-gray-700">Incluído / Alterado:</span> quando e por qual login o vínculo foi criado e alterado pela última vez na Senior. Os filtros de data mostram a partir do dia escolhido.</li>
-            <li><span className="font-medium text-gray-700">Só pontos de atenção:</span> níveis sem aprovador ativo e vínculos ativos com nível do usuário inativo, usuário inativo/bloqueado, fora da folha ou em CC sintético.</li>
+            <li><span className="font-medium text-gray-700">Só pontos de atenção:</span> níveis sem aprovador ativo e vínculos ativos com nível do usuário inativo, usuário inativo/bloqueado, fora da folha, em CC sintético ou com login diferente no E099USU.</li>
           </ul>
         </div>
       )}
@@ -481,7 +483,14 @@ export default function AprovadoresPorCcPage() {
                   <td className="whitespace-nowrap">{l.nivel} · {l.nomeNivel}</td>
                   <td className="whitespace-nowrap tabular-nums text-gray-500">{l.codUsu ?? "—"}</td>
                   <td className="max-w-[220px] truncate font-medium" title={l.nome ?? ""}>{vazio ? <span className="font-normal italic text-amber-700">ninguém ativo neste nível</span> : l.nome}</td>
-                  <td className="whitespace-nowrap text-gray-600">{l.login ?? "—"}</td>
+                  <td className="whitespace-nowrap text-gray-600">
+                    {l.login ?? "—"}
+                    {l.loginNoCadastro && (
+                      <span className="block text-[11px] font-medium text-amber-700" title="Login antigo no cadastro de usuários por empresa da Senior (E099USU). O login de acesso é o de cima; o e-mail e o vínculo com o sistema vêm desse cadastro.">
+                        E099USU: {l.loginNoCadastro}
+                      </span>
+                    )}
+                  </td>
                   <td className="max-w-[220px] truncate text-gray-600" title={l.email ?? ""}>{l.email ?? "—"}</td>
                   <td className="max-w-[200px] truncate text-xs text-gray-500" title={l.setor ?? ""}>{l.setor ?? "—"}</td>
                   <td className="whitespace-nowrap">

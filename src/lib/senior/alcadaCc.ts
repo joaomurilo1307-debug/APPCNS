@@ -8,8 +8,10 @@
 //   E068NAP  nome do nivel (DESNAP) e se ele esta ativo (SITNAP), por empresa
 //   E068UNA  nivel x usuario (SITUNA A/I): se o nivel esta ativo para aquele usuario
 //   E044CCU  nome do CC (DESCCU) e tipo (ANASIN A = analitico, S = sintetico), por empresa
-//   E099USU  login (NOMUSU), e-mail (INTNET) e situacao (SITUSU) do usuario, por empresa (o mesmo CODUSU vale em todas)
-//   R910USU  nome completo (NOMCOM), descricao/setor (DESUSU) e bloqueio do login (CONBLO); R910ENT.NOMENT = login no SGU
+//   E099USU  login (NOMUSU), e-mail (INTNET) e situacao (SITUSU) do usuario, por empresa (o mesmo CODUSU vale em todas). O NOMUSU
+//            pode estar desatualizado (conta passada para outra pessoa): a tela mostra o de acesso e marca a diferenca.
+//   R910USU  nome completo (NOMCOM), descricao/setor (DESUSU) e bloqueio do login (CONBLO); R910ENT.NOMENT = login de acesso,
+//            o mesmo que a busca de OCs usa (usuariosDoE099)
 //   E070EMP  sigla das empresas
 //
 // Nivel sem nenhum aprovador ativo NAO trava a OC: a Senior tira esse nivel da cadeia (NIVEXI). A tela mostra esses buracos
@@ -38,7 +40,10 @@ export type LinhaAlcada = {
   /** null nas linhas "Sem aprovador ativo" */
   codUsu: string | null;
   nome: string | null;
+  /** login de acesso a Senior (R910ENT), igual ao da tela de OC */
   login: string | null;
+  /** login no E099USU daquela empresa, so' quando difere do de acesso (cadastro desatualizado na Senior) */
+  loginNoCadastro: string | null;
   email: string | null;
   setor: string | null;
   situacao: SituacaoVinculo;
@@ -128,11 +133,15 @@ export function montarAlcada(
   for (const u of d.usuariosEmpresa) {
     usuarioEmpresa.set(`${t(u.CODEMP)}|${t(u.CODUSU)}`, { login: t(u.NOMUSU), email: t(u.INTNET), situacao: t(u.SITUSU).toUpperCase() });
   }
-  // login/e-mail sem empresa (mesma regra e correcao de cadastro da busca de OCs), para quem nao tem E099USU naquela empresa
-  const usuarioGeral = usuariosDoE099(d.usuariosEmpresa);
+  // login de acesso (R910ENT) e e-mail sem empresa: mesma regra da busca de OCs, para as duas telas mostrarem o mesmo login
+  const usuarioGeral = usuariosDoE099(d.usuariosEmpresa, d.entidadesSgu);
   const sgu = new Map(d.usuariosSgu.map((u) => [t(u.CODENT), { nome: t(u.NOMCOM), setor: t(u.DESUSU), bloqueado: t(u.CONBLO) === "1" }]));
   const loginSgu = new Map(d.entidadesSgu.map((e) => [t(e.CODENT), t(e.NOMENT).toLowerCase()]));
   const loginDe = (cod: string) => usuarioGeral.get(cod)?.login || loginSgu.get(cod) || null;
+  const naFolhaPeloCadastro = (cod: string, login: string) => {
+    const antigo = usuarioGeral.get(cod)?.loginCadastro;
+    return !!extras.ativoNaFolha && !!antigo && antigo !== login && extras.ativoNaFolha(antigo);
+  };
   const quem = (cod: string | undefined) => (codigoValido(cod) ? loginDe(t(cod)) ?? `#${t(cod)}` : null);
 
   const linhas: LinhaAlcada[] = [];
@@ -165,20 +174,22 @@ export function montarAlcada(
     const situacao: SituacaoVinculo = t(v.SITCNA).toUpperCase() === "A" ? "ATIVO" : "INATIVO";
     const ue = usuarioEmpresa.get(`${codEmp}|${codUsu}`);
     const s = sgu.get(codUsu);
-    const login = ue?.login || loginDe(codUsu);
+    const login = loginDe(codUsu) || ue?.login || null;
     const usuarioSenior: SituacaoUsuarioSenior = s?.bloqueado ? "BLOQUEADO" : !ue ? "SEM_CADASTRO" : ue.situacao === "A" ? "ATIVO" : "INATIVO";
     linhas.push({
       chave,
       ...baseCc(codEmp, codCcu, nivel),
       codUsu,
       nome: s?.nome || login || null,
-      login: login || null,
+      login,
+      loginNoCadastro: ue?.login && login && ue.login.toLowerCase() !== login.toLowerCase() ? ue.login : null,
       email: ue?.email || usuarioGeral.get(codUsu)?.email || null,
       setor: s?.setor || null,
       situacao,
       nivelDoUsuario: nivelUsuario.get(`${codEmp}|${nivel}|${codUsu}`) ?? "SEM_CADASTRO",
       usuarioSenior,
-      folha: extras.ativoNaFolha && login ? (extras.ativoNaFolha(login) ? "ATIVO" : "NAO_ENCONTRADO") : null,
+      // folha: vale o login de acesso ou o do cadastro (conta passada de uma pessoa para outra), como na tela de OC
+      folha: extras.ativoNaFolha && login ? (extras.ativoNaFolha(login) || naFolhaPeloCadastro(codUsu, login) ? "ATIVO" : "NAO_ENCONTRADO") : null,
       pessoaNoSistema: extras.pessoaNoSistema?.get(codUsu) ?? null,
       incluidoEm: dataHoraSenior(v.DATGER, v.HORGER),
       incluidoPor: quem(v.USUGER),
@@ -204,7 +215,7 @@ export function montarAlcada(
       linhas.push({
         chave: `${cc.codEmp}|${cc.codCcu}|${nivel}|-`,
         ...baseCc(cc.codEmp, cc.codCcu, nivel),
-        codUsu: null, nome: null, login: null, email: null, setor: null,
+        codUsu: null, nome: null, login: null, loginNoCadastro: null, email: null, setor: null,
         situacao: "VAZIO", nivelDoUsuario: null, usuarioSenior: null, folha: null, pessoaNoSistema: null,
         incluidoEm: null, incluidoPor: null, alteradoEm: null, alteradoPor: null,
       });
