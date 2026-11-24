@@ -14,7 +14,8 @@
 // pendencia e' calculada por NIVEL (conservador: nivel exigido sem nenhum evento APR = pendente).
 
 import { consultarSenior, type LinhaSenior } from "./getDbInfo";
-import { COD_EMP, dataIso } from "./ocsConferencia";
+import { COD_EMP, dataIso, numeroSenior } from "./ocsConferencia";
+import { distribuirRateios, lerRateios, type ItemOc } from "@/lib/dossie/itens";
 
 export type Pessoa = { codUsu: string; nome: string; email: string | null };
 export type EventoAprovacao = { nivel: number; codCcu: string; situacao: string; data: string | null; por: Pessoa };
@@ -57,6 +58,26 @@ export function consolidarRateio(linhas: LinhaSenior[]): { codCcu: string; valor
     valor: Math.round(v * 100) / 100,
     percentual: total > 0 ? Math.round((v / total) * 10000) / 100 : 0,
   }));
+}
+
+/** Recupera o valor de cada linha quando o ERP zerou o rateio após a NF de compra. */
+export function valoresDoRateioZerado(linhas: LinhaSenior[], itens: ItemOc[], valorOc: number): number[] | null {
+  if (!linhas.length || linhas.some((linha) => numeroSenior(linha.VLRRAT) !== 0)) return null;
+  return distribuirRateios(itens, lerRateios(linhas), valorOc).map((rateio) => rateio.valor);
+}
+
+/** Lê produtos e serviços da OC com o melhor valor disponível para cada item. */
+export function itensDasTabelas(produtos: LinhaSenior[], servicos: LinhaSenior[]): ItemOc[] {
+  const item = (linha: LinhaSenior, tipo: ItemOc["tipo"], sequencia: string | undefined): ItemOc => {
+    const quantidade = numeroSenior(linha.QTDPED);
+    const unitario = numeroSenior(linha.PREUNI);
+    const total = [linha.VLRLIQ, linha.VLRORI, linha.VLRBRU].map(numeroSenior).find((valor) => valor > 0) ?? quantidade * unitario;
+    return { tipo, sequencia: numeroSenior(sequencia) || null, codigo: "-", descricao: "-", unidade: "-", quantidade, unitario, total };
+  };
+  return [
+    ...produtos.map((linha) => item(linha, "PRODUTO", linha.SEQIPO)),
+    ...servicos.map((linha) => item(linha, "SERVICO", linha.SEQISO)),
+  ];
 }
 
 /** "(1*1)*(2)" -> [1, 2]; "1" -> [1]. So' digitos 1..9 contam como nivel. */

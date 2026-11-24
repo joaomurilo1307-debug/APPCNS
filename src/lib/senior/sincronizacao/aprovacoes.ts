@@ -6,11 +6,15 @@
 //  - consulta que falha (depois de novas tentativas) interrompe a busca: o script gravava OC sem rateio/nivel quando um lote
 //    falhava, e a tela mostrava "aguardando" para o que ja estava aprovado;
 //  - nome da conta financeira vem da Senior (E091PLF, como no dossie), nao mais do banco do VPS;
-//  - quem esta desligado vem da folha (HCM) quando a credencial dela existe (ver pessoasAtivas.ts).
+//  - quem esta desligado vem da folha (HCM) quando a credencial dela existe (ver pessoasAtivas.ts);
+//  - OC liquidada pela NF de compra, com o VLRRAT do rateio todo zerado: o valor de cada linha sai dos percentuais e dos
+//    itens, como no dossie (ver rateioDaOc).
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { LinhaSenior } from "../getDbInfo";
+import { itensDasTabelas, valoresDoRateioZerado } from "../aprovacaoOc";
+import { ocAtendida, valorDaOc } from "../pendenciasOc";
 import type { AoProgredir, Consultar } from "./titulos";
 import type { UsuarioSync } from "./usuarios";
 
@@ -229,7 +233,7 @@ const ROTA_OC = "12"; // ROTNAP da rota de aprovacao de Ordem de Compra
 const GRUPO_NIVEL: Record<number, string> = { 1: "Coordenação", 2: "Gerência", 3: "Diretoria" };
 // Login errado no proprio Senior para este CODUSU (11/09/2026: e' RICARDO LUIS DE ALMEIDA, nao reinaldo.almeida).
 const NOME_CORRIGIDO: Record<string, string> = { "107": "ricardo.almeida" };
-const CAMPOS_OC = "NUMOCP, DATEMI, CODFOR, USU_NOMFOR, VLRLIQ, VLRORI, VLRFIN, SITAPR, NUMAPR, ROTNAP, USUGER, USU_DATVECT, OBSOCP, USU_NUMTIT, USU_NUMNFC";
+const CAMPOS_OC = "NUMOCP, DATEMI, CODFOR, USU_NOMFOR, VLRLIQ, VLRORI, VLRFIN, SITAPR, SITOCP, NUMAPR, ROTNAP, USUGER, USU_DATVECT, OBSOCP, USU_NUMTIT, USU_NUMNFC";
 // Oracle recusa mais de 1000 expressoes num IN (ORA-01795).
 const MAX_IN = 900;
 
@@ -294,13 +298,35 @@ export function usuariosDoE099(linhas: LinhaSenior[]): Map<string, { login: stri
 
 type Assinatura = { usu: string; data: string };
 type Aprovacoes = { porCcNiv: Map<string, Assinatura>; globalNiv: Map<number, Assinatura>; linhas: LinhaSenior[] };
+type LinhaRateioOc = { seq: number; codccu: string; ctafin: string; perc: number; valor: number };
+
+/** Todas as linhas do E420RAT da OC sem VLRRAT: a Senior zerou o rateio ao atender a OC pela NF de compra. */
+const rateioZerado = (linhas: LinhaSenior[]) => linhas.length > 0 && linhas.every((l) => numeroOc(l.VLRRAT) === 0);
+
+/**
+ * Linhas do E420RAT de UMA OC -> rateio gravado em rateioDetalhe, em ordem de SEQRAT. Quando a NF de compra
+ * liquida a OC (SITOCP 4), a Senior zera o VLRRAT de todas as linhas e mantem o PERRAT, e o mapa da OC mostrava R$ 0 em cada
+ * centro de custo. Com o rateio todo zerado, o cálculo usa a mesma distribuição por item do dossiê. Na OC atendida em parte
+ * (SITOCP 2), o VLRRAT e' o saldo de cada linha e vale como esta. `itens` so' vem para OC atendida (SITOCP 2 ou 4) com o
+ * rateio todo zerado; a cancelada (SITOCP 5) tambem zera, e fica com R$ 0 como o cabecalho.
+ */
+function rateioDaOc(oc: LinhaSenior | undefined, linhas: LinhaSenior[], itens: { produtos: LinhaSenior[]; servicos: LinhaSenior[] } | undefined): LinhaRateioOc[] {
+  let valores: number[] | null = null;
+  if (oc && itens) {
+    const valorOc = valorDaOc({ sitOcp: oc.SITOCP ?? null, vlrLiq: numeroOc(oc.VLRLIQ), vlrOri: numeroOc(oc.VLRORI) }, null, null);
+    valores = valoresDoRateioZerado(linhas, itensDasTabelas(itens.produtos, itens.servicos), valorOc);
+  }
+  return linhas
+    .map((r, i) => ({ seq: Math.trunc(numeroOc(r.SEQRAT)), codccu: (r.CODCCU ?? "").trim(), ctafin: (r.CTAFIN ?? "").trim(), perc: numeroOc(r.PERRAT), valor: valores?.[i] ?? numeroOc(r.VLRRAT) }))
+    .sort((a, b) => a.seq - b.seq);
+}
 
 export type DadosOcs = {
   ocs: LinhaSenior[]; // E420OCP ja filtradas (janela + acompanhadas + pendentes)
   loginDe: Map<string, string>;
   nomesCcu: Map<string, string>;
   nomesConta: Map<string, string>;
-  rateios: Map<string, { seq: number; codccu: string; ctafin: string; perc: number; valor: number }[]>;
+  rateios: Map<string, LinhaRateioOc[]>;
   exigidos: Map<string, { slots: Map<number, number>; sitaprRota: string }>;
   aprovacoes: Map<string, Aprovacoes>;
   alcada: Map<string, Map<number, string[]>>;
@@ -484,12 +510,31 @@ export async function lerOcsDaSenior(
   const numocps = ocs.map((o) => String(o.NUMOCP));
   const numaprs = [...new Set(ocs.map((o) => String(o.NUMAPR ?? "").trim()).filter((n) => n && n !== "0"))].sort();
 
-  const rateios = new Map<string, { seq: number; codccu: string; ctafin: string; perc: number; valor: number }[]>();
-  for (const r of await emLotesIn(consultar, numocps, (l) => `SELECT NUMOCP, SEQRAT, CTAFIN, CODCCU, PERRAT, VLRRAT FROM E420RAT WHERE NUMOCP IN (${l})`, 120_000)) {
-    const oc = String(r.NUMOCP).trim();
-    rateios.set(oc, [...(rateios.get(oc) ?? []), { seq: Math.trunc(numeroOc(r.SEQRAT)), codccu: (r.CODCCU ?? "").trim(), ctafin: (r.CTAFIN ?? "").trim(), perc: numeroOc(r.PERRAT), valor: numeroOc(r.VLRRAT) }]);
+  const porOc = (linhas: LinhaSenior[]) => {
+    const m = new Map<string, LinhaSenior[]>();
+    for (const r of linhas) {
+      const oc = String(r.NUMOCP).trim();
+      const daOc = m.get(oc) ?? [];
+      daOc.push(r);
+      m.set(oc, daOc);
+    }
+    return m;
+  };
+  const linhasRateio = porOc(
+    await emLotesIn(consultar, numocps, (l) => `SELECT NUMOCP, SEQRAT, SEQIPO, SEQISO, CTAFIN, CODCCU, PERCTA, PERRAT, VLRCTA, VLRRAT FROM E420RAT WHERE NUMOCP IN (${l})`, 120_000)
+  );
+  const ocPorNumero = new Map(ocs.map((o) => [String(o.NUMOCP).trim(), o] as const));
+  // Itens (produto e servico) so' das OCs atendidas pela NF com o rateio todo zerado: o valor de cada linha sai deles (ver
+  // rateioDaOc). A OC cancelada (SITOCP 5) tambem tem o rateio zerado, mas o cabecalho dela e' R$ 0 e continua assim.
+  const zeradas = new Set([...linhasRateio].filter(([oc, linhas]) => ocAtendida(ocPorNumero.get(oc)?.SITOCP) && rateioZerado(linhas)).map(([oc]) => oc));
+  const camposItem = "QTDPED, PREUNI, VLRORI, VLRLIQ, VLRBRU";
+  const produtos = porOc(await emLotesIn(consultar, [...zeradas], (l) => `SELECT NUMOCP, SEQIPO, ${camposItem} FROM E420IPO WHERE NUMOCP IN (${l})`, 120_000));
+  const servicos = porOc(await emLotesIn(consultar, [...zeradas], (l) => `SELECT NUMOCP, SEQISO, ${camposItem} FROM E420ISO WHERE NUMOCP IN (${l})`, 120_000));
+  const rateios = new Map<string, LinhaRateioOc[]>();
+  for (const [oc, linhas] of linhasRateio) {
+    const itens = zeradas.has(oc) ? { produtos: produtos.get(oc) ?? [], servicos: servicos.get(oc) ?? [] } : undefined;
+    rateios.set(oc, rateioDaOc(ocPorNumero.get(oc), linhas, itens));
   }
-  for (const l of rateios.values()) l.sort((a, b) => a.seq - b.seq);
 
   const exigidos = new Map<string, { slots: Map<number, number>; sitaprRota: string }>();
   for (const r of await emLotesIn(consultar, numaprs, (l) => `SELECT NUMAPR, NIVEXI, SITAPR FROM E614APR WHERE NUMAPR IN (${l}) AND ROTNAP=${ROTA_OC}`, 120_000)) {

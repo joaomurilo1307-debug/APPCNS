@@ -11,6 +11,18 @@ export function valorTotalOc(vlrLiq: number, totalItens: number | null, totalRat
   return 0;
 }
 
+/** SITOCP 2 indica atendimento parcial e 4 indica liquidação. */
+export function ocAtendida(sitOcp: string | null | undefined): boolean {
+  const situacao = sitOcp?.trim();
+  return situacao === "2" || situacao === "4";
+}
+
+/** Para reconstruir o rateio de uma OC atendida, usa seu valor original antes do saldo. */
+export function valorDaOc(oc: { sitOcp: string | null; vlrLiq: number; vlrOri: number }, totalItens: number | null, totalRateio: number | null): number {
+  if (ocAtendida(oc.sitOcp) && oc.vlrOri > 0) return oc.vlrOri;
+  return valorTotalOc(oc.vlrLiq > 0 ? oc.vlrLiq : oc.vlrOri, totalItens, totalRateio);
+}
+
 export type DadosPendencia = {
   sitApr: string;
   numTit: string | null;
