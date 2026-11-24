@@ -14,7 +14,9 @@
 // pendencia e' calculada por NIVEL (conservador: nivel exigido sem nenhum evento APR = pendente).
 
 import { consultarSenior, type LinhaSenior } from "./getDbInfo";
-import { COD_EMP, dataIso } from "./ocsConferencia";
+import { COD_EMP, dataIso, numeroSenior } from "./ocsConferencia";
+import { valorDaOc } from "./pendenciasOc";
+import { distribuirRateios, lerRateios, type ItemOc } from "@/lib/dossie/itens";
 
 export type Pessoa = { codUsu: string; nome: string; email: string | null };
 export type EventoAprovacao = { nivel: number; codCcu: string; situacao: string; data: string | null; por: Pessoa };
@@ -48,15 +50,35 @@ const soInteiros = (valores: (string | undefined)[]) => [...new Set(valores.filt
  * dentro do item (100 em cada linha), entao somar PERRAT da "300%". A fatia real do CCU e' o
  * valor dele sobre o valor rateado total (confere com PERCTA da propria Senior).
  */
-export function consolidarRateio(linhas: LinhaSenior[]): { codCcu: string; valor: number; percentual: number }[] {
+export function consolidarRateio(linhas: LinhaSenior[], valores?: number[] | null): { codCcu: string; valor: number; percentual: number }[] {
   const porCcu = new Map<string, number>();
-  for (const l of linhas) porCcu.set(l.CODCCU, (porCcu.get(l.CODCCU) ?? 0) + num(l.VLRRAT));
+  linhas.forEach((l, i) => porCcu.set(l.CODCCU, (porCcu.get(l.CODCCU) ?? 0) + (valores ? valores[i] ?? 0 : num(l.VLRRAT))));
   const total = [...porCcu.values()].reduce((a, b) => a + b, 0);
   return [...porCcu].map(([codCcu, v]) => ({
     codCcu,
     valor: Math.round(v * 100) / 100,
     percentual: total > 0 ? Math.round((v / total) * 10000) / 100 : 0,
   }));
+}
+
+/**
+ * Valor de cada linha de rateio quando a Senior zerou o VLRRAT (23/11/2026): ao atender a OC pela NF de compra a Senior zera
+ * os valores do rateio e mantem os percentuais (OC 16778: 3 linhas com VLRRAT 0 e PERRAT 10,10 / 58,33 / 31,57). Ai o valor
+ * de cada linha e' a fatia do item pelos percentuais -- a mesma regra do dossie (distribuirRateios). Com VLRRAT gravado: null
+ * (vale o que a Senior gravou).
+ */
+export function valoresDoRateioZerado(linhas: LinhaSenior[], itens: ItemOc[], valorOc: number): number[] | null {
+  if (!linhas.length || linhas.reduce((s, l) => s + (num(l.VLRRAT) || 0), 0) > 0) return null;
+  return distribuirRateios(itens, lerRateios(linhas), valorOc).map((r) => r.valor);
+}
+
+/** Linhas de E420IPO/E420ISO -> itens com o total de cada um (saldo, senao original, senao bruto, senao quantidade x preco). */
+export function itensDasTabelas(produtos: LinhaSenior[], servicos: LinhaSenior[]): ItemOc[] {
+  const item = (l: LinhaSenior, tipo: ItemOc["tipo"], seq: string | undefined): ItemOc => {
+    const total = [l.VLRLIQ, l.VLRORI, l.VLRBRU].map(numeroSenior).find((v) => v > 0) ?? numeroSenior(l.QTDPED) * numeroSenior(l.PREUNI);
+    return { tipo, sequencia: numeroSenior(seq) || null, codigo: "-", descricao: "-", unidade: "-", quantidade: numeroSenior(l.QTDPED), unitario: numeroSenior(l.PREUNI), total };
+  };
+  return [...produtos.map((l) => item(l, "PRODUTO", l.SEQIPO)), ...servicos.map((l) => item(l, "SERVICO", l.SEQISO))];
 }
 
 /** "(1*1)*(2)" -> [1, 2]; "1" -> [1]. So' digitos 1..9 contam como nivel. */
@@ -91,7 +113,7 @@ async function pessoas(codigos: string[]): Promise<Map<string, Pessoa>> {
 
 export async function lerAprovacaoOc(numOcp: string, codFil: string): Promise<AprovacaoOc | null> {
   if (!/^\d+$/.test(numOcp) || !/^\d+$/.test(codFil)) throw new Error("OC/filial inválida.");
-  const [oc] = await consultarSenior(`SELECT NUMAPR, SITAPR FROM E420OCP WHERE CODEMP = ${COD_EMP} AND CODFIL = ${codFil} AND NUMOCP = ${numOcp}`);
+  const [oc] = await consultarSenior(`SELECT NUMAPR, SITAPR, SITOCP, VLRLIQ, VLRORI FROM E420OCP WHERE CODEMP = ${COD_EMP} AND CODFIL = ${codFil} AND NUMOCP = ${numOcp}`);
   if (!oc) return null;
   const numApr = /^\d+$/.test(oc.NUMAPR ?? "") && oc.NUMAPR !== "0" ? oc.NUMAPR : null;
 
@@ -101,7 +123,17 @@ export async function lerAprovacaoOc(numOcp: string, codFil: string): Promise<Ap
     [cab] = await consultarSenior(`SELECT NIVEXI, SITAPR FROM E614APR WHERE NUMAPR IN (${numApr}) AND ROTNAP IN (12)`);
     usu = await consultarSenior(`SELECT SEQAPR, USUAPR, CCUAPR, NIVAPR, SITAPR, DATAPR FROM E614USU WHERE NUMAPR IN (${numApr}) AND ROTNAP IN (12)`);
   }
-  const rateio = await consultarSenior(`SELECT CODCCU, PERRAT, VLRRAT FROM E420RAT WHERE CODEMP = ${COD_EMP} AND CODFIL = ${codFil} AND NUMOCP = ${numOcp}`);
+  const chaveOc = `CODEMP = ${COD_EMP} AND CODFIL = ${codFil} AND NUMOCP = ${numOcp}`;
+  const rateio = await consultarSenior(`SELECT SEQRAT, SEQIPO, SEQISO, CODCCU, CTAFIN, PERCTA, PERRAT, VLRCTA, VLRRAT FROM E420RAT WHERE ${chaveOc}`);
+  let valoresRateio: number[] | null = null;
+  if (rateio.length && rateio.every((r) => !(num(r.VLRRAT) > 0))) {
+    const [produtos, servicos] = [
+      await consultarSenior(`SELECT SEQIPO, QTDPED, PREUNI, VLRORI, VLRLIQ, VLRBRU FROM E420IPO WHERE ${chaveOc}`),
+      await consultarSenior(`SELECT SEQISO, QTDPED, PREUNI, VLRORI, VLRLIQ, VLRBRU FROM E420ISO WHERE ${chaveOc}`),
+    ];
+    const valorOc = valorDaOc({ sitOcp: oc.SITOCP ?? null, vlrLiq: numeroSenior(oc.VLRLIQ), vlrOri: numeroSenior(oc.VLRORI) }, null, null);
+    valoresRateio = valoresDoRateioZerado(rateio, itensDasTabelas(produtos, servicos), valorOc);
+  }
   const codCcus = [...new Set(rateio.map((r) => r.CODCCU).filter(Boolean))];
   const cadastro = codCcus.length
     ? (await consultarSenior(`SELECT CODUSU, CODNAP, CODCCU, SITCNA FROM E068CNA WHERE CODEMP IN (${COD_EMP}) AND ROTNAP IN (12) AND CODCCU IN (${codCcus.map((c) => `'${c.replace(/'/g, "")}'`).join(",")})`)).filter((l) => l.SITCNA === "A")
@@ -137,7 +169,7 @@ export async function lerAprovacaoOc(numOcp: string, codFil: string): Promise<Ap
     ...base,
     nivelExigido: cab?.NIVEXI ?? null,
     ...av,
-    ccus: consolidarRateio(rateio).map((c) => ({
+    ccus: consolidarRateio(rateio, valoresRateio).map((c) => ({
       codCcu: c.codCcu,
       descricao: descricoes.get(c.codCcu) ?? null,
       percentual: c.percentual,

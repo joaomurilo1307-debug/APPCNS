@@ -4,7 +4,8 @@
 // vencimento (USU_DATVECT) aqui no codigo.
 
 import { consultarSenior, type LinhaSenior } from "./getDbInfo";
-import { valorTotalOc } from "./pendenciasOc";
+import { valorDaOc, type ResumoRateio } from "./pendenciasOc";
+import type { NfDaOc, TituloSenior } from "../conferenciaOc/titulosDaOc";
 
 export const COD_EMP = 1;
 export const JANELA_PADRAO = 1500;
@@ -16,13 +17,15 @@ export type OcConferencia = {
   fornecedorNome: string | null;
   emissao: string | null; // yyyy-mm-dd
   vencimento: string | null; // yyyy-mm-dd
-  valor: number;
+  valor: number; // valor da OC (valorDaOc)
+  saldo: number; // VLRLIQ: o que ainda falta receber/faturar
   sitApr: string; // APR = totalmente aprovada
+  sitOcp: string; // 1 aberta, 2 atendida em parte, 4 liquidada, 5 cancelada, 9 nao fechada
   numTitSenior: string | null; // USU_NUMTIT digitado pelo comprador
   numNfc: string | null;
   codFpg: string | null;
   descricao: string | null;
-  rateioTotal: number | null; // soma de E420RAT; null = nao conferido
+  rateio: ResumoRateio | null; // E420RAT resumido; null = nao conferido
 };
 
 /** "dd/mm/aaaa" da Senior -> "aaaa-mm-dd"; 31/12/1900 (vazio da Senior) -> null. */
@@ -44,6 +47,7 @@ const vazio = (v: string | undefined) => {
 };
 
 export function paraOc(l: LinhaSenior): OcConferencia {
+  const vlrLiq = numeroSenior(l.VLRLIQ);
   return {
     numOcp: l.NUMOCP,
     codFil: l.CODFIL,
@@ -51,17 +55,21 @@ export function paraOc(l: LinhaSenior): OcConferencia {
     fornecedorNome: vazio(l.USU_NOMFOR),
     emissao: dataIso(l.DATEMI),
     vencimento: dataIso(l.USU_DATVECT),
-    valor: numeroSenior(l.VLRLIQ),
-    sitApr: l.SITAPR ?? "",
+    valor: valorDaOc({ sitOcp: l.SITOCP ?? null, vlrLiq, vlrOri: numeroSenior(l.VLRORI) }, null, null),
+    saldo: vlrLiq,
+    // OC cancelada na Senior (SITOCP 5) mantem o SITAPR de antes (APR/ANA/REP): a tela mostrava "Aprovada" e "sem titulo" para
+    // ela (OC 16728, 23/11/2026). Cancelada vira CAN: rotulo "Cancelada" e nenhuma pendencia.
+    sitApr: (l.SITOCP ?? "").trim() === "5" ? "CAN" : l.SITAPR ?? "",
+    sitOcp: (l.SITOCP ?? "").trim(),
     numTitSenior: vazio(l.USU_NUMTIT),
     numNfc: vazio(l.USU_NUMNFC),
     codFpg: vazio(l.CODFPG),
     descricao: vazio(l.OBSOCP),
-    rateioTotal: null,
+    rateio: null,
   };
 }
 
-const COLUNAS = "NUMOCP, CODFIL, CODFOR, DATEMI, VLRLIQ, SITAPR, USU_DATVECT, USU_NOMFOR, USU_NUMTIT, USU_NUMNFC, CODFPG, OBSOCP";
+const COLUNAS = "NUMOCP, CODFIL, CODFOR, DATEMI, VLRLIQ, VLRORI, SITOCP, SITAPR, USU_DATVECT, USU_NOMFOR, USU_NUMTIT, USU_NUMNFC, CODFPG, OBSOCP";
 
 export async function listarOcsPorVencimento(de: string, ate: string, janela = JANELA_PADRAO): Promise<OcConferencia[]> {
   const max = Number((await consultarSenior(`SELECT MAX(NUMOCP) AS MAXOC FROM E420OCP WHERE CODEMP = ${COD_EMP}`))[0]?.MAXOC);
@@ -75,26 +83,104 @@ export async function listarOcsPorVencimento(de: string, ate: string, janela = J
   return doPeriodo
     .map((o) => {
       const k = `${o.numOcp}|${o.codFil}`;
-      const rateioTotal = rateios ? rateios.get(k) ?? 0 : null;
-      return { ...o, fornecedorNome: o.fornecedorNome ?? nomes.get(o.codFor) ?? null, rateioTotal, valor: valorTotalOc(o.valor, itens?.get(k) ?? null, rateioTotal) };
+      const rateio = rateios ? rateios.get(k) ?? { linhas: 0, valor: 0, percentual: 0 } : null;
+      const valor = o.valor > 0 ? o.valor : valorDaOc({ sitOcp: o.sitOcp, vlrLiq: 0, vlrOri: 0 }, itens?.get(k) ?? null, rateio?.valor ?? null);
+      return { ...o, fornecedorNome: o.fornecedorNome ?? nomes.get(o.codFor) ?? null, rateio, valor };
     })
     .sort((a, b) => (a.vencimento! < b.vencimento! ? -1 : a.vencimento! > b.vencimento! ? 1 : Number(a.numOcp) - Number(b.numOcp)));
 }
 
-/** Soma dos itens (VLRORI) e do rateio por OC, em 2 consultas agrupadas. Falha = null (nao acusa rateio zerado). */
+/** Total dos itens de uma linha agrupada: saldo (VLRLIQ), senao original (VLRORI), senao bruto (VLRBRU) -- item liquidado zera o saldo. */
+const totalDosItens = (l: LinhaSenior) => [l.LIQ, l.ORI, l.BRU].map(numeroSenior).find((v) => v > 0) ?? 0;
+
+/**
+ * Por OC, em 3 consultas agrupadas: total dos itens (produtos E420IPO + servicos E420ISO -- antes so' produtos, e OC so' de
+ * servico liquidada aparecia com R$ 0,00) e o resumo do rateio (linhas, VLRRAT e PERRAT). Falha = null (nao acusa rateio).
+ */
 async function totaisPorOc(apos: number, buscar: boolean) {
-  const soma = async (sql: string) => {
-    const m = new Map<string, number>();
-    for (const l of await consultarSenior(sql)) m.set(`${l.NUMOCP}|${l.CODFIL}`, numeroSenior(l.TOT));
-    return m;
-  };
   if (!buscar) return { itens: null, rateios: null };
   const filtro = `WHERE CODEMP = ${COD_EMP} AND NUMOCP > ${apos}`;
-  const [itens, rateios] = await Promise.all([
-    soma(`SELECT NUMOCP, CODFIL, SUM(VLRORI) AS TOT FROM E420IPO ${filtro} GROUP BY NUMOCP, CODFIL`).catch(() => null),
-    soma(`SELECT NUMOCP, CODFIL, SUM(VLRRAT) AS TOT FROM E420RAT ${filtro} GROUP BY NUMOCP, CODFIL`).catch(() => null),
-  ]);
+  const somaItens = async () => {
+    const m = new Map<string, number>();
+    for (const tabela of ["E420IPO", "E420ISO"]) {
+      for (const l of await consultarSenior(`SELECT NUMOCP, CODFIL, SUM(VLRLIQ) AS LIQ, SUM(VLRORI) AS ORI, SUM(VLRBRU) AS BRU FROM ${tabela} ${filtro} GROUP BY NUMOCP, CODFIL`)) {
+        const k = `${l.NUMOCP}|${l.CODFIL}`;
+        m.set(k, (m.get(k) ?? 0) + totalDosItens(l));
+      }
+    }
+    return m;
+  };
+  const resumoRateio = async () => {
+    const m = new Map<string, ResumoRateio>();
+    for (const l of await consultarSenior(`SELECT NUMOCP, CODFIL, COUNT(*) AS QTD, SUM(VLRRAT) AS VLR, SUM(PERRAT) AS PER FROM E420RAT ${filtro} GROUP BY NUMOCP, CODFIL`)) {
+      m.set(`${l.NUMOCP}|${l.CODFIL}`, { linhas: numeroSenior(l.QTD), valor: numeroSenior(l.VLR), percentual: numeroSenior(l.PER) });
+    }
+    return m;
+  };
+  const [itens, rateios] = await Promise.all([somaItens().catch(() => null), resumoRateio().catch(() => null)]);
   return { itens, rateios };
+}
+
+const TIPO_OK = /^[A-Za-z0-9]{1,3}$/;
+const inteiro = (v: string | undefined) => /^\d+$/.test((v ?? "").trim());
+
+/**
+ * Tudo o que a Senior registra para decidir se a OC ja' virou titulo (ver src/lib/conferenciaOc/titulosDaOc.ts), so' leitura:
+ *  - NF de compra com a OC nos itens (E440IPC/E440ISC.NUMOCP);
+ *  - titulos (E501TCP) dos fornecedores das OCs, dos outros fornecedores do mesmo grupo e dos fornecedores dessas NFs.
+ * Titulos em lotes de 40 fornecedores (IN grande estoura o tempo na Senior). Erro = excecao (quem chama decide o que fazer).
+ */
+export async function lerTitulosDasOcs(
+  ocs: Pick<OcConferencia, "numOcp" | "codFor">[],
+  grupos: Map<string, string> = new Map()
+): Promise<{ titulos: TituloSenior[]; nfs: NfDaOc[] }> {
+  const numeros = ocs.map((o) => Number(o.numOcp)).filter((n) => Number.isInteger(n) && n > 0);
+  if (!numeros.length) return { titulos: [], nfs: [] };
+  const sem0 = (c: string) => String(Number(c));
+  const daLista = new Set(numeros.map(String));
+
+  const apos = Math.min(...numeros) - 1;
+  const nfs: NfDaOc[] = [];
+  for (const tabela of ["E440IPC", "E440ISC"]) {
+    for (const l of await consultarSenior(`SELECT CODFIL, CODFOR, NUMNFC, NUMOCP FROM ${tabela} WHERE CODEMP = ${COD_EMP} AND NUMOCP > ${apos}`)) {
+      if (inteiro(l.NUMOCP) && daLista.has(sem0(l.NUMOCP)) && inteiro(l.CODFOR) && (l.NUMNFC ?? "").trim()) {
+        nfs.push({ codFil: l.CODFIL, codFor: l.CODFOR, numNfc: l.NUMNFC.trim(), numOcp: sem0(l.NUMOCP) });
+      }
+    }
+  }
+
+  const membros = new Map<string, string[]>();
+  for (const [cod, g] of grupos) membros.set(g, [...(membros.get(g) ?? []), cod]);
+  const fornecedores = new Set<string>();
+  for (const cod of [...ocs.map((o) => o.codFor), ...nfs.map((n) => n.codFor)]) {
+    if (!inteiro(cod)) continue;
+    fornecedores.add(sem0(cod));
+    for (const m of membros.get(grupos.get(sem0(cod)) ?? "") ?? []) if (inteiro(m)) fornecedores.add(sem0(m));
+  }
+  const lista = [...fornecedores];
+  const titulos: TituloSenior[] = [];
+  for (let i = 0; i < lista.length; i += 40) {
+    const linhas = await consultarSenior(
+      `SELECT CODFIL, CODFOR, NUMTIT, CODTPT, SITTIT, VLRORI, VLRABE, VCTPRO, NUMNFC, USU_NUMOCP FROM E501TCP WHERE CODEMP = ${COD_EMP} AND CODFOR IN (${lista.slice(i, i + 40).join(",")})`
+    );
+    for (const l of linhas) {
+      const numTit = (l.NUMTIT ?? "").trim();
+      if (!numTit || !TIPO_OK.test((l.CODTPT ?? "").trim())) continue;
+      titulos.push({
+        codFil: (l.CODFIL ?? "").trim(),
+        codFor: (l.CODFOR ?? "").trim(),
+        numTit,
+        codTpt: (l.CODTPT ?? "").trim(),
+        situacao: (l.SITTIT ?? "").trim(),
+        valor: numeroSenior(l.VLRORI),
+        aberto: numeroSenior(l.VLRABE),
+        vencimento: dataIso(l.VCTPRO),
+        numNfc: vazio(l.NUMNFC),
+        numOcp: vazio(l.USU_NUMOCP),
+      });
+    }
+  }
+  return { titulos, nfs };
 }
 
 /** Nome do fornecedor (E095FOR) quando a OC nao traz USU_NOMFOR. Em lotes pequenos (IN grande estoura o tempo na Senior); falha = sem nome, nao derruba a lista. */

@@ -19,17 +19,22 @@ type Oc = {
   emissao: string | null;
   vencimento: string | null;
   valor: number;
+  saldo: number; // VLRLIQ: o que falta receber; menor que o valor = OC atendida em parte
   sitApr: string;
+  sitOcp: string;
   numTit: string | null;
   tituloGeradoAqui: boolean;
-  temTitulo: boolean; // false = o numero digitado na OC (USU_NUMTIT) nao existe de verdade no Senior
+  temTitulo: boolean; // a Senior ja' tem titulo ligado a esta OC (NF, USU_NUMOCP, digitado, manual ou gerado aqui): sai da lista
+  titulos: { numTit: string; codTpt: string; origemTexto: string }[];
+  tituloProvavel: { numTit: string; codTpt: string; codFor: string; codFil: string; valor: number; vencimento: string | null; numNfc: string | null } | null;
+  digitadoInexistente: boolean; // numero digitado na OC (USU_NUMTIT) que nao existe na Senior
   numNfc: string | null;
   descricao: string | null;
   dossieId: string | null;
   dossieStatus: string | null;
   dossieMotivo: string | null;
   nfs: string[];
-  rateioTotal: number | null;
+  rateio: { linhas: number; valor: number; percentual: number } | null;
 };
 
 const SIT_LABEL: Record<string, string> = {
@@ -55,6 +60,8 @@ export default function ConferenciaOcPage() {
   const [de, setDe] = useState(hojeIso());
   const [ate, setAte] = useState(hojeIso(7));
   const [ocs, setOcs] = useState<Oc[]>([]);
+  const [titulosConferidos, setTitulosConferidos] = useState(true);
+  const [confirmando, setConfirmando] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -88,6 +95,7 @@ export default function ConferenciaOcPage() {
       .then(json)
       .then((d) => {
         setOcs(d.ocs ?? []);
+        setTitulosConferidos(d.titulosConferidos !== false);
         setSelecionadas(new Set());
       })
       .catch((e) => setErro(e.message))
@@ -156,6 +164,30 @@ export default function ConferenciaOcPage() {
       .finally(() => setCarregandoDetalhe(null));
   }
 
+  // Titulo provavel (mesmo fornecedor, valor e vencimento, sem nada ligando na Senior): a pessoa confirma e o vinculo vai para
+  // TituloOcVinculo, o mesmo da Programacao de Pagamento. A OC sai desta lista e o titulo aparece ligado a ela la.
+  async function confirmarProvavel(o: Oc) {
+    const t = o.tituloProvavel;
+    if (!t) return;
+    const texto = `Ligar o título ${t.codTpt} ${t.numTit} (${moeda(t.valor)}, vence ${dataBr(t.vencimento)}) à OC ${o.numOcp}?\n\nA OC sai da Conferência e o título passa a aparecer ligado a ela na Programação de Pagamento.`;
+    if (!window.confirm(texto)) return;
+    setConfirmando(o.numOcp);
+    setAviso(null);
+    try {
+      await fetch("/api/conferencia-oc/vincular-titulo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numOcp: o.numOcp, codFil: o.codFil, numTit: t.numTit, codFor: t.codFor, codFilTitulo: t.codFil }),
+      }).then(json);
+      setOcs((l) => l.map((x) => (x.numOcp === o.numOcp && x.codFil === o.codFil ? { ...x, temTitulo: true, numTit: t.numTit, tituloProvavel: null } : x)));
+      setAviso(`OC ${o.numOcp} ligada ao título ${t.numTit}. Ela segue na Programação de Pagamento.`);
+    } catch (e) {
+      setAviso(`OC ${o.numOcp}: ${(e as Error).message}`);
+    } finally {
+      setConfirmando(null);
+    }
+  }
+
   async function gerarDossies(lista: Oc[]) {
     if (!lista.length) return;
     setGerandoDossie(true);
@@ -210,19 +242,24 @@ export default function ConferenciaOcPage() {
     }
   }
 
-  const filtradas = useMemo(() => {
+  const doFiltro = useMemo(() => {
     const t = busca.trim().toLowerCase();
     return ocs
       .filter((o) => !sitSel.length || sitSel.includes(o.sitApr))
-      .filter((o) => !o.temTitulo) // so' OCs sem titulo (filtro da Renata, 20/10); numero digitado na OC que nao existe no Senior conta como sem titulo
       .filter((o) => !t || o.numOcp.includes(t) || (o.fornecedorNome ?? "").toLowerCase().includes(t) || (o.numTit ?? "").toLowerCase().includes(t));
   }, [ocs, busca, sitSel]);
+  // so' OCs sem titulo (filtro da Renata, 20/10): a que ja' virou titulo na Senior segue na Programacao de Pagamento.
+  // Numero digitado na OC que nao existe na Senior conta como sem titulo.
+  const filtradas = useMemo(() => doFiltro.filter((o) => !o.temTitulo), [doFiltro]);
+  const jaComTitulo = doFiltro.length - filtradas.length;
 
   const total = useMemo(() => filtradas.reduce((s, o) => s + o.valor, 0), [filtradas]);
   const chave = (o: Oc) => o.numOcp;
 
   // planilha: as OCs que estao na tela (respeita o periodo, a busca e as situacoes marcadas), com as pendencias de cada uma
   const statusDossie = (o: Oc) => (o.dossieStatus === "GERANDO" ? "gerando" : o.dossieId ? "pronto" : o.dossieStatus === "ERRO" ? "falhou" : "sem dossiê");
+  const textoTitulo = (o: Oc) =>
+    o.tituloProvavel ? `provável: ${o.tituloProvavel.numTit} (sem vínculo)` : o.digitadoInexistente && o.numTit ? `${o.numTit} (não existe na Senior)` : "";
   function abasExcel(): AbaExcel[] {
     return [{
       nome: "Conferência de OC",
@@ -231,7 +268,7 @@ export default function ConferenciaOcPage() {
         { titulo: "Vencimento", tipo: "data" }, { titulo: "OC", largura: 10 }, { titulo: "Filial", largura: 7 }, { titulo: "Fornecedor", largura: 44 }, { titulo: "Valor", tipo: "moeda" },
         { titulo: "Aprovação", largura: 14 }, { titulo: "NF", largura: 18 }, { titulo: "Título", largura: 14 }, { titulo: "Pendências", largura: 36 }, { titulo: "Dossiê", largura: 12 }, { titulo: "Descrição", largura: 50 },
       ],
-      linhas: filtradas.map((o) => [o.vencimento, o.numOcp, o.codFil, o.fornecedorNome || `Fornecedor ${o.codFor}`, o.valor, SIT_LABEL[o.sitApr] ?? o.sitApr, o.nfs.join(", "), o.numTit ?? "", pendenciasOc(o).join(" · "), statusDossie(o), o.descricao ?? ""]),
+      linhas: filtradas.map((o) => [o.vencimento, o.numOcp, o.codFil, o.fornecedorNome || `Fornecedor ${o.codFor}`, o.valor, SIT_LABEL[o.sitApr] ?? o.sitApr, o.nfs.join(", "), textoTitulo(o), pendenciasOc(o).join(" · "), statusDossie(o), o.descricao ?? ""]),
       rodape: ["", "", "", "TOTAL", total, "", "", "", "", "", ""],
     }];
   }
@@ -294,6 +331,11 @@ export default function ConferenciaOcPage() {
       </div>
 
       {erro && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">{erro}</div>}
+      {!titulosConferidos && !erro && ocs.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          A Senior não respondeu a conferência dos títulos agora: a lista usou só o número digitado na OC e pode trazer OC que já tem título (pela NF ou vínculo). Busque de novo em instantes.
+        </div>
+      )}
       {aviso && (
         <div className="mb-4 cursor-pointer rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900" onClick={() => setAviso(null)}>
           {aviso} <span className="text-amber-600">(clique pra fechar)</span>
@@ -303,6 +345,11 @@ export default function ConferenciaOcPage() {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-500">
           {filtradas.length} OC{filtradas.length === 1 ? "" : "s"} · total {moeda(total)}
+          {jaComTitulo > 0 && (
+            <span className="text-gray-400" title="Já têm título na Senior (pela NF de compra, pelo campo OC do título, pelo número digitado na OC ou por vínculo confirmado). Seguem na Programação de Pagamento.">
+              {" "}· {jaComTitulo} já com título (seguem na Programação de Pagamento)
+            </span>
+          )}
         </p>
         <BotaoExcel arquivo="conferencia-de-oc" gerar={abasExcel} desabilitado={filtradas.length === 0} />
       </div>
@@ -357,7 +404,14 @@ export default function ConferenciaOcPage() {
                 <td className="max-w-[240px] truncate px-3 py-1.5" title={o.fornecedorNome ?? ""}>
                   {o.fornecedorNome || `Fornecedor ${o.codFor}`}
                 </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{moeda(o.valor)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">
+                  {moeda(o.valor)}
+                  {o.saldo > 0 && o.saldo < o.valor - 0.005 && (
+                    <div className="text-[11px] text-gray-400" title="OC atendida em parte pela NF de compra: este é o saldo que ainda falta (VLRLIQ)">
+                      saldo {moeda(o.saldo)}
+                    </div>
+                  )}
+                </td>
                 <td className="px-3 py-1.5">
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${SIT_CLASSE[o.sitApr] ?? "bg-gray-100 text-gray-700"}`}>
                     {SIT_LABEL[o.sitApr] ?? (o.sitApr || "—")}
@@ -365,17 +419,33 @@ export default function ConferenciaOcPage() {
                 </td>
                 <td className="px-3 py-1.5 text-gray-600">{o.nfs.length ? o.nfs.join(", ") : <span className="text-gray-300">—</span>}</td>
                 <td className="px-3 py-1.5">
-                  {o.numTit && !o.temTitulo ? (
+                  {o.tituloProvavel ? (
+                    <div className="flex flex-col items-start gap-1">
+                      <span
+                        className="rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-900"
+                        title={`Título aberto na Senior do mesmo fornecedor, ${o.tituloProvavel.numNfc && o.tituloProvavel.numNfc === o.numNfc ? `com a NF ${o.numNfc} digitada na OC` : "com o mesmo vencimento e valor compatível"}, mas nada liga os dois (nem a NF de compra, nem o campo OC do título, nem o número digitado na OC). Confira e confirme para não gerar um título duplicado.`}
+                      >
+                        provável: {o.tituloProvavel.codTpt} {o.tituloProvavel.numTit} · {moeda(o.tituloProvavel.valor)}
+                      </span>
+                      <button
+                        onClick={() => confirmarProvavel(o)}
+                        disabled={confirmando === o.numOcp}
+                        className="text-[11px] text-sky-800 underline decoration-dotted underline-offset-2 disabled:opacity-50"
+                      >
+                        {confirmando === o.numOcp ? "Ligando…" : "é este: ligar à OC"}
+                      </button>
+                    </div>
+                  ) : o.digitadoInexistente && o.numTit ? (
                     <button
                       onClick={() => conferir(o)}
                       disabled={carregandoDetalhe === o.numOcp}
-                      title={`O título ${o.numTit} foi digitado na OC (USU_NUMTIT), mas ainda não existe no Senior. Clique para conferir a OC.`}
+                      title={`O título ${o.numTit} foi digitado na OC (USU_NUMTIT), mas não existe na Senior para este fornecedor nem para outro do mesmo grupo. Clique para conferir a OC.`}
                       className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900 disabled:opacity-50"
                     >
                       {carregandoDetalhe === o.numOcp ? "Consultando…" : `${o.numTit} · não existe no Senior`}
                     </button>
-                  ) : o.numTit ? (
-                    <span className="font-medium text-gray-800" title={o.tituloGeradoAqui ? "Gerado por esta tela" : "Informado na OC (USU_NUMTIT)"}>
+                  ) : o.temTitulo && o.numTit ? (
+                    <span className="font-medium text-gray-800" title={o.titulos.map((t) => `${t.codTpt} ${t.numTit}: ${t.origemTexto}`).join("\n") || undefined}>
                       {o.numTit}
                     </span>
                   ) : (
@@ -434,7 +504,8 @@ export default function ConferenciaOcPage() {
                   OC {detalhe.oc.numOcp} — {detalhe.oc.fornecedorNome ?? `Fornecedor ${detalhe.oc.codFor}`}
                 </h2>
                 <p className="text-sm text-gray-500">
-                  Vencimento {dataBr(detalhe.oc.vencimento)} · {moeda(detalhe.oc.valor)} · filial {detalhe.oc.codFil}
+                  Vencimento {dataBr(detalhe.oc.vencimento)} · {moeda(detalhe.oc.valor)}
+                  {detalhe.oc.saldo > 0 && detalhe.oc.saldo < detalhe.oc.valor - 0.005 ? ` (saldo ${moeda(detalhe.oc.saldo)})` : ""} · filial {detalhe.oc.codFil}
                 </p>
               </div>
               <button onClick={() => setDetalhe(null)} className="text-gray-400 hover:text-gray-600" aria-label="Fechar">
@@ -481,7 +552,7 @@ export default function ConferenciaOcPage() {
                 <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">Aprovadores cadastrados por centro de custo</p>
                 {detalhe.aprovacao.ccus.map((c: any) => (
                   <p key={c.codCcu} className="text-gray-600">
-                    <strong>{c.codCcu}</strong> {c.descricao ?? ""} ({c.percentual}%):{" "}
+                    <strong>{c.codCcu}</strong> {c.descricao ?? ""} ({c.percentual}% · {moeda(c.valor)}):{" "}
                     {c.aprovadoresCadastrados.map((n: any) => `N${n.nivel} ${n.pessoas.map((p: any) => p.nome).join("/") || "—"}`).join(" · ")}
                   </p>
                 ))}
@@ -567,10 +638,28 @@ export default function ConferenciaOcPage() {
                 return <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">NF {naoLancada.map((a) => a.numeroNf).join(", ")} ainda não lançada na Senior. Lance a NF na Senior (o título nasce da entrada).</p>;
               return null;
             })()}
+            {detalhe.titulos?.length > 0 && (
+              <div className="mb-2 rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">
+                {detalhe.titulos.map((t: any) => (
+                  <p key={`${t.codFor}-${t.numTit}`}>
+                    Título {t.codTpt} <strong>{t.numTit}</strong> · {moeda(t.valor)} · vence {dataBr(t.vencimento)} — {t.origemTexto}.
+                  </p>
+                ))}
+                <p>Esta OC já tem título na Senior: siga na Programação de Pagamento.</p>
+              </div>
+            )}
+            {!detalhe.titulos?.length && detalhe.tituloProvavel && (
+              <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">
+                Título provável: {detalhe.tituloProvavel.codTpt} <strong>{detalhe.tituloProvavel.numTit}</strong> · {moeda(detalhe.tituloProvavel.valor)} · vence {dataBr(detalhe.tituloProvavel.vencimento)} — mesmo fornecedor, sem nada ligando à OC na Senior. Confira antes de gerar outro título.
+              </p>
+            )}
+            {detalhe.titulosConferidos === false && (
+              <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">Não foi possível conferir agora na Senior se esta OC já tem título (pela NF ou vínculo).</p>
+            )}
             <div className="flex items-center justify-end gap-2">
-              {detalhe.numTit && (
+              {detalhe.numTit && !detalhe.titulos?.length && (
                 <span className="text-sm text-gray-600">
-                  Título já existente: <strong>{detalhe.numTit}</strong>
+                  Número digitado na OC: <strong>{detalhe.numTit}</strong>
                 </span>
               )}
             </div>
