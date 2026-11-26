@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import DetalheOcModal, { type OcDetalhe } from "@/components/aprovacoes/DetalheOcModal";
+
 // OCs pendentes de aprovacao DO USUARIO LOGADO, ao vivo na Senior (web service nativo, com o login ERP da propria pessoa).
-type Rateio = { codigoCentroCustos: string; abreviatura: string; percentual: number; valor: number };
-type Oc = { codigoEmpresa: number; codigoFilial: number; numero: number; dataEmissao: string; fornecedor: string; solicitante: string; valor: number; observacao: string; rateio: Rateio[]; itens: string[] };
+type Oc = OcDetalhe & { codigoEmpresa: number };
 
 const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const chaveDe = (o: Oc) => `${o.codigoEmpresa}-${o.codigoFilial}-${o.numero}`;
@@ -19,7 +20,7 @@ export default function AprovacoesOcPage() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [aberta, setAberta] = useState<string | null>(null);
+  const [aberta, setAberta] = useState<Oc | null>(null);
   const [confirmando, setConfirmando] = useState<{ oc: Oc; acao: "aprovar" | "reprovar" } | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [editando, setEditando] = useState(false);
@@ -79,6 +80,7 @@ export default function AprovacoesOcPage() {
     } finally {
       setEnviando(false);
       setConfirmando(null);
+      setAberta(null);
       carregar();
     }
   }
@@ -129,9 +131,8 @@ export default function AprovacoesOcPage() {
               </thead>
               <tbody>
                 {ocs.map((o) => (
-                  <>
-                    <tr key={chaveDe(o)} className="cursor-pointer border-t border-gray-100 hover:bg-brand/[0.04] [&>td]:px-4 [&>td]:py-3" onClick={() => setAberta(aberta === chaveDe(o) ? null : chaveDe(o))}>
-                      <td className="font-medium">{o.numero}</td>
+                    <tr key={chaveDe(o)} className="cursor-pointer border-t border-gray-100 hover:bg-brand/[0.04] [&>td]:px-4 [&>td]:py-3" onClick={() => setAberta(o)} title="Clique para ver todos os dados da OC">
+                      <td className="font-medium text-brand-dark underline decoration-dotted underline-offset-2">{o.numero}</td>
                       <td>{o.codigoFilial}</td>
                       <td className="whitespace-nowrap">{o.dataEmissao}</td>
                       <td className="max-w-[260px] truncate" title={o.fornecedor}>{o.fornecedor}</td>
@@ -142,16 +143,6 @@ export default function AprovacoesOcPage() {
                         <button onClick={() => setConfirmando({ oc: o, acao: "reprovar" })} className="rounded-lg border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50">Reprovar</button>
                       </td>
                     </tr>
-                    {aberta === chaveDe(o) && (
-                      <tr key={`${chaveDe(o)}-d`} className="bg-gray-50 text-xs text-gray-600">
-                        <td colSpan={7} className="px-4 py-3">
-                          {o.observacao && <p className="mb-2 whitespace-pre-wrap"><b>Observação:</b> {o.observacao}</p>}
-                          {o.rateio.length > 0 && <p className="mb-1"><b>Rateio:</b> {o.rateio.map((r) => `${r.abreviatura || r.codigoCentroCustos} ${r.percentual}% (${moeda(r.valor)})`).join(" · ")}</p>}
-                          {o.itens.length > 0 && <p><b>Itens:</b> {o.itens.join(" · ")}</p>}
-                        </td>
-                      </tr>
-                    )}
-                  </>
                 ))}
                 {!carregando && ocs.length === 0 && !erro && (
                   <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">Nenhuma OC aguardando a sua aprovação.</td></tr>
@@ -162,8 +153,10 @@ export default function AprovacoesOcPage() {
         </>
       )}
 
+      {aberta && <DetalheOcModal oc={aberta} aoFechar={() => setAberta(null)} aoDecidir={(acao) => setConfirmando({ oc: aberta, acao })} />}
+
       {confirmando && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
             <p className="mb-1 text-sm font-semibold">{confirmando.acao === "aprovar" ? "Aprovar" : "Reprovar"} a OC {confirmando.oc.numero}?</p>
             <p className="mb-4 text-xs text-gray-500">{confirmando.oc.fornecedor} · {moeda(confirmando.oc.valor)}. Isso grava na Senior em seu nome e não dá para desfazer por aqui.</p>

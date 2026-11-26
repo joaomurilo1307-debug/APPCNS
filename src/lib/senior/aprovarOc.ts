@@ -18,6 +18,17 @@ const paginaInicial = 1;
 
 export type Credencial = { usuario: string; senha: string };
 export type RateioPendente = { codigoCentroCustos: string; abreviatura: string; percentual: number; valor: number };
+export type ItemPendente = {
+  descricao: string;
+  observacao: string;
+  quantidade: number; // quantidadeSolicitada
+  unidade: string;
+  valorUnitario: number;
+  valorBruto: number; // vlrBru
+  desconto: number; // vlrDsc
+  valorLiquido: number;
+  rateio: RateioPendente[];
+};
 export type OcPendente = {
   codigoEmpresa: number;
   codigoFilial: number;
@@ -27,8 +38,10 @@ export type OcPendente = {
   solicitante: string;
   valor: number;
   observacao: string;
+  observacaoMotivo: string;
+  moeda: string;
   rateio: RateioPendente[];
-  itens: string[];
+  itens: ItemPendente[];
 };
 
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -43,6 +56,14 @@ export function numeroSenior(v: string): number {
   const n = t.includes(",") ? Number(t.replace(/\./g, "").replace(",", ".")) : Number(t);
   return Number.isFinite(n) ? n : 0;
 }
+
+const rateiosDe = (b: string): RateioPendente[] =>
+  blocos(b, "rateio").map((r) => ({
+    codigoCentroCustos: campo(r, "codigoCentroCustos"),
+    abreviatura: campo(r, "abreviaturaCentroCustos"),
+    percentual: numeroSenior(campo(r, "percentualRateio")),
+    valor: numeroSenior(campo(r, "valorRateio")),
+  }));
 
 function envelope(operacao: string, c: Credencial, parametros: string): string {
   return (
@@ -90,13 +111,22 @@ export function lerPendentes(xml: string): { ocs: OcPendente[]; erro: string | n
       solicitante: campo(semItens, "nomeSolicitante") || campo(semItens, "usuarioSolicitante"),
       valor: numeroSenior(campo(semItens, "valorAproximado")),
       observacao: campo(semItens, "observacao"),
-      rateio: blocos(semItens, "rateio").map((r) => ({
-        codigoCentroCustos: campo(r, "codigoCentroCustos"),
-        abreviatura: campo(r, "abreviaturaCentroCustos"),
-        percentual: numeroSenior(campo(r, "percentualRateio")),
-        valor: numeroSenior(campo(r, "valorRateio")),
-      })),
-      itens: blocos(b, "item").map((i) => campo(i, "descricao")).filter(Boolean),
+      observacaoMotivo: campo(semItens, "observacaoMotivo"),
+      moeda: campo(semItens, "moedaOC"),
+      rateio: rateiosDe(semItens),
+      itens: blocos(b, "item").map(
+        (i): ItemPendente => ({
+          descricao: campo(i, "descricao"),
+          observacao: campo(i, "observacao"),
+          quantidade: numeroSenior(campo(i, "quantidadeSolicitada")),
+          unidade: campo(i, "unidadeMedida"),
+          valorUnitario: numeroSenior(campo(i, "valorUnitario")),
+          valorBruto: numeroSenior(campo(i, "vlrBru")),
+          desconto: numeroSenior(campo(i, "vlrDsc")),
+          valorLiquido: numeroSenior(campo(i, "valorLiquido")),
+          rateio: rateiosDe(i),
+        })
+      ),
     };
   });
   return { ocs: ocs.filter((o) => o.numero > 0), erro: null };
