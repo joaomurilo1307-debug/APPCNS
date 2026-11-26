@@ -26,7 +26,7 @@ import {
   IconUsers,
 } from "./NavIcons";
 
-export type Modulo = "gestao" | "financeiro";
+export type Modulo = "gestao" | "financeiro" | "aprovacoes_oc";
 
 // Cada link pertence a um modulo (escolhido em /inicio); "comum" aparece nos dois.
 const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: any; modulos: ModuloId[] }[] = [
@@ -48,7 +48,9 @@ const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: 
   { href: "/pdi", module: "gestao", label: "PDI", icon: IconTrendingUp, modulos: ["pdi"] },
   { href: "/timesheet", module: "gestao", label: "Timesheet", icon: IconCalendar, modulos: ["timesheet_auto"] },
   { href: "/aprovacoes", module: "gestao", label: "Aprovações", icon: IconCheckCircle, modulos: ["aprovacoes_projetos"] },
-  { href: "/aprovacoes/oc", module: "financeiro", label: "Aprovações (OC Senior)", icon: IconCheckCircle, modulos: ["aprovacoes_oc", "aprovacoes_oc_todas"] },
+  // modulo proprio "Aprovações de OC" (26/11/2026): minhas pendentes (ao vivo na Senior) e o painel geral sincronizado
+  { href: "/aprovacoes/oc", module: "aprovacoes_oc", label: "Minhas aprovações de OC", icon: IconCheckCircle, modulos: ["aprovacoes_oc", "aprovacoes_oc_todas"] },
+  { href: "/aprovacoes/senior", module: "aprovacoes_oc", label: "Painel geral das OCs", icon: IconBarChart, modulos: ["aprovacoes_oc", "aprovacoes_oc_todas"] },
   { href: "/programacao-pagamento", module: "financeiro", label: "Programação de Pagamento", icon: IconCheckCircle, modulos: ["programacao_pagamento"] },
   { href: "/pagamentos-realizados", module: "financeiro", label: "Pagamentos realizados", icon: IconCheckCircle, modulos: ["programacao_pagamento"] },
   { href: "/pagamentos-itau", module: "financeiro", label: "Pagamentos Itaú (SISPAG)", icon: IconBarChart, modulos: ["pagamentos_itau"] },
@@ -243,7 +245,7 @@ export default function Sidebar() {
             >
               <IconHome className="shrink-0" />
               <span className="flex-1 truncate">
-                {modulo === "financeiro" ? "Financeiro" : modulo === "gestao" ? "Projetos e Gestão" : "Módulos"}
+                {modulo === "financeiro" ? "Financeiro" : modulo === "gestao" ? "Projetos e Gestão" : modulo === "aprovacoes_oc" ? "Aprovações de OC" : "Módulos"}
               </span>
               {modulo && <span className="text-[10px] text-gray-400">trocar</span>}
             </Link>
