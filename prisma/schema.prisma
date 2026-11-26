@@ -212,8 +212,12 @@ model User {
   // (importado em massa da folha, ainda sem email/CPF confirmado pela pessoa)
   origemCadastro String  @default("MANUAL")
   matriculaSenior String? @unique
+  // login e senha do ERP (Senior) da propria pessoa, usados so' para listar/aprovar as OCs dela pelo web service nativo.
+  // A senha fica cifrada (AES-256-GCM, src/lib/segredo.ts) e nunca volta para o navegador.
+  erpUsuario       String?
+  erpSenhaCifrada  String? @db.Text
 
-  gestorImediato  User?      @relation("GestorImediato", fields: [gestorImediatoId], references: [id], onDelete: SetNull)
+  gestorImediato  User?    @relation("GestorImediato", fields: [gestorImediatoId], references: [id], onDelete: SetNull)
   subordinados    User[]     @relation("GestorImediato")
   nucleo          Nucleo?    @relation(fields: [nucleoId], references: [id], onDelete: SetNull)
 
