@@ -246,7 +246,7 @@ export default function Sidebar() {
             >
               <IconHome className="shrink-0" />
               <span className="flex-1 truncate">
-                {modulo === "financeiro" ? "Financeiro" : modulo === "gestao" ? "Projetos e Gestão" : modulo === "aprovacoes_oc" ? "Aprovações de OC" : "Módulos"}
+                {modulo === "financeiro" ? "Financeiro" : modulo === "gestao" ? "Projetos e Gestão" : modulo === "aprovacoes_oc" ? "Aprovações de OC e requisições" : "Módulos"}
               </span>
               {modulo && <span className="text-[10px] text-gray-400">trocar</span>}
             </Link>
