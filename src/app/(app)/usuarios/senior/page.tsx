@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import VinculosSuspeitos from "@/components/usuarios/VinculosSuspeitos";
 
 type Conta = { id: string; name: string; email: string };
 type Linha = {
@@ -87,6 +88,7 @@ export default function UsuariosSeniorPage() {
   return (
     <div className="p-6">
       <h1 className="mb-1 text-xl font-semibold">Usuários do Senior (de-para)</h1>
+      <VinculosSuspeitos aoCorrigir={carregar} />
       <p className="mb-6 max-w-3xl text-sm text-gray-500">
         O Senior identifica quem aprova cada OC só por um código numérico. Cole aqui a lista de usuários do Senior
         (tela Cadastros → Usuários — uma linha por usuário, começando pelo código, ex: <code>177 Fulano da Silva</code>).

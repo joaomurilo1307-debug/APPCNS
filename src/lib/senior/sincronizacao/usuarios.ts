@@ -1,13 +1,12 @@
 // De-para dos usuarios do Senior (E099USU) -> UsuarioSenior (codigo -> nome/conta). Antes so' na rota
 // /api/senior/usuarios/sync (recebia do script do VPS ou da tela /usuarios/senior); agora tambem roda na busca de OCs
-// feita pelo proprio sistema (12/11/2026). Casa com a conta do sistema nesta ordem: (1) e-mail do Senior == User.email;
-// (2) login@consominas.com.br == User.email; (3) nome normalizado == User.name. Nunca troca um vinculo ajustado na tela.
+// feita pelo proprio sistema (12/11/2026). Casa com a conta do sistema SO' por nome normalizado == User.name (e-mail nao conta,
+// desde 26/11/2026). Nunca troca um vinculo ja existente; os errados sao corrigidos em /usuarios/senior (vinculos suspeitos).
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { chaveNome, normalizarNome } from "@/lib/nomes";
-
-const DOMINIO = "@consominas.com.br";
+import { normalizarNome } from "@/lib/nomes";
+import { casarPorNome, indicePorNome, nomeDeLogin } from "../vinculosUsuario";
 
 export const usuariosSchema = z.object({
   usuarios: z
@@ -24,33 +23,12 @@ export const usuariosSchema = z.object({
 
 export type UsuarioSync = z.infer<typeof usuariosSchema>["usuarios"][number];
 
-function nomeDeLogin(login: string): string {
-  // "mariana.silva" -> "Mariana Silva"; "geizi" -> "Geizi"
-  return normalizarNome(login.replace(/[._-]+/g, " "));
-}
-
 export async function processarUsuarios(lista: UsuarioSync[]) {
-  const usuarios = await prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, email: true } });
-  const porEmail = new Map<string, string>();
-  const porNome = new Map<string, string | null>();
-  for (const u of usuarios) {
-    if (u.email) porEmail.set(u.email.toLowerCase(), u.id);
-    const k = chaveNome(u.name);
-    if (k) porNome.set(k, porNome.has(k) ? null : u.id);
-  }
-
-  function casar(item: { nome: string; email?: string | null; login?: string | null }): string | null {
-    const e = (item.email || "").trim().toLowerCase();
-    if (e && porEmail.has(e)) return porEmail.get(e)!;
-    const login = (item.login || "").trim().toLowerCase();
-    if (login) {
-      const emailLogin = login.includes("@") ? login : `${login}${DOMINIO}`;
-      if (porEmail.has(emailLogin)) return porEmail.get(emailLogin)!;
-    }
-    const alvoNome = item.nome && !item.nome.includes(".") ? item.nome : login ? nomeDeLogin(login) : item.nome;
-    const m = porNome.get(chaveNome(alvoNome));
-    return m ?? null;
-  }
+  // 26/11/2026: casa SO' POR NOME (lib/senior/vinculosUsuario.ts). E-mail nao entra mais: caixas compartilhadas ligavam o usuario
+  // da Senior a uma conta errada.
+  const usuarios = await prisma.user.findMany({ where: { active: true }, select: { id: true, name: true } });
+  const porNome = indicePorNome(usuarios);
+  const casar = (item: { nome: string; login?: string | null }) => casarPorNome(item, porNome);
 
   let upserts = 0;
   let casados = 0;
@@ -67,7 +45,7 @@ export async function processarUsuarios(lista: UsuarioSync[]) {
     }
     // nome de exibicao: o que veio, mas se for so o login "nome.sobrenome" deixa mais apresentavel
     const nomeExib = item.nome.includes(".") && !item.nome.includes(" ") ? nomeDeLogin(item.nome) : item.nome;
-    // e-mail do usuario no Senior: base do vinculo automatico por e-mail igual (src/lib/acesso/vinculoSenior.ts)
+    // e-mail do usuario no Senior: so' guardado (o acesso a OCs por e-mail igual, src/lib/acesso/vinculoSenior.ts, e' outra regra)
     const emailSenior = (item.email || "").trim().toLowerCase() || null;
     await prisma.usuarioSenior.upsert({
       where: { codigo: item.codigo },
