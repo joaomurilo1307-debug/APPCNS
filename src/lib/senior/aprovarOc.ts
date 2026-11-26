@@ -44,11 +44,11 @@ export type OcPendente = {
   itens: ItemPendente[];
 };
 
-const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const desesc = (t: string) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
 const P = "(?:[\\w-]+:)?";
-const campo = (b: string, n: string) => desesc(new RegExp(`<${P}${n}\\b[^>]*>([\\s\\S]*?)</${P}${n}>`).exec(b)?.[1] ?? "").trim();
-const blocos = (b: string, n: string) => [...b.matchAll(new RegExp(`<${P}${n}\\b[^>]*>([\\s\\S]*?)</${P}${n}>`, "g"))].map((m) => m[1]);
+export const campo = (b: string, n: string) => desesc(new RegExp(`<${P}${n}\\b[^>]*>([\\s\\S]*?)</${P}${n}>`).exec(b)?.[1] ?? "").trim();
+export const blocos = (b: string, n: string) => [...b.matchAll(new RegExp(`<${P}${n}\\b[^>]*>([\\s\\S]*?)</${P}${n}>`, "g"))].map((m) => m[1]);
 
 /** "1.234,56" (BR) ou "1234.56" (XML) -> 1234.56; ilegivel -> 0. */
 export function numeroSenior(v: string): number {
@@ -65,7 +65,7 @@ const rateiosDe = (b: string): RateioPendente[] =>
     valor: numeroSenior(campo(r, "valorRateio")),
   }));
 
-function envelope(operacao: string, c: Credencial, parametros: string): string {
+export function envelope(operacao: string, c: Credencial, parametros: string): string {
   return (
     `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ser="http://services.senior.com.br">` +
     `<soapenv:Header/><soapenv:Body><ser:${operacao}>` +
@@ -90,7 +90,7 @@ export function envelopeDecisao(operacao: "aprovar" | "reprovar", c: Credencial,
   );
 }
 
-function falhaDoEnvelope(xml: string): string | null {
+export function falhaDoEnvelope(xml: string): string | null {
   const f = new RegExp(`<${P}faultstring\\b[^>]*>([\\s\\S]*?)</${P}faultstring>`).exec(xml);
   return f ? desesc(f[1]).trim() || "Falha sem mensagem" : null;
 }

@@ -50,6 +50,7 @@ const baseLinks: { href: string; module: Modulo | "comum"; label: string; icon: 
   { href: "/aprovacoes", module: "gestao", label: "Aprovações", icon: IconCheckCircle, modulos: ["aprovacoes_projetos"] },
   // modulo proprio "Aprovações de OC" (26/11/2026): minhas pendentes (ao vivo na Senior) e o painel geral sincronizado
   { href: "/aprovacoes/oc", module: "aprovacoes_oc", label: "Minhas aprovações de OC", icon: IconCheckCircle, modulos: ["aprovacoes_oc", "aprovacoes_oc_todas"] },
+  { href: "/aprovacoes/requisicao", module: "aprovacoes_oc", label: "Minhas aprovações de requisição", icon: IconCheckCircle, modulos: ["aprovacoes_oc", "aprovacoes_oc_todas"] },
   { href: "/aprovacoes/senior", module: "aprovacoes_oc", label: "Painel geral das OCs", icon: IconBarChart, modulos: ["aprovacoes_oc", "aprovacoes_oc_todas"] },
   { href: "/programacao-pagamento", module: "financeiro", label: "Programação de Pagamento", icon: IconCheckCircle, modulos: ["programacao_pagamento"] },
   { href: "/pagamentos-realizados", module: "financeiro", label: "Pagamentos realizados", icon: IconCheckCircle, modulos: ["programacao_pagamento"] },
