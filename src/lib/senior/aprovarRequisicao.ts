@@ -20,7 +20,10 @@ export type RequisicaoPendente = {
   sequencia: number;
   dataEmissao: string;
   produto: string;
+  /** Descricao do produto/servico no cadastro (E075PRO.DESPRO / E080SER.DESSER); se nao achar, o codigo */
   descricao: string;
+  /** Complemento digitado na requisicao (E207EME.CPLPRO) -- o texto livre de quem pediu */
+  complemento: string;
   unidade: string;
   quantidade: number;
   preco: number;
@@ -48,7 +51,7 @@ export async function listarRequisicoesPendentes(codigosUsuario: string[], consu
   if (!porCcu.size) return [];
 
   const linhas = await consultar(
-    `SELECT CODEMP, NUMEME, SEQEME, DATEME, CODPRO, CPLPRO, UNIMED, QTDEME, PREEME, USUSOL, CCURES, OBSEME FROM E207EME ` +
+    `SELECT CODEMP, NUMEME, SEQEME, DATEME, PROSER, CODPRO, CODSER, CPLPRO, UNIMED, QTDEME, PREEME, USUSOL, CCURES, OBSEME FROM E207EME ` +
       `WHERE CODEMP IN (${EMPRESA_REQUISICAO}) AND ROTNAP IN (${ROTINA_REQUISICAO}) AND SITAPR IN ('ANA') AND SITEME IN (1)`
   );
   const minhas = linhas.filter((l) => porCcu.has(l.CCURES));
@@ -64,14 +67,27 @@ export async function listarRequisicoesPendentes(codigosUsuario: string[], consu
   for (const c of await consultar(`SELECT CODCCU, DESCCU FROM E044CCU WHERE CODEMP IN (${EMPRESA_REQUISICAO}) AND CODCCU IN (${ccus.map((c) => `'${so(c)}'`).join(",")})`).catch(() => []))
     descricoes.set(c.CODCCU, c.DESCCU);
 
+  // descricao do cadastro: produto (PROSER = P) em E075PRO.DESPRO, servico (S) em E080SER.DESSER; falhou ou nao achou -> cai no codigo
+  const produtos = new Map<string, string>();
+  const servicos = new Map<string, string>();
+  const codsPro = [...new Set(minhas.filter((l) => l.PROSER !== "S" && l.CODPRO).map((l) => l.CODPRO))];
+  const codsSer = [...new Set(minhas.filter((l) => l.PROSER === "S" && l.CODSER).map((l) => l.CODSER))];
+  if (codsPro.length)
+    for (const p of await consultar(`SELECT CODPRO, DESPRO FROM E075PRO WHERE CODEMP IN (${EMPRESA_REQUISICAO}) AND CODPRO IN (${codsPro.map((c) => `'${so(c)}'`).join(",")})`).catch(() => []))
+      produtos.set(p.CODPRO, p.DESPRO);
+  if (codsSer.length)
+    for (const p of await consultar(`SELECT CODSER, DESSER FROM E080SER WHERE CODEMP IN (${EMPRESA_REQUISICAO}) AND CODSER IN (${codsSer.map((c) => `'${so(c)}'`).join(",")})`).catch(() => []))
+      servicos.set(p.CODSER, p.DESSER);
+
   return minhas
     .map((l): RequisicaoPendente => ({
       codigoEmpresa: Number(l.CODEMP),
       numero: Number(l.NUMEME),
       sequencia: Number(l.SEQEME),
       dataEmissao: l.DATEME,
-      produto: l.CODPRO,
-      descricao: l.CPLPRO,
+      produto: l.PROSER === "S" ? l.CODSER : l.CODPRO,
+      descricao: (l.PROSER === "S" ? servicos.get(l.CODSER) : produtos.get(l.CODPRO)) || (l.PROSER === "S" ? l.CODSER : l.CODPRO),
+      complemento: l.CPLPRO,
       unidade: l.UNIMED,
       quantidade: numeroSenior(l.QTDEME),
       preco: numeroSenior(l.PREEME),
