@@ -474,7 +474,9 @@ export async function lerOcsDaSenior(
   agora = new Date()
 ): Promise<{ dados: DadosOcs; usuarios: UsuarioSync[] }> {
   aoProgredir("lendo usuários da Senior");
-  const usu = usuariosDoE099(await consultar("SELECT DISTINCT CODUSU, NOMUSU, INTNET FROM E099USU", { timeoutMs: 120_000 }));
+  // 26/11/2026: o MESMO CODUSU e' pessoa diferente em cada empresa (uma linha por CODEMP em E099USU). Sem o filtro, a
+  // linha de outra empresa podia ganhar e o titulo/OC da empresa 1 aparecia "lancado por" outra pessoa (ex.: Emily -> Pedro).
+  const usu = usuariosDoE099(await consultar("SELECT DISTINCT CODUSU, NOMUSU, INTNET FROM E099USU WHERE CODEMP = 1", { timeoutMs: 120_000 }));
   const usuarios: UsuarioSync[] = [...usu.entries()].map(([codigo, v]) => ({ codigo, nome: v.login || `codigo ${codigo}`, login: v.login || null, email: v.email || null }));
   const loginDe = new Map([...usu.entries()].map(([c, v]) => [c, v.login] as const));
 

@@ -115,3 +115,9 @@ test("OC 90003 cancelada: rateio zerado continua R$ 0, como o cabecalho, e os it
   assert.equal(oc.valor, 0);
   assert.deepEqual(valorPorCc(oc.rateioDetalhe), { "910": 0 });
 });
+
+test("usuarios do Senior: E099USU e' lido so' da empresa 1 (mesmo CODUSU e' gente diferente por empresa)", async () => {
+  const { consultar, consultas } = seniorSimulada();
+  await lerOcsDaSenior(consultar, [], () => {}, new Date("2026-11-24T12:00:00"));
+  assert.match(consultas.find((s) => s.includes("FROM E099USU"))!, /WHERE CODEMP = 1\b/);
+});
