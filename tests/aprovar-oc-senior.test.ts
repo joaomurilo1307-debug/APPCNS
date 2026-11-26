@@ -49,14 +49,19 @@ test("decisao: sucesso so' com todos os sinais; erro e ambiguidade nao aprovam",
   assert.throws(() => envelopeDecisao("aprovar", cred, { codigoEmpresa: 1, codigoFilial: 1, numero: -1 }), /inválida/);
 });
 
-test("segredo: cifra e decifra; chave ausente ou adulteracao falham", () => {
+test("segredo: cifra/decifra com chave derivada do NEXTAUTH_SECRET; sem segredo falha; chave trocada pede novo cadastro", () => {
   delete process.env.ERP_CRED_KEY;
-  assert.throws(() => cifrar("x"), /ERP_CRED_KEY/);
-  process.env.ERP_CRED_KEY = Buffer.alloc(32, 7).toString("base64");
+  delete process.env.NEXTAUTH_SECRET;
+  assert.throws(() => cifrar("x"), /NEXTAUTH_SECRET/);
+  process.env.NEXTAUTH_SECRET = "segredo-de-teste-bem-longo-123";
   const g = cifrar("Senha@123");
   assert.ok(!g.includes("Senha"));
   assert.equal(decifrar(g), "Senha@123");
   assert.notEqual(cifrar("Senha@123"), g); // iv novo a cada vez
-  const [v, iv, tag, c] = g.split(":");
-  assert.throws(() => decifrar([v, iv, tag, Buffer.from("adulterado").toString("base64")].join(":")));
+  const [v, iv, tag] = g.split(":");
+  assert.throws(() => decifrar([v, iv, tag, Buffer.from("adulterado").toString("base64")].join(":")), /Cadastre-a de novo|não pode ser lida/);
+  process.env.NEXTAUTH_SECRET = "outro-segredo-de-teste-456789"; // segredo trocado
+  assert.throws(() => decifrar(g), /não pode ser lida/);
+  process.env.ERP_CRED_KEY = Buffer.alloc(32, 7).toString("base64"); // chave propria tem prioridade
+  assert.equal(decifrar(cifrar("outra")), "outra");
 });
