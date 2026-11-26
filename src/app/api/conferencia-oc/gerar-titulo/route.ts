@@ -4,7 +4,9 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { negarSemEdicao } from "@/lib/acesso/servidor";
 import { prisma } from "@/lib/prisma";
-import { COD_EMP, dataIso, lerOcParaTitulo, numeroSenior, tituloExiste } from "@/lib/senior/ocsConferencia";
+import { COD_EMP, dataIso, lerOcParaTitulo, numeroSenior, paraOc, tituloExiste } from "@/lib/senior/ocsConferencia";
+import { apurarTitulosDeUmaOc } from "@/lib/conferenciaOc/titulosDeUmaOc";
+import { ORIGEM_TITULO } from "@/lib/conferenciaOc/titulosDaOc";
 import { consolidarRateioTitulo, gravarTituloComRateioCP, gravarTituloCP, TNS_PADRAO, TPT_PADRAO, type TituloNovo } from "@/lib/senior/gravarTitulo";
 import { lerAprovacaoOc } from "@/lib/senior/aprovacaoOc";
 import { situacaoNfNoSenior } from "@/lib/senior/nfEntrada";
@@ -14,7 +16,7 @@ import { montarPagamentoDoTitulo } from "@/lib/senior/pagamentoParaTitulo";
 // Gera na Senior (GravarTitulosCP_4) o titulo a pagar de UMA OC. Tudo e' relido
 // da Senior na hora -- o navegador so' manda qual OC e o numero do titulo.
 // Bloqueia: aprovacao multinivel incompleta (E420OCP/E614APR/E614USU), OC que ja tem titulo
-// (USU_NUMTIT, registro local ou titulo igual na Senior).
+// (USU_NUMTIT, registro local, titulo igual na Senior, ou titulo ligado a OC pela NF/USU_NUMOCP/vinculo manual).
 
 const schema = z.object({
   numOcp: z.string().regex(/^\d+$/),
@@ -44,6 +46,9 @@ export async function POST(req: Request) {
     const aprovacao = await lerAprovacaoOc(numOcp, codFil);
     if (!aprovacao?.completa) return recusa(`Aprovação incompleta: ${aprovacao?.motivoIncompleta ?? "não foi possível ler a aprovação"}`);
     if ((oc.USU_NUMTIT ?? "").trim()) return recusa(`OC já tem título informado na Senior (${oc.USU_NUMTIT}).`);
+    // A OC pode ja' ter virado titulo sem nada digitado nela: NF de compra com a OC, USU_NUMOCP do titulo, vinculo manual (23/11/2026).
+    const ja = (await apurarTitulosDeUmaOc(paraOc(oc), { incluirGeradoAqui: false })).titulos[0];
+    if (ja) return recusa(`A OC já tem o título ${ja.codTpt} ${ja.numTit} na Senior (${ORIGEM_TITULO[ja.origem]}).`);
     // Reserva anterior: so' vale se o titulo existe na Senior. Reserva orfa (gravacao que falhou sem criar nada) e' liberada.
     const reserva = await prisma.tituloGeradoOC.findUnique({ where: { numOcp_codFil: { numOcp, codFil } } });
     if (reserva) {
