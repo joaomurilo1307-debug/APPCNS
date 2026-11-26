@@ -25,8 +25,8 @@ const CARTOES: { grupos: string[]; ids?: string[]; href?: string; titulo: string
     grupos: [],
     ids: IDS_APROVACAO_OC,
     href: "/aprovacoes/oc",
-    titulo: "Aprovações de OC",
-    descricao: "As ordens de compra que aguardam a sua aprovação na Senior e o painel geral das OCs.",
+    titulo: "Aprovações de OC e requisições",
+    descricao: "As ordens de compra e as requisições de estoque que aguardam a sua aprovação na Senior, e o painel geral das OCs.",
     icon: IconCheckCircle,
   },
 ];

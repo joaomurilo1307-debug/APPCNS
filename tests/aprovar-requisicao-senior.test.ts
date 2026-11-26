@@ -9,7 +9,7 @@ const resp = (tp: string, res: string, erro = "", grid = "") =>
 
 // consulta falsa: responde conforme a tabela que o SQL cita
 const req = (num: number, seq: number, ccu: string, usuSol = "201") => ({
-  CODEMP: "1", NUMEME: String(num), SEQEME: String(seq), DATEME: "24/11/2026", CODPRO: "201242", CPLPRO: "ANTENA\nDOBRAVEL", UNIMED: "UN",
+  CODEMP: "1", NUMEME: String(num), SEQEME: String(seq), DATEME: "24/11/2026", PROSER: "P", CODPRO: "201242", CODSER: "", CPLPRO: "A pedido do Bruno solicito material", UNIMED: "UN",
   QTDEME: "2,5", PREEME: "720,69", USUSOL: usuSol, CCURES: ccu, OBSEME: "",
 });
 const consultaFalsa = (sqls: string[]) => (async (sql: string) => {
@@ -18,6 +18,7 @@ const consultaFalsa = (sqls: string[]) => (async (sql: string) => {
   if (sql.includes("FROM E207EME")) return [req(4812, 1, "190"), req(4813, 1, "999"), req(4814, 2, "150")];
   if (sql.includes("FROM E099USU")) return [{ CODUSU: "201", NOMUSU: "emily" }];
   if (sql.includes("FROM E044CCU")) return [{ CODCCU: "190", DESCCU: "Frota" }];
+  if (sql.includes("FROM E075PRO")) return [{ CODPRO: "201242", DESPRO: "ANTENA DOBRAVEL 2,18M" }];
   return [];
 }) as never;
 
@@ -36,6 +37,24 @@ test("lista: so' requisicoes cujo centro de custo a pessoa aprova; traz nome, CC
   assert.equal(r[0].solicitante, "emily");
   assert.equal(r[0].centroCustoDescricao, "Frota");
   assert.ok(sqls.some((s) => /SITAPR IN \('ANA'\)/.test(s) && /ROTNAP IN \(3\)/.test(s)));
+});
+
+test("descricao: nome do produto do cadastro + complemento digitado; servico usa E080SER; falha no cadastro cai no codigo", async () => {
+  const [r] = await listarRequisicoesPendentes(["26"], consultaFalsa([]));
+  assert.deepEqual([r.produto, r.descricao, r.complemento], ["201242", "ANTENA DOBRAVEL 2,18M", "A pedido do Bruno solicito material"]);
+  const servico = (async (sql: string) => {
+    if (sql.includes("E068CNA")) return [{ CODUSU: "26", CODCCU: "190" }];
+    if (sql.includes("E207EME")) return [{ ...req(1, 1, "190"), PROSER: "S", CODPRO: "", CODSER: "S77" }];
+    if (sql.includes("E080SER")) return [{ CODSER: "S77", DESSER: "SERVICO DE PINTURA" }];
+    return [];
+  }) as never;
+  assert.deepEqual((await listarRequisicoesPendentes(["26"], servico)).map((x) => [x.produto, x.descricao]), [["S77", "SERVICO DE PINTURA"]]);
+  const base = consultaFalsa([]) as unknown as (sql: string) => Promise<unknown>;
+  const semCadastro = (async (sql: string) => {
+    if (sql.includes("E075PRO")) throw new Error("recusou");
+    return base(sql);
+  }) as never;
+  assert.equal((await listarRequisicoesPendentes(["26"], semCadastro))[0].descricao, "201242");
 });
 
 test("lista: sem codigo valido ou sem cadastro de aprovador nao consulta requisicao nem aprova nada", async () => {

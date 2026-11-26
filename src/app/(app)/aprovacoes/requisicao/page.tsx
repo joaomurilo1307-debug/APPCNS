@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 // Requisicoes de estoque pendentes de aprovacao DO USUARIO LOGADO (aprovador do centro de custo, lido na Senior). So' aprova: a Senior nao
 // tem porta nativa de reprovar requisicao.
 type Req = {
-  codigoEmpresa: number; numero: number; sequencia: number; dataEmissao: string; produto: string; descricao: string; unidade: string;
+  codigoEmpresa: number; numero: number; sequencia: number; dataEmissao: string; produto: string; descricao: string; complemento: string; unidade: string;
   quantidade: number; preco: number; solicitante: string; centroCusto: string; centroCustoDescricao: string; observacao: string;
 };
 
@@ -101,8 +101,10 @@ export default function AprovacoesRequisicaoPage() {
                     <td>{r.sequencia}</td>
                     <td className="whitespace-nowrap">{r.dataEmissao}</td>
                     <td className="max-w-[300px]">
-                      <span className="whitespace-pre-wrap">{r.descricao || r.produto}</span>
-                      {r.observacao && <p className="text-xs text-gray-500">{r.observacao}</p>}
+                      <span className="font-medium">{r.descricao || r.produto}</span>
+                      {r.descricao && r.descricao !== r.produto && <span className="ml-1 text-xs text-gray-400">({r.produto})</span>}
+                      {r.complemento && <p className="whitespace-pre-wrap text-xs text-gray-600">{r.complemento}</p>}
+                      {r.observacao && <p className="whitespace-pre-wrap text-xs text-gray-500">Obs.: {r.observacao}</p>}
                     </td>
                     <td className="whitespace-nowrap text-right tabular-nums">{qtd(r.quantidade)} {r.unidade}</td>
                     <td className="whitespace-nowrap text-right tabular-nums">{moeda(r.preco)}</td>
