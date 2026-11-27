@@ -1,13 +1,13 @@
 "use client";
 
 // A Visao geral recebe apenas as curvas; ficha e projetos ficam em uma secao propria.
-// Por decisao do Joao (19/10/2026): Custo de pessoal e P0 sao ESTRUTURA/BASE (ainda sem dados; o P0 so' sera feito depois que todos os contratos tiverem o seu).
 // Previsao le os titulos em aberto do Senior, somente leitura.
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import P0CustosContrato from "@/components/p0/P0CustosContrato";
 import P0PessoaisContrato from "@/components/p0/P0PessoaisContrato";
+import P0ReceitaContrato from "@/components/p0/P0ReceitaContrato";
 import CustoPessoalView from "@/components/custoPessoal/CustoPessoalView";
 import ClientesDoContrato from "./ClientesDoContrato";
 import ProjetosDoContrato from "./ProjetosDoContrato";
@@ -23,16 +23,6 @@ function Cartao({ titulo, sub, children }: { titulo: string; sub?: string; child
       <header className="mb-3"><h2 className="text-base font-semibold text-gray-900">{titulo}</h2>{sub && <p className="mt-0.5 text-[13px] text-gray-500">{sub}</p>}</header>
       {children}
     </section>
-  );
-}
-
-function Vazio({ titulo, texto, extra }: { titulo: string; texto: string; extra?: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 px-5 py-9 text-center">
-      <p className="text-base font-medium text-gray-700">{titulo}</p>
-      <p className="mx-auto mt-1 max-w-2xl text-sm text-gray-500">{texto}</p>
-      {extra}
-    </div>
   );
 }
 
@@ -53,31 +43,31 @@ export function AbaFichaContrato({ ficha, irParaAba }: { ficha: FichaContrato; i
   }, [ficha.codccu]);
   const itens: [string, boolean | null, string | null][] = [
     ["Custos do Senior (aba Custos)", true, "custos"],
-    ["Ficha cadastral (cliente, número, vigência, valor)", fichaCompleta, null],
+    ["Ficha cadastral (cliente, nÃºmero, vigÃªncia, valor)", fichaCompleta, null],
     ["Custo de pessoal", null, "pessoal"],
-    ["Orçamento base (P0)", temP0, "p0"],
-    ["Previsão do Senior por contrato (títulos em aberto)", true, "previsao"],
+    ["OrÃ§amento base (P0)", temP0, "p0"],
+    ["PrevisÃ£o do Senior por contrato (tÃ­tulos em aberto)", true, "previsao"],
     ["Metas do contrato", true, "metas"],
-    ["Planos de Ação do contrato", true, "acoes"],
+    ["Planos de AÃ§Ã£o do contrato", true, "acoes"],
   ];
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <Cartao titulo="Ficha do contrato" sub="Dados cadastrais, preenchidos pelo administrador. Os custos vêm do Senior, na aba Custos.">
+      <Cartao titulo="Ficha do contrato" sub="Dados cadastrais, preenchidos pelo administrador. Os custos vÃªm do Senior, na aba Custos.">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[14px]">
-          {([["Cliente", ficha.cliente], ["Número do contrato", ficha.numero], ["Início da vigência", dataBr(ficha.vigenciaInicio)], ["Fim da vigência", dataBr(ficha.vigenciaFim)], ["Valor do contrato", ficha.valor ? moeda(ficha.valor) : null], ["Situação", ficha.status === "ATIVO" ? "Ativo" : "Encerrado"]] as [string, string | null][]).map(([k, v]) => (
-            <div key={k}><dt className="text-xs text-gray-400">{k}</dt><dd className="text-gray-800">{v || <span className="text-gray-300">não informado</span>}</dd></div>
+          {([["Cliente", ficha.cliente], ["NÃºmero do contrato", ficha.numero], ["InÃ­cio da vigÃªncia", dataBr(ficha.vigenciaInicio)], ["Fim da vigÃªncia", dataBr(ficha.vigenciaFim)], ["Valor do contrato", ficha.valor ? moeda(ficha.valor) : null], ["SituaÃ§Ã£o", ficha.status === "ATIVO" ? "Ativo" : "Encerrado"]] as [string, string | null][]).map(([k, v]) => (
+            <div key={k}><dt className="text-xs text-gray-400">{k}</dt><dd className="text-gray-800">{v || <span className="text-gray-300">nÃ£o informado</span>}</dd></div>
           ))}
           {ficha.objeto && <div className="col-span-2"><dt className="text-xs text-gray-400">Objeto</dt><dd className="text-gray-800">{ficha.objeto}</dd></div>}
-          {ficha.observacoes && <div className="col-span-2"><dt className="text-xs text-gray-400">Observações</dt><dd className="text-gray-800">{ficha.observacoes}</dd></div>}
+          {ficha.observacoes && <div className="col-span-2"><dt className="text-xs text-gray-400">ObservaÃ§Ãµes</dt><dd className="text-gray-800">{ficha.observacoes}</dd></div>}
         </dl>
       </Cartao>
-      <Cartao titulo="Situação do acompanhamento" sub="O que já está ligado a este contrato">
+      <Cartao titulo="SituaÃ§Ã£o do acompanhamento" sub="O que jÃ¡ estÃ¡ ligado a este contrato">
         <ul className="space-y-2.5 text-[14px]">
           {itens.map(([nome, ok, aba]) => (
             <li key={nome} className="flex items-center gap-2.5">
-              <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${ok === true ? "bg-emerald-100 text-emerald-700" : ok === false ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-400"}`}>{ok === true ? "✓" : ok === false ? "•" : "–"}</span>
+              <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${ok === true ? "bg-emerald-100 text-emerald-700" : ok === false ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-400"}`}>{ok === true ? "âœ“" : ok === false ? "â€¢" : "â€“"}</span>
               <span className="text-gray-700">{nome}</span>
-              <span className="text-xs text-gray-400">{ok === true ? "disponível" : ok === false ? "a preencher" : "em preparação"}</span>
+              <span className="text-xs text-gray-400">{ok === true ? "disponÃ­vel" : ok === false ? "a preencher" : "em preparaÃ§Ã£o"}</span>
               {aba && <button onClick={() => irParaAba(aba)} className="ml-auto text-[13px] font-medium text-brand hover:text-brand-dark">abrir</button>}
             </li>
           ))}
@@ -95,11 +85,11 @@ export function AbaPessoal({ codccu }: { codccu: string }) {
   return <CustoPessoalView ccuFixo={codccu} />;
 }
 
-// ---------------------------------------------------------------- P0 (estrutura, sem cadastro por enquanto)
+// ---------------------------------------------------------------- P0 (base de custos e receita, cadastrada contrato por contrato)
 const PARTES_P0 = [
-  { t: "Receita", d: "As linhas das medições do contrato: o que se espera faturar, mês a mês." },
-  { t: "Custos", d: "As previsões lineares de custo, mês a mês. Cada previsão vira uma linha no gráfico principal do contrato." },
-  { t: "Desvio", d: "A diferença entre o previsto (P0) e o realizado do Senior. É onde os coordenadores vão justificar o desvio." },
+  { t: "Receita", d: "As linhas das mediÃ§Ãµes do contrato: o que se espera faturar, mÃªs a mÃªs." },
+  { t: "Custos", d: "As previsÃµes lineares de custo, mÃªs a mÃªs. Cada previsÃ£o vira uma linha no grÃ¡fico principal do contrato." },
+  { t: "Desvio", d: "A diferenÃ§a entre o previsto (P0) e o realizado do Senior. Ã‰ onde os coordenadores vÃ£o justificar o desvio." },
 ];
 
 export function PartesDoP0() {
@@ -115,7 +105,7 @@ export function PartesDoP0() {
   );
 }
 
-// Subabas do P0: "Custos de contrato" e "Custos pessoais" (so' o previsto, separado do custo de contrato) tem dados; Receita vem depois.
+// Subabas do P0: custo de contrato, receita e custos pessoais (so' o previsto, cada um separado dos outros dois)
 const SUBABAS_P0 = [
   { id: "custos", nome: "Custos de contrato" },
   { id: "receita", nome: "Receita" },
@@ -139,16 +129,11 @@ export function AbaP0({ codccu, nomeContrato }: { codccu: string; nomeContrato: 
         {SUBABAS_P0.map((a) => (
           <button key={a.id} type="button" onClick={() => irPara(a.id)} className={`rounded-full border px-4 py-1.5 text-[14px] font-medium transition ${sub === a.id ? "border-brand bg-brand text-white" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}>
             {a.nome}
-            {a.id === "receita" && <span className={`ml-1.5 text-xs font-normal ${sub === a.id ? "text-white/80" : "text-gray-400"}`}>em breve</span>}
           </button>
         ))}
       </nav>
       {sub === "custos" && <P0CustosContrato key={codccu} codccu={codccu} nomeContrato={nomeContrato} />}
-      {sub === "receita" && (
-        <Cartao titulo="P0 de receita" sub="As linhas das medições do contrato: o que se espera faturar, mês a mês">
-          <Vazio titulo="Esta parte do P0 vem depois dos custos." texto="Quando o P0 de receita do contrato estiver pronto, ele será cadastrado aqui, ao lado do realizado de medição e faturamento. Nada é estimado nem preenchido automaticamente." />
-        </Cartao>
-      )}
+      {sub === "receita" && <P0ReceitaContrato key={codccu} codccu={codccu} />}
       {sub === "pessoal" && <P0PessoaisContrato key={codccu} codccu={codccu} />}
     </div>
   );
