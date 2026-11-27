@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { mesLongo, moeda } from "@/lib/custos/formato";
 import { SeloReembolsavel } from "@/components/custos/ui";
 
-export type AlvoP0 = { codccu: string; conta: string; mes: string; valor: number; reembolsavel: boolean; rotulo: string };
+export type AlvoP0 = { codccu: string; conta: string; mes: string; valor: number; reembolsavel: boolean; rotulo: string; tipo?: "custo" | "pessoal" | "receita" };
 type Linhas = { total: number; linhas: { historico: string | null; valor: number }[] };
 
 export default function DetalheP0({ alvo, onFechar }: { alvo: AlvoP0 | null; onFechar: () => void }) {
@@ -16,7 +16,7 @@ export default function DetalheP0({ alvo, onFechar }: { alvo: AlvoP0 | null; onF
     if (!alvo) return;
     const controller = new AbortController();
     setDados("carregando");
-    const qs = new URLSearchParams({ ccu: alvo.codccu, conta: alvo.conta, mes: alvo.mes });
+    const qs = new URLSearchParams({ ccu: alvo.codccu, conta: alvo.conta, mes: alvo.mes, tipo: alvo.tipo ?? "custo" });
     fetch(`/api/p0/linhas?${qs.toString()}`, { cache: "no-store", signal: controller.signal })
       .then(async (r) => {
         if (!r.ok) throw new Error();
