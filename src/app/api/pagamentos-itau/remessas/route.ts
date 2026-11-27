@@ -10,6 +10,7 @@ import { ehCartaoCredito } from "@/lib/pagamentos/cartaoCredito";
 import { gerarArquivoRemessa } from "@/lib/cnab240/itau/remessa";
 import { lerArquivoRetorno } from "@/lib/cnab240/itau/retorno";
 import { casarItemDoRetorno, montarRetornoSimulado } from "@/lib/pagamentos/casarRetorno";
+import { avisarPagamentosDaRemessa } from "@/lib/avisosAprovacaoERemessa";
 import type { ContaDebito, ItemRemessa } from "@/lib/cnab240/itau/tipos";
 import {
   agruparPorArquivo,
@@ -333,6 +334,10 @@ export async function POST(req: Request) {
         })
         .catch(() => {});
     }
+
+    // Autor de cada OC dos titulos da remessa recebe o aviso de pagamento -- em segundo plano (consulta a Senior), so' na remessa
+    // gravada de verdade (simulacao sai antes, pelo SimulacaoConcluida).
+    void avisarPagamentosDaRemessa(itensProntos);
 
     return NextResponse.json(
       {
