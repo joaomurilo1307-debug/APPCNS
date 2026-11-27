@@ -2276,3 +2276,20 @@ model TarefaResponsavelEvento {
 
   @@index([taskId, em])
 }
+
+// Respostas do formulario publico de inventario de equipamentos e licencas (pagina hospedada no n8n, preenchida por qualquer colaborador).
+// Gravado direto pelo n8n via chave compartilhada (sem sessao); exportado pela tela do Nucleo em Excel compilado.
+model InventarioSubmissao {
+  id         String   @id @default(cuid())
+  nome       String
+  email      String
+  cidade     String
+  contratos  Json // string[]
+  maquinas   Json // {sistema, marca, modelo, patrimonio}[]
+  temLicenca Boolean  @default(false)
+  licencas   Json // {nome, validade}[]
+  criadoEm   DateTime @default(now())
+
+  @@index([email])
+  @@index([criadoEm])
+}
