@@ -7,18 +7,20 @@ import { contasDoP0, periodoDoP0, type P0Resposta } from "@/lib/p0/montar";
 
 // P0 de um contrato (a versao ativa mais nova), no mesmo formato das contas da tela Custo por Contrato. So' le o que foi cadastrado a partir da
 // planilha da area; nao estima nada. Por padrao devolve o CUSTO DE CONTRATO; com `?tipo=pessoal` devolve o P0 de CUSTOS PESSOAIS (salario CLT,
-// encargos, ferias, 13o e provisoes), que fica separado e nunca se mistura com o custo de contrato. O de custo de contrato traz tambem o total de
-// pessoal (so' o numero) para a ponte com o P0 inteiro. Quem pode ver o P0 de um contrato e' quem pode ver os custos dele (mesma regra de /api/custos-conta).
+// encargos, ferias, 13o e provisoes) e com `?tipo=receita` devolve o P0 de RECEITA (previsto de faturamento, mes a mes); os tres ficam
+// separados e nunca se misturam. O de custo de contrato traz tambem o total de pessoal (so' o numero) para a ponte com o P0 inteiro. Quem pode
+// ver o P0 de um contrato e' quem pode ver os custos dele (mesma regra de /api/custos-conta).
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "NÃ£o autenticado" }, { status: 401 });
   const url = new URL(req.url);
   const ccu = url.searchParams.get("ccu");
   if (!ccu) return NextResponse.json({ error: "Informe o centro de custo (ccu)" }, { status: 400 });
-  const tipo = url.searchParams.get("tipo") === "pessoal" ? "CUSTO_PESSOAL" : "CUSTO_CONTRATO";
+  const tipoParam = url.searchParams.get("tipo");
+  const tipo = tipoParam === "pessoal" ? "CUSTO_PESSOAL" : tipoParam === "receita" ? "RECEITA" : "CUSTO_CONTRATO";
 
   const escopo = await escopoDeCustos(prisma, session.user as any);
-  if (!podeVerCcu(escopo, ccu)) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
+  if (!podeVerCcu(escopo, ccu)) return NextResponse.json({ error: "Sem permissÃ£o para este centro de custo" }, { status: 403 });
 
   const versao = await prisma.p0Versao.findFirst({ where: { codccu: ccu, ativa: true }, orderBy: { versao: "desc" } });
   if (!versao) return NextResponse.json({ existe: false } satisfies P0Resposta);
