@@ -22,11 +22,11 @@ export function useP0Custos(codccu: string, tipo: "contrato" | "pessoal" | "rece
       .then(async (r) => {
         const d = await r.json().catch(() => ({}));
         if (controller.signal.aborted) return;
-        if (!r.ok) return setE({ estado: "erro", mensagem: d.error || "NÃ£o foi possÃ­vel carregar o P0." });
+        if (!r.ok) return setE({ estado: "erro", mensagem: d.error || "Não foi possível carregar o P0." });
         setE(d.existe ? { estado: "ok", p0: d as P0Custos } : { estado: "sem" });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setE({ estado: "erro", mensagem: "NÃ£o foi possÃ­vel carregar o P0." });
+        if (!controller.signal.aborted) setE({ estado: "erro", mensagem: "Não foi possível carregar o P0." });
       });
     return () => controller.abort();
   }, [codccu, tipo]);
