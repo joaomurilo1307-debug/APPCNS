@@ -28,6 +28,8 @@ export type RequisicaoPendente = {
   quantidade: number;
   preco: number;
   solicitante: string;
+  /** CODUSU do solicitante (E207EME.USUSOL) -- para o aviso de aprovacao por e-mail */
+  codSolicitante: number;
   centroCusto: string;
   centroCustoDescricao: string;
   observacao: string;
@@ -92,6 +94,7 @@ export async function listarRequisicoesPendentes(codigosUsuario: string[], consu
       quantidade: numeroSenior(l.QTDEME),
       preco: numeroSenior(l.PREEME),
       solicitante: nomes.get(l.USUSOL) ?? l.USUSOL,
+      codSolicitante: Number(l.USUSOL),
       centroCusto: l.CCURES,
       centroCustoDescricao: descricoes.get(l.CCURES) ?? "",
       observacao: l.OBSEME,

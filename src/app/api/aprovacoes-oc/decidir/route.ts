@@ -7,6 +7,7 @@ import { negarSemModulo } from "@/lib/acesso/servidor";
 import { decifrar } from "@/lib/segredo";
 import { logAudit } from "@/lib/auditLog";
 import { decidirOc, listarPendentes } from "@/lib/senior/aprovarOc";
+import { avisarOcAprovada } from "@/lib/avisosAprovacaoERemessa";
 
 // Aprova/reprova UMA OC na Senior com o login ERP da propria pessoa. ESCREVE no ERP (sem desfazer por aqui).
 // Travas: so' vale para OC que esta AGORA na lista de pendentes da pessoa (releitura antes de escrever) e uma decisao por OC
@@ -38,7 +39,8 @@ export async function POST(req: Request) {
   try {
     const cred = { usuario: d.erpUsuario, senha: decifrar(d.erpSenhaCifrada) };
     const pendentes = await listarPendentes(cred);
-    if (!pendentes.some((o) => o.codigoEmpresa === k.codigoEmpresa && o.codigoFilial === k.codigoFilial && o.numero === k.numero))
+    const oc = pendentes.find((o) => o.codigoEmpresa === k.codigoEmpresa && o.codigoFilial === k.codigoFilial && o.numero === k.numero);
+    if (!oc)
       return NextResponse.json({ error: "Esta OC não está mais pendente para você na Senior. Atualize a lista." }, { status: 409 });
 
     const r = await decidirOc(acao, cred, k);
@@ -49,6 +51,8 @@ export async function POST(req: Request) {
       entityId: trava,
       metadata: { erpUsuario: d.erpUsuario, ok: r.ok, mensagem: r.mensagem },
     });
+    // aviso ao criador da OC em segundo plano: nao atrasa nem derruba a aprovacao
+    if (r.ok && acao === "aprovar") void avisarOcAprovada(k, oc.fornecedor, s.user?.name ?? d.erpUsuario);
     return r.ok ? NextResponse.json({ ok: true, mensagem: r.mensagem }) : NextResponse.json({ error: `A Senior recusou: ${r.mensagem}` }, { status: 422 });
   } catch (e) {
     return NextResponse.json({ error: `Falha ao falar com a Senior: ${(e as Error).message}` }, { status: 502 });

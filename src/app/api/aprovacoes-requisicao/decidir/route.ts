@@ -8,6 +8,7 @@ import { codigosSeniorDe } from "@/lib/acesso/aprovacoesOc";
 import { decifrar } from "@/lib/segredo";
 import { logAudit } from "@/lib/auditLog";
 import { aprovarRequisicao, listarRequisicoesPendentes } from "@/lib/senior/aprovarRequisicao";
+import { avisarRequisicaoAprovada } from "@/lib/avisosAprovacaoERemessa";
 
 // APROVA um item de requisicao de estoque na Senior com o login ERP da propria pessoa (nao ha reprovar nativo). ESCREVE no ERP.
 // Travas: so' vale para item que esta AGORA nas pendentes da pessoa (releitura antes de escrever); quantidade aprovada = a pedida;
@@ -48,6 +49,8 @@ export async function POST(req: Request) {
       entityId: trava,
       metadata: { erpUsuario: d.erpUsuario, codUsu: r.codUsu, quantidade: r.quantidade, ok: res.ok, mensagem: res.mensagem },
     });
+    // aviso ao solicitante em segundo plano: nao atrasa nem derruba a aprovacao
+    if (res.ok) void avisarRequisicaoAprovada(r, s.user?.name ?? d.erpUsuario);
     return res.ok ? NextResponse.json({ ok: true, mensagem: res.mensagem }) : NextResponse.json({ error: `A Senior recusou: ${res.mensagem}` }, { status: 422 });
   } catch (e) {
     return NextResponse.json({ error: `Falha ao falar com a Senior: ${(e as Error).message}` }, { status: 502 });
