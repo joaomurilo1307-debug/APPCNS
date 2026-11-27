@@ -5,7 +5,8 @@
     { "email": "admin@consominas.com.br", "nome": "usuario administrativo", "motivo": "conta administrativa que o Joao usa para regular o sistema e validar os dados (pedido de 28/10/2026)" }
   ],
   "pessoas": [
-    { "chapa": "2074", "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA", "motivo": "dono do sistema; unico com acesso por enquanto (decisao de 28/10/2026)" }
+    { "chapa": "2074", "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA", "motivo": "dono do sistema; unico com acesso por enquanto (decisao de 28/10/2026)" },
+    { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO", "motivo": "liberado a pedido do Joao em 27/11/2026, para revisar o Resultado Operacional" }
   ],
   "revogar": [
     { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO" },
