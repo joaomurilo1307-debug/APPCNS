@@ -1,7 +1,6 @@
 "use client";
 
-// Financeiro > P0: tela preparada. O P0 (orcamento base de cada contrato) so' sera cadastrado depois que todos os contratos tiverem o seu.
-// Aqui ainda nao ha dados: lista os contratos que a pessoa acompanha e mostra que o P0 de cada um esta por cadastrar.
+// Financeiro > P0: lista os contratos que a pessoa acompanha e mostra se o P0 de custo e o P0 de receita de cada um ja' estao cadastrados.
 
 import Link from "next/link";
 import FiltroContratos from "@/components/FiltroContratos";
@@ -12,7 +11,10 @@ import { PartesDoP0 } from "@/components/contratos/AbasContrato";
 import { mesCurto, moedaCompacta } from "@/lib/custos/formato";
 
 type Contrato = { codccu: string; nome: string; tipo: string; status: string; cliente: string | null; numero: string | null };
-type SituacaoP0 = { codccu: string; versao: number; rotulo: string; mesIni: string; mesFim: string; totalCusto: number };
+type SituacaoP0 = {
+  codccu: string; versao: number; rotulo: string; mesIni: string; mesFim: string; totalCusto: number;
+  temReceita: boolean; totalReceita: number | null; receitaMesIni: string | null; receitaMesFim: string | null;
+};
 
 export default function P0Page() {
   const [contratos, setContratos] = useState<Contrato[] | null>(null);
@@ -38,7 +40,9 @@ export default function P0Page() {
   }, []);
   const situacaoTexto = (c: Contrato) => {
     const x = p0s.get(c.codccu);
-    return x ? `cadastrado (${mesCurto(x.mesIni)} a ${mesCurto(x.mesFim)})` : "não cadastrado";
+    if (!x) return "não cadastrado";
+    const receita = x.temReceita ? `receita ${moedaCompacta(x.totalReceita ?? 0)}` : "sem receita";
+    return `cadastrado (${mesCurto(x.mesIni)} a ${mesCurto(x.mesFim)}) · custo ${moedaCompacta(x.totalCusto)} · ${receita}`;
   };
 
   const filtrados = useMemo(() => {
@@ -68,7 +72,7 @@ export default function P0Page() {
               gerar={() => [{
                 nome: "Situação do P0",
                 observacao: "O P0 (orçamento base) de cada contrato incluído nos resultados e se já está cadastrado",
-                colunas: [{ titulo: "CCU", largura: 8 }, { titulo: "Contrato", largura: 44 }, { titulo: "Cliente", largura: 30 }, { titulo: "P0", largura: 16 }],
+                colunas: [{ titulo: "CCU", largura: 8 }, { titulo: "Contrato", largura: 44 }, { titulo: "Cliente", largura: 30 }, { titulo: "P0", largura: 44 }],
                 linhas: filtrados.map((c) => [c.codccu, c.nome, c.cliente ?? "", situacaoTexto(c)]),
               }]}
             />
@@ -80,21 +84,32 @@ export default function P0Page() {
             <table className="w-full min-w-[700px] text-[13.5px]">
               <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500"><tr><th className="px-3 py-2">CCU</th><th className="px-3 py-2">Contrato</th><th className="px-3 py-2">Cliente</th><th className="px-3 py-2">P0</th><th className="px-3 py-2" /></tr></thead>
               <tbody>
-                {filtrados.map((c) => (
-                  <tr key={c.codccu} className="border-t border-gray-100">
-                    <td className="whitespace-nowrap px-3 py-2 text-gray-500">{c.codccu}</td>
-                    <td className="px-3 py-2 font-medium text-gray-800">{c.nome}</td>
-                    <td className="px-3 py-2 text-gray-600">{c.cliente ?? <span className="text-gray-300">não informado</span>}</td>
-                    <td className="px-3 py-2">
-                      {p0s.get(c.codccu) ? (
-                        <span className="inline-flex flex-wrap items-center gap-x-2"><span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">cadastrado</span><span className="text-xs text-gray-500">{mesCurto(p0s.get(c.codccu)!.mesIni)} a {mesCurto(p0s.get(c.codccu)!.mesFim)} · custo de contrato {moedaCompacta(p0s.get(c.codccu)!.totalCusto)}</span></span>
-                      ) : (
-                        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-600">não cadastrado</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right"><Link href={`/contratos/${encodeURIComponent(c.codccu)}?aba=p0`} className="text-[13px] font-medium text-brand hover:text-brand-dark">abrir</Link></td>
-                  </tr>
-                ))}
+                {filtrados.map((c) => {
+                  const p0 = p0s.get(c.codccu);
+                  return (
+                    <tr key={c.codccu} className="border-t border-gray-100">
+                      <td className="whitespace-nowrap px-3 py-2 text-gray-500">{c.codccu}</td>
+                      <td className="px-3 py-2 font-medium text-gray-800">{c.nome}</td>
+                      <td className="px-3 py-2 text-gray-600">{c.cliente ?? <span className="text-gray-300">não informado</span>}</td>
+                      <td className="px-3 py-2">
+                        {p0 ? (
+                          <span className="inline-flex flex-wrap items-center gap-x-2">
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">custo cadastrado</span>
+                            {p0.temReceita ? (
+                              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">receita cadastrada</span>
+                            ) : (
+                              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">sem receita</span>
+                            )}
+                            <span className="text-xs text-gray-500">{mesCurto(p0.mesIni)} a {mesCurto(p0.mesFim)} · custo {moedaCompacta(p0.totalCusto)}{p0.temReceita ? ` · receita ${moedaCompacta(p0.totalReceita ?? 0)}` : ""}</span>
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-600">não cadastrado</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right"><Link href={`/contratos/${encodeURIComponent(c.codccu)}?aba=p0`} className="text-[13px] font-medium text-brand hover:text-brand-dark">abrir</Link></td>
+                    </tr>
+                  );
+                })}
                 {filtrados.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">Nenhum contrato encontrado.</td></tr>}
               </tbody>
             </table>
