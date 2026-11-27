@@ -5,8 +5,7 @@
     { "email": "admin@consominas.com.br", "nome": "usuario administrativo", "motivo": "conta administrativa que o Joao usa para regular o sistema e validar os dados (pedido de 28/10/2026)" }
   ],
   "pessoas": [
-    { "chapa": "2074", "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA", "motivo": "dono do sistema; unico com acesso por enquanto (decisao de 28/10/2026)" },
-    { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO", "motivo": "liberado a pedido do Joao em 27/11/2026, para revisar o Resultado Operacional" }
+    { "chapa": "2074", "nome": "JOAO MURILO RODRIGUES DE OLIVEIRA", "motivo": "dono do sistema; unico com acesso por enquanto (decisao de 28/10/2026)" }
   ],
   "revogar": [
     { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO" },
@@ -14,5 +13,8 @@
     { "chapa": "22", "nome": "ELAINE MARIA RIBEIRO DE CARVALHO" },
     { "chapa": "683", "nome": "VIRGINIA DIAS DOS SANTOS" },
     { "chapa": "2094", "nome": "KATHLEEN THAIS FERREIRA" }
+  ],
+  "reconceder": [
+    { "chapa": "1", "nome": "CAROLINA SILVA PERES DE CARVALHO", "motivo": "reconcedido a pedido do Joao em 27/11/2026, para revisar o Resultado Operacional (o acesso anterior tinha sido revogado em 28/10/2026)" }
   ]
 }
