@@ -76,7 +76,13 @@ npx tsx prisma/seed-contestacoes-email.ts || true
 echo "Criando projetos de exemplo (uma vez por pessoa)..."
 npx tsx prisma/seed-projetos-exemplo.ts || true
 
-# P0 (linha de base de custos) dos contratos, de prisma/data/p0/*.json: so' carrega a versao que ainda nao existe; nunca sobrescreve nem apaga.
+# Corrige a granularidade da RECEITA carregada em 27/11/2026 (estava 1 linha agregada por mes; devia ser item a item, igual a planilha): roda uma
+# unica vez (marca na auditoria), antes do seed-p0.ts normal recarregar com os arquivos ja' atualizados.
+echo "Corrigindo granularidade da RECEITA do P0 (uma vez)..."
+npx tsx prisma/fix-p0-receita-item.ts || true
+
+# P0 (linha de base de custos e receita) dos contratos, de prisma/data/p0/*.json: so' carrega a versao que ainda nao existe, ou o tipo que ainda
+# nao tem; nunca sobrescreve nem apaga o que ja foi carregado.
 echo "Carregando P0 dos contratos (so' o que ainda nao foi carregado)..."
 npx tsx prisma/seed-p0.ts || true
 
