@@ -12,7 +12,7 @@ import { contasDoP0, periodoDoP0, type P0Resposta } from "@/lib/p0/montar";
 // ver o P0 de um contrato e' quem pode ver os custos dele (mesma regra de /api/custos-conta).
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "NÃ£o autenticado" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const url = new URL(req.url);
   const ccu = url.searchParams.get("ccu");
   if (!ccu) return NextResponse.json({ error: "Informe o centro de custo (ccu)" }, { status: 400 });
@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const tipo = tipoParam === "pessoal" ? "CUSTO_PESSOAL" : tipoParam === "receita" ? "RECEITA" : "CUSTO_CONTRATO";
 
   const escopo = await escopoDeCustos(prisma, session.user as any);
-  if (!podeVerCcu(escopo, ccu)) return NextResponse.json({ error: "Sem permissÃ£o para este centro de custo" }, { status: 403 });
+  if (!podeVerCcu(escopo, ccu)) return NextResponse.json({ error: "Sem permissão para este centro de custo" }, { status: 403 });
 
   const versao = await prisma.p0Versao.findFirst({ where: { codccu: ccu, ativa: true }, orderBy: { versao: "desc" } });
   if (!versao) return NextResponse.json({ existe: false } satisfies P0Resposta);
