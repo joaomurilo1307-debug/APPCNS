@@ -4,8 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { escopoDeCustos, podeVerCcu } from "@/lib/custos/acesso";
 
-// Linhas do P0 por tras de UMA celula (conta x mes) da tabela "Plano de contas x mes" do P0: de onde vem cada valor previsto (item do quantitativo,
-// "recorrentes da CPU"...). Mesma regra de acesso de /api/p0/custos. So' custo de contrato.
+// Linhas do P0 por tras de UMA celula (conta x mes) da tabela "Plano de contas x mes" (ou equivalente de receita/pessoal) do P0: de onde vem cada
+// valor previsto. Por padrao e' custo de contrato; com `?tipo=pessoal` ou `?tipo=receita` busca nos outros dois, que ficam sempre separados.
+// Mesma regra de acesso de /api/p0/custos.
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
@@ -13,6 +14,8 @@ export async function GET(req: Request) {
   const ccu = sp.get("ccu");
   const conta = sp.get("conta");
   const mes = sp.get("mes");
+  const tipoParam = sp.get("tipo");
+  const tipo = tipoParam === "pessoal" ? "CUSTO_PESSOAL" : tipoParam === "receita" ? "RECEITA" : "CUSTO_CONTRATO";
   if (!ccu || !conta || !mes || !/^\d{4}-\d{2}$/.test(mes)) return NextResponse.json({ error: "Informe ccu, conta e mes (aaaa-mm)" }, { status: 400 });
 
   const escopo = await escopoDeCustos(prisma, session.user as any);
@@ -22,7 +25,7 @@ export async function GET(req: Request) {
   if (!versao) return NextResponse.json({ error: "Este contrato não tem P0 cadastrado" }, { status: 404 });
 
   const linhas = await prisma.p0Linha.findMany({
-    where: { p0Id: versao.id, tipo: "CUSTO_CONTRATO", conta, competencia: new Date(`${mes}-01T00:00:00.000Z`) },
+    where: { p0Id: versao.id, tipo, conta, competencia: new Date(`${mes}-01T00:00:00.000Z`) },
     select: { historico: true, valor: true },
     orderBy: [{ valor: "desc" }, { historico: "asc" }],
   });
