@@ -43,31 +43,31 @@ export function AbaFichaContrato({ ficha, irParaAba }: { ficha: FichaContrato; i
   }, [ficha.codccu]);
   const itens: [string, boolean | null, string | null][] = [
     ["Custos do Senior (aba Custos)", true, "custos"],
-    ["Ficha cadastral (cliente, nÃºmero, vigÃªncia, valor)", fichaCompleta, null],
+    ["Ficha cadastral (cliente, número, vigência, valor)", fichaCompleta, null],
     ["Custo de pessoal", null, "pessoal"],
-    ["OrÃ§amento base (P0)", temP0, "p0"],
-    ["PrevisÃ£o do Senior por contrato (tÃ­tulos em aberto)", true, "previsao"],
+    ["Orçamento base (P0)", temP0, "p0"],
+    ["Previsão do Senior por contrato (títulos em aberto)", true, "previsao"],
     ["Metas do contrato", true, "metas"],
-    ["Planos de AÃ§Ã£o do contrato", true, "acoes"],
+    ["Planos de Ação do contrato", true, "acoes"],
   ];
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <Cartao titulo="Ficha do contrato" sub="Dados cadastrais, preenchidos pelo administrador. Os custos vÃªm do Senior, na aba Custos.">
+      <Cartao titulo="Ficha do contrato" sub="Dados cadastrais, preenchidos pelo administrador. Os custos vêm do Senior, na aba Custos.">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[14px]">
-          {([["Cliente", ficha.cliente], ["NÃºmero do contrato", ficha.numero], ["InÃ­cio da vigÃªncia", dataBr(ficha.vigenciaInicio)], ["Fim da vigÃªncia", dataBr(ficha.vigenciaFim)], ["Valor do contrato", ficha.valor ? moeda(ficha.valor) : null], ["SituaÃ§Ã£o", ficha.status === "ATIVO" ? "Ativo" : "Encerrado"]] as [string, string | null][]).map(([k, v]) => (
-            <div key={k}><dt className="text-xs text-gray-400">{k}</dt><dd className="text-gray-800">{v || <span className="text-gray-300">nÃ£o informado</span>}</dd></div>
+          {([["Cliente", ficha.cliente], ["Número do contrato", ficha.numero], ["Início da vigência", dataBr(ficha.vigenciaInicio)], ["Fim da vigência", dataBr(ficha.vigenciaFim)], ["Valor do contrato", ficha.valor ? moeda(ficha.valor) : null], ["Situação", ficha.status === "ATIVO" ? "Ativo" : "Encerrado"]] as [string, string | null][]).map(([k, v]) => (
+            <div key={k}><dt className="text-xs text-gray-400">{k}</dt><dd className="text-gray-800">{v || <span className="text-gray-300">não informado</span>}</dd></div>
           ))}
           {ficha.objeto && <div className="col-span-2"><dt className="text-xs text-gray-400">Objeto</dt><dd className="text-gray-800">{ficha.objeto}</dd></div>}
-          {ficha.observacoes && <div className="col-span-2"><dt className="text-xs text-gray-400">ObservaÃ§Ãµes</dt><dd className="text-gray-800">{ficha.observacoes}</dd></div>}
+          {ficha.observacoes && <div className="col-span-2"><dt className="text-xs text-gray-400">Observações</dt><dd className="text-gray-800">{ficha.observacoes}</dd></div>}
         </dl>
       </Cartao>
-      <Cartao titulo="SituaÃ§Ã£o do acompanhamento" sub="O que jÃ¡ estÃ¡ ligado a este contrato">
+      <Cartao titulo="Situação do acompanhamento" sub="O que já está ligado a este contrato">
         <ul className="space-y-2.5 text-[14px]">
           {itens.map(([nome, ok, aba]) => (
             <li key={nome} className="flex items-center gap-2.5">
-              <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${ok === true ? "bg-emerald-100 text-emerald-700" : ok === false ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-400"}`}>{ok === true ? "âœ“" : ok === false ? "â€¢" : "â€“"}</span>
+              <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${ok === true ? "bg-emerald-100 text-emerald-700" : ok === false ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-400"}`}>{ok === true ? "✓" : ok === false ? "•" : "–"}</span>
               <span className="text-gray-700">{nome}</span>
-              <span className="text-xs text-gray-400">{ok === true ? "disponÃ­vel" : ok === false ? "a preencher" : "em preparaÃ§Ã£o"}</span>
+              <span className="text-xs text-gray-400">{ok === true ? "disponível" : ok === false ? "a preencher" : "em preparação"}</span>
               {aba && <button onClick={() => irParaAba(aba)} className="ml-auto text-[13px] font-medium text-brand hover:text-brand-dark">abrir</button>}
             </li>
           ))}
@@ -87,9 +87,9 @@ export function AbaPessoal({ codccu }: { codccu: string }) {
 
 // ---------------------------------------------------------------- P0 (base de custos e receita, cadastrada contrato por contrato)
 const PARTES_P0 = [
-  { t: "Receita", d: "As linhas das mediÃ§Ãµes do contrato: o que se espera faturar, mÃªs a mÃªs." },
-  { t: "Custos", d: "As previsÃµes lineares de custo, mÃªs a mÃªs. Cada previsÃ£o vira uma linha no grÃ¡fico principal do contrato." },
-  { t: "Desvio", d: "A diferenÃ§a entre o previsto (P0) e o realizado do Senior. Ã‰ onde os coordenadores vÃ£o justificar o desvio." },
+  { t: "Receita", d: "As linhas das medições do contrato: o que se espera faturar, mês a mês." },
+  { t: "Custos", d: "As previsões lineares de custo, mês a mês. Cada previsão vira uma linha no gráfico principal do contrato." },
+  { t: "Desvio", d: "A diferença entre o previsto (P0) e o realizado do Senior. É onde os coordenadores vão justificar o desvio." },
 ];
 
 export function PartesDoP0() {
